@@ -78,6 +78,12 @@ dependencies {
     // 꽃신 공유 앱 셸(Compose Multiplatform · Koin). 화면은 전부 여기서 온다.
     implementation(project(":composeApp"))
     implementation(libs.koin.android)
+    // 홈 화면 위젯. 위젯은 :core:widget-bridge 가 쓴 스냅샷만 읽는다.
+    implementation(project(":core:widget-bridge"))
+    implementation(project(":core:drawing-engine"))
+    implementation(project(":core:designsystem"))
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
 
     implementation(project(":common:presentation"))
     implementation(project(":common:domain"))

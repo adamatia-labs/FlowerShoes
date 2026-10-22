@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -43,13 +46,17 @@ import com.sadturtleman.flowershoes.feature.memory.MemoryRoute
 import com.sadturtleman.flowershoes.feature.pairing.PairingRoute
 import org.koin.compose.viewmodel.koinViewModel
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingRoute
+import org.koin.compose.getKoin
 import org.koin.compose.koinInject
+import com.sadturtleman.flowershoes.feature.settings.NoPlatformActions
+import com.sadturtleman.flowershoes.feature.settings.PlatformActions
+import com.sadturtleman.flowershoes.feature.settings.SettingsRoute
 
 /** 하단 탭. 화면 이동은 여기서만 정한다 — feature 끼리는 서로 모른다. */
 enum class Tab(val label: String) { HOME("홈"), CALENDAR("캘린더"), LETTER("편지"), MEMORY("추억") }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY }
+private enum class Overlay { PAIRING, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
 
 @Composable
 fun KkotsinApp() {
@@ -89,6 +96,7 @@ private fun OnboardingFlow() {
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun MainShell() {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
@@ -96,6 +104,17 @@ private fun MainShell() {
     // 편지 쓰기 · 편지함 · 그림만 보내기가 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val c = KkTheme.colors
+    val letterOpen = letters.state.collectAsState().value.open != null
+
+    // 뒤로 가기: 덮어 띄운 화면 → 읽던 편지 → 홈 탭 순서로 닫는다. 홈에서는 시스템에 맡긴다(앱 나가기).
+    BackHandler(enabled = overlay != null || letterOpen || tab != Tab.HOME) {
+        when {
+            overlay == Overlay.DRAW_FOR_LETTER -> overlay = Overlay.COMPOSE
+            overlay != null -> overlay = null
+            letterOpen -> letters.onIntent(LetterIntent.Close)
+            else -> tab = Tab.HOME
+        }
+    }
 
     when (overlay) {
         Overlay.COMPOSE -> {
@@ -134,6 +153,14 @@ private fun MainShell() {
             ComingSoon(overlay!!.title(), onBack = { overlay = null })
             return
         }
+        Overlay.SETTINGS -> {
+            SettingsRoute(
+                platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
+                onOpenPairing = { overlay = Overlay.PAIRING },
+                onBack = { overlay = null },
+            )
+            return
+        }
         null -> Unit
     }
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
@@ -142,6 +169,7 @@ private fun MainShell() {
                 Tab.HOME -> HomeRoute(
                     onOpenPairing = { overlay = Overlay.PAIRING },
                     onOpenCalendar = { tab = Tab.CALENDAR },
+                    onOpenSettings = { overlay = Overlay.SETTINGS },
                 )
                 Tab.CALENDAR -> CalendarRoute()
                 Tab.LETTER -> LetterInboxRoute(

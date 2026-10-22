@@ -42,6 +42,47 @@
                     android:scheme="flowershoes" />
             </intent-filter>
         </activity>
+        <!-- 홈 화면 위젯(설계 8장) -->
+        <receiver
+            android:name=".widget.DdayWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_dday" />
+        </receiver>
+        <receiver
+            android:name=".widget.MissYouWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_missyou" />
+        </receiver>
+        <receiver
+            android:name=".widget.NextMeetingWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_next" />
+        </receiver>
+        <receiver
+            android:name=".widget.DrawingWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_drawing" />
+        </receiver>
     </application>
 
 </manifest>

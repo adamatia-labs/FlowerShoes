@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.feature.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,10 +40,11 @@ import org.koin.compose.viewmodel.koinViewModel
 fun HomeRoute(
     onOpenPairing: () -> Unit,
     onOpenCalendar: () -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar)
+    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings)
 }
 
 @Composable
@@ -51,6 +53,7 @@ fun HomeScreen(
     onIntent: (HomeIntent) -> Unit,
     onOpenPairing: () -> Unit,
     onOpenCalendar: () -> Unit,
+    onOpenSettings: () -> Unit = {},
 ) {
     val c = KkTheme.colors
     Column(
@@ -61,7 +64,14 @@ fun HomeScreen(
             .padding(horizontal = KkSpacing.screen, vertical = KkSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
     ) {
-        Text("꽃신", style = KkTheme.type.titleM, color = c.textBrand)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("꽃신", style = KkTheme.type.titleM, color = c.textBrand)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "설정", style = KkTheme.type.labelM, color = c.textSecondary,
+                modifier = Modifier.clickable(onClick = onOpenSettings).padding(KkSpacing.sm),
+            )
+        }
         state.dday?.let { DdayCardView(it) } ?: EmptyDday()
 
         KkCard {

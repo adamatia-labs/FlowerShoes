@@ -39,10 +39,14 @@ kotlin {
             implementation(project(":feature:drawing"))
             implementation(project(":feature:memory"))
             implementation(project(":feature:pairing"))
+            api(project(":feature:settings"))
+            api(project(":core:widget-bridge"))
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.jb.lifecycle.runtime.compose)
+            // 시스템 뒤로 가기(Android) · 스와이프 뒤로(iOS)로 덮어 띄운 화면을 닫는다.
+            implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composeMultiplatform.get()}")
         }
         androidMain.dependencies {
             implementation(libs.koin.android)

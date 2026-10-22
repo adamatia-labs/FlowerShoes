@@ -17,6 +17,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.data.IdentityHolder
+import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
+import com.sadturtleman.flowershoes.widget.updateAllWidgets
+import com.sadturtleman.flowershoes.widget.AndroidPlatformActions
+import com.sadturtleman.flowershoes.feature.settings.PlatformActions
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 
@@ -52,6 +58,13 @@ class FlowerShoesApplication :
         startKoin {
             androidContext(this@FlowerShoesApplication)
             modules(kkotsinAndroidModules(this@FlowerShoesApplication))
+            modules(org.koin.dsl.module { single<PlatformActions> { AndroidPlatformActions(this@FlowerShoesApplication) } })
+        }
+        // 위젯 스냅샷: DB 가 바뀌면 다시 쓰고 위젯을 갱신한다. 신원(로컬 id)을 먼저 읽어 둔다.
+        appScope.launch {
+            val koin = org.koin.core.context.GlobalContext.get()
+            koin.get<IdentityHolder>().update(koin.get<DeviceSettings>().ensureIdentity())
+            koin.get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
         }
         // 지난 실행이 쏘지 못하고 죽은 기록도 이 시점에 함께 나간다.
         ttiRecorder.init()

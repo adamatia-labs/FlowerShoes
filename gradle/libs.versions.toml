@@ -49,6 +49,8 @@ okio = "3.10.2"
 gitliveFirebase = "2.1.0"
 # GitLive 2.1 은 firebase-*-ktx 를 참조한다 — ktx 가 빠진 BoM 34 가 아니라 33 을 쓴다.
 firebaseBom = "33.16.0"
+# 홈 화면 위젯(Android)
+glance = "1.1.1"
 jbNavigation = "2.9.1"
 jbLifecycle = "2.9.4"
 
@@ -125,6 +127,8 @@ jb-navigation-compose = { group = "org.jetbrains.androidx.navigation", name = "n
 jb-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "jbLifecycle" }
 jb-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "jbLifecycle" }
 okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 gitlive-firebase-firestore = { group = "dev.gitlive", name = "firebase-firestore", version.ref = "gitliveFirebase" }
 gitlive-firebase-storage = { group = "dev.gitlive", name = "firebase-storage", version.ref = "gitliveFirebase" }

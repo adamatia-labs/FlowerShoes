@@ -39,6 +39,7 @@ include(":core:designsystem")
 include(":core:auth")
 include(":core:drawing-ui")
 include(":core:firebase")
+include(":core:widget-bridge")
 
 // 화면 단위 기능. core 만 의존하고 서로는 모른다.
 include(":feature:onboarding")
@@ -48,6 +49,7 @@ include(":feature:letter")
 include(":feature:drawing")
 include(":feature:memory")
 include(":feature:pairing")
+include(":feature:settings")
 
 // 공통 레이어. 모든 feature 가 참조한다.
 include(":common:presentation")
