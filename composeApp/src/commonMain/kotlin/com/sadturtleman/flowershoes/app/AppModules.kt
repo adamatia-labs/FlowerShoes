@@ -33,6 +33,8 @@ import com.sadturtleman.flowershoes.core.data.sync.PairingTransport
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.data.sync.RotationApprover
+import com.sadturtleman.flowershoes.core.data.sync.PostRestoreRotation
+import com.sadturtleman.flowershoes.core.data.sync.RotationRequester
 import com.sadturtleman.flowershoes.core.data.sync.RotationTransport
 import com.sadturtleman.flowershoes.core.data.sync.AccountTransport
 import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
@@ -91,7 +93,14 @@ fun kkotsinModules(
             single {
                 val client = get<SyncClient>()
                 val approver = cloud.rotation?.let { RotationApprover(get(), get(), get(), it, drainInbox = { client.syncOnce() }, get()) }
-                SyncScheduler(get(), client, approver)
+                val afterRestore = cloud.rotation?.let { t ->
+                    val settings = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
+                    PostRestoreRotation(get(), get(), RotationRequester(get(), get(), get(), t, get()), t, onFinished = { token, epoch ->
+                        settings.setKeyEpoch(epoch)
+                        cloud.account?.signInWithCustomToken(token)
+                    })
+                }
+                SyncScheduler(get(), client, approver, afterRestore)
             }
         }
     },

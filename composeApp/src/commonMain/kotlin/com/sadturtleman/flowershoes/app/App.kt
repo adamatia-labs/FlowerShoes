@@ -197,7 +197,18 @@ private fun MainShell() {
         }
         null -> Unit
     }
+    val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
+    val restoreState = scheduler?.restoreState?.collectAsState()?.value
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+        if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner) {
+            // 복원 뒤 기기 교체(7-3-A): 상대 폰이 동기화하면 자동으로 확인된다.
+            Text(
+                "연인 폰에서 새 폰을 확인하는 중이에요. 그동안 보낸 것은 확인이 끝나면 전달돼요.",
+                style = KkTheme.type.bodyS,
+                color = c.textSecondary,
+                modifier = Modifier.fillMaxWidth().background(c.bgSurface).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.sm),
+            )
+        }
         Box(Modifier.weight(1f)) {
             when (tab) {
                 Tab.HOME -> HomeRoute(

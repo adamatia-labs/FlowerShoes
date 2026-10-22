@@ -177,3 +177,42 @@ class RotationApprover(
         return RotationDecision.Approved
     }
 }
+
+/** 복원 뒤 기기 교체가 어디까지 왔는지. 화면이 안내 문구를 고른다. */
+enum class RestoreRotationState {
+    /** 교체할 일이 없다(복원하지 않았거나 이미 끝났다). */
+    NotNeeded,
+
+    /** 요청을 올렸고 상대 폰의 자동 확인을 기다린다. 그동안 보낸 것은 확인 뒤에 전달된다. */
+    WaitingForPartner,
+
+    /** 방금 끝났다. */
+    Done,
+}
+
+/**
+ * 백업 복원 직후 자동 기기 교체(7-3-A). 동기화할 때마다 한 걸음씩 진행한다 — 앱이 재시작돼도 이어진다.
+ *
+ * 복원된 DB 에는 옛 폰이 내 활성 기기로 남아 있다. 그 id 가 지금 기기와 다르면 교체가 필요하다.
+ * 이미 올린 요청은 서버에서 다시 찾으므로(newDeviceId) 같은 요청을 두 번 만들지 않는다.
+ */
+class PostRestoreRotation(
+    private val db: AppDatabase,
+    private val identity: Identity,
+    private val requester: RotationRequester,
+    private val transport: RotationTransport,
+    /** 끝났을 때: 커스텀 토큰으로 다시 로그인 · 키 epoch 저장 등 플랫폼 일. */
+    private val onFinished: suspend (token: String, epoch: Int) -> Unit = { _, _ -> },
+) {
+    suspend fun step(): RestoreRotationState {
+        val couple = db.coupleDao().get() ?: return RestoreRotationState.NotNeeded
+        val active = db.deviceDao().activeFor(identity.userId) ?: return RestoreRotationState.NotNeeded
+        if (active.id == identity.deviceId) return RestoreRotationState.NotNeeded
+        val request = transport.rotations(couple.id).lastOrNull { it.newDeviceId == identity.deviceId && it.uid == identity.userId }
+            ?: requester.request(oldDeviceId = active.id)
+        val token = requester.finishIfApproved(request) ?: return RestoreRotationState.WaitingForPartner
+        onFinished(token, request.epoch)
+        return RestoreRotationState.Done
+    }
+}
+

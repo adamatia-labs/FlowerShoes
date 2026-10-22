@@ -165,4 +165,30 @@ class RotationTest {
         stale.requester.request("dev-b")
         assertIs<RotationDecision.NeedsManual>(jisu.approver.check().single().second)
     }
+
+    @Test
+    fun `복원 직후 자동 교체 — 요청은 한 번만, 상대 확인 뒤 끝난다`() = runTest {
+        link()
+        // 복원된 DB 에는 옛 폰(dev-b)이 민준의 활성 기기로 남아 있다.
+        val newPhone = restoreOnNewPhone()
+        var finished: Pair<String, Int>? = null
+        val after = PostRestoreRotation(newPhone.db, newPhone.identity, newPhone.requester, cloud) { token, epoch -> finished = token to epoch }
+
+        assertEquals(RestoreRotationState.WaitingForPartner, after.step())
+        assertEquals(RestoreRotationState.WaitingForPartner, after.step(), "재시작해도 같은 요청을 이어 간다")
+        assertEquals(1, cloud.rotations(jisu.db.coupleDao().get()!!.id).size)
+
+        jisu.approver.check()
+        assertEquals(RestoreRotationState.Done, after.step())
+        assertEquals(2, finished?.second)
+        assertEquals(RestoreRotationState.NotNeeded, after.step(), "끝난 뒤에는 할 일이 없다")
+    }
+
+    @Test
+    fun `복원하지 않은 폰은 교체하지 않는다`() = runTest {
+        link()
+        val after = PostRestoreRotation(minjun.db, minjun.identity, minjun.requester, cloud)
+        assertEquals(RestoreRotationState.NotNeeded, after.step())
+        assertTrue(cloud.rotations(minjun.db.coupleDao().get()!!.id).isEmpty())
+    }
 }

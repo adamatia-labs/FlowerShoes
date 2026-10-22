@@ -4,6 +4,7 @@ import com.sadturtleman.flowershoes.core.data.sync.RotationApproval
 import com.sadturtleman.flowershoes.core.data.sync.RotationRequest
 import com.sadturtleman.flowershoes.core.data.sync.RotationTransport
 import dev.gitlive.firebase.Firebase
+import dev.gitlive.firebase.auth.auth
 import dev.gitlive.firebase.firestore.FirebaseFirestore
 import dev.gitlive.firebase.firestore.Timestamp
 import dev.gitlive.firebase.firestore.firestore
@@ -105,6 +106,10 @@ class FunctionsAccount(private val region: String = "asia-northeast3") : com.sad
 
     override suspend fun deleteAccount() {
         Firebase.functions(region).httpsCallable("deleteAccount").invoke()
+    }
+
+    override suspend fun signInWithCustomToken(token: String) {
+        Firebase.auth.signInWithCustomToken(token)
     }
 }
 

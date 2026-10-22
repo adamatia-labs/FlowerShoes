@@ -10,6 +10,9 @@ interface AccountTransport {
     suspend fun unlinkCouple(coupleId: String)
 
     suspend fun deleteAccount()
+
+    /** 기기 교체를 마친 뒤 finalizeDevice 가 준 토큰으로 다시 로그인한다(새 기기 클레임). */
+    suspend fun signInWithCustomToken(token: String) = Unit
 }
 
 /** 해제할 때 내 폰 사본을 어떻게 할지(7-5). 상대 폰 사본은 상대가 고른다 — 내가 지울 수 없다. */

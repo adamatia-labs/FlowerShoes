@@ -33,8 +33,15 @@ class SyncScheduler(
     private val client: SyncClient,
     /** 상대의 기기 교체 요청을 동기화 때마다 확인해 자동 승인한다(7-3-A). */
     private val approver: RotationApprover? = null,
+    /** 백업 복원 뒤 자동 기기 교체(7-3-A). 동기화 앞에서 한 걸음씩. */
+    private val afterRestore: PostRestoreRotation? = null,
     private val period: Duration = 15.minutes,
 ) {
+    private val _restoreState = kotlinx.coroutines.flow.MutableStateFlow(RestoreRotationState.NotNeeded)
+
+    /** 화면 안내용: 상대 확인을 기다리는 중이면 "연인 폰에서 확인 중이에요". */
+    val restoreState: kotlinx.coroutines.flow.StateFlow<RestoreRotationState> = _restoreState
+
     /** 자동 승인하지 못한 교체 요청. 화면이 "확인 코드로 직접 확인해 주세요"를 띄운다. */
     var pendingManual: List<Pair<RotationRequest, RotationDecision.NeedsManual>> = emptyList()
         private set
@@ -64,6 +71,7 @@ class SyncScheduler(
 
     /** 푸시 수신처럼 결과를 기다려야 할 때. */
     suspend fun runOnce(): SyncReport? = running.withLock {
+        afterRestore?.let { r -> runCatching { r.step() }.getOrNull()?.let { _restoreState.value = it } }
         val report = runCatching { client.syncOnce() }.getOrNull()?.also { lastReport = it }
         approver?.let { a ->
             runCatching { a.check() }.getOrNull()?.let { decisions ->
