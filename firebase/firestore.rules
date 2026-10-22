@@ -124,6 +124,16 @@ service cloud.firestore {
         allow update: if false;
       }
 
+      // 작은 첨부(그림 문서)의 암호문. 무작위 키로 암호화돼 있고 키는 Op 본문(커플 키 암호문)에 있다. 받으면 지운다.
+      match /blobs/{blobId} {
+        allow create: if isActiveMember(c)
+          && request.resource.data.keys().hasOnly(['data', 'expireAt'])
+          && request.resource.data.data is string
+          && request.resource.data.data.size() <= 900000;
+        allow get, delete: if isMember(c);
+        allow list, update: if false;
+      }
+
       // 커서 알림(제어 메시지). 최신 값 하나로 덮어쓴다.
       match /control/{deviceId} {
         allow get, list: if isMember(c);

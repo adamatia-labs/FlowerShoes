@@ -131,3 +131,13 @@ test('알림 설정은 본인만, 서버 상태 문서는 아무도', async () =
   await assertFails(setDoc(doc(as('minjun'), 'users/jisu/notifyPrefs/main'), { quietStart: 0, quietEnd: 0 }));
   await assertFails(getDoc(doc(as('jisu'), 'notifyState/jisu')));
 });
+
+test('첨부 blob 은 활성 멤버만 올리고 멤버만 읽는다', async () => {
+  await seedCouple();
+  const blob = { data: 'QUJD', expireAt: later() };
+  await assertSucceeds(setDoc(doc(as('jisu'), 'couples/c1/blobs/b1'), blob));
+  await assertSucceeds(getDoc(doc(as('minjun'), 'couples/c1/blobs/b1')));
+  await assertFails(getDoc(doc(as('mallory'), 'couples/c1/blobs/b1')));
+  await assertFails(setDoc(doc(as('mallory'), 'couples/c1/blobs/b2'), blob));
+  await assertFails(setDoc(doc(as('jisu'), 'couples/c1/blobs/b3'), { ...blob, extra: 1 }));
+});

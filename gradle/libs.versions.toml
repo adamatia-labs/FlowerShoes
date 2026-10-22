@@ -45,6 +45,10 @@ composeMultiplatform = "1.11.1"
 koin = "4.1.1"
 # 첨부 파일 저장(KMP 파일 시스템)
 okio = "3.10.2"
+# Firebase(Firestore · Storage · Auth · Functions) KMP 래퍼
+gitliveFirebase = "2.1.0"
+# GitLive 2.1 은 firebase-*-ktx 를 참조한다 — ktx 가 빠진 BoM 34 가 아니라 33 을 쓴다.
+firebaseBom = "33.16.0"
 jbNavigation = "2.9.1"
 jbLifecycle = "2.9.4"
 
@@ -121,6 +125,11 @@ jb-navigation-compose = { group = "org.jetbrains.androidx.navigation", name = "n
 jb-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "jbLifecycle" }
 jb-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "jbLifecycle" }
 okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+gitlive-firebase-firestore = { group = "dev.gitlive", name = "firebase-firestore", version.ref = "gitliveFirebase" }
+gitlive-firebase-storage = { group = "dev.gitlive", name = "firebase-storage", version.ref = "gitliveFirebase" }
+gitlive-firebase-auth = { group = "dev.gitlive", name = "firebase-auth", version.ref = "gitliveFirebase" }
+gitlive-firebase-functions = { group = "dev.gitlive", name = "firebase-functions", version.ref = "gitliveFirebase" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 [plugins]
