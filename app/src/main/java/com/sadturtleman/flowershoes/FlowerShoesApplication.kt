@@ -21,6 +21,8 @@ import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.IdentityHolder
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
 import com.sadturtleman.flowershoes.widget.updateAllWidgets
+import com.sadturtleman.flowershoes.core.notification.NotificationSync
+import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
 import com.sadturtleman.flowershoes.widget.AndroidPlatformActions
 import com.sadturtleman.flowershoes.feature.settings.PlatformActions
 import org.koin.android.ext.koin.androidContext
@@ -65,6 +67,7 @@ class FlowerShoesApplication :
             val koin = org.koin.core.context.GlobalContext.get()
             koin.get<IdentityHolder>().update(koin.get<DeviceSettings>().ensureIdentity())
             koin.get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
+            NotificationSync(koin.get(), koin.get(), koin.get(), koin.get(), AndroidNotificationScheduler(this@FlowerShoesApplication)).start(this)
         }
         // 지난 실행이 쏘지 못하고 죽은 기록도 이 시점에 함께 나간다.
         ttiRecorder.init()

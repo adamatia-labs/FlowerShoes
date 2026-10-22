@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.koin.android)
     // 홈 화면 위젯. 위젯은 :core:widget-bridge 가 쓴 스냅샷만 읽는다.
     implementation(project(":core:widget-bridge"))
+    implementation(project(":core:notification"))
     implementation(project(":core:drawing-engine"))
     implementation(project(":core:designsystem"))
     implementation(libs.androidx.glance.appwidget)

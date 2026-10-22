@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".FlowerShoesApplication"
         android:allowBackup="true"
@@ -42,6 +44,9 @@
                     android:scheme="flowershoes" />
             </intent-filter>
         </activity>
+        <!-- 로컬 알림(예약 편지 공개 · 일정 전날 · 기념일) -->
+        <receiver android:name=".notification.LocalNotificationReceiver" android:exported="false" />
+
         <!-- 홈 화면 위젯(설계 8장) -->
         <receiver
             android:name=".widget.DdayWidgetReceiver"
