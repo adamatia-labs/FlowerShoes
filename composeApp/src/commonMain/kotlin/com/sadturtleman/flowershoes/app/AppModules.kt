@@ -15,6 +15,7 @@ import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.StatusRepository
 import com.sadturtleman.flowershoes.core.data.SyncWriter
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel
 import com.sadturtleman.flowershoes.feature.home.HomeViewModel
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
@@ -51,5 +52,6 @@ fun kkotsinModules(
     module {
         viewModel { OnboardingViewModel(get(), get(), get()) }
         viewModel { HomeViewModel(get(), get(), get(), get()) }
+        viewModel { CalendarViewModel(get(), get()) }
     },
 )

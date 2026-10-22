@@ -33,6 +33,7 @@ kotlin {
             implementation(project(":core:auth"))
             implementation(project(":feature:onboarding"))
             implementation(project(":feature:home"))
+            implementation(project(":feature:calendar"))
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)

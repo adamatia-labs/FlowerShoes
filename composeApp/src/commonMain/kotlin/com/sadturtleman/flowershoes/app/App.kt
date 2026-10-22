@@ -32,6 +32,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
 import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.feature.calendar.CalendarRoute
 import com.sadturtleman.flowershoes.feature.home.HomeRoute
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingRoute
 import org.koin.compose.koinInject
@@ -96,6 +97,7 @@ private fun MainShell() {
                     onOpenPairing = { overlay = Overlay.PAIRING },
                     onOpenCalendar = { tab = Tab.CALENDAR },
                 )
+                Tab.CALENDAR -> CalendarRoute()
                 else -> ComingSoon(tab.label, onBack = null)
             }
         }

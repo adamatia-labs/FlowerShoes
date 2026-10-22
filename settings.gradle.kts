@@ -41,6 +41,10 @@ include(":core:auth")
 // 화면 단위 기능. core 만 의존하고 서로는 모른다.
 include(":feature:onboarding")
 include(":feature:home")
+include(":feature:calendar")
+include(":feature:letter")
+include(":feature:drawing")
+include(":feature:memory")
 
 // 공통 레이어. 모든 feature 가 참조한다.
 include(":common:presentation")
