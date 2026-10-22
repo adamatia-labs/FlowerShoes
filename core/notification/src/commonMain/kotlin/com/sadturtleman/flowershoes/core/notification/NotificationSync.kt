@@ -30,26 +30,29 @@ class NotificationSync(
     private val scheduler: NotificationScheduler,
     private val clock: Clock = Clock.System,
     private val planner: NotificationPlanner = NotificationPlanner(),
+    /** 알림 설정: 끈 종류(일정 전날 · 기념일 · 예약 편지)는 예약하지 않는다. */
+    private val prefs: kotlinx.coroutines.flow.Flow<com.sadturtleman.flowershoes.core.data.NotificationPrefs> =
+        kotlinx.coroutines.flow.flowOf(com.sadturtleman.flowershoes.core.data.NotificationPrefs()),
 ) {
     @OptIn(FlowPreview::class)
     fun start(scope: CoroutineScope): Job = scope.launch {
         val today = clock.today()
         combine(
-            db.letterDao().observeAll(),
+            combine(db.letterDao().observeAll(), prefs) { l, p -> l to p },
             events.observeRange(today, today.plus(DatePeriod(years = 1))),
             profile.observeTimelines(),
             db.coupleDao().observe(),
             db.userDao().observeAll(),
-        ) { letters, upcoming, timelines, couple, users ->
+        ) { (letters, p), upcoming, timelines, couple, users ->
             val partner = couple?.partnerUserId.orEmpty()
             planner.plan(
                 now = clock.now(),
                 partnerName = users.firstOrNull { it.id == partner }?.nickname?.ifBlank { null } ?: "연인",
                 // 예약 편지 공개 알림은 받는 폰이 띄운다 — 내가 쓴 편지는 빼고.
-                scheduledLetters = letters.filter { it.authorId != identity.userId }.map { it.toModel() },
-                events = upcoming,
-                timeline = timelines.firstOrNull()?.second,
-                anniversary = couple?.anniversary?.let(LocalDate::parse),
+                scheduledLetters = if (p.letters) letters.filter { it.authorId != identity.userId }.map { it.toModel() } else emptyList(),
+                events = if (p.eventEve) upcoming else emptyList(),
+                timeline = if (p.anniversary) timelines.firstOrNull()?.second else null,
+                anniversary = if (p.anniversary) couple?.anniversary?.let(LocalDate::parse) else null,
             )
         }
             .distinctUntilChanged()

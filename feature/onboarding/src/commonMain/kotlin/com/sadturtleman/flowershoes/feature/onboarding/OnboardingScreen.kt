@@ -2,6 +2,8 @@
 
 package com.sadturtleman.flowershoes.feature.onboarding
 
+import com.sadturtleman.flowershoes.core.designsystem.TermsDoc
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -247,28 +249,7 @@ private fun TermsContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
 // ── 온보딩 0-2 · 약관 보기 ──
 
 @Composable
-private fun TermsScreen(doc: TermsDoc, onClose: () -> Unit) {
-    val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
-        KkTopBar(doc.title, onLeading = onClose, leading = KkTopBarLeading.Close, modifier = Modifier.padding(horizontal = KkSpacing.xl))
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
-        ) {
-            doc.sections.forEach { (title, lines) ->
-                val shape = RoundedCornerShape(KkRadius.lg)
-                Column(
-                    Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(title, style = KkTheme.type.labelM, color = c.textSecondary)
-                    lines.forEach { Text(it, style = KkTheme.type.bodyS, color = c.textPrimary) }
-                }
-            }
-        }
-        KkPrimaryButton("확인", onClose, Modifier.padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp))
-    }
-}
+private fun TermsScreen(doc: TermsDoc, onClose: () -> Unit) = com.sadturtleman.flowershoes.core.designsystem.KkTermsScreen(doc, onClose)
 
 // ── 온보딩 1 · 역할 ──
 
@@ -361,49 +342,8 @@ private fun ThemeContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
 }
 
 @Composable
-internal fun ThemeCard(theme: ThemeAccent, selected: Boolean, recommended: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Column(
-        modifier
-            .then(if (selected) Modifier else Modifier.kkElevation(KkElevation.Low, shape))
-            .clip(shape)
-            .background(if (selected) c.bgBrandSubtle else c.bgSurface)
-            .then(if (selected) Modifier.border(2.dp, c.borderBrand, shape) else Modifier)
-            .clickable(role = A11y.RadioButton, onClick = onClick)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            ThemeSwatch(theme)
-            KkRadio(selected)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(theme.koreanName, style = KkTheme.type.titleS, color = c.textPrimary)
-            if (recommended) {
-                Text(
-                    "추천", style = KkTheme.type.caption, color = c.textBrand,
-                    modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bgSurface).padding(horizontal = 6.dp, vertical = 2.dp),
-                )
-            }
-        }
-        Text(theme.mood, style = KkTheme.type.caption, color = c.textSecondary)
-    }
-}
-
-/** 테마 견본: 배경색 원 + 강조색 원(27, 1px 테두리), 48×28. */
-@Composable
-internal fun ThemeSwatch(theme: ThemeAccent) {
-    val light = kkColors(theme, dark = false)
-    val ring = KkTheme.colors.borderDefault
-    Canvas(Modifier.size(48.dp, 28.dp)) {
-        val r = 13.5.dp.toPx()
-        listOf(light.bgCanvas to Offset(14.dp.toPx(), 14.dp.toPx()), light.bgBrand to Offset(34.dp.toPx(), 14.dp.toPx())).forEach { (fill, center) ->
-            drawCircle(fill, r, center)
-            drawCircle(ring, r, center, style = Stroke(1.dp.toPx()))
-        }
-    }
-}
+internal fun ThemeCard(theme: ThemeAccent, selected: Boolean, recommended: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) =
+    com.sadturtleman.flowershoes.core.designsystem.KkThemeCard(theme, selected, recommended, modifier, onClick)
 
 // ── 온보딩 2 · 입대일 (+ 군종 · 입대일 시트) ──
 

@@ -22,6 +22,7 @@ import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
 import com.sadturtleman.flowershoes.widget.updateAllWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.get
 import org.koin.android.ext.android.getKoin
@@ -91,7 +92,7 @@ class FlowerShoesApplication :
             if (BuildConfig.DEBUG) android.util.Log.d("Kkotsin", "device key ${keys.signPub.take(4).joinToString("") { "%02x".format(it) }}")
             // 위젯 스냅샷 · 로컬 알림은 DB 가 바뀌면 다시 쓴다.
             get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
-            NotificationSync(get(), get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication)).start(this)
+            NotificationSync(get(), get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication), prefs = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs).start(this)
             // 서버 설정이 있는 빌드에서만 등록돼 있다.
             getKoin().getOrNull<SyncScheduler>()?.start(this)
             registerPushTokenOnSignIn()
@@ -127,7 +128,12 @@ class FlowerShoesApplication :
         val prefs = getSharedPreferences("kkotsin_backup", MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (now - prefs.getLong("last", 0L) < 30 * 60 * 1000L) return
+        val settings = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
         appScope.launch {
+            // 설정 › 백업: 자동 백업을 껐거나, 셀룰러에서 백업하지 않기로 했는데 지금 데이터 요금 망이면 다음 기회에.
+            if (!settings.autoBackup.first()) return@launch
+            val metered = (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
+            if (metered && !settings.cellularBackup.first()) return@launch
             runCatching { manager.backupNow(get<IdentityHolder>().userId) }
                 .onSuccess { prefs.edit().putLong("last", now).apply() }
         }

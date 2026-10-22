@@ -79,6 +79,29 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     val letterDraft: Flow<String?> = store.data.map { it[LETTER_DRAFT] }
 
+    private val prefsJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    /** 알림 설정(이 기기). 서버에 올리는 것은 [NotifyPrefsTransport] 가 따로 한다. */
+    val notifyPrefs: Flow<NotificationPrefs> = store.data.map { p ->
+        p[NOTIFY_PREFS]?.let { runCatching { prefsJson.decodeFromString(NotificationPrefs.serializer(), it) }.getOrNull() } ?: NotificationPrefs()
+    }
+
+    suspend fun setNotifyPrefs(prefs: NotificationPrefs) = store.edit { it[NOTIFY_PREFS] = prefsJson.encodeToString(NotificationPrefs.serializer(), prefs) }
+
+    /** 설정 › 테마 › 화면 모드: SYSTEM(기본) · LIGHT · DARK. */
+    val displayMode: Flow<String> = store.data.map { it[DISPLAY_MODE] ?: "SYSTEM" }
+
+    suspend fun setDisplayMode(mode: String) = store.edit { it[DISPLAY_MODE] = mode }
+
+    /** 설정 › 백업: 자동 백업 · 셀룰러에서도 백업(끄면 Wi-Fi 에서만) · 복구 코드를 확인했는지. */
+    val autoBackup: Flow<Boolean> = store.data.map { (it[AUTO_BACKUP] ?: 1) == 1 }
+    val cellularBackup: Flow<Boolean> = store.data.map { (it[CELLULAR_BACKUP] ?: 0) == 1 }
+    val recoveryCodeSeen: Flow<Boolean> = store.data.map { (it[CODE_SEEN] ?: 0) == 1 }
+
+    suspend fun setAutoBackup(on: Boolean) = store.edit { it[AUTO_BACKUP] = if (on) 1 else 0 }
+    suspend fun setCellularBackup(on: Boolean) = store.edit { it[CELLULAR_BACKUP] = if (on) 1 else 0 }
+    suspend fun setRecoveryCodeSeen() = store.edit { it[CODE_SEEN] = 1 }
+
     /** 추억 › 위젯에 다시 띄우기: 이 그림을 [atMs] 부터 위젯에. 그 뒤에 새 그림이 오면 새 그림이 이긴다. */
     suspend fun pinWidgetDrawing(drawingId: String, atMs: Long) = store.edit { it[WIDGET_PIN] = "$drawingId|$atMs" }
 
@@ -100,6 +123,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val PROVIDER = stringPreferencesKey("account_provider")
         val LETTER_DRAFT = stringPreferencesKey("letter_draft")
         val WIDGET_PIN = stringPreferencesKey("widget_pin")
+        val NOTIFY_PREFS = stringPreferencesKey("notify_prefs")
+        val AUTO_BACKUP = intPreferencesKey("auto_backup")
+        val DISPLAY_MODE = stringPreferencesKey("display_mode")
+        val CELLULAR_BACKUP = intPreferencesKey("cellular_backup")
+        val CODE_SEEN = intPreferencesKey("recovery_code_seen")
     }
 }
 

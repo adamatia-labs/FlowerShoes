@@ -68,9 +68,13 @@ class ProfileRepository(
     fun observeTimelines(): Flow<List<Pair<Service, ServiceTimeline>>> =
         db.serviceDao().observeAll().map { list -> list.map { it.toModel() }.map { it to calculator.timeline(it) } }
 
+    /** 내 역할 · 이름. 연결돼 있으면 상대 폰에도 간다(이름은 "민준 ♥ 지수" · 편지 · 알림에 쓰인다). */
     suspend fun saveMe(role: Role, nickname: String) {
-        val existing = db.userDao().get(identity.userId)
-        db.userDao().upsert(UserEntity(identity.userId, role.name, nickname, (existing?.nicknameLamport ?: 0) + 1))
+        writer.write(
+            OpKind.PROFILE, "user", identity.userId,
+            localWrite = { lamport -> db.userDao().upsert(UserEntity(identity.userId, role.name, nickname, lamport)) },
+            payload = { lamport -> OpPayload.UserPut(identity.userId, role.name, nickname, lamport) },
+        )
     }
 
     suspend fun saveService(service: Service) {

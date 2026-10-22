@@ -92,7 +92,13 @@ fun KkotsinApp() {
     // 그림의 배경 사진: 문서는 첨부 id 만 갖고 있어 렌더러가 여기서 읽는다.
     val attachmentStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.AttachmentStore>()
     val photoLoader: suspend (String) -> ByteArray? = remember(attachmentStore) { { id -> attachmentStore?.read(id) } }
-    KkotsinTheme(accent = current?.theme ?: ThemeAccent.ROSE) {
+    val displayMode by (getKoin().getOrNull<DeviceSettings>()?.displayMode ?: kotlinx.coroutines.flow.flowOf("SYSTEM")).collectAsState("SYSTEM")
+    val dark = when (displayMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+    KkotsinTheme(accent = current?.theme ?: ThemeAccent.ROSE, dark = dark) {
         CompositionLocalProvider(
             com.sadturtleman.flowershoes.core.designsystem.LocalKkShare provides share,
             com.sadturtleman.flowershoes.core.drawingui.LocalDrawingPhotoLoader provides photoLoader,
@@ -146,6 +152,7 @@ private fun MainShell() {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
+    var settingsStart by remember { mutableStateOf(com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN) }
     // 편지 쓰기 · 편지함 · 그림만 보내기가 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
@@ -244,7 +251,8 @@ private fun MainShell() {
                 onOpenPairing = { overlay = Overlay.PAIRING },
                 onHandOver = { overlay = Overlay.HAND_OVER },
                 onRestore = { overlay = Overlay.RESTORE },
-                onBack = { overlay = null },
+                onBack = { overlay = null; settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN },
+                startAt = settingsStart,
             )
             return
         }
@@ -252,6 +260,34 @@ private fun MainShell() {
     }
     val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
     val restoreState = scheduler?.restoreState?.collectAsState()?.value
+    val settingsVm = koinViewModel<com.sadturtleman.flowershoes.feature.settings.SettingsViewModel>()
+    val settingsState by settingsVm.state.collectAsState()
+    // 상대가 연결을 해제했다(Figma 6 · 연결 해제 / 상대 폰): 사본을 어떻게 할지 고를 때까지 다른 화면을 막는다.
+    if (scheduler?.partnerUnlinked?.collectAsState()?.value == true) {
+        com.sadturtleman.flowershoes.feature.settings.PartnerUnlinkedScreen(settingsState.partnerName) { after ->
+            settingsVm.afterPartnerUnlinked(after)
+            scheduler.partnerUnlinkHandled()
+        }
+        return
+    }
+    // 상대가 새 폰으로 바꿨다(Figma 6 · 기기 교체 · 상대 폰 알림): 자동 확인 뒤 한 번.
+    val rotation = scheduler?.approvedRotations?.collectAsState()?.value?.firstOrNull()
+    if (rotation != null) {
+        val at = kotlin.time.Instant.fromEpochMilliseconds(rotation.createdAtMs)
+        com.sadturtleman.flowershoes.feature.settings.PartnerDeviceChangedScreen(
+            partnerName = settingsState.partnerName,
+            deviceName = rotation.deviceName,
+            at = com.sadturtleman.flowershoes.feature.settings.relativeTime(at.toEpochMilliseconds()),
+            providerLabel = rotation.provider.takeIf { it.isNotBlank() }?.let(settingsVm::providerLabel),
+            onAcknowledge = { scheduler.rotationSeen(rotation.id) },
+            onUnknown = {
+                scheduler.rotationSeen(rotation.id)
+                settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.UNLINK
+                overlay = Overlay.SETTINGS
+            },
+        )
+        return
+    }
     // 복원 뒤 다시 시작했을 때 한 번: "거의 다 됐어요"(복원 · 지수 폰 확인 대기). 둘러보기를 누르면 배너만 남는다.
     var waitingSeen by rememberSaveable { mutableStateOf(false) }
     if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner && !waitingSeen) {

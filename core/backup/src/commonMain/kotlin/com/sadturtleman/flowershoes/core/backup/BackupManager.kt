@@ -85,6 +85,18 @@ class BackupManager(
 
     suspend fun recoveryCode(): String? = vault.backupSecrets()?.second
 
+    /**
+     * 새 복구 코드(설정 › 복구 코드 › 새 코드 만들기). 같은 BK 를 새 코드로 다시 감싸 서버의 keywrap 을 바꾼다 —
+     * 옛 코드로는 더 이상 열 수 없다.
+     */
+    suspend fun regenerateRecoveryCode(uid: String): String {
+        val key = ensureKey(uid)
+        val code = RecoveryCode.generate()
+        BackupEngine.storeKeyWrap(storage, uid, code, key)
+        vault.putBackupSecrets(key.export(), code)
+        return code
+    }
+
     suspend fun backupNow(uid: String): BackupManifest {
         val manifest = BackupEngine(ensureKey(uid), storage, clock).backup(uid, source)
         _lastBackupAt.value = manifest.createdAtMs

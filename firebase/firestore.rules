@@ -156,7 +156,7 @@ service cloud.firestore {
         allow get, list: if isMember(c);
         allow create: if isMember(c)
           && request.resource.data.uid == request.auth.uid
-          && request.resource.data.keys().hasOnly(['uid', 'newDeviceId', 'oldDeviceId', 'epoch', 'wrappedKey', 'mac', 'sig', 'createdAt']);
+          && request.resource.data.keys().hasOnly(['uid', 'newDeviceId', 'oldDeviceId', 'epoch', 'wrappedKey', 'mac', 'sig', 'createdAt', 'deviceName', 'provider']);
         allow update, delete: if false;
 
         match /approval/{approvalId} {

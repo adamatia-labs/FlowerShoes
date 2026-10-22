@@ -18,6 +18,24 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 /** 설정의 플랫폼 기능: 위젯 고정 요청, 기기 생체 · 암호 인증. */
 class AndroidPlatformActions(private val context: Context) : PlatformActions {
 
+    /** 사용자가 보는 기기 이름("Galaxy S25"). 없으면 모델명. */
+    override val deviceName: String
+        get() = android.provider.Settings.Global.getString(context.contentResolver, "device_name")?.takeIf { it.isNotBlank() }
+            ?: android.os.Build.MODEL
+
+    override val appVersion: String
+        get() = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0.0"
+
+    /** Credential Manager 로 비밀번호 관리자(Google 비밀번호 관리자 등)에 저장. */
+    override suspend fun savePassword(id: String, secret: String): Boolean {
+        val activity = CurrentActivity.activity ?: return false
+        return runCatching {
+            androidx.credentials.CredentialManager.create(activity)
+                .createCredential(activity, androidx.credentials.CreatePasswordRequest(id, secret))
+            true
+        }.getOrDefault(false)
+    }
+
     private val receivers = linkedMapOf(
         "dday" to ("전역 D-day" to DdayWidgetReceiver::class.java),
         "missyou" to ("보고싶어" to MissYouWidgetReceiver::class.java),

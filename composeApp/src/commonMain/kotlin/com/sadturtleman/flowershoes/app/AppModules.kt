@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.app
 
+import kotlinx.coroutines.flow.first
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import com.sadturtleman.flowershoes.core.auth.AuthGateway
@@ -51,7 +52,15 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 /** 서버 쪽 구현 묶음. Firebase 설정이 있는 빌드에서만 플랫폼이 만들어 넘긴다. */
-class CloudBackend(val mailbox: Mailbox, val blobs: BlobStore, val pairing: PairingTransport, val rotation: RotationTransport? = null, val account: AccountTransport? = null, val relink: RelinkTransport? = null)
+class CloudBackend(
+    val mailbox: Mailbox,
+    val blobs: BlobStore,
+    val pairing: PairingTransport,
+    val rotation: RotationTransport? = null,
+    val account: AccountTransport? = null,
+    val relink: RelinkTransport? = null,
+    val notifyPrefs: com.sadturtleman.flowershoes.core.data.NotifyPrefsTransport? = null,
+)
 
 /**
  * DI 조립. 플랫폼이 만든 DB · DataStore 를 받아 나머지를 잇는다.
@@ -91,12 +100,16 @@ fun kkotsinModules(
             single { PairingSession(get(), get(), get(), cloud.pairing, get()) }
             single { SyncClient(get(), get(), get(), cloud.mailbox, cloud.blobs, get(), get(), get(), get()) }
             cloud.relink?.let { r -> single { RelinkSession(get(), get(), get(), r, get(), get()) } }
+            cloud.notifyPrefs?.let { t -> single { t } }
             single {
                 val client = get<SyncClient>()
                 val approver = cloud.rotation?.let { RotationApprover(get(), get(), get(), it, drainInbox = { client.syncOnce() }, get()) }
                 val afterRestore = cloud.rotation?.let { t ->
                     val settings = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
-                    PostRestoreRotation(get(), get(), RotationRequester(get(), get(), get(), t, get()), t, onFinished = { token, epoch ->
+                    val requester = RotationRequester(get(), get(), get(), t, get(), deviceInfo = {
+                        (getKoin().getOrNull<com.sadturtleman.flowershoes.feature.settings.PlatformActions>()?.deviceName.orEmpty()) to (settings.accountProvider.first().orEmpty())
+                    })
+                    PostRestoreRotation(get(), get(), requester, t, onFinished = { token, epoch ->
                         settings.setKeyEpoch(epoch)
                         cloud.account?.signInWithCustomToken(token)
                     })
@@ -106,7 +119,13 @@ fun kkotsinModules(
                 val doorbell = get<AppDatabase>().coupleDao().observe().flatMapLatest { c ->
                     if (c == null) kotlinx.coroutines.flow.emptyFlow() else cloud.mailbox.rings(c.id, identity.deviceId)
                 }
-                SyncScheduler(get(), client, approver, afterRestore, doorbell)
+                val db = get<AppDatabase>()
+                SyncScheduler(get(), client, approver, afterRestore, doorbell, partnerGone = {
+                    val couple = db.coupleDao().get()
+                    // 연결돼 있는데 서버의 내 커플 id 가 비었다 = 상대가 해제했다. 다른 커플 id(다시 연결 중)는 해제가 아니다.
+                    if (couple == null || couple.partnerUserId.isBlank()) false
+                    else cloud.mailbox.serverCoupleId().let { r -> r.isSuccess && r.getOrNull() == null }
+                })
             }
         }
     },
@@ -118,7 +137,7 @@ fun kkotsinModules(
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get()) }
         viewModel { MemoryViewModel(get(), get(), get(), get(), get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
-        viewModel { SettingsViewModel(get(), get(), get()) }
+        viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull(), getOrNull()) }
         viewModel { BackupViewModel(getOrNull(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.settings.RestoreViewModel(getOrNull(), get(), get()) }
     },

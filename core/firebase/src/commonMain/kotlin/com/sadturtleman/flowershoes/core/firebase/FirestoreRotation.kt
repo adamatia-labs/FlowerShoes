@@ -34,6 +34,8 @@ private data class RotationDoc(
     val mac: String,
     val sig: String,
     val createdAt: Long,
+    val deviceName: String = "",
+    val provider: String = "",
 )
 
 @Serializable
@@ -63,6 +65,7 @@ class FirestoreRotation(
             RotationDoc(
                 request.uid, request.newDeviceId, request.oldDeviceId, request.epoch,
                 Base64.encode(request.wrappedKey), Base64.encode(request.mac), Base64.encode(request.sig), request.createdAtMs,
+                request.deviceName, request.provider,
             ),
         )
     }
@@ -77,6 +80,7 @@ class FirestoreRotation(
                 snap.id, d.uid, d.newDeviceId, d.oldDeviceId, d.epoch,
                 Base64.decode(dev.signPub), Base64.decode(dev.boxPub),
                 Base64.decode(d.wrappedKey), Base64.decode(d.mac), Base64.decode(d.sig), d.createdAt,
+                deviceName = d.deviceName, provider = d.provider,
             )
         }
 
@@ -150,5 +154,21 @@ class FirestoreRelink(private val db: FirebaseFirestore = Firebase.firestore) : 
     override suspend fun wrappedKeyFor(coupleId: String, deviceId: String): ByteArray? {
         val snap = db.collection("couples").document(coupleId).collection("keys").document(deviceId).get()
         return if (snap.exists) Base64.decode(snap.data(KeyEnvelopeDoc.serializer()).wrapped) else null
+    }
+}
+
+/** 알림 정책을 서버에(users/{uid}/notifyPrefs/main). 서버가 보낼지 · 묶을지 정할 때 읽는다(functions/src/policy.ts). */
+class FirestoreNotifyPrefs(private val db: FirebaseFirestore = Firebase.firestore) : com.sadturtleman.flowershoes.core.data.NotifyPrefsTransport {
+    @kotlinx.serialization.Serializable
+    private data class Doc(val quietStart: Int, val quietEnd: Int, val tz: String, val missYouBundle: Int, val kinds: Map<String, Boolean>)
+
+    override suspend fun upload(prefs: com.sadturtleman.flowershoes.core.data.NotificationPrefs) {
+        val uid = Firebase.auth.currentUser?.uid ?: return
+        val kinds = mapOf(
+            "letter" to prefs.letters, "letter-drawing" to prefs.letters, "scheduled" to prefs.letters,
+            "missyou" to prefs.missYou, "status" to prefs.status,
+        )
+        db.collection("users").document(uid).collection("notifyPrefs").document("main")
+            .set(Doc.serializer(), Doc(prefs.quietStart, prefs.quietEnd, "Asia/Seoul", prefs.missYouBundle.coerceAtLeast(1), kinds))
     }
 }

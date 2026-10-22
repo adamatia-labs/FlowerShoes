@@ -44,7 +44,9 @@ final class NotificationService: UNNotificationServiceExtension {
             SharedStore.updateSnapshot { $0.missYouFromPartnerToday += 1 }
         case "status":
             if let status = (json?["status"] as? [String: Any])?["label"] as? String {
-                content.body = "상태: \(status)"
+                // 설정 › 알림 › 미리보기 숨기기: 문구는 서버 기본 그대로(위젯만 갱신).
+                let hidden = FileManager.default.fileExists(atPath: SharedStore.container.appendingPathComponent("prefs/hide_preview").path)
+                if !hidden { content.body = "상태: \(status)" }
                 SharedStore.updateSnapshot { $0.partnerStatus = status }
             }
         default:

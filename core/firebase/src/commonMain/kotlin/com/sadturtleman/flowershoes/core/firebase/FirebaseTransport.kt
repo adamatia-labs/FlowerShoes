@@ -150,6 +150,12 @@ class FirestoreTransport(
     /**
      * 함수가 커플을 만들면 초대 문서를 지우고 users/{uid}.coupleId 를 채운다. 여기서는 내 사용자 문서로 확인한다.
      */
+    override suspend fun serverCoupleId(): Result<String?> = runCatching {
+        val uid = checkNotNull(Firebase.auth.currentUser?.uid) { "로그인 전" }
+        val snap = db.collection("users").document(uid).get()
+        if (snap.exists) snap.get<String?>("coupleId") else null
+    }
+
     override suspend fun linkedCoupleId(code: String): String? {
         val uid = Firebase.auth.currentUser?.uid ?: return null
         val snap = db.collection("users").document(uid).get()

@@ -136,6 +136,7 @@ dependencies {
     implementation(project(":jank:data"))
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.credentials)
     // 앱이 앞/뒤로 오갈 때를 TTI 기록기의 init · destroy 신호로 쓴다.
     implementation(libs.androidx.lifecycle.process)
 

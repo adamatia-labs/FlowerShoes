@@ -29,6 +29,9 @@ class RotationRequest(
     val mac: ByteArray,
     val sig: ByteArray,
     val createdAtMs: Long,
+    /** 상대 폰 안내용(서명 밖 표시 정보): "Galaxy S25" · 로그인 제공자(KAKAO · APPLE · GOOGLE). */
+    val deviceName: String = "",
+    val provider: String = "",
 )
 
 /** 상대 활성 기기의 서명된 승인. */
@@ -79,6 +82,8 @@ class RotationRequester(
     private val vault: KeyVault,
     private val transport: RotationTransport,
     private val clock: Clock = Clock.System,
+    /** 새 폰 이름 · 로그인 제공자(상대 폰의 "새 폰으로 바꿨어요" 카드). */
+    private val deviceInfo: suspend () -> Pair<String, String> = { "" to "" },
 ) {
     suspend fun request(oldDeviceId: String): RotationRequest {
         val couple = checkNotNull(db.coupleDao().get()) { "복원된 커플이 없다" }
@@ -95,9 +100,11 @@ class RotationRequester(
             mac = ByteArray(0), sig = ByteArray(0), createdAtMs = clock.now().toEpochMilliseconds(),
         )
         val msg = RotationMessages.request(couple.id, draft)
+        val info = deviceInfo()
         val request = RotationRequest(
             draft.id, draft.uid, draft.newDeviceId, draft.oldDeviceId, draft.epoch, draft.newSignPub, draft.newBoxPub,
             draft.wrappedKey, mac = oldKey.mac(msg), sig = keys.sign(msg), createdAtMs = draft.createdAtMs,
+            deviceName = info.first, provider = info.second,
         )
         transport.putRotation(couple.id, request)
         return request

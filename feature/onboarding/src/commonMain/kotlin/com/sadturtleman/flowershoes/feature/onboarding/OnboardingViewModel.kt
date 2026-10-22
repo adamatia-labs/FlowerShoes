@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.feature.onboarding
 
+import com.sadturtleman.flowershoes.core.designsystem.TermsDoc
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.auth.AuthGateway

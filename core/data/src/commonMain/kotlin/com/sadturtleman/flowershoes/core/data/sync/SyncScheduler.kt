@@ -40,7 +40,27 @@ class SyncScheduler(
     /** 앱이 살아 있는 동안 우편함 초인종(Firestore 리스너). */
     private val doorbell: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
     private val period: Duration = 15.minutes,
+    /** 서버가 이 커플을 지웠는지(상대가 연결 해제). 확인하지 못하면 false. */
+    private val partnerGone: suspend () -> Boolean = { false },
 ) {
+    private val _partnerUnlinked = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /** 상대가 연결을 해제했다. 화면이 "연결을 해제했어요"(보관 · 지우기 고르기)를 띄우고 [partnerUnlinkHandled] 를 부른다. */
+    val partnerUnlinked: kotlinx.coroutines.flow.StateFlow<Boolean> = _partnerUnlinked
+
+    fun partnerUnlinkHandled() {
+        _partnerUnlinked.value = false
+    }
+
+    private val _approved = kotlinx.coroutines.flow.MutableStateFlow<List<RotationRequest>>(emptyList())
+
+    /** 자동 승인한 상대 기기 교체. 화면이 "새 폰으로 바꿨어요"를 한 번 보여 주고 [rotationSeen] 을 부른다. */
+    val approvedRotations: kotlinx.coroutines.flow.StateFlow<List<RotationRequest>> = _approved
+
+    fun rotationSeen(id: String) {
+        _approved.value = _approved.value.filterNot { it.id == id }
+    }
+
     private val _restoreState = kotlinx.coroutines.flow.MutableStateFlow(RestoreRotationState.NotNeeded)
 
     /** 화면 안내용: 상대 확인을 기다리는 중이면 "연인 폰에서 확인 중이에요". */
@@ -81,8 +101,10 @@ class SyncScheduler(
         approver?.let { a ->
             runCatching { a.check() }.getOrNull()?.let { decisions ->
                 pendingManual = pendingManual + decisions.mapNotNull { (r, d) -> (d as? RotationDecision.NeedsManual)?.let { r to it } }
+                _approved.value = _approved.value + decisions.filter { it.second == RotationDecision.Approved }.map { it.first }
             }
         }
+        if (!_partnerUnlinked.value && runCatching { partnerGone() }.getOrDefault(false)) _partnerUnlinked.value = true
         report
     }
 }

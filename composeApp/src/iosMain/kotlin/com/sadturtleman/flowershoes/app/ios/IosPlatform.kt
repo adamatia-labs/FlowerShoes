@@ -59,6 +59,24 @@ fun appGroupRoot(): Path {
 class IosPlatformActions : PlatformActions {
     override val keySyncName: String get() = "iCloud 키체인"
 
+    override val deviceName: String get() = platform.UIKit.UIDevice.currentDevice.model
+
+    override val appVersion: String
+        get() = (platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String) ?: "1.0.0"
+
+    /** 알림 확장(NotificationService.swift)이 이 파일이 있으면 상태 문구를 풀지 않는다. */
+    override fun setHidePreview(hide: Boolean) {
+        val flag = appGroupRoot() / "prefs/hide_preview"
+        runCatching {
+            if (hide) {
+                okio.FileSystem.SYSTEM.createDirectories(flag.parent!!)
+                okio.FileSystem.SYSTEM.write(flag) { writeUtf8("1") }
+            } else {
+                okio.FileSystem.SYSTEM.delete(flag, mustExist = false)
+            }
+        }
+    }
+
     override suspend fun authenticate(reason: String): DeviceAuth {
         val context = LAContext()
         if (!context.canEvaluatePolicy(LAPolicyDeviceOwnerAuthentication, null)) return DeviceAuth.NoLockScreen

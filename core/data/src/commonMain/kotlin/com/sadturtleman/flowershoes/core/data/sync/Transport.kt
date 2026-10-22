@@ -35,6 +35,12 @@ interface Mailbox {
      * FCM 은 앱이 꺼져 있을 때를 맡는다. 지원하지 않는 우편함은 울리지 않는다.
      */
     fun rings(coupleId: String, myDevice: String): kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow()
+
+    /**
+     * 서버가 아는 내 커플 id(users/{uid}.coupleId). 상대가 연결을 해제하면 서버가 지운다 — 그래서 null 이면 해제된 것.
+     * 확인하지 못하면(오프라인 · 설정 전) 실패를 돌려준다. 실패는 해제로 보지 않는다.
+     */
+    suspend fun serverCoupleId(): Result<String?> = Result.failure(UnsupportedOperationException("확인할 수 없다"))
 }
 
 /** 첨부(그림 문서 · PNG · 사진)의 암호문 덩어리. couples/{c}/{blobId}. 받으면 지운다. */
