@@ -4,7 +4,7 @@ package com.sadturtleman.flowershoes.core.data.sync
  * 테스트용 서버. Firestore · Storage · Cloud Function(onPairingStep) 이 하는 일을 메모리에서 흉내 낸다.
  * [tamper] 로 "서버가 암호문을 바꿔치기하는" 상황도 만든다.
  */
-class InMemoryCloud : Mailbox, BlobStore, PairingTransport {
+class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport {
     private val inbox = mutableMapOf<String, MutableMap<String, MailItem>>() // "{c}/{device}" → opId → item
     private val control = mutableMapOf<String, ControlDoc>()
     private val blobStore = mutableMapOf<String, ByteArray>()
@@ -80,5 +80,34 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport {
         val joinerDevice = s.getValue(Steps.REVEAL).getValue("deviceId")
         keys["$coupleId/$joinerDevice"] = ci.getValue("wrappedKey").unb64()
         linked[code] = coupleId
+    }
+
+    // RotationTransport — 서버(onRotationApproved · finalizeDevice)와 같은 확인을 한다.
+    private val pendingDevices = mutableMapOf<String, Pair<String, ByteArray>>() // deviceId → (uid, signPub)
+    private val rotationDocs = mutableMapOf<String, MutableList<RotationRequest>>()
+    private val approvals = mutableMapOf<String, RotationApproval>()
+
+    override suspend fun putPendingDevice(coupleId: String, deviceId: String, uid: String, signPub: ByteArray, boxPub: ByteArray) {
+        pendingDevices[deviceId] = uid to signPub
+    }
+
+    override suspend fun putRotation(coupleId: String, request: RotationRequest) {
+        rotationDocs.getOrPut(coupleId) { mutableListOf() } += request
+    }
+
+    override suspend fun rotations(coupleId: String) = rotationDocs[coupleId].orEmpty()
+
+    override suspend fun putApproval(coupleId: String, rotationId: String, approval: RotationApproval) {
+        approvals["$coupleId/$rotationId"] = approval
+    }
+
+    override suspend fun approval(coupleId: String, rotationId: String) = approvals["$coupleId/$rotationId"]
+
+    override suspend fun finalize(coupleId: String, rotationId: String, challengeSig: ByteArray): String {
+        val r = rotationDocs[coupleId]?.firstOrNull { it.id == rotationId } ?: error("요청 없음")
+        checkNotNull(approvals["$coupleId/$rotationId"]) { "상대가 아직 확인하지 않았다" }
+        val ok = com.sadturtleman.flowershoes.core.crypto.Signatures.verify(RotationMessages.finalize(coupleId, rotationId, r.uid), challengeSig, r.newSignPub)
+        check(ok) { "새 기기 서명이 맞지 않는다" }
+        return "custom-token-for-${r.uid}"
     }
 }
