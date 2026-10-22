@@ -62,7 +62,7 @@ jobs:
           xcodebuild build \
             -project Kkotsin.xcodeproj -scheme Kkotsin \
             -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug \
+            -configuration Debug -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             | tee xcodebuild.log | grep -E "error:|warning: .*deprecated|\*\* BUILD" || true
           grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
