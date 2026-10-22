@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.DeviceState
 import com.sadturtleman.flowershoes.core.data.IdentityHolder
+import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
@@ -147,6 +148,9 @@ private fun MainShell() {
     var creating by rememberSaveable { mutableStateOf(false) }
     // 편지 쓰기 · 편지함 · 그림만 보내기가 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
+    val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
+    val imageSaver = rememberImageSaver()
+    val imageShare = rememberImageShare()
     val c = KkTheme.colors
     val letterOpen = letters.state.collectAsState().value.open != null
 
@@ -272,7 +276,7 @@ private fun MainShell() {
                     onOpenSettings = { overlay = Overlay.SETTINGS },
                     onWriteLetter = { overlay = Overlay.COMPOSE },
                 )
-                Tab.CALENDAR -> CalendarRoute()
+                Tab.CALENDAR -> CalendarRoute(viewModel = calendar)
                 Tab.LETTER -> LetterInboxRoute(
                     onCreate = { creating = true },
                     onReply = {
@@ -285,10 +289,19 @@ private fun MainShell() {
                     },
                     viewModel = letters,
                 )
-                Tab.MEMORY -> MemoryRoute(onOpenLetter = {
-                    letters.onIntent(LetterIntent.Open(it))
-                    tab = Tab.LETTER
-                })
+                Tab.MEMORY -> MemoryRoute(
+                    onOpenLetter = {
+                        letters.onIntent(LetterIntent.Open(it))
+                        tab = Tab.LETTER
+                    },
+                    // 만남은 캘린더 일정(휴가 · 외박 · 면회)으로 남긴다.
+                    onRecordMeeting = {
+                        calendar.onIntent(com.sadturtleman.flowershoes.feature.calendar.CalendarIntent.NewEvent(kotlin.time.Clock.System.today()))
+                        tab = Tab.CALENDAR
+                    },
+                    saveImage = imageSaver,
+                    shareImage = imageShare,
+                )
             }
         }
         BottomBar(tab, onSelect = { tab = it })

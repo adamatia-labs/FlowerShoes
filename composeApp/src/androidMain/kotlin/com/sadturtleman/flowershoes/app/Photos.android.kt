@@ -65,6 +65,21 @@ private fun shrink(context: Context, uri: Uri): ByteArray? = runCatching {
 }.getOrNull()
 
 @Composable
+internal actual fun rememberImageShare(): (ByteArray) -> Unit {
+    val context = LocalContext.current
+    return remember(context) {
+        { png ->
+            val file = File(context.cacheDir, "share/kkotsin.png").also { it.parentFile?.mkdirs(); it.writeBytes(png) }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("image/png")
+                .putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(android.content.Intent.createChooser(send, "그림 공유").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+}
+
+@Composable
 internal actual fun rememberImageSaver(): suspend (ByteArray) -> Boolean {
     val context = LocalContext.current
     return remember(context) {

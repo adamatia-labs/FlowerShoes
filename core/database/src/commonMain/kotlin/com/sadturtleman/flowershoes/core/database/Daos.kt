@@ -179,6 +179,9 @@ interface DrawingDao {
     )
     fun observeForWidget(meId: String, nowMs: Long): Flow<DrawingEntity?>
 
+    @Query("SELECT * FROM drawing WHERE id = :id AND deletedAtMs IS NULL")
+    fun observe(id: String): Flow<DrawingEntity?>
+
     @Upsert
     suspend fun upsert(drawing: DrawingEntity)
 

@@ -79,6 +79,13 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     val letterDraft: Flow<String?> = store.data.map { it[LETTER_DRAFT] }
 
+    /** 추억 › 위젯에 다시 띄우기: 이 그림을 [atMs] 부터 위젯에. 그 뒤에 새 그림이 오면 새 그림이 이긴다. */
+    suspend fun pinWidgetDrawing(drawingId: String, atMs: Long) = store.edit { it[WIDGET_PIN] = "$drawingId|$atMs" }
+
+    val widgetPin: Flow<Pair<String, Long>?> = store.data.map { p ->
+        p[WIDGET_PIN]?.split('|')?.takeIf { it.size == 2 }?.let { (id, at) -> at.toLongOrNull()?.let { id to it } }
+    }
+
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
     suspend fun reset() = store.edit { it.clear() }
 
@@ -92,6 +99,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val MARKETING = intPreferencesKey("marketing_consent")
         val PROVIDER = stringPreferencesKey("account_provider")
         val LETTER_DRAFT = stringPreferencesKey("letter_draft")
+        val WIDGET_PIN = stringPreferencesKey("widget_pin")
     }
 }
 

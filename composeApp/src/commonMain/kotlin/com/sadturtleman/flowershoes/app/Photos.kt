@@ -15,3 +15,7 @@ internal expect fun rememberPhotoPicker(onPicked: (ByteArray) -> Unit): (fromCam
 /** 완성 PNG 를 사진첩에 저장(그림 보내기 › 저장). 성공하면 true. */
 @Composable
 internal expect fun rememberImageSaver(): suspend (png: ByteArray) -> Boolean
+
+/** 완성 PNG 를 공유 시트로(추억 › 그림 상세 › 공유). */
+@Composable
+internal expect fun rememberImageShare(): (png: ByteArray) -> Unit

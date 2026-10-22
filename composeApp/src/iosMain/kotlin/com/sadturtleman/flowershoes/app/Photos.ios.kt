@@ -115,6 +115,15 @@ private fun NSData.toByteArray(): ByteArray {
 }
 
 @Composable
+internal actual fun rememberImageShare(): (ByteArray) -> Unit = remember {
+    { png ->
+        val data = png.usePinned { NSData.create(bytes = it.addressOf(0), length = png.size.toULong()) }
+        val controller = platform.UIKit.UIActivityViewController(activityItems = listOf(UIImage(data = data)), applicationActivities = null)
+        topController()?.presentViewController(controller, animated = true, completion = null)
+    }
+}
+
+@Composable
 internal actual fun rememberImageSaver(): suspend (ByteArray) -> Boolean = remember {
     { png ->
         val data = png.usePinned { NSData.create(bytes = it.addressOf(0), length = png.size.toULong()) }

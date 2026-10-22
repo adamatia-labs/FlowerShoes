@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.datetime.daysUntil
 import kotlinx.serialization.Serializable
@@ -96,7 +97,18 @@ class WidgetSnapshotPublisher(
                 if (partner.isEmpty()) flowOf(null) else status.observeLatest(partner),
                 if (partner.isEmpty()) flowOf(0) else missYou.observeTodayFrom(partner),
                 // 예약 편지는 공개 시각이 지나야 위젯에 나온다 — 시계와 묶어 다시 묻는다.
-                clock.ticker(60.seconds).flatMapLatest { now -> db.drawingDao().observeForWidget(identity.userId, now.toEpochMilliseconds()) },
+                // 위젯에 다시 띄운 그림이 있으면 그것 — 그 뒤에 새 그림이 오면 새 그림.
+                combine(
+                    clock.ticker(60.seconds).flatMapLatest { now -> db.drawingDao().observeForWidget(identity.userId, now.toEpochMilliseconds()) },
+                    settings.widgetPin.flatMapLatest { pin ->
+                        if (pin == null) flowOf<Pair<com.sadturtleman.flowershoes.core.database.DrawingEntity, Long>?>(null)
+                        else db.drawingDao().observe(pin.first).map { d -> d?.let { it to pin.second } }
+                    },
+                ) { latest: com.sadturtleman.flowershoes.core.database.DrawingEntity?, pinned: Pair<com.sadturtleman.flowershoes.core.database.DrawingEntity, Long>? ->
+                    val (pin, at) = pinned ?: return@combine latest
+                    val latestAt = latest?.let { it.receivedAtMs ?: it.sentAtMs } ?: 0L
+                    if (latestAt > at) latest else pin
+                },
             ) { values ->
                 val device = values[0] as com.sadturtleman.flowershoes.core.data.DeviceState
                 @Suppress("UNCHECKED_CAST")
