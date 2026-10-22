@@ -23,6 +23,7 @@ fun kkotsinAndroidModules(context: Context): List<Module> {
         settingsStore = settingsDataStore(app),
         attachmentsRoot = attachments,
         cloud = firebaseBackendOrNull(app),
+        vault = com.sadturtleman.flowershoes.core.data.sync.AndroidKeyVault(app),
     ) + module {
         single { SnapshotStore(app.filesDir.resolve("widget/snapshot.json").absolutePath.toPath()) }
         single { WidgetSnapshotPublisher(get(), get(), get(), get(), get(), get(), get(), get(), attachments, get()) }

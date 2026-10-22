@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.IdentityHolder
+import com.sadturtleman.flowershoes.core.data.sync.KeyVault
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
 import com.sadturtleman.flowershoes.widget.updateAllWidgets
 import com.sadturtleman.flowershoes.core.notification.NotificationSync
@@ -67,6 +68,11 @@ class FlowerShoesApplication :
         appScope.launch {
             val koin = org.koin.core.context.GlobalContext.get()
             koin.get<IdentityHolder>().update(koin.get<DeviceSettings>().ensureIdentity())
+            // 기기 키는 연결 · 기기 교체에 필요하다. 처음 실행이면 만들어 Keystore 보관함에 둔다.
+            val vault = koin.get<KeyVault>()
+            com.sadturtleman.flowershoes.core.crypto.Sodium.init()
+            val keys = vault.deviceKeys() ?: com.sadturtleman.flowershoes.core.crypto.DeviceKeys.generate().also { vault.putDeviceKeys(it) }
+            if (BuildConfig.DEBUG) android.util.Log.d("Kkotsin", "device key ${keys.signPub.take(4).joinToString("") { "%02x".format(it) }}")
             koin.get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
             NotificationSync(koin.get(), koin.get(), koin.get(), koin.get(), AndroidNotificationScheduler(this@FlowerShoesApplication)).start(this)
             // 서버 설정이 있는 빌드에서만 등록돼 있다.
