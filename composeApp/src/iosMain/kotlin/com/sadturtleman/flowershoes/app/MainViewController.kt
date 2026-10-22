@@ -17,7 +17,8 @@ private var started = false
 
 /** iosApp(SwiftUI)이 부르는 진입점. Koin 은 한 번만 시작한다. */
 @OptIn(ExperimentalForeignApi::class)
-fun MainViewController(): UIViewController {
+/** [signInUi]: Swift 의 제공자 화면(카카오 SDK · Sign in with Apple · Google Sign-In). Firebase 가 없으면 쓰지 않는다. */
+fun MainViewController(signInUi: com.sadturtleman.flowershoes.core.firebase.SocialSignInUi? = null): UIViewController {
     if (!started) {
         val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
         val settingsPath = requireNotNull(support?.path) + "/kkotsin_device.preferences_pb"
@@ -40,6 +41,11 @@ fun MainViewController(): UIViewController {
                     settingsStore = PreferenceDataStoreFactory.createWithPath { settingsPath.toPath() },
                     attachmentsRoot = (requireNotNull(support?.path) + "/db/attachments").toPath(),
                     cloud = cloud,
+                    auth = if (cloud != null && signInUi != null) {
+                        com.sadturtleman.flowershoes.core.firebase.FirebaseAuthGateway(signInUi, hasBackup = { com.sadturtleman.flowershoes.core.firebase.hasCloudBackup(it) })
+                    } else {
+                        com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway()
+                    },
                     vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
                 ) + org.koin.dsl.module {
                     single<com.sadturtleman.flowershoes.feature.settings.PlatformActions> { com.sadturtleman.flowershoes.app.ios.IosPlatformActions() }

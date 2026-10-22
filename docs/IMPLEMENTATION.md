@@ -64,7 +64,8 @@
    - 함수 파라미터 `KAKAO_APP_ID`와 `KAKAO_ADMIN_KEY`를 설정한다.
 2. **소셜 로그인 키**
    - Android 는 붙었다: `AndroidAuthGateway`(카카오 SDK → 함수 `kakaoSignIn`, Google Credential Manager, Apple OAuth). `local.properties` 에 `KAKAO_NATIVE_APP_KEY` · `GOOGLE_WEB_CLIENT_ID` 를 넣고 Firebase 가 연결되면 동작한다. 키가 없으면 그 제공자는 "설정 전"으로 안내한다.
-   - 남은 것: iOS 로그인(카카오 iOS SDK · Sign in with Apple · Google), Apple 탈퇴 시 `/auth/revoke`(Apple 키 필요).
+   - iOS 로그인 작성됨(macOS 빌드 미확인): Swift `SocialSignIn`(카카오 SDK · Sign in with Apple(nonce) · GoogleSignIn) → 공통 `FirebaseAuthGateway`(core:firebase, Android 컴파일 확인). 키는 `Config.xcconfig` 의 KAKAO_NATIVE_APP_KEY · GOOGLE_CLIENT_ID · GOOGLE_REVERSED_CLIENT_ID.
+   - 남은 것: Apple 탈퇴 시 `/auth/revoke`(Apple 키 필요).
 3. **iOS 키 보관함**
    - Keychain(access group 공유, ThisDeviceOnly)으로 `KeyVault`를 구현한다.
    - Android는 끝났다. `AndroidKeyVault`가 Keystore AES-GCM으로 감싼 파일을 쓰고, 재시작 뒤에도 키가 남는 것을 확인했다.
@@ -105,5 +106,5 @@ cd firebase/rules-test && npm install && npm test   # Firestore 에뮬레이터
 - `IosPlatformActions`: LAContext 기기 인증. `IosNotificationScheduler`: UNUserNotificationCenter.
 - App Group: 위젯 스냅샷, `link.json`(WidgetSender), NSE 대기열 합치기(`mergeNseQueue` → `SyncClient.receiveQueued`).
 - `KkotsinApp.swift`: GoogleService-Info.plist 가 있을 때만 Firebase configure, 딥링크, 앞으로 나올 때 `onForeground()`.
-- 남은 것: macOS 에서 `xcodegen` → 빌드 → 실기기 확인, iOS 로그인 SDK, iCloud 키체인 백업 키 동기화.
+- 남은 것: macOS 에서 `xcodegen` → 빌드 → 실기기 확인, iCloud 키체인 백업 키 동기화.
 

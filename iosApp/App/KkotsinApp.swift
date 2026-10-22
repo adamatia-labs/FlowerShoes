@@ -7,6 +7,7 @@ import libzstd
 @main
 struct KkotsinApp: App {
     @Environment(\.scenePhase) private var phase
+    private let signIn = SocialSignIn()
 
     init() {
         // 그림 문서 · 백업의 zstd. Android(zstd-jni)와 같은 프레임 형식.
@@ -19,8 +20,11 @@ struct KkotsinApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ComposeView().ignoresSafeArea()
-                .onOpenURL { url in DeepLinks.shared.open(uri: url.absoluteString) }
+            ComposeView(signIn: signIn).ignoresSafeArea()
+                .onOpenURL { url in
+                    // 카카오톡 · Google 로그인에서 돌아온 것이면 그쪽이, 아니면 앱 딥링크(kkotsin://)
+                    if !signIn.handle(url: url) { DeepLinks.shared.open(uri: url.absoluteString) }
+                }
         }
         .onChange(of: phase) { _, now in
             // 앞으로 나오면 NSE 대기열 합치기 · 동기화 · 위젯 연결 정보 갱신
@@ -30,7 +34,8 @@ struct KkotsinApp: App {
 }
 
 struct ComposeView: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> UIViewController { MainViewControllerKt.MainViewController() }
+    let signIn: SocialSignIn
+    func makeUIViewController(context: Context) -> UIViewController { MainViewControllerKt.MainViewController(signInUi: signIn) }
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 

@@ -24,6 +24,13 @@ packages:
   Zstd:
     url: https://github.com/facebook/zstd
     from: 1.5.6
+  # 소셜 로그인(앱 타깃만)
+  KakaoSDK:
+    url: https://github.com/kakao/kakao-ios-sdk
+    from: 2.22.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 8.0.0
 settings:
   base:
     DEVELOPMENT_TEAM: ""   # 팀 id 를 넣는다
@@ -32,6 +39,10 @@ targets:
   Kkotsin:
     type: application
     platform: iOS
+    # 로그인 키(Config.xcconfig, 커밋하지 않음 — Config.xcconfig.example 참고)
+    configFiles:
+      Debug: Config.xcconfig
+      Release: Config.xcconfig
     sources: [App, Shared]
     preBuildScripts:
       - name: Build ComposeApp framework
@@ -49,12 +60,16 @@ targets:
         com.apple.security.application-groups: [group.com.sadturtleman.kkotsin]
         keychain-access-groups: ["$(AppIdentifierPrefix)com.sadturtleman.kkotsin.shared"]
         aps-environment: development
+        com.apple.developer.applesignin: [Default]
     dependencies:
       - target: KkotsinNotification
       - target: KkotsinWidgets
       - package: Sodium
       - package: Zstd
         product: libzstd
+      - package: KakaoSDK
+        product: KakaoSDKUser
+      - package: GoogleSignIn
       # GitLive firebase-kotlin-sdk 가 링크하는 Firebase iOS SDK(앱 타깃만 — NSE · 위젯에는 넣지 않는다)
       - package: Firebase
         product: FirebaseCore
@@ -72,6 +87,14 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 꽃신
+        # 키는 Config.xcconfig(커밋하지 않음)에서: KAKAO_NATIVE_APP_KEY, GOOGLE_CLIENT_ID, GOOGLE_REVERSED_CLIENT_ID
+        KakaoNativeAppKey: $(KAKAO_NATIVE_APP_KEY)
+        GIDClientID: $(GOOGLE_CLIENT_ID)
+        LSApplicationQueriesSchemes: [kakaokompassauth, kakaolink]
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [kkotsin]
+          - CFBundleURLSchemes: ["kakao$(KAKAO_NATIVE_APP_KEY)"]
+          - CFBundleURLSchemes: ["$(GOOGLE_REVERSED_CLIENT_ID)"]
         UIBackgroundModes: [remote-notification, fetch]
         BGTaskSchedulerPermittedIdentifiers: [com.sadturtleman.kkotsin.refresh]
   KkotsinNotification:

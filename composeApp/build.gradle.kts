@@ -21,6 +21,8 @@ kotlin {
             isStatic = true
             // Swift 가 Compressor 를 구현해 Zstd.codec 에 꽂는다.
             export(project(":core:compression"))
+            // Swift 가 SocialSignInUi(로그인 화면)를 구현한다.
+            export(project(":core:firebase"))
         }
     }
 
@@ -57,7 +59,7 @@ kotlin {
         iosMain.dependencies {
             api(project(":core:compression"))
             // iOS 도 같은 Firestore 어댑터(GitLive). Firebase iOS SDK 는 Xcode(SPM)에서 링크한다.
-            implementation(project(":core:firebase"))
+            api(project(":core:firebase"))
             implementation(project(":core:notification"))
         }
         androidMain.dependencies {

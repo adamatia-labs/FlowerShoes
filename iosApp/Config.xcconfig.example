@@ -1,0 +1,4 @@
+// 복사해서 Config.xcconfig 로(커밋하지 않는다). 비워 두면 그 로그인은 "설정 전"으로 안내한다.
+KAKAO_NATIVE_APP_KEY =
+GOOGLE_CLIENT_ID =
+GOOGLE_REVERSED_CLIENT_ID =

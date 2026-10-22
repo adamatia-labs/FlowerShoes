@@ -20,3 +20,6 @@ local.properties
 
 # archify visual-check 가 남기는 증거 파일(스크린샷 · 리포트)
 docs/*.visual-check.*
+
+# iOS 로그인 키
+iosApp/Config.xcconfig
