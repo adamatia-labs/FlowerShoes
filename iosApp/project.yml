@@ -34,6 +34,8 @@ packages:
 settings:
   base:
     DEVELOPMENT_TEAM: ""   # 팀 id 를 넣는다
+    # Kotlin 프레임워크는 arm64 시뮬레이터만 만든다(Apple Silicon). Intel 시뮬레이터는 빌드하지 않는다.
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
     SWIFT_VERSION: "5.10"
 targets:
   Kkotsin:
