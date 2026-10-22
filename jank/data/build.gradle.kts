@@ -2,8 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.ksp)
 }
 
 android {
@@ -36,10 +34,8 @@ kotlin {
 }
 
 dependencies {
+    // DI(Koin). 공유 앱과 같은 그래프에 들어간다.
+    implementation(libs.koin.android)
     // 계약(포트) 과 집계기. 주입받는 쪽이 JankReporter 를 참조하므로 밖으로 내보낸다.
     api(project(":jank:domain"))
-
-    // Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
 }

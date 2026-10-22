@@ -8,7 +8,6 @@ import com.sadturtleman.flowershoes.tti.domain.Tti
 import com.sadturtleman.flowershoes.tti.domain.TtiRecord
 import com.sadturtleman.flowershoes.tti.domain.TtiRecordStore
 import com.sadturtleman.flowershoes.tti.domain.TtiTimeline
-import javax.inject.Inject
 
 /**
  * Room 으로 받은 [TtiRecordStore].
@@ -16,7 +15,7 @@ import javax.inject.Inject
  * "처음 값을 지킨다" 는 규칙은 SQL 이 맡는다 — 두 insert 모두 IGNORE 이고,
  * 닫기는 `endedAt IS NULL` 인 행만 건드린다. 그래서 같은 호출이 몇 번 와도 결과가 같다.
  */
-internal class RoomTtiRecordStore @Inject constructor(
+internal class RoomTtiRecordStore constructor(
     private val dao: TtiDao,
 ) : TtiRecordStore {
 

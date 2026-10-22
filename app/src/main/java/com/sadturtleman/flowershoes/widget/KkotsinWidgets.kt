@@ -176,7 +176,7 @@ class NextMeetingWidgetReceiver : GlanceAppWidgetReceiver() {
 
 // ── 받은 그림 ────────────────────────────────────────────────────────────
 
-/** 위젯은 애니메이션이 안 되므로 완성본 + "▶ 과정". 누르면 앱이 열린다(받은 편지로 이동은 셸 딥링크가 붙으면). */
+/** 위젯은 애니메이션이 안 되므로 완성본 + "▶ 과정". 누르면 그 편지가 열려 리플레이를 볼 수 있다. */
 class DrawingWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val s = snapshotStore(context).read()
@@ -184,7 +184,12 @@ class DrawingWidget : GlanceAppWidget() {
         val bitmap: Bitmap? = s?.drawingDocPath?.let { DrawingBitmap.render(it, widthPx = 680) }
         provideContent {
             GlanceTheme {
-                Card(p, actionStartActivity<MainActivity>()) {
+                val open = s?.drawingLetterId?.let {
+                    androidx.glance.appwidget.action.actionStartActivity(
+                        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("kkotsin://letter/$it"), context, MainActivity::class.java),
+                    )
+                } ?: actionStartActivity<MainActivity>()
+                Card(p, open) {
                     if (bitmap == null) {
                         Column {
                             Text("받은 그림", style = TextStyle(color = p.of { it.textSecondary }, fontSize = 13.sp))

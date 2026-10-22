@@ -1,28 +1,16 @@
 package com.sadturtleman.flowershoes.common.di
 
-import dagger.Module
-import dagger.Provides
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import javax.inject.Singleton
+import org.koin.core.qualifier.named
+import org.koin.dsl.module
 
-@Module
-@InstallIn(SingletonComponent::class)
-object CoroutineModule {
-    @Provides
-    @Singleton
-    @IoDispatcher
-    fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
+/** 디스패처 한정자. 계측 모듈이 IO 에서 기록하고, 테스트는 이것을 갈아 끼운다. */
+val IoDispatcher = named("io")
+val MainDispatcher = named("main")
+val DefaultDispatcher = named("default")
 
-    @Provides
-    @Singleton
-    @DefaultDispatcher
-    fun provideDefaultDispatcher(): CoroutineDispatcher = Dispatchers.Default
-
-    @Provides
-    @Singleton
-    @MainDispatcher
-    fun provideMainDispatcher(): CoroutineDispatcher = Dispatchers.Main
+val coroutineModule = module {
+    single(IoDispatcher) { Dispatchers.IO }
+    single(DefaultDispatcher) { Dispatchers.Default }
+    single(MainDispatcher) { Dispatchers.Main }
 }

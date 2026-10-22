@@ -31,8 +31,8 @@
 | 전역일 계산 | — | 민법 기간 계산(같은 날의 전날, 그런 날이 없으면 그 달 말일) | 8월 31일 입대 같은 경우를 맞추기 위해 |
 | 복무 규칙 기본값 | 시행일별 표 | 육군·해병 18, 해군 20, 공군 22, 사회복무 21개월, 진급 2/6/6 | **출시 전 병무청 공지와 대조 필요** |
 | 테마 토큰 | Figma 변수 | Figma에서 받은 값. 시안에 쓰이지 않은 `bg/brand`와 다크 테두리 일부는 팔레트 단계로 추정 | `core/designsystem/.../Colors.kt`에 표시 |
-| DI | Koin | 공유 앱(`:composeApp` · 기능 · 코어)은 Koin. **Android 계측 모듈(TTI · jank · 로깅 · 플래그)은 아직 Hilt** | 다음 단계에서 옮긴다 |
-| 화면 이동 | Navigation Compose | 탭과 덮어 띄우는 화면을 상태로 관리, 시스템 뒤로 가기 처리 | 딥링크 라우팅이 붙을 때 NavHost로 옮긴다 |
+| DI | Koin | 전부 Koin. 계측 모듈(TTI · jank · 로깅 · 플래그) · 기기 정보 · DataStore 도 옮겼다(`TelemetryModules`) | Hilt 는 KMP 미지원 |
+| 화면 이동 | Navigation Compose | 탭과 덮어 띄우는 화면을 상태로 관리, 시스템 뒤로 가기, 딥링크 `kkotsin://letter|calendar|home|pairing` | 화면 수가 늘면 NavHost 로 옮긴다 |
 
 ## 모듈과 검증
 
@@ -81,9 +81,6 @@
    - 기기 교체 자동 승인은 동기화 루프에 연결돼 있다(`RotationApprover`, Firestore 어댑터 `FirestoreRotation`).
 6. **PNG 렌더러(`:core:media`)**
    - 위젯 · 알림용 완성 PNG를 위젯 크기의 2배로 만든다. 지금 Android 위젯은 문서를 그 자리에서 비트맵으로 그린다.
-7. **Hilt → Koin**
-   - TTI · jank · 로깅 · 피처 플래그 모듈을 옮긴다.
-   - 옛 EveryMuseum `home/*` 모듈은 더 이상 쓰지 않으니 정리한다.
 8. **iOS**
    - macOS에서 `xcodegen`으로 프로젝트를 만든다.
    - Kotlin/Native로 libsodium · Room · DataStore를 빌드한다. 설계 10장 0단계 PoC의 남은 항목이다.

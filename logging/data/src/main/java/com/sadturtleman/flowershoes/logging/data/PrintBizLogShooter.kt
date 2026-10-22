@@ -2,7 +2,6 @@ package com.sadturtleman.flowershoes.logging.data
 
 import com.sadturtleman.flowershoes.logging.domain.BizLog
 import com.sadturtleman.flowershoes.logging.domain.BizLogShooter
-import javax.inject.Inject
 
 /**
  * 이벤트를 표준 출력으로 흘리는 전송기.
@@ -14,7 +13,7 @@ import javax.inject.Inject
  * android.util.Log 대신 println 을 쓰는 이유는 [BizLog] 를 찍는 데 안드로이드가 필요 없기 때문이다.
  * 안드로이드에서는 표준 출력도 Logcat 으로 들어오므로 보는 데는 차이가 없다.
  */
-internal class PrintBizLogShooter @Inject constructor() : BizLogShooter {
+internal class PrintBizLogShooter constructor() : BizLogShooter {
 
     override suspend fun shoot(log: BizLog) {
         val parameters = log.event.parameters.entries.joinToString(", ") { "${it.key}=${it.value}" }

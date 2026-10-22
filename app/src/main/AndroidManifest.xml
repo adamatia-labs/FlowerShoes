@@ -39,9 +39,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:host="app"
-                    android:scheme="flowershoes" />
+                <data android:scheme="kkotsin" />
             </intent-filter>
         </activity>
         <!-- 푸시: 우편함에 새 Op 이 왔다는 초인종. 받으면 동기화를 돌린다 -->

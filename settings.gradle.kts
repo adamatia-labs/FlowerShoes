@@ -54,14 +54,9 @@ include(":feature:pairing")
 include(":feature:settings")
 
 // 공통 레이어. 모든 feature 가 참조한다.
-include(":common:presentation")
-include(":common:domain")
-include(":common:data")
-include(":common:network")
 include(":common:entity")
 include(":common:datastore")
 include(":common:di")
-include(":common:navigation")
 
 // 기기 · OS · 화면 · 리소스 · 네트워크 정보 수집. 계측 모듈들이 함께 쓴다.
 // 안드로이드 모듈이다 — Build · PackageManager · ConnectivityManager 를 읽는 것이 일이라
@@ -96,9 +91,3 @@ include(":jank:domain")
 include(":jank:presentation")
 include(":jank:data")
 
-// 네비게이션 호스트. 각 feature 의 화면을 라우팅 테이블 한 곳에 모은다.
-include(":home:navigation")
-include(":home:presentation")
-include(":home:domain")
-include(":home:data")
-include(":home:entity")

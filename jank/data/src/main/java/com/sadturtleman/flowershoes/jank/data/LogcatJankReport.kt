@@ -3,7 +3,6 @@ package com.sadturtleman.flowershoes.jank.data
 import android.util.Log
 import com.sadturtleman.flowershoes.jank.domain.JankReport
 import com.sadturtleman.flowershoes.jank.domain.JankSnapshot
-import javax.inject.Inject
 
 /**
  * 디버그 빌드용. 한 줄 요약을 Logcat 으로 흘린다.
@@ -12,7 +11,7 @@ import javax.inject.Inject
  * 전용이기 때문이다(:jank:domain 만 순수 코틀린이다). 태그로 걸러 보는 편이 프레임 통계처럼
  * 자주 나오는 로그에는 낫다.
  */
-internal class LogcatJankReport @Inject constructor() : JankReport {
+internal class LogcatJankReport constructor() : JankReport {
 
     override fun report(snapshot: JankSnapshot) {
         val ratio = "%.2f".format(snapshot.jankRatio * 100f)
@@ -38,6 +37,6 @@ internal class LogcatJankReport @Inject constructor() : JankReport {
  * 값을 받을 곳이 생기기 전까지는 비용만 남는다.
  * Firebase Performance 같은 수집기를 붙이면 이 클래스만 채운다.
  */
-internal class NoOpJankReport @Inject constructor() : JankReport {
+internal class NoOpJankReport constructor() : JankReport {
     override fun report(snapshot: JankSnapshot) = Unit
 }

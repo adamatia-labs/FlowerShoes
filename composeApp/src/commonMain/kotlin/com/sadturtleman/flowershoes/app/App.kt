@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.backhandler.BackHandler
@@ -105,6 +106,26 @@ private fun MainShell() {
     val letters = koinViewModel<LetterViewModel>()
     val c = KkTheme.colors
     val letterOpen = letters.state.collectAsState().value.open != null
+
+    // 알림 · 위젯에서 들어온 딥링크
+    val link by DeepLinks.next.collectAsState()
+    LaunchedEffect(link) {
+        when (val l = link) {
+            null -> return@LaunchedEffect
+            DeepLink.Home -> tab = Tab.HOME
+            is DeepLink.Letter -> {
+                overlay = null
+                tab = Tab.LETTER
+                letters.onIntent(LetterIntent.Open(l.id))
+            }
+            is DeepLink.Calendar -> {
+                overlay = null
+                tab = Tab.CALENDAR
+            }
+            DeepLink.Pairing -> overlay = Overlay.PAIRING
+        }
+        DeepLinks.consumed()
+    }
 
     // 뒤로 가기: 덮어 띄운 화면 → 읽던 편지 → 홈 탭 순서로 닫는다. 홈에서는 시스템에 맡긴다(앱 나가기).
     BackHandler(enabled = overlay != null || letterOpen || tab != Tab.HOME) {

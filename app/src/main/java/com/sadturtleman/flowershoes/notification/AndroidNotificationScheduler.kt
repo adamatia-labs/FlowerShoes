@@ -68,14 +68,14 @@ class AndroidNotificationScheduler(private val context: Context) : NotificationS
     }
 }
 
-/** 예약 시각이 되면 알림을 띄운다. 누르면 앱이 열린다(딥링크 화면 이동은 셸 라우팅이 붙으면). */
+/** 예약 시각이 되면 알림을 띄운다. 누르면 딥링크로 그 화면(예약 편지 · 캘린더)이 열린다. */
 class LocalNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getStringExtra(AndroidNotificationScheduler.EXTRA_ID) ?: return
         AndroidNotificationScheduler.ensureChannel(context)
         val open = PendingIntent.getActivity(
             context, id.hashCode(),
-            Intent(context, MainActivity::class.java).setData(intent.getStringExtra(AndroidNotificationScheduler.EXTRA_LINK)?.let(Uri::parse)),
+            Intent(Intent.ACTION_VIEW, null, context, MainActivity::class.java).setData(intent.getStringExtra(AndroidNotificationScheduler.EXTRA_LINK)?.let(Uri::parse)),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, AndroidNotificationScheduler.CHANNEL)

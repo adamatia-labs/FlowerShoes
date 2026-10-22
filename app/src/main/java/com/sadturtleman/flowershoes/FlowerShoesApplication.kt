@@ -4,52 +4,44 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import coil3.ImageLoader
-import coil3.PlatformContext
-import coil3.SingletonImageLoader
 import com.sadturtleman.flowershoes.app.kkotsinAndroidModules
-import com.sadturtleman.flowershoes.common.presentation.ui.image.flowerImageLoader
-import com.sadturtleman.flowershoes.featureflag.domain.FeatureFlagProvider
-import com.sadturtleman.flowershoes.logging.domain.BizLogger
-import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
-import dagger.hilt.android.HiltAndroidApp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import javax.inject.Inject
+import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
+import com.sadturtleman.flowershoes.core.crypto.Sodium
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.IdentityHolder
 import com.sadturtleman.flowershoes.core.data.sync.KeyVault
-import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
-import com.sadturtleman.flowershoes.widget.updateAllWidgets
-import com.sadturtleman.flowershoes.core.notification.NotificationSync
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
+import com.sadturtleman.flowershoes.core.notification.NotificationSync
+import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
+import com.sadturtleman.flowershoes.featureflag.domain.FeatureFlagProvider
+import com.sadturtleman.flowershoes.logging.domain.BizLogger
 import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
-import com.sadturtleman.flowershoes.widget.AndroidPlatformActions
-import com.sadturtleman.flowershoes.feature.settings.PlatformActions
+import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
+import com.sadturtleman.flowershoes.widget.updateAllWidgets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.get
+import org.koin.android.ext.android.getKoin
+import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 
-@HiltAndroidApp
 class FlowerShoesApplication :
     Application(),
-    SingletonImageLoader.Factory,
     DefaultLifecycleObserver {
 
     /** TTI 기록기. 앱과 수명을 같이하므로 여는 것도 닫는 것도 여기서 한다. */
-    @Inject
-    lateinit var ttiRecorder: TtiRecorder
+    private val ttiRecorder: TtiRecorder by inject()
 
     /** 비즈니스 이벤트 기록기. 이것도 앱과 수명을 같이한다. */
-    @Inject
-    lateinit var bizLogger: BizLogger
+    private val bizLogger: BizLogger by inject()
 
     /** 피처 플래그 · AB 테스트. 첫 화면이 뜨기 전에 값을 받아 둔다. */
-    @Inject
-    lateinit var featureFlags: FeatureFlagProvider
+    private val featureFlags: FeatureFlagProvider by inject()
 
     /**
-     * 앱과 수명을 같이하는 스코프. 플래그 받아 오기 하나만 여기서 돈다.
+     * 앱과 수명을 같이하는 스코프.
      *
      * onCreate 를 막지 않는 것은 첫 화면이 늦어지면 그대로 TTI 에 얹히기 때문이다.
      * 값이 오기 전에 읽은 플래그는 기본값이 되고, 그것으로도 앱은 돌아간다.
@@ -58,25 +50,25 @@ class FlowerShoesApplication :
 
     override fun onCreate() {
         super<Application>.onCreate()
-        // 꽃신 공유 그래프(Koin). 계측 모듈(TTI · jank · 로깅 · 플래그)은 아직 Hilt 에 있다 — 옮기는 것은 다음 단계.
+        // DI 그래프 하나(Koin): 꽃신 공유 앱 + 안드로이드 계측 모듈.
         startKoin {
             androidContext(this@FlowerShoesApplication)
             modules(kkotsinAndroidModules(this@FlowerShoesApplication))
-            modules(org.koin.dsl.module { single<PlatformActions> { AndroidPlatformActions(this@FlowerShoesApplication) } })
+            modules(telemetryModules(this@FlowerShoesApplication))
         }
-        // 위젯 스냅샷: DB 가 바뀌면 다시 쓰고 위젯을 갱신한다. 신원(로컬 id)을 먼저 읽어 둔다.
         appScope.launch {
-            val koin = org.koin.core.context.GlobalContext.get()
-            koin.get<IdentityHolder>().update(koin.get<DeviceSettings>().ensureIdentity())
+            // 신원(로컬 id)을 먼저 읽어 둔다 — Repository 가 쓴다.
+            get<IdentityHolder>().update(get<DeviceSettings>().ensureIdentity())
             // 기기 키는 연결 · 기기 교체에 필요하다. 처음 실행이면 만들어 Keystore 보관함에 둔다.
-            val vault = koin.get<KeyVault>()
-            com.sadturtleman.flowershoes.core.crypto.Sodium.init()
-            val keys = vault.deviceKeys() ?: com.sadturtleman.flowershoes.core.crypto.DeviceKeys.generate().also { vault.putDeviceKeys(it) }
+            val vault = get<KeyVault>()
+            Sodium.init()
+            val keys = vault.deviceKeys() ?: DeviceKeys.generate().also { vault.putDeviceKeys(it) }
             if (BuildConfig.DEBUG) android.util.Log.d("Kkotsin", "device key ${keys.signPub.take(4).joinToString("") { "%02x".format(it) }}")
-            koin.get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
-            NotificationSync(koin.get(), koin.get(), koin.get(), koin.get(), AndroidNotificationScheduler(this@FlowerShoesApplication)).start(this)
+            // 위젯 스냅샷 · 로컬 알림은 DB 가 바뀌면 다시 쓴다.
+            get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
+            NotificationSync(get(), get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication)).start(this)
             // 서버 설정이 있는 빌드에서만 등록돼 있다.
-            koin.getOrNull<SyncScheduler>()?.start(this)
+            getKoin().getOrNull<SyncScheduler>()?.start(this)
         }
         // 지난 실행이 쏘지 못하고 죽은 기록도 이 시점에 함께 나간다.
         ttiRecorder.init()
@@ -87,10 +79,9 @@ class FlowerShoesApplication :
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
     }
 
-    /** 앱이 다시 앞으로 나왔다. [onStop] 에서 접어 둔 기록기를 다시 연다. */
+    /** 앱이 다시 앞으로 나왔다. [onStop] 에서 접어 둔 기록기를 다시 열고, 빠진 푸시를 동기화로 메운다. */
     override fun onStart(owner: LifecycleOwner) {
-        // 앞으로 나오면 바로 동기화(빠진 푸시 복구).
-        org.koin.core.context.GlobalContext.getOrNull()?.getOrNull<SyncScheduler>()?.requestNow()
+        getKoin().getOrNull<SyncScheduler>()?.requestNow()
         ttiRecorder.init()
         bizLogger.init()
     }
@@ -106,8 +97,4 @@ class FlowerShoesApplication :
         // 아직 나가지 못한 이벤트가 끝나기를 기다린 뒤 접는다.
         bizLogger.destroy()
     }
-
-    /** 앱 공용 이미지 로더. 구성은 :common:presentation 이 정한다. */
-    override fun newImageLoader(context: PlatformContext): ImageLoader =
-        flowerImageLoader(context)
 }

@@ -11,11 +11,8 @@ import android.telephony.TelephonyManager
 import com.sadturtleman.flowershoes.common.util.device.reader.DeviceStateReader
 import com.sadturtleman.flowershoes.common.util.device.reader.DisplayInfoReader
 import com.sadturtleman.flowershoes.common.util.device.reader.InstallationIdStore
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * [DeviceInfoProvider] 의 안드로이드 구현.
@@ -32,9 +29,8 @@ import javax.inject.Singleton
  * lazy 블록은 처음 부른 스레드에서 돈다. 메인 스레드에서 처음 부르면 그 조회만큼 메인이 멈춘다 —
  * 바인더 한 번짜리라 눈에 띄지는 않지만, 앱 시작 경로에서 굳이 부를 값은 아니다.
  */
-@Singleton
-internal class AndroidDeviceInfoProvider @Inject constructor(
-    @ApplicationContext private val context: Context,
+internal class AndroidDeviceInfoProvider constructor(
+    private val context: Context,
     private val buildVariant: AppBuildVariant,
     private val displayReader: DisplayInfoReader,
     private val stateReader: DeviceStateReader,
