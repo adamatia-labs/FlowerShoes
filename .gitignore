@@ -26,3 +26,7 @@ iosApp/Config.xcconfig
 
 # Firebase 에뮬레이터 로그
 firebase/*-debug.log
+
+# Firebase 설정(프로젝트마다 다르다)
+app/google-services.json
+iosApp/App/GoogleService-Info.plist

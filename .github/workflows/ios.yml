@@ -1,0 +1,84 @@
+# iOS 빌드 확인(macOS 러너). Windows 개발 환경에서는 iOS 타깃을 컴파일할 수 없어서 여기서 확인한다.
+#   1) Kotlin iOS 타깃 테스트(암호 · 동기화 · 그림 엔진 …)
+#   2) ComposeApp.framework 링크
+#   3) XcodeGen → 앱 · NSE · 위젯 빌드(서명 없이, 시뮬레이터)
+#   4) Swift 테스트(spec/test-vectors 를 Swift 로 검증)
+name: iOS
+
+on:
+  push:
+    branches: [develop, main, 'feature/**']
+    paths-ignore: ['docs/**', '**/*.md']
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Kotlin/Native 캐시
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Kotlin iOS 테스트
+        run: ./gradlew iosSimulatorArm64Test --continue --stacktrace
+
+      - name: ComposeApp 프레임워크 링크
+        run: ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
+      - name: Xcode 프로젝트 생성
+        working-directory: iosApp
+        run: |
+          brew install xcodegen
+          cp Config.xcconfig.example Config.xcconfig
+          xcodegen
+
+      - name: 앱 빌드(시뮬레이터, 서명 없음)
+        working-directory: iosApp
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Kkotsin.xcodeproj -scheme Kkotsin \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log | grep -E "error:|warning: .*deprecated|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
+
+      - name: Swift 테스트(테스트 벡터)
+        working-directory: iosApp
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Kkotsin.xcodeproj -scheme Kkotsin \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodetest.log | grep -E "error:|Test Case|\*\* TEST" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" xcodetest.log
+
+      - name: 로그 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-logs
+          path: |
+            iosApp/*.log
+            **/build/reports/tests/
+          retention-days: 7

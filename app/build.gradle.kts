@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.kotlinx.serialization)
 }
 
+// Firebase 설정(google-services.json, 커밋하지 않음)이 있을 때만. 없으면 혼자 모드로 빌드된다.
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+
 android {
     namespace = "com.sadturtleman.flowershoes"
     compileSdk {

@@ -44,6 +44,8 @@ targets:
       Debug: Config.xcconfig
       Release: Config.xcconfig
     sources: [App, Shared]
+    scheme:
+      testTargets: [KkotsinTests]
     preBuildScripts:
       - name: Build ComposeApp framework
         script: |
