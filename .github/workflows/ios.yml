@@ -24,6 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Compose Multiplatform 1.11 은 iOS 26 SDK 심볼(UIViewLayoutRegion 등)을 링크한다 — 기본 Xcode 16 으로는 링크되지 않는다.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
