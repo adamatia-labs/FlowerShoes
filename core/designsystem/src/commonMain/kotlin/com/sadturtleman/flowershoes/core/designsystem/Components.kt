@@ -565,7 +565,7 @@ fun KkCollapseToggle(expanded: Boolean, onToggle: () -> Unit, modifier: Modifier
             .clickable(role = Role.Button, onClick = onToggle)
             .semantics { stateDescription = if (expanded) "펼쳐짐" else "접힘" }
             .padding(horizontal = KkSpacing.md, vertical = KkSpacing.xs),
-        horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(if (expanded) expandedLabel else collapsedLabel, style = KkTheme.type.labelS, color = c.textSecondary)

@@ -3,6 +3,7 @@ package com.sadturtleman.flowershoes.feature.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.EventRepository
+import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
@@ -12,7 +13,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -40,8 +43,11 @@ data class EventDraft(
 data class CalendarState(
     val month: LocalDate,
     val selected: LocalDate,
-    val expanded: Boolean = true,
+    val today: LocalDate = selected,
+    val expanded: Boolean = false,
     val monthEvents: List<Event> = emptyList(),
+    /** 오늘부터 1년(진행 중인 것 포함): 다음 만남 · 이번 주 목록. */
+    val upcoming: List<Event> = emptyList(),
     val draft: EventDraft? = null,
 ) {
     /** 달력 칸: 앞뒤 달 날짜를 채워 일요일 시작 6주 이하로. */
@@ -60,6 +66,17 @@ data class CalendarState(
 
     fun eventsOn(date: LocalDate): List<Event> = monthEvents.filter { date in it.start.date..it.end.date }
 
+    /** 다음 만남(휴가 · 외박 · 면회). 진행 중이면 그것. */
+    val nextMeet: Event?
+        get() = upcoming.filter { it.type in MEET_TYPES && it.end.date >= today }.minByOrNull { it.start }
+
+    /** 오늘부터 일주일 안에 걸친 일정(접힌 달력 › 이번 주). */
+    val thisWeek: List<Event>
+        get() = today.plus(DatePeriod(days = 7)).let { last -> upcoming.filter { it.end.date >= today && it.start.date <= last } }
+
+    /** 일정이 하나도 없다(빈 캘린더 화면). */
+    val empty: Boolean get() = monthEvents.isEmpty() && upcoming.isEmpty()
+
     /** 이 달에 잡힌 휴가 · 외박 일수(겹치는 날은 한 번만). */
     val leaveDaysThisMonth: Int
         get() = monthEvents.filter { it.type == EventType.VACATION || it.type == EventType.OVERNIGHT }
@@ -67,6 +84,8 @@ data class CalendarState(
             .filter { it.month == month.month && it.year == month.year }
             .toSet().size
 }
+
+private val MEET_TYPES = setOf(EventType.VACATION, EventType.OVERNIGHT, EventType.VISIT)
 
 sealed interface CalendarIntent {
     data class Select(val date: LocalDate) : CalendarIntent
@@ -95,7 +114,10 @@ class CalendarViewModel(
         ui.flatMapLatest { s ->
             events.observeRange(s.cells.first(), s.cells.last())
         },
-    ) { s, list -> s.copy(monthEvents = list) }
+        clock.ticker().map { clock.today() }.distinctUntilChanged().flatMapLatest { today ->
+            events.observeRange(today, today.plus(1, DateTimeUnit.YEAR)).map { today to it }
+        },
+    ) { s, list, (today, upcoming) -> s.copy(monthEvents = list, today = today, upcoming = upcoming) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ui.value)
 
     fun onIntent(intent: CalendarIntent) {

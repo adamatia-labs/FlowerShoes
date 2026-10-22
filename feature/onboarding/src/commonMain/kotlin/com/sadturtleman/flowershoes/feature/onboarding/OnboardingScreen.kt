@@ -477,15 +477,9 @@ private fun BranchSheet(state: OnboardingState, onDismiss: () -> Unit, onPick: (
 private fun DateSheet(state: OnboardingState, onDismiss: () -> Unit, onPick: (LocalDate) -> Unit) {
     val c = KkTheme.colors
     var pick by remember { mutableStateOf(state.enlistDate ?: state.today) }
-    var month by remember { mutableStateOf(LocalDate(pick.year, pick.month, 1)) }
     Sheet(onDismiss) {
         KkSheetHeader("입대일 선택", "훈련소 입소일을 골라 주세요")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            KkIcon(KkIcons.ChevronRight, tint = c.textSecondary, modifier = Modifier.rotate(180f).clickable(role = A11y.Button) { month = month.minus(DatePeriod(months = 1)) }, contentDescription = "이전 달")
-            Text("${month.year}년 ${month.month.number}월", style = KkTheme.type.titleS, color = c.textPrimary)
-            KkIcon(KkIcons.ChevronRight, tint = c.textSecondary, modifier = Modifier.clickable(role = A11y.Button) { month = month.plus(DatePeriod(months = 1)) }, contentDescription = "다음 달")
-        }
-        MonthGrid(month, pick) { pick = it }
+        com.sadturtleman.flowershoes.core.designsystem.KkDatePicker(pick, { pick = it })
         val t = remember(pick, state.branch) {
             com.sadturtleman.flowershoes.core.military.ServiceCalculator()
                 .timeline(com.sadturtleman.flowershoes.core.model.Service("preview", state.branch, pick, ServiceRulesTable.BUNDLED.version))
@@ -496,40 +490,6 @@ private fun DateSheet(state: OnboardingState, onDismiss: () -> Unit, onPick: (Lo
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgMilitarySubtle).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         )
         KkPrimaryButton("선택 완료", { onPick(pick) })
-    }
-}
-
-/** 달력: 요일 줄(24) + 주마다 44×40 칸, 고른 날은 36 brand 원. 일요일 시작. */
-@Composable
-private fun MonthGrid(month: LocalDate, selected: LocalDate, onPick: (LocalDate) -> Unit) {
-    val c = KkTheme.colors
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            listOf("일", "월", "화", "수", "목", "금", "토").forEach {
-                Box(Modifier.width(44.dp).height(24.dp), contentAlignment = Alignment.Center) { Text(it, style = KkTheme.type.caption, color = c.textTertiary) }
-            }
-        }
-        val lead = month.dayOfWeek.isoDayNumber % 7 // 일요일 = 0
-        val days = month.daysUntil(month.plus(DatePeriod(months = 1)))
-        (0 until (lead + days + 6) / 7).forEach { week ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                (0 until 7).forEach { col ->
-                    val n = week * 7 + col - lead + 1
-                    Box(Modifier.width(44.dp).height(40.dp), contentAlignment = Alignment.Center) {
-                        if (n in 1..days) {
-                            val date = LocalDate(month.year, month.month, n)
-                            val on = date == selected
-                            Box(
-                                Modifier.size(36.dp).clip(CircleShape).background(if (on) c.bgBrand else Color.Transparent).clickable { onPick(date) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("$n", style = KkTheme.type.labelM, color = if (on) c.textOnBrand else c.textPrimary)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
