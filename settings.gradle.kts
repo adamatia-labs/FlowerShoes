@@ -29,6 +29,7 @@ include(":app")
 include(":core:model")
 include(":core:military")
 include(":core:sync")
+include(":core:drawing-engine")
 
 // 공통 레이어. 모든 feature 가 참조한다.
 include(":common:presentation")
