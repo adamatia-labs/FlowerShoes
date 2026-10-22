@@ -747,8 +747,8 @@ private fun UnlinkPage(state: SettingsState, platform: PlatformActions, viewMode
 private fun KeepChoice(keep: Boolean, onChange: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         Text("내 폰에 남은 기록", style = KkTheme.type.labelM, color = KkTheme.colors.textSecondary)
-        KkChoice("추억으로 보관", keep, { onChange(true) }, description = "읽기만 할 수 있어요. 나중에 언제든 지울 수 있어요.")
-        KkChoice("모두 지우기", !keep, { onChange(false) }, description = "이 폰의 편지 · 그림 · 일정을 모두 지워요.")
+        KkChoice("추억으로 보관", keep, { onChange(true) }, description = "읽기만 할 수 있어요. 나중에 언제든 지울 수 있어요.", radio = true)
+        KkChoice("모두 지우기", !keep, { onChange(false) }, description = "이 폰의 편지 · 그림 · 일정을 모두 지워요.", radio = true)
     }
 }
 
@@ -764,8 +764,8 @@ fun PartnerUnlinkedScreen(partnerName: String, onConfirm: (AfterUnlink) -> Unit)
             Box(Modifier.size(56.dp).clip(CircleShape).background(c.bgSubtle), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Heart, tint = c.textPrimary) }
             Text("${partnerName.withSubject()} 연결을 해제했어요", style = KkTheme.type.titleL, color = c.textPrimary)
             Text("이제 소식을 주고받을 수 없어요. 이 폰에 남은 기록을 어떻게 할까요?", style = KkTheme.type.bodyM, color = c.textSecondary)
-            KkChoice("추억으로 보관", keep, { keep = true }, description = "읽기만 할 수 있어요. 나중에 언제든 지울 수 있어요.")
-            KkChoice("모두 지우기", !keep, { keep = false }, description = "이 폰의 편지 · 그림 · 일정을 모두 지워요.")
+            KkChoice("추억으로 보관", keep, { keep = true }, description = "읽기만 할 수 있어요. 나중에 언제든 지울 수 있어요.", radio = true)
+            KkChoice("모두 지우기", !keep, { keep = false }, description = "이 폰의 편지 · 그림 · 일정을 모두 지워요.", radio = true)
         }
         KkPrimaryButton("확인", { onConfirm(if (keep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE) }, Modifier.fillMaxWidth().padding(vertical = KkSpacing.lg))
     }

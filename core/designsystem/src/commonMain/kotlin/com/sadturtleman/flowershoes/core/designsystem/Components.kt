@@ -399,10 +399,12 @@ fun KkChoice(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     description: String? = null,
+    /** 왼쪽 라디오 원(Figma Radio Card — 연결 해제의 보관 · 지우기). 있으면 제목은 기본 글자색. */
+    radio: Boolean = false,
 ) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .kkElevation(if (selected) KkElevation.None else KkElevation.Low, shape)
@@ -411,10 +413,14 @@ fun KkChoice(
             .then(if (selected) Modifier.border(1.5.dp, c.borderBrand, shape) else Modifier)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .padding(KkSpacing.lg),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = KkTheme.type.titleS, color = if (selected) c.textBrand else c.textPrimary)
-        if (description != null) Text(description, style = KkTheme.type.bodyS, color = c.textSecondary)
+        if (radio) KkRadio(selected)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
+            Text(label, style = KkTheme.type.titleS, color = if (selected && !radio) c.textBrand else c.textPrimary)
+            if (description != null) Text(description, style = if (radio) KkTheme.type.caption else KkTheme.type.bodyS, color = c.textSecondary)
+        }
     }
 }
 
