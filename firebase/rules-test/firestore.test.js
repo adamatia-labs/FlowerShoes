@@ -141,3 +141,16 @@ test('첨부 blob 은 활성 멤버만 올리고 멤버만 읽는다', async () 
   await assertFails(setDoc(doc(as('mallory'), 'couples/c1/blobs/b2'), blob));
   await assertFails(setDoc(doc(as('jisu'), 'couples/c1/blobs/b3'), { ...blob, extra: 1 }));
 });
+
+test('넘겨주기 확인은 코드를 만든 활성 멤버(지수)만 쓴다', async () => {
+  await seedCouple();
+  await assertSucceeds(setDoc(doc(as('jisu'), 'relinks/R1'), { uid: 'jisu', coupleId: 'c1', expireAt: later() }));
+  // 같은 계정(민준)으로 로그인한 새 폰이 커밋한다.
+  await assertSucceeds(setDoc(doc(as('minjun'), 'relinks/R1/steps/join'), { uid: 'minjun', commit: 'c' }));
+  const confirm = { wrappedKey: 'w', sas: '123456', cutoff: '{}', sig: 's', newDeviceId: 'dev-b2', epoch: '2' };
+  await assertFails(setDoc(doc(as('minjun'), 'relinks/R1/steps/confirm-inviter'), confirm));
+  await assertSucceeds(setDoc(doc(as('jisu'), 'relinks/R1/steps/confirm-inviter'), confirm));
+  await assertSucceeds(setDoc(doc(as('minjun'), 'relinks/R1/steps/confirm-joiner'), { sas: '123456' }));
+  // 커플 밖 사람은 넘겨주기 코드를 만들 수 없다.
+  await assertFails(setDoc(doc(as('mallory'), 'relinks/R2'), { uid: 'mallory', coupleId: 'c1', expireAt: later() }));
+});

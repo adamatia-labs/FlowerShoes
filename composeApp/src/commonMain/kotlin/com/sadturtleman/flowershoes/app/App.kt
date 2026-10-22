@@ -57,7 +57,7 @@ import com.sadturtleman.flowershoes.feature.settings.SettingsRoute
 enum class Tab(val label: String) { HOME("홈"), CALENDAR("캘린더"), LETTER("편지"), MEMORY("추억") }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
+private enum class Overlay { PAIRING, HAND_OVER, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
 
 @Composable
 fun KkotsinApp() {
@@ -170,6 +170,10 @@ private fun MainShell() {
             PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
             return
         }
+        Overlay.HAND_OVER -> {
+            PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, handOver = true)
+            return
+        }
         Overlay.RESTORE -> {
             ComingSoon(overlay!!.title(), onBack = { overlay = null })
             return
@@ -178,6 +182,7 @@ private fun MainShell() {
             SettingsRoute(
                 platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
                 onOpenPairing = { overlay = Overlay.PAIRING },
+                onHandOver = { overlay = Overlay.HAND_OVER },
                 onBack = { overlay = null },
             )
             return

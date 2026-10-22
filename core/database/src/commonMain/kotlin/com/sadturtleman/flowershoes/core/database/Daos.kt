@@ -32,6 +32,9 @@ interface UserDao {
     @Query("SELECT * FROM user WHERE id = :id")
     suspend fun get(id: String): UserEntity?
 
+    @Query("SELECT * FROM user")
+    suspend fun all(): List<UserEntity>
+
     @Upsert
     suspend fun upsert(user: UserEntity)
 }
@@ -62,6 +65,9 @@ interface ServiceDao {
     @Query("SELECT * FROM service WHERE userId = :userId")
     suspend fun get(userId: String): ServiceEntity?
 
+    @Query("SELECT * FROM service")
+    suspend fun all(): List<ServiceEntity>
+
     @Upsert
     suspend fun upsert(service: ServiceEntity)
 
@@ -91,6 +97,9 @@ interface MissYouDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(missYou: MissYouEntity)
+
+    @Query("SELECT * FROM miss_you")
+    suspend fun all(): List<MissYouEntity>
 }
 
 @Dao
@@ -103,6 +112,10 @@ interface EventDao {
 
     @Query("SELECT * FROM event WHERE id = :id")
     suspend fun get(id: String): EventEntity?
+
+    /** 넘겨주기 스냅샷: tombstone 까지 전부. */
+    @Query("SELECT * FROM event")
+    suspend fun all(): List<EventEntity>
 
     @Query("SELECT * FROM event WHERE lastWriterDevice = :deviceId")
     suspend fun lastWrittenBy(deviceId: String): List<EventEntity>
@@ -140,6 +153,9 @@ interface LetterDao {
     @Query("SELECT * FROM letter WHERE id = :id")
     suspend fun get(id: String): LetterEntity?
 
+    @Query("SELECT * FROM letter WHERE deletedAtMs IS NULL")
+    suspend fun allActive(): List<LetterEntity>
+
     @Query("SELECT * FROM letter WHERE authorId = :authorId AND deletedAtMs IS NULL")
     suspend fun byAuthor(authorId: String): List<LetterEntity>
 
@@ -175,6 +191,9 @@ interface ReceiptDao {
     /** 먼저 온 값을 남긴다. 같은 키가 있으면 무시. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertFirst(receipt: ReceiptEntity): Long
+
+    @Query("SELECT * FROM receipt")
+    suspend fun all(): List<ReceiptEntity>
 
     @Query("SELECT * FROM receipt WHERE entity = :entity AND entityId = :entityId AND readerId = :readerId")
     suspend fun get(entity: String, entityId: String, readerId: String): ReceiptEntity?

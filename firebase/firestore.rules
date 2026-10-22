@@ -190,6 +190,13 @@ service cloud.firestore {
           || (name == 'inviter' && relink().uid == request.auth.uid)
           || (name == 'reveal'
             && get(/databases/$(database)/documents/relinks/$(code)/steps/join).data.uid == request.auth.uid)
+          // 지수: [맞아요, 넘겨줄게요] — 새 커플 키 봉투 · cutoff · 기기 서명. 함수가 서명을 확인하고 활성화한다.
+          || (name == 'confirm-inviter'
+            && relink().uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['wrappedKey', 'sas', 'cutoff', 'sig', 'newDeviceId', 'epoch']))
+          || (name == 'confirm-joiner'
+            && get(/databases/$(database)/documents/relinks/$(code)/steps/join).data.uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['sas']))
         );
       }
     }

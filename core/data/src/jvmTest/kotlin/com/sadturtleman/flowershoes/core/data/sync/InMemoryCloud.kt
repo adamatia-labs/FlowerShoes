@@ -5,6 +5,9 @@ package com.sadturtleman.flowershoes.core.data.sync
  * [tamper] 로 "서버가 암호문을 바꿔치기하는" 상황도 만든다.
  */
 class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, AccountTransport {
+    /** 넘겨주기(relinks/…)는 초대(pairings/…)와 다른 컬렉션이다. */
+    val relinks = RelinkCloud()
+
     private val inbox = mutableMapOf<String, MutableMap<String, MailItem>>() // "{c}/{device}" → opId → item
     private val control = mutableMapOf<String, ControlDoc>()
     private val blobStore = mutableMapOf<String, ByteArray>()
@@ -122,4 +125,39 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
     }
 
     override suspend fun deleteAccount() = Unit
+}
+
+/** relinks/{code} 와 함수 onRelinkConfirmed(두 확인 · 같은 SAS → 새 기기 활성화 · 키 봉투)를 흉내 낸다. */
+class RelinkCloud : RelinkTransport {
+    private val docs = mutableMapOf<String, Pair<String, String>>() // code → (uid, coupleId)
+    private val steps = mutableMapOf<String, MutableMap<String, Map<String, String>>>()
+    private val active = mutableSetOf<String>()
+    private val keys = mutableMapOf<String, ByteArray>()
+
+    override suspend fun create(code: String, inviterUid: String, coupleId: String) {
+        docs[code] = inviterUid to coupleId
+    }
+
+    override suspend fun coupleId(code: String) = docs[code]?.second
+
+    override suspend fun giverUid(code: String) = docs[code]?.first
+
+    override suspend fun putStep(code: String, name: String, fields: Map<String, String>) {
+        val s = steps.getOrPut(code) { mutableMapOf() }
+        check(name !in s) { "단계는 한 번만 쓴다" }
+        s[name] = fields
+        val ci = s[Steps.CONFIRM_INVITER] ?: return
+        val cj = s[Steps.CONFIRM_JOINER] ?: return
+        if (ci["sas"] != cj["sas"]) return
+        val c = docs.getValue(code).second
+        val newDevice = ci.getValue("newDeviceId")
+        active += "$c/$newDevice"
+        keys["$c/$newDevice"] = ci.getValue("wrappedKey").unb64()
+    }
+
+    override suspend fun getStep(code: String, name: String) = steps[code]?.get(name)
+
+    override suspend fun activated(coupleId: String, deviceId: String) = "$coupleId/$deviceId" in active
+
+    override suspend fun wrappedKeyFor(coupleId: String, deviceId: String) = keys["$coupleId/$deviceId"]
 }

@@ -27,6 +27,7 @@ import com.sadturtleman.flowershoes.core.crypto.CrockfordCode
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.sync.PairingSession
 import com.sadturtleman.flowershoes.core.data.sync.PairingState
+import com.sadturtleman.flowershoes.core.data.sync.RelinkSession
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkScreenHeader
@@ -48,6 +49,7 @@ data class PairingUi(
     /** 서버(Firebase)가 연결되지 않은 빌드면 false. 연결 화면 대신 안내를 보여 준다. */
     val available: Boolean,
     val state: PairingState = PairingState.Idle,
+    val relinkAvailable: Boolean = false,
     val codeInput: String = "",
     val busy: Boolean = false,
 )
@@ -60,9 +62,30 @@ class PairingViewModel(
     private val session: PairingSession?,
     private val sync: SyncClient?,
     private val settings: DeviceSettings,
+    /** 상대 폰이 넘겨주기(7-3-B). 같은 화면 상태(코드 · SAS)를 쓴다. */
+    private val relink: RelinkSession? = null,
 ) : ViewModel() {
 
-    private val _ui = MutableStateFlow(PairingUi(available = session != null))
+    private var relinkMode = false
+
+    /** 지수: 설정 › "연인 폰 교체 받기". */
+    fun offerRelink() = runRelink { it.offer() }
+
+    /** 새 폰: 연인 폰에서 받은 코드로 다시 연결. */
+    fun acceptRelink() = runRelink { it.accept(_ui.value.codeInput) }
+
+    private fun runRelink(block: suspend (RelinkSession) -> PairingState) {
+        val r = relink ?: return
+        relinkMode = true
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            val next = runCatching { block(r) }.getOrElse { PairingState.Failed(it.message ?: "연결하지 못했어요") }
+            _ui.update { it.copy(state = next, busy = false) }
+            startPolling(null)
+        }
+    }
+
+    private val _ui = MutableStateFlow(PairingUi(available = session != null, relinkAvailable = relink != null))
     val ui: StateFlow<PairingUi> = _ui.asStateFlow()
     private var polling: Job? = null
 
@@ -72,11 +95,24 @@ class PairingViewModel(
 
     fun join() = run { it.join(_ui.value.codeInput) }
 
-    fun confirm() = run { it.confirm() }
+    fun confirm() {
+        val r = relink
+        if (relinkMode && r != null) {
+            viewModelScope.launch {
+                _ui.update { it.copy(busy = true) }
+                val next = runCatching { r.confirm() }.getOrElse { PairingState.Failed(it.message ?: "연결하지 못했어요") }
+                _ui.update { it.copy(state = next, busy = false) }
+                if (next is PairingState.Linked) onLinked() else startPolling(null)
+            }
+        } else {
+            run { it.confirm() }
+        }
+    }
 
     fun reset() {
+        relinkMode = false
         polling?.cancel()
-        _ui.update { PairingUi(available = session != null) }
+        _ui.update { PairingUi(available = session != null, relinkAvailable = relink != null) }
     }
 
     private fun run(block: suspend (PairingSession) -> PairingState) {
@@ -89,14 +125,14 @@ class PairingViewModel(
         }
     }
 
-    private fun startPolling(s: PairingSession) {
+    private fun startPolling(s: PairingSession?) {
         if (polling?.isActive == true) return
         polling = viewModelScope.launch {
             while (isActive) {
                 val st = _ui.value.state
                 if (st is PairingState.Linked || st is PairingState.Failed || st is PairingState.Idle) break
                 delay(2_000)
-                val next = runCatching { s.poll() }.getOrNull() ?: continue
+                val next = runCatching { if (relinkMode) relink?.poll() else s?.poll() }.getOrNull() ?: continue
                 _ui.update { it.copy(state = next) }
                 if (next is PairingState.Linked) onLinked()
             }
@@ -111,8 +147,15 @@ class PairingViewModel(
 }
 
 @Composable
-fun PairingRoute(onDone: () -> Unit, onBack: () -> Unit, viewModel: PairingViewModel = koinViewModel()) {
+fun PairingRoute(
+    onDone: () -> Unit,
+    onBack: () -> Unit,
+    /** 설정 › "연인 폰 교체 받기"로 들어오면 바로 넘겨주기 코드를 만든다. */
+    handOver: Boolean = false,
+    viewModel: PairingViewModel = koinViewModel(),
+) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
+    LaunchedEffect(handOver) { if (handOver && ui.state is PairingState.Idle) viewModel.offerRelink() }
     LaunchedEffect(ui.state) { if (ui.state is PairingState.Linked) onDone() }
     PairingScreen(ui, viewModel, onBack)
 }
@@ -141,6 +184,11 @@ private fun PairingScreen(ui: PairingUi, vm: PairingViewModel, onBack: () -> Uni
                 Text("받은 코드가 있나요?", style = KkTheme.type.labelM, color = c.textSecondary)
                 KkTextField(ui.codeInput, vm::editCode, placeholder = "8자리 코드")
                 KkSecondaryButton("코드로 연결하기", onClick = vm::join)
+                if (ui.relinkAvailable) {
+                    Spacer(Modifier.height(KkSpacing.lg))
+                    Text("폰을 바꿨나요? 연인 폰의 설정 › '연인 폰 교체 받기'에서 받은 코드를 위에 넣고 눌러 주세요.", style = KkTheme.type.bodyS, color = c.textSecondary)
+                    KkSecondaryButton("연인 폰에서 받은 코드로 다시 연결하기", onClick = vm::acceptRelink)
+                }
             }
             is PairingState.ShowCode -> {
                 KkScreenHeader("이 코드를 연인에게 알려 주세요", "24시간 동안 한 번만 쓸 수 있어요. 카메라가 막힌 부대 폰에서도 직접 입력하면 돼요.")

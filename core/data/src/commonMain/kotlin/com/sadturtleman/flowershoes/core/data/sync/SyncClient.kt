@@ -94,18 +94,25 @@ class SyncClient(
         return MailItem(op.opId, op.kind, identity.deviceId, header.toBytes(), env.ciphertext, env.signature, resend)
     }
 
-    /** 편지 안 그림 문서를 blob 으로 올리고, blob id · 키를 Op 본문에 적는다. */
+    /** 편지 안 그림 문서를 blob 으로 올리고, blob id · 키를 Op 본문에 적는다(스냅샷 안의 편지도). */
     private suspend fun withBlobs(couple: CoupleEntity, payload: ByteArray): ByteArray {
-        val p = OpCodec.decode(payload) as? OpPayload.LetterPut ?: return payload
-        if (p.drawings.isEmpty()) return payload
-        val drawings = p.drawings.map { d ->
-            val bytes = d.docAttachmentId?.let { attachments.read(it) } ?: return@map d
-            val blobKey = Sodium.random(Aead.KEY_BYTES)
-            val blobId = Uuid.random().toString()
-            blobs.put(couple.id, blobId, Aead.seal(blobKey, bytes))
-            d.copy(docBlobId = blobId, docBlobKey = blobKey.b64())
-        }
-        return OpCodec.encode(p.copy(drawings = drawings))
+        val p = OpCodec.decode(payload) ?: return payload
+        val transformed = uploadBlobs(couple, p)
+        return if (transformed === p) payload else OpCodec.encode(transformed)
+    }
+
+    private suspend fun uploadBlobs(couple: CoupleEntity, p: OpPayload): OpPayload = when (p) {
+        is OpPayload.Snapshot -> p.copy(items = p.items.map { uploadBlobs(couple, it) })
+        is OpPayload.LetterPut -> if (p.drawings.isEmpty()) p else p.copy(
+            drawings = p.drawings.map { d ->
+                val bytes = d.docAttachmentId?.let { attachments.read(it) } ?: return@map d
+                val blobKey = Sodium.random(Aead.KEY_BYTES)
+                val blobId = Uuid.random().toString()
+                blobs.put(couple.id, blobId, Aead.seal(blobKey, bytes))
+                d.copy(docBlobId = blobId, docBlobKey = blobKey.b64())
+            },
+        )
+        else -> p
     }
 
     // ── 받기 ──────────────────────────────────────────────────────────────
@@ -139,13 +146,20 @@ class SyncClient(
 
     /** 편지 안 그림 문서를 받아 보낸 쪽과 같은 첨부 id 로 둔다. 다 받은 뒤에 편지를 반영한다(반쯤 받은 편지를 보여 주지 않게). */
     private suspend fun downloadBlobs(couple: CoupleEntity, payload: ByteArray) {
-        val p = OpCodec.decode(payload) as? OpPayload.LetterPut ?: return
-        p.drawings.forEach { d ->
-            val blobId = d.docBlobId ?: return@forEach
-            val key = d.docBlobKey?.unb64() ?: return@forEach
-            val sealed = blobs.get(couple.id, blobId) ?: return@forEach
-            attachments.putWithId(checkNotNull(d.docAttachmentId), AttachmentKind.DRAWING_DOC, Aead.open(key, sealed))
-            blobs.delete(couple.id, blobId)
+        OpCodec.decode(payload)?.let { fetchBlobs(couple, it) }
+    }
+
+    private suspend fun fetchBlobs(couple: CoupleEntity, p: OpPayload) {
+        when (p) {
+            is OpPayload.Snapshot -> p.items.forEach { fetchBlobs(couple, it) }
+            is OpPayload.LetterPut -> p.drawings.forEach { d ->
+                val blobId = d.docBlobId ?: return@forEach
+                val key = d.docBlobKey?.unb64() ?: return@forEach
+                val sealed = blobs.get(couple.id, blobId) ?: return@forEach
+                attachments.putWithId(checkNotNull(d.docAttachmentId), AttachmentKind.DRAWING_DOC, Aead.open(key, sealed))
+                blobs.delete(couple.id, blobId)
+            }
+            else -> Unit
         }
     }
 
@@ -232,6 +246,32 @@ class SyncClient(
             localWrite = {},
             payload = { OpPayload.Snapshot(coversThrough, items) },
         )
+    }
+
+    /**
+     * 넘겨주기(7-3-B) 스냅샷: 내가 가진 공유 데이터 전체(양쪽이 쓴 편지 · 그림 · 일정 · 읽음 · 보고싶어 · 정보).
+     * 새 기기는 내 스트림 커서가 없으므로 지금까지의 번호를 모두 반영한 것으로 처리하게 한다.
+     */
+    suspend fun writeFullSnapshot() {
+        val stream = myStream.wire
+        val couple = db.coupleDao().get()
+        val items = buildList<OpPayload> {
+            db.userDao().all().forEach { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport)) }
+            db.serviceDao().all().forEach { add(OpPayload.ServicePut(it.toModel())) }
+            couple?.anniversary?.let { add(OpPayload.AnniversaryPut(it, couple.anniversaryLamport)) }
+            db.eventDao().all().forEach { add(OpPayload.EventPut(it.toModel())) }
+            db.letterDao().allActive().forEach { l -> add(OpPayload.LetterPut(l.toModel(), drawingMetas(l.id))) }
+            db.missYouDao().all().forEach { add(OpPayload.MissYouPut(com.sadturtleman.flowershoes.core.model.MissYou(it.id, it.authorId, kotlin.time.Instant.fromEpochMilliseconds(it.sentAtMs)))) }
+            db.receiptDao().all().forEach {
+                add(OpPayload.ReceiptPut(com.sadturtleman.flowershoes.core.model.Receipt(com.sadturtleman.flowershoes.core.model.ReceiptEntity.valueOf(it.entity), it.entityId, it.readerId, kotlin.time.Instant.fromEpochMilliseconds(it.atMs))))
+            }
+        }
+        val covers = (db.syncDao().nextSeq(stream) ?: 1L) - 1
+        writer.write(OpKind.SNAPSHOT, "snapshot", "full", localWrite = {}, payload = { OpPayload.Snapshot(covers, items) })
+    }
+
+    private suspend fun drawingMetas(letterId: String) = db.drawingDao().forLetter(letterId).map {
+        com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs)
     }
 
     private fun uploadedKey(stream: String) = "uploaded:$stream"

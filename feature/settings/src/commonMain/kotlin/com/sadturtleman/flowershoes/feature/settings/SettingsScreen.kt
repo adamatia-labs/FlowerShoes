@@ -99,6 +99,7 @@ class SettingsViewModel(
 fun SettingsRoute(
     platform: PlatformActions,
     onOpenPairing: () -> Unit,
+    onHandOver: () -> Unit = {},
     onBack: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
@@ -135,6 +136,8 @@ fun SettingsRoute(
         Section("연결")
         if (state.linked) {
             Text("연인과 연결돼 있어요.", style = KkTheme.type.bodyM, color = c.textPrimary)
+            Text("연인이 폰을 잃어버렸고 백업도 없다면, 이 폰이 데이터를 넘겨줄 수 있어요.", style = KkTheme.type.bodyS, color = c.textSecondary)
+            Link("연인 폰 교체 받기", onHandOver)
             var confirm by remember { mutableStateOf("") }
             var keep by remember { mutableStateOf(true) }
             KkCard {

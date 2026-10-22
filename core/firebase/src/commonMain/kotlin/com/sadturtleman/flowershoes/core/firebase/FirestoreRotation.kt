@@ -107,3 +107,43 @@ class FunctionsAccount(private val region: String = "asia-northeast3") : com.sad
         Firebase.functions(region).httpsCallable("deleteAccount").invoke()
     }
 }
+
+@Serializable
+private data class RelinkDoc(val uid: String, val coupleId: String, val expireAt: Timestamp)
+
+@Serializable
+private data class DeviceStateDoc(val active: Boolean = false)
+
+@Serializable
+private data class KeyEnvelopeDoc(val wrapped: String, val epoch: Int)
+
+/** relinks/{code} — 상대 폰이 넘겨주기(7-3-B). 활성화는 함수 onRelinkStep 이 한다. */
+class FirestoreRelink(private val db: FirebaseFirestore = Firebase.firestore) : com.sadturtleman.flowershoes.core.data.sync.RelinkTransport {
+    private fun doc(code: String) = db.collection("relinks").document(code)
+
+    override suspend fun create(code: String, inviterUid: String, coupleId: String) {
+        val expire = kotlin.time.Clock.System.now().toEpochMilliseconds() + 24 * 3600 * 1000L
+        doc(code).set(RelinkDoc(inviterUid, coupleId, Timestamp(expire / 1000, 0)))
+    }
+
+    override suspend fun coupleId(code: String): String? = doc(code).get().let { if (it.exists) it.data(RelinkDoc.serializer()).coupleId else null }
+
+    override suspend fun giverUid(code: String): String? = doc(code).get().let { if (it.exists) it.data(RelinkDoc.serializer()).uid else null }
+
+    override suspend fun putStep(code: String, name: String, fields: Map<String, String>) {
+        doc(code).collection("steps").document(name).set(fields)
+    }
+
+    override suspend fun getStep(code: String, name: String): Map<String, String>? =
+        doc(code).collection("steps").document(name).get().let { if (it.exists) it.data<Map<String, String>>() else null }
+
+    override suspend fun activated(coupleId: String, deviceId: String): Boolean {
+        val snap = db.collection("couples").document(coupleId).collection("devices").document(deviceId).get()
+        return snap.exists && snap.data(DeviceStateDoc.serializer()).active
+    }
+
+    override suspend fun wrappedKeyFor(coupleId: String, deviceId: String): ByteArray? {
+        val snap = db.collection("couples").document(coupleId).collection("keys").document(deviceId).get()
+        return if (snap.exists) Base64.decode(snap.data(KeyEnvelopeDoc.serializer()).wrapped) else null
+    }
+}

@@ -74,7 +74,7 @@
    - 백업 키를 iCloud 키체인과 Block Store로 동기화한다.
    - 복원 화면을 만들고 `RotationRequester`와 잇는다.
 5. **나머지 흐름**
-   - 7-3-B(상대 넘겨주기)의 UI와 이관
+   - 7-3-B 상대 넘겨주기는 끝났다: `RelinkSession`(커밋 → 공개 → SAS → cutoff → epoch+1 → 공유 데이터 전체 스냅샷), 함수 `onRelinkStep`, 규칙, 연결 · 설정 화면. 남은 것은 넘겨주기 전 기기 생체 인증
    - 탈퇴 화면(서버 callable · 로컬 정리는 있다), 연결 해제 전 기기 생체 · 암호 인증(지금은 확인 문구만)
    - 연결 해제는 끝났다: `UnlinkService`(키 · 동기화 상태 정리, 보관/모두 지우기), 설정 화면, callable `unlinkCouple`
    - 자동 승인하지 못한 교체 요청(`SyncScheduler.pendingManual`)을 안내하는 화면

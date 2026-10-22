@@ -6,6 +6,7 @@
 // - onPairingStep   : 두 사람이 SAS 확인을 마치면 커플 · 기기 · 키 봉투를 만든다
 // - onDeviceCreated : 대기 기기가 생기면 진짜 폰에 "새 기기에서 로그인 시도" 알림
 // - onRotationApproved : 상대 기기의 서명된 승인 → 새 기기 active, 옛 기기 폐기
+// - onRelinkStep    : 상대 폰이 넘겨주기 — 지수 서명 · SAS 확인 → 새 기기 활성화, 옛 기기 폐기
 // - finalizeDevice  : 새 기기 키로 서명한 챌린지 확인 → 커스텀 토큰 발급 → 옛 세션 폐기
 // - sendFromWidget  : iOS 위젯(App Intent)의 보고싶어. Firebase SDK 없이 서명만으로 받는다
 // - kakaoSignIn     : 카카오 액세스 토큰(app_id 확인) → 커스텀 토큰
@@ -242,6 +243,50 @@ export const finalizeDevice = onCall({ region: REGION }, async (req) => {
   const token = await getAuth().createCustomToken(uid);
   await getAuth().revokeRefreshTokens(uid);
   return { token };
+});
+
+// ── 상대 폰이 넘겨주기(7-3-B) ─────────────────────────────────────────────
+
+/**
+ * 지수(활성 기기)의 confirm-inviter 와 새 폰의 confirm-joiner 가 모두 있고 SAS 가 같으면:
+ * 지수 기기 서명을 확인 → 새 기기 등록 · 활성화, 옛 기기 폐기(cutoff), members 갱신, 새 커플 키 봉투.
+ */
+export const onRelinkStep = onDocumentCreated({ document: 'relinks/{code}/steps/{name}', region: REGION }, async (event) => {
+  const { code, name } = event.params;
+  if (!name.startsWith('confirm-')) return;
+  const base = db.doc(`relinks/${code}`);
+  const [relink, join, inviter, reveal, ci, cj] = await Promise.all(
+    ['', '/steps/join', '/steps/inviter', '/steps/reveal', '/steps/confirm-inviter', '/steps/confirm-joiner'].map((p) => db.doc(`relinks/${code}${p}`).get()),
+  );
+  if (![relink, join, inviter, reveal, ci, cj].every((s) => s.exists)) return;
+  if (ci.get('sas') !== cj.get('sas')) {
+    await db.recursiveDelete(base);
+    return;
+  }
+  const coupleId = relink.get('coupleId') as string;
+  const giverDevice = await db.doc(`couples/${coupleId}/devices/${inviter.get('deviceId')}`).get();
+  if (!giverDevice.get('active') || giverDevice.get('uid') !== relink.get('uid')) return;
+  const cutoff = JSON.parse(ci.get('cutoff') as string) as Record<string, number>;
+  const newDeviceId = ci.get('newDeviceId') as string;
+  if (newDeviceId !== reveal.get('deviceId')) return;
+  if (!verifyEd25519(approvalMessage(coupleId, code, newDeviceId, cutoff), b64(ci.get('sig')), b64(giverDevice.get('signPub')))) return;
+
+  const receiverUid = join.get('uid') as string;
+  const couple = await coupleOf(coupleId);
+  const oldDevice = couple.members[receiverUid];
+  const batch = db.batch();
+  batch.set(db.doc(`couples/${coupleId}/devices/${newDeviceId}`), {
+    uid: receiverUid, signPub: reveal.get('signPub'), boxPub: reveal.get('boxPub'), state: 'active', active: true, createdAt: FieldValue.serverTimestamp(),
+  });
+  if (oldDevice && oldDevice !== newDeviceId) {
+    batch.update(db.doc(`couples/${coupleId}/devices/${oldDevice}`), { state: 'revoked', active: false, revokedAt: FieldValue.serverTimestamp(), cutoff });
+  }
+  batch.update(db.doc(`couples/${coupleId}`), { [`members.${receiverUid}`]: newDeviceId });
+  batch.set(db.doc(`couples/${coupleId}/keys/${newDeviceId}`), { wrapped: ci.get('wrappedKey'), epoch: Number(ci.get('epoch')) });
+  batch.set(db.doc(`users/${receiverUid}`), { coupleId, deviceId: newDeviceId }, { merge: true });
+  await batch.commit();
+  await db.recursiveDelete(base);
+  await push(receiverUid, { data: { kind: 'relinked', coupleId } });
 });
 
 // ── iOS 위젯 전송 ─────────────────────────────────────────────────────────
