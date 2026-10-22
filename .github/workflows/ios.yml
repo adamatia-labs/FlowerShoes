@@ -78,6 +78,28 @@ jobs:
             | tee xcodetest.log | grep -E "error:|Test Case|\*\* TEST" || true
           grep -q "\*\* TEST SUCCEEDED \*\*" xcodetest.log
 
+      - name: 시뮬레이터 실행 확인(설치 → 실행 → 20초 뒤 살아 있는지 · 스크린샷)
+        working-directory: iosApp
+        run: |
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          echo "app: $APP"
+          xcrun simctl boot 'iPhone 16' || true
+          xcrun simctl bootstatus 'iPhone 16' -b
+          xcrun simctl install booted "$APP"
+          xcrun simctl launch booted com.sadturtleman.kkotsin
+          sleep 20
+          xcrun simctl io booted screenshot launch.png
+          xcrun simctl spawn booted launchctl list | grep -q com.sadturtleman.kkotsin || { echo '앱이 종료됐다'; xcrun simctl spawn booted log show --last 2m --predicate 'process == "Kkotsin"' | tail -60; exit 1; }
+          echo '앱이 20초 뒤에도 실행 중'
+
+      - name: 스크린샷 올리기
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-launch
+          path: iosApp/launch.png
+          if-no-files-found: ignore
+
       - name: 로그 올리기
         if: failure()
         uses: actions/upload-artifact@v4
