@@ -65,7 +65,7 @@ enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.de
 }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
+private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, RESTORE, COMPOSE, COMPOSE_SCHEDULED, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
 
 @Composable
 fun KkotsinApp() {
@@ -137,6 +137,7 @@ private fun OnboardingFlow() {
 private fun MainShell() {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
+    var creating by rememberSaveable { mutableStateOf(false) }
     // 편지 쓰기 · 편지함 · 그림만 보내기가 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val c = KkTheme.colors
@@ -173,8 +174,13 @@ private fun MainShell() {
     }
 
     when (overlay) {
-        Overlay.COMPOSE -> {
-            LetterComposeRoute(onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER }, onClose = { overlay = null }, viewModel = letters)
+        Overlay.COMPOSE, Overlay.COMPOSE_SCHEDULED -> {
+            LetterComposeRoute(
+                onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
+                onClose = { overlay = null },
+                scheduleFirst = overlay == Overlay.COMPOSE_SCHEDULED,
+                viewModel = letters,
+            )
             return
         }
         Overlay.DRAW_FOR_LETTER -> {
@@ -257,8 +263,11 @@ private fun MainShell() {
                 )
                 Tab.CALENDAR -> CalendarRoute()
                 Tab.LETTER -> LetterInboxRoute(
-                    onCompose = { overlay = Overlay.COMPOSE },
-                    onDrawOnly = { overlay = Overlay.DRAW_ONLY },
+                    onCreate = { creating = true },
+                    onReply = {
+                        letters.onIntent(LetterIntent.Close)
+                        overlay = Overlay.COMPOSE
+                    },
                     viewModel = letters,
                 )
                 Tab.MEMORY -> MemoryRoute(onOpenLetter = {
@@ -268,6 +277,14 @@ private fun MainShell() {
             }
         }
         BottomBar(tab, onSelect = { tab = it })
+    }
+    if (creating) {
+        com.sadturtleman.flowershoes.feature.letter.LetterCreateSheet(
+            onDismiss = { creating = false },
+            onDrawOnly = { overlay = Overlay.DRAW_ONLY },
+            onCompose = { overlay = Overlay.COMPOSE },
+            onScheduled = { overlay = Overlay.COMPOSE_SCHEDULED },
+        )
     }
 }
 

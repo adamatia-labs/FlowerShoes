@@ -197,6 +197,10 @@ interface ReceiptDao {
 
     @Query("SELECT * FROM receipt WHERE entity = :entity AND entityId = :entityId AND readerId = :readerId")
     suspend fun get(entity: String, entityId: String, readerId: String): ReceiptEntity?
+
+    /** [readerId] 가 읽은 [entity] id 들(편지함의 안 읽음 점). */
+    @Query("SELECT entityId FROM receipt WHERE entity = :entity AND readerId = :readerId")
+    fun observeIds(entity: String, readerId: String): kotlinx.coroutines.flow.Flow<List<String>>
 }
 
 @Dao

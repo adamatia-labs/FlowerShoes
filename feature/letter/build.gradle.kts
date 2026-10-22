@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlinx.serialization)
 }
 
 kotlin {
@@ -33,6 +34,7 @@ kotlin {
             implementation(libs.jb.lifecycle.viewmodel.compose)
             implementation(libs.jb.lifecycle.runtime.compose)
             implementation(libs.koin.compose.viewmodel)
+            implementation(libs.kotlinx.serialization.json)
         }
     }
 }

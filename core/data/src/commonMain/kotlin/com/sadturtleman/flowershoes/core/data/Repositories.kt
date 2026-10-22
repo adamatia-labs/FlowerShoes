@@ -141,8 +141,10 @@ class LetterRepository(
      * 시각을 쿼리에 고정하면 그 뒤에 보낸 편지 · 공개 시각이 지난 예약 편지가 계속 빠지므로, 시계와 묶어 다시 거른다.
      */
     fun observeInbox(): Flow<List<Letter>> =
-        combine(db.letterDao().observeAll(), clock.ticker()) { list, now ->
-            list.filter { it.visibleAtMs <= now.toEpochMilliseconds() }.map { it.toModel() }
+        combine(db.letterDao().observeAll(), clock.ticker()) { list, _ ->
+            // 틱 값이 아니라 지금 시각: 방금 보낸 편지(공개 시각 = 보낸 시각)가 다음 틱까지 빠지지 않게.
+            val now = clock.now().toEpochMilliseconds()
+            list.filter { it.visibleAtMs <= now }.map { it.toModel() }
         }.distinctUntilChanged()
 
     /**
@@ -194,6 +196,10 @@ class LetterRepository(
             payload = { OpPayload.ReceiptPut(receipt) },
         )
     }
+
+    /** 내가 읽은 편지 id. 받은 편지 중 여기 없는 것이 안 읽은 편지다. */
+    fun observeReadLetterIds(): Flow<Set<String>> =
+        db.receiptDao().observeIds(ReceiptEntity.LETTER.name, identity.userId).map { it.toSet() }
 
     suspend fun isFirstView(drawingId: String): Boolean =
         db.receiptDao().get(ReceiptEntity.DRAWING.name, drawingId, identity.userId) == null

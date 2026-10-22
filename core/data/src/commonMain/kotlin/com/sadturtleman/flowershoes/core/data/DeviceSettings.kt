@@ -74,6 +74,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setKeyEpoch(epoch: Int) = store.edit { it[KEY_EPOCH] = epoch }
 
+    /** 편지 쓰기 › 임시저장(JSON). 이 기기에만 — 보내기 전 글은 서버에도 상대에게도 가지 않는다. null 이면 지운다. */
+    suspend fun saveLetterDraft(json: String?) = store.edit { if (json == null) it.remove(LETTER_DRAFT) else it[LETTER_DRAFT] = json }
+
+    val letterDraft: Flow<String?> = store.data.map { it[LETTER_DRAFT] }
+
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
     suspend fun reset() = store.edit { it.clear() }
 
@@ -86,6 +91,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val KEY_EPOCH = intPreferencesKey("key_epoch")
         val MARKETING = intPreferencesKey("marketing_consent")
         val PROVIDER = stringPreferencesKey("account_provider")
+        val LETTER_DRAFT = stringPreferencesKey("letter_draft")
     }
 }
 
