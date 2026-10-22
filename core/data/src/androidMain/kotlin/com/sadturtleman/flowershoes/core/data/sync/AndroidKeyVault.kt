@@ -97,6 +97,11 @@ class AndroidKeyVault(context: Context) : KeyVault {
 
     override suspend fun clearCoupleKeys() = lock.withLock { save(load().copy(coupleKeys = emptyMap())) }
 
+    override suspend fun clearAll() = lock.withLock {
+        withContext(Dispatchers.IO) { file.delete() }
+        cache = Stored()
+    }
+
     // ── Keystore ──
 
     private fun wrappingKey(): SecretKey {

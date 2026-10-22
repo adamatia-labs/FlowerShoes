@@ -186,4 +186,25 @@ class EndToEndTest {
         assertEquals(0, minjun.letters.observeInbox().first().size)
         assertNull(minjun.db.coupleDao().get())
     }
+
+    @Test
+    fun `탈퇴하면 이 폰의 데이터 · 키 · 설정이 모두 지워진다`() = runTest {
+        link()
+        jisu.profile.saveMe(com.sadturtleman.flowershoes.core.model.Role.GOMSIN, "지수")
+        jisu.letters.send(jisu.letters.newLetter(listOf(LetterBlock.Text("안녕"))), emptyList())
+        val store = androidx.datastore.preferences.core.PreferenceDataStoreFactory.createWithPath { (root / "del-settings.preferences_pb") }
+        val settings = com.sadturtleman.flowershoes.core.data.DeviceSettings(store)
+        settings.ensureIdentity()
+        var syncedKeyDeleted = false
+        UnlinkService(jisu.db, jisu.vault, settings, cloud).deleteAccount { syncedKeyDeleted = true }
+
+        assertNull(jisu.vault.deviceKeys())
+        assertNull(jisu.vault.currentCoupleKey())
+        assertEquals(0, jisu.letters.observeInbox().first().size)
+        assertNull(jisu.db.userDao().get("jisu"))
+        assertNull(jisu.db.coupleDao().get())
+        assertEquals("", settings.state.first().userId, "다음 실행은 처음 화면부터")
+        assertTrue(syncedKeyDeleted)
+        assertEquals(1, cloud.unlinked.size + 0, "연결 해제와 별개로 서버 탈퇴 callable 이 불렸다")
+    }
 }

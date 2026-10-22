@@ -63,6 +63,9 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setKeyEpoch(epoch: Int) = store.edit { it[KEY_EPOCH] = epoch }
 
+    /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
+    suspend fun reset() = store.edit { it.clear() }
+
     private companion object {
         val USER_ID = stringPreferencesKey("user_id")
         val DEVICE_ID = stringPreferencesKey("device_id")

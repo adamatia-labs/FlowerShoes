@@ -44,6 +44,19 @@ class UnlinkService(
 
     suspend fun onPartnerUnlinked(after: AfterUnlink) = cleanUp(after)
 
+    /**
+     * 회원 탈퇴(7-5) = 연결 해제 + 이 폰 데이터 모두 지우기 + 서버의 users/{uid} · 백업 · 계정 삭제(함수 deleteAccount,
+     * 카카오 연결 끊기 · Apple 토큰 폐기 포함) + 동기화된 백업 키 · 기기 키 삭제.
+     */
+    suspend fun deleteAccount(deleteSyncedBackupKey: suspend () -> Unit = {}) {
+        transport?.deleteAccount()
+        cleanUp(AfterUnlink.WIPE)
+        db.useWriterConnection { tx -> tx.immediateTransaction { PROFILE_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } } } }
+        deleteSyncedBackupKey()
+        vault.clearAll()
+        settings.reset()
+    }
+
     private suspend fun cleanUp(after: AfterUnlink) {
         vault.clearCoupleKeys()
         db.useWriterConnection { tx ->
@@ -65,5 +78,8 @@ class UnlinkService(
     private companion object {
         val SYNC_TABLES = listOf("sync_op", "stream_counter", "recv_cursor", "recv_pending", "peer_cursor", "revoked_device", "device")
         val SHARED_TABLES = listOf("letter", "drawing", "receipt", "event", "miss_you", "status", "memory", "attachment")
+
+        /** 탈퇴 때만: 내 정보 · 복무 · 시계까지. 연결 해제는 내 D-day 를 남긴다. */
+        val PROFILE_TABLES = listOf("service", "user", "meta", "couple")
     }
 }

@@ -66,6 +66,9 @@ interface PlatformActions {
      * 화면 잠금이 없는 기기는 막을 방법이 없어 [DeviceAuth.NoLockScreen] 을 돌려주고, 화면이 경고를 띄운 뒤 진행한다.
      */
     suspend fun authenticate(reason: String): DeviceAuth = DeviceAuth.NoLockScreen
+
+    /** 탈퇴: 플랫폼에 동기화해 둔 백업 키(Block Store · iCloud 키체인)를 지운다. */
+    suspend fun deleteSyncedBackupKey() = Unit
 }
 
 enum class DeviceAuth { Passed, Failed, NoLockScreen }
@@ -87,6 +90,9 @@ class SettingsViewModel(
 
     /** 되돌릴 수 없다. 화면이 확인 문구 입력(+ 기기 인증)을 받은 뒤에만 부른다. */
     fun unlink(after: AfterUnlink) = viewModelScope.launch { unlink.unlink(after) }
+
+    /** 탈퇴. 끝나면 설정이 비워져 셸이 처음 화면(로그인)으로 돌아간다. */
+    fun deleteAccount(deleteSyncedBackupKey: suspend () -> Unit) = viewModelScope.launch { unlink.deleteAccount(deleteSyncedBackupKey) }
 
 
     val state: StateFlow<SettingsState> = combine(settings.state, profile.observeTimelines()) { d, t ->
@@ -198,6 +204,23 @@ fun SettingsRoute(
 
         Section("알림")
         Text("조용한 시간 23:00–07:00에는 알림 없이 모아 두었다가 아침에 한 번 알려요.", style = KkTheme.type.bodyS, color = c.textSecondary)
+
+        Section("계정")
+        var deleteConfirm by remember { mutableStateOf("") }
+        KkCard {
+            Text("회원 탈퇴", style = KkTheme.type.titleS, color = c.statusDanger)
+            Text("연결을 끊고, 이 폰의 편지 · 그림 · 일정 · 키와 서버의 백업 · 계정을 모두 지워요. 되돌릴 수 없어요.", style = KkTheme.type.bodyS, color = c.textSecondary)
+            KkTextField(deleteConfirm, { deleteConfirm = it }, placeholder = "'탈퇴'라고 입력")
+            Link(if (deleteConfirm.trim() == "탈퇴") "탈퇴하기" else "확인 문구를 입력하면 탈퇴할 수 있어요") {
+                if (deleteConfirm.trim() == "탈퇴") scope.launch {
+                    if (platform.authenticate("탈퇴하려면 본인 확인이 필요해요") != DeviceAuth.Failed) {
+                        viewModel.deleteAccount(platform::deleteSyncedBackupKey)
+                    } else {
+                        authMessage = "본인 확인을 하지 못했어요"
+                    }
+                }
+            }
+        }
 
         Section("정보")
         Text("오픈소스 라이선스 · 개인정보처리방침", style = KkTheme.type.bodyS, color = c.textTertiary)

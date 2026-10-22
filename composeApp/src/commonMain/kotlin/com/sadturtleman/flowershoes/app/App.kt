@@ -69,6 +69,11 @@ fun KkotsinApp() {
     val device by produceState<DeviceState?>(null) {
         identity.update(settings.ensureIdentity())
         settings.state.collect {
+            // 탈퇴로 설정이 비워졌다 → 새 로컬 id 를 만들고(다시 내보낸다) 처음 화면으로.
+            if (it.userId.isEmpty() || it.deviceId.isEmpty()) {
+                settings.ensureIdentity()
+                return@collect
+            }
             identity.update(it)
             value = it
         }

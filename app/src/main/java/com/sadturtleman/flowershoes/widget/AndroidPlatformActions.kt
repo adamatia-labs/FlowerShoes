@@ -33,6 +33,10 @@ class AndroidPlatformActions(private val context: Context) : PlatformActions {
         return AppWidgetManager.getInstance(context).requestPinAppWidget(ComponentName(context, target), null, null)
     }
 
+    override suspend fun deleteSyncedBackupKey() {
+        com.sadturtleman.flowershoes.app.backup.BlockStoreKeySync(context).delete()
+    }
+
     /** BIOMETRIC_STRONG or DEVICE_CREDENTIAL — 지문 · 얼굴이 없으면 PIN · 패턴으로. */
     override suspend fun authenticate(reason: String): DeviceAuth {
         val activity = CurrentActivity.activity as? FragmentActivity ?: return DeviceAuth.Failed

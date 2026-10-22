@@ -124,7 +124,9 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
         blobStore.keys.removeAll { it.startsWith("$coupleId/") }
     }
 
-    override suspend fun deleteAccount() = Unit
+    override suspend fun deleteAccount() {
+        unlinked += "account"
+    }
 }
 
 /** relinks/{code} 와 함수 onRelinkConfirmed(두 확인 · 같은 SAS → 새 기기 활성화 · 키 봉투)를 흉내 낸다. */

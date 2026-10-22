@@ -35,6 +35,9 @@ interface KeyVault {
 
     /** 연결 해제 · 탈퇴: 커플 키 전부. */
     suspend fun clearCoupleKeys()
+
+    /** 탈퇴: 기기 키 · 커플 키 · 백업 키 사본 · 복구 코드 전부. */
+    suspend fun clearAll()
 }
 
 /** 플랫폼 보관함이 붙기 전 · 테스트용. 프로세스가 끝나면 사라진다. */
@@ -70,4 +73,10 @@ class InMemoryKeyVault : KeyVault {
     }
 
     override suspend fun clearCoupleKeys() = couple.clear()
+
+    override suspend fun clearAll() {
+        device = null
+        couple.clear()
+        backup = null
+    }
 }
