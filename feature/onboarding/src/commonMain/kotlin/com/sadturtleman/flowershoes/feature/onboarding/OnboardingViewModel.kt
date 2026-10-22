@@ -6,6 +6,7 @@ import com.sadturtleman.flowershoes.core.auth.AuthGateway
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.auth.SignInResult
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.military.ServiceRulesTable
@@ -154,8 +155,4 @@ class OnboardingViewModel(
         }
     }
 
-    companion object {
-        /** 연결 전 곰신이 입력한 군인 정보의 자리표시 id. 연결하면 상대 userId 로 바뀐다. */
-        const val PENDING_SOLDIER = "pending:soldier"
-    }
 }

@@ -38,6 +38,10 @@ sealed interface OpPayload {
     @Serializable @SerialName("service")
     data class ServicePut(val service: Service) : OpPayload
 
+    /** 연결 직후 서로의 역할 · 닉네임을 알린다(7-1-1 정보 맞추기에 필요). */
+    @Serializable @SerialName("user")
+    data class UserPut(val userId: String, val role: String, val nickname: String, val lamport: Long) : OpPayload
+
     @Serializable @SerialName("anniversary")
     data class AnniversaryPut(val date: String?, val lamport: Long) : OpPayload
 
@@ -66,6 +70,9 @@ data class DrawingMeta(
     val caption: String?,
     val replayEnabled: Boolean,
     val replayDurationMs: Long,
+    /** 보낼 때 채운다: 그림 문서를 무작위 키로 암호화해 올린 blob 과 그 키(base64). Op 본문 자체가 커플 키로 암호화된다. */
+    val docBlobId: String? = null,
+    val docBlobKey: String? = null,
 )
 
 object OpCodec {

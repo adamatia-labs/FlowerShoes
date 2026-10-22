@@ -19,8 +19,10 @@ class AttachmentStore(
     private val root: Path,
     private val fs: FileSystem = FileSystem.SYSTEM,
 ) {
-    suspend fun put(kind: AttachmentKind, bytes: ByteArray): String {
-        val id = Uuid.random().toString()
+    suspend fun put(kind: AttachmentKind, bytes: ByteArray): String = putWithId(Uuid.random().toString(), kind, bytes)
+
+    /** 받은 첨부를 보낸 쪽과 같은 id 로 둔다(편지 블록이 그 id 를 가리킨다). */
+    suspend fun putWithId(id: String, kind: AttachmentKind, bytes: ByteArray): String {
         fs.createDirectories(root)
         val path = root / id
         fs.write(path) { write(bytes) }

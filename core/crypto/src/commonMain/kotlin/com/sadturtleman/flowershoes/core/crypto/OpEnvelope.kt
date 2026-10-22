@@ -18,6 +18,30 @@ data class OpHeader(
         lengthPrefixed(opId.encodeToByteArray()) + lengthPrefixed(stream.encodeToByteArray()) + longBytes(seq) + intBytes(keyEpoch)
 
     private fun lengthPrefixed(b: ByteArray) = intBytes(b.size) + b
+
+    companion object {
+        /** [toBytes] 의 역. 받은 우편함 문서의 머리를 읽는다. 형식이 아니면 [CryptoException]. */
+        fun fromBytes(bytes: ByteArray): OpHeader {
+            var pos = 0
+            fun int(): Int {
+                if (pos + 4 > bytes.size) throw CryptoException("머리가 짧다")
+                val v = (bytes[pos].toInt() and 0xFF shl 24) or (bytes[pos + 1].toInt() and 0xFF shl 16) or
+                    (bytes[pos + 2].toInt() and 0xFF shl 8) or (bytes[pos + 3].toInt() and 0xFF)
+                pos += 4
+                return v
+            }
+            fun str(): String {
+                val n = int()
+                if (n < 0 || pos + n > bytes.size) throw CryptoException("머리 길이가 범위를 넘는다")
+                return bytes.decodeToString(pos, pos + n).also { pos += n }
+            }
+            val opId = str()
+            val stream = str()
+            val seq = (int().toLong() shl 32) or (int().toLong() and 0xFFFFFFFFL)
+            val epoch = int()
+            return OpHeader(opId, stream, seq, epoch)
+        }
+    }
 }
 
 class OpEnvelope(

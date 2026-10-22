@@ -6,6 +6,7 @@ import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.DrawingEntity
 import com.sadturtleman.flowershoes.core.database.MemoryEntity
 import com.sadturtleman.flowershoes.core.database.MetaEntity
+import com.sadturtleman.flowershoes.core.database.UserEntity
 import com.sadturtleman.flowershoes.core.database.RecvCursorEntity
 import com.sadturtleman.flowershoes.core.database.RecvPendingEntity
 import com.sadturtleman.flowershoes.core.sync.Lww
@@ -30,6 +31,9 @@ class ReceivedOp(
 )
 
 enum class ApplyResult { APPLIED, DUPLICATE, REJECTED_REVOKED, UNKNOWN_SKIPPED }
+
+/** 연결 전 곰신이 입력한 군인 정보의 자리표시 id. 연결하면 상대(군인) userId 로 바뀐다. */
+const val PENDING_SOLDIER = "pending:soldier"
 
 /**
  * 받은 Op 을 로컬 DB 에 반영한다. 한 Op 이 한 트랜잭션이다.
@@ -110,9 +114,12 @@ class InboxApplier(
                 }
             }
             is OpPayload.ReceiptPut -> db.receiptDao().insertFirst(p.receipt.toEntity())
-            is OpPayload.ServicePut -> {
-                val local = db.serviceDao().get(p.service.userId)
-                if (local == null || p.service.lamport > local.lamport) db.serviceDao().upsert(p.service.toEntity())
+            is OpPayload.ServicePut -> applyService(p)
+            is OpPayload.UserPut -> {
+                val local = db.userDao().get(p.userId)
+                if (local == null || p.lamport >= local.nicknameLamport) {
+                    db.userDao().upsert(UserEntity(p.userId, p.role, p.nickname, p.lamport))
+                }
             }
             is OpPayload.AnniversaryPut -> {
                 val couple = db.coupleDao().get() ?: return
@@ -123,6 +130,24 @@ class InboxApplier(
             is OpPayload.Delete -> delete(p)
             is OpPayload.Snapshot -> p.items.forEach { applyPayload(it) }
         }
+    }
+
+    /**
+     * 복무 정보. 평소에는 LWW 지만, 연결 직후 혼자 모드 값이 엇갈리면 "군인이 입력한 값"이 이긴다(7-1-1).
+     * 곰신이 연결 전에 넣은 값은 [PENDING_SOLDIER] 자리에 있다.
+     */
+    private suspend fun applyService(p: OpPayload.ServicePut) {
+        val s = p.service
+        val pending = db.serviceDao().get(PENDING_SOLDIER)
+        if (s.userId == PENDING_SOLDIER) {
+            // 상대(곰신)가 대신 넣어 둔 내 정보. 내가 직접 넣은 값이 있으면 그것이 이긴다.
+            val couple = db.coupleDao().get() ?: return
+            if (db.serviceDao().get(couple.myUserId) == null) db.serviceDao().upsert(s.copy(userId = couple.myUserId).toEntity())
+            return
+        }
+        if (pending != null) db.serviceDao().deleteFor(PENDING_SOLDIER)
+        val local = db.serviceDao().get(s.userId)
+        if (local == null || s.lamport > local.lamport) db.serviceDao().upsert(s.toEntity())
     }
 
     private suspend fun delete(p: OpPayload.Delete) {

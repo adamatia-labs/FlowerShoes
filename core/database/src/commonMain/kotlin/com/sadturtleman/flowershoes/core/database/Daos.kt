@@ -44,6 +44,9 @@ interface DeviceDao {
     @Query("SELECT * FROM device WHERE userId = :userId")
     suspend fun forUser(userId: String): List<DeviceEntity>
 
+    @Query("SELECT * FROM device WHERE userId = :userId AND state = 'ACTIVE' LIMIT 1")
+    suspend fun activeFor(userId: String): DeviceEntity?
+
     @Upsert
     suspend fun upsert(device: DeviceEntity)
 }
@@ -61,6 +64,9 @@ interface ServiceDao {
 
     @Upsert
     suspend fun upsert(service: ServiceEntity)
+
+    @Query("DELETE FROM service WHERE userId = :userId")
+    suspend fun deleteFor(userId: String)
 }
 
 @Dao
@@ -98,6 +104,9 @@ interface EventDao {
     @Query("SELECT * FROM event WHERE id = :id")
     suspend fun get(id: String): EventEntity?
 
+    @Query("SELECT * FROM event WHERE lastWriterDevice = :deviceId")
+    suspend fun lastWrittenBy(deviceId: String): List<EventEntity>
+
     /** 일정 전날 알림처럼 앞으로 올 일정. */
     @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND start >= :from ORDER BY start LIMIT :limit")
     suspend fun upcoming(from: String, limit: Int): List<EventEntity>
@@ -130,6 +139,9 @@ interface LetterDao {
 
     @Query("SELECT * FROM letter WHERE id = :id")
     suspend fun get(id: String): LetterEntity?
+
+    @Query("SELECT * FROM letter WHERE authorId = :authorId AND deletedAtMs IS NULL")
+    suspend fun byAuthor(authorId: String): List<LetterEntity>
 
     @Upsert
     suspend fun upsert(letter: LetterEntity)
