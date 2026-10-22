@@ -31,8 +31,14 @@ import kotlinx.coroutines.sync.withLock
 class SyncScheduler(
     private val db: AppDatabase,
     private val client: SyncClient,
+    /** 상대의 기기 교체 요청을 동기화 때마다 확인해 자동 승인한다(7-3-A). */
+    private val approver: RotationApprover? = null,
     private val period: Duration = 15.minutes,
 ) {
+    /** 자동 승인하지 못한 교체 요청. 화면이 "확인 코드로 직접 확인해 주세요"를 띄운다. */
+    var pendingManual: List<Pair<RotationRequest, RotationDecision.NeedsManual>> = emptyList()
+        private set
+
     private val kicks = Channel<Unit>(Channel.CONFLATED)
     private val running = Mutex()
 
@@ -58,6 +64,12 @@ class SyncScheduler(
 
     /** 푸시 수신처럼 결과를 기다려야 할 때. */
     suspend fun runOnce(): SyncReport? = running.withLock {
-        runCatching { client.syncOnce() }.getOrNull()?.also { lastReport = it }
+        val report = runCatching { client.syncOnce() }.getOrNull()?.also { lastReport = it }
+        approver?.let { a ->
+            runCatching { a.check() }.getOrNull()?.let { decisions ->
+                pendingManual = pendingManual + decisions.mapNotNull { (r, d) -> (d as? RotationDecision.NeedsManual)?.let { r to it } }
+            }
+        }
+        report
     }
 }

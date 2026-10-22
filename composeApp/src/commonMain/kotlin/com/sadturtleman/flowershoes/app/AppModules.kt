@@ -31,6 +31,8 @@ import com.sadturtleman.flowershoes.core.data.sync.PairingSession
 import com.sadturtleman.flowershoes.core.data.sync.PairingTransport
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
+import com.sadturtleman.flowershoes.core.data.sync.RotationApprover
+import com.sadturtleman.flowershoes.core.data.sync.RotationTransport
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
 import okio.Path
@@ -39,7 +41,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 /** 서버 쪽 구현 묶음. Firebase 설정이 있는 빌드에서만 플랫폼이 만들어 넘긴다. */
-class CloudBackend(val mailbox: Mailbox, val blobs: BlobStore, val pairing: PairingTransport)
+class CloudBackend(val mailbox: Mailbox, val blobs: BlobStore, val pairing: PairingTransport, val rotation: RotationTransport? = null)
 
 /**
  * DI 조립. 플랫폼이 만든 DB · DataStore 를 받아 나머지를 잇는다.
@@ -77,7 +79,11 @@ fun kkotsinModules(
         if (cloud != null) {
             single { PairingSession(get(), get(), get(), cloud.pairing, get()) }
             single { SyncClient(get(), get(), get(), cloud.mailbox, cloud.blobs, get(), get(), get(), get()) }
-            single { SyncScheduler(get(), get()) }
+            single {
+                val client = get<SyncClient>()
+                val approver = cloud.rotation?.let { RotationApprover(get(), get(), get(), it, drainInbox = { client.syncOnce() }, get()) }
+                SyncScheduler(get(), client, approver)
+            }
         }
     },
     module {

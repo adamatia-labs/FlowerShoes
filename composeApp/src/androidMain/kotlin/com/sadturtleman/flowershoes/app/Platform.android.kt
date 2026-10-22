@@ -34,7 +34,7 @@ fun kkotsinAndroidModules(context: Context): List<Module> {
 private fun firebaseBackendOrNull(context: Context): CloudBackend? {
     if (com.google.firebase.FirebaseApp.getApps(context).isEmpty()) return null
     val transport = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
-    return CloudBackend(mailbox = transport, blobs = transport, pairing = transport)
+    return CloudBackend(mailbox = transport, blobs = transport, pairing = transport, rotation = com.sadturtleman.flowershoes.core.firebase.FirestoreRotation())
 }
 
 private fun settingsDataStore(context: Context): DataStore<Preferences> =

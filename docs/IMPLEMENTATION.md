@@ -65,8 +65,9 @@
 2. **소셜 로그인 SDK**
    - 카카오 SDK(Android · iOS), Google Credential Manager, Sign in with Apple을 `AuthGateway`에 연결한다.
    - Apple 탈퇴 시 `/auth/revoke`를 호출한다(Apple 키 필요).
-3. **플랫폼 키 보관함**
-   - Android Keystore와 iOS Keychain으로 `KeyVault`를 구현한다. 지금은 메모리 보관함이라, 앱을 다시 실행하면 커플 키가 사라진다.
+3. **iOS 키 보관함**
+   - Keychain(access group 공유, ThisDeviceOnly)으로 `KeyVault`를 구현한다.
+   - Android는 끝났다. `AndroidKeyVault`가 Keystore AES-GCM으로 감싼 파일을 쓰고, 재시작 뒤에도 키가 남는 것을 확인했다.
 4. **백업 연결**
    - Storage용 `BackupStorage` 어댑터를 만든다.
    - `BackupSource`(VACUUM INTO)를 구현한다.
@@ -75,7 +76,8 @@
 5. **나머지 흐름**
    - 7-3-B(상대 넘겨주기)의 UI와 이관
    - 연결 해제 · 탈퇴 클라이언트
-   - Android 기기 교체 승인을 `SyncScheduler` 루프에 연결(`RotationApprover.check`)
+   - 자동 승인하지 못한 교체 요청(`SyncScheduler.pendingManual`)을 안내하는 화면
+   - 기기 교체 자동 승인은 동기화 루프에 연결돼 있다(`RotationApprover`, Firestore 어댑터 `FirestoreRotation`).
 6. **PNG 렌더러(`:core:media`)**
    - 위젯 · 알림용 완성 PNG를 위젯 크기의 2배로 만든다. 지금 Android 위젯은 문서를 그 자리에서 비트맵으로 그린다.
 7. **Hilt → Koin**
