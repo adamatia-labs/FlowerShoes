@@ -96,3 +96,14 @@ class FirestoreRotation(
             .invoke(mapOf("coupleId" to coupleId, "rotationId" to rotationId, "challengeSig" to Base64.encode(challengeSig)))
             .data(FinalizeResult.serializer()).token
 }
+
+/** 연결 해제 · 탈퇴 callable. 서버 데이터 삭제 · 상대 알림은 함수가 한다. */
+class FunctionsAccount(private val region: String = "asia-northeast3") : com.sadturtleman.flowershoes.core.data.sync.AccountTransport {
+    override suspend fun unlinkCouple(coupleId: String) {
+        Firebase.functions(region).httpsCallable("unlinkCouple").invoke(mapOf("coupleId" to coupleId))
+    }
+
+    override suspend fun deleteAccount() {
+        Firebase.functions(region).httpsCallable("deleteAccount").invoke()
+    }
+}

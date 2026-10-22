@@ -33,6 +33,8 @@ import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.data.sync.RotationApprover
 import com.sadturtleman.flowershoes.core.data.sync.RotationTransport
+import com.sadturtleman.flowershoes.core.data.sync.AccountTransport
+import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
 import okio.Path
@@ -41,7 +43,7 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 /** 서버 쪽 구현 묶음. Firebase 설정이 있는 빌드에서만 플랫폼이 만들어 넘긴다. */
-class CloudBackend(val mailbox: Mailbox, val blobs: BlobStore, val pairing: PairingTransport, val rotation: RotationTransport? = null)
+class CloudBackend(val mailbox: Mailbox, val blobs: BlobStore, val pairing: PairingTransport, val rotation: RotationTransport? = null, val account: AccountTransport? = null)
 
 /**
  * DI 조립. 플랫폼이 만든 DB · DataStore 를 받아 나머지를 잇는다.
@@ -75,6 +77,7 @@ fun kkotsinModules(
         single { MissYouRepository(get(), get(), get(), get()) }
         single { StatusRepository(get(), get(), get(), get()) }
         single { vault }
+        single { UnlinkService(get(), get(), get(), cloud?.account, wipeAttachmentFiles = { get<AttachmentStore>().deleteAllFiles() }) }
         // 서버 설정이 없는 빌드에서는 등록하지 않는다(화면은 getOrNull 로 "설정 전" 안내를 보여 준다).
         if (cloud != null) {
             single { PairingSession(get(), get(), get(), cloud.pairing, get()) }
@@ -94,6 +97,6 @@ fun kkotsinModules(
         viewModel { DrawingEditorViewModel(get(), get()) }
         viewModel { MemoryViewModel(get(), get(), get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get()) }
-        viewModel { SettingsViewModel(get(), get()) }
+        viewModel { SettingsViewModel(get(), get(), get()) }
     },
 )

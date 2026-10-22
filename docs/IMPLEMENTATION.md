@@ -75,7 +75,8 @@
    - 복원 화면을 만들고 `RotationRequester`와 잇는다.
 5. **나머지 흐름**
    - 7-3-B(상대 넘겨주기)의 UI와 이관
-   - 연결 해제 · 탈퇴 클라이언트
+   - 탈퇴 화면(서버 callable · 로컬 정리는 있다), 연결 해제 전 기기 생체 · 암호 인증(지금은 확인 문구만)
+   - 연결 해제는 끝났다: `UnlinkService`(키 · 동기화 상태 정리, 보관/모두 지우기), 설정 화면, callable `unlinkCouple`
    - 자동 승인하지 못한 교체 요청(`SyncScheduler.pendingManual`)을 안내하는 화면
    - 기기 교체 자동 승인은 동기화 루프에 연결돼 있다(`RotationApprover`, Firestore 어댑터 `FirestoreRotation`).
 6. **PNG 렌더러(`:core:media`)**

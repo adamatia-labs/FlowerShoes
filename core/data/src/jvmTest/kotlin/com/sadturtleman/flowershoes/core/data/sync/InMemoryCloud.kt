@@ -4,7 +4,7 @@ package com.sadturtleman.flowershoes.core.data.sync
  * 테스트용 서버. Firestore · Storage · Cloud Function(onPairingStep) 이 하는 일을 메모리에서 흉내 낸다.
  * [tamper] 로 "서버가 암호문을 바꿔치기하는" 상황도 만든다.
  */
-class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport {
+class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, AccountTransport {
     private val inbox = mutableMapOf<String, MutableMap<String, MailItem>>() // "{c}/{device}" → opId → item
     private val control = mutableMapOf<String, ControlDoc>()
     private val blobStore = mutableMapOf<String, ByteArray>()
@@ -110,4 +110,16 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport {
         check(ok) { "새 기기 서명이 맞지 않는다" }
         return "custom-token-for-${r.uid}"
     }
+
+    // AccountTransport — 함수 unlinkCouple 처럼 커플의 서버 데이터를 지운다.
+    val unlinked = mutableListOf<String>()
+
+    override suspend fun unlinkCouple(coupleId: String) {
+        unlinked += coupleId
+        inbox.keys.removeAll { it.startsWith("$coupleId/") }
+        control.keys.removeAll { it.startsWith("$coupleId/") }
+        blobStore.keys.removeAll { it.startsWith("$coupleId/") }
+    }
+
+    override suspend fun deleteAccount() = Unit
 }

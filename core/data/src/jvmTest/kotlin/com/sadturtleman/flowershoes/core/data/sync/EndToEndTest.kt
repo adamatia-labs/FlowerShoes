@@ -162,4 +162,28 @@ class EndToEndTest {
     fun `잘못된 코드 형식은 바로 거부한다`() = runTest {
         assertTrue(minjun.pairing.join("12U") is PairingState.Failed)
     }
+
+    @Test
+    fun `연결을 해제하면 키 · 동기화 상태가 지워지고 추억은 고른 대로 남는다`() = runTest {
+        link()
+        val letter = jisu.letters.newLetter(listOf(LetterBlock.Text("추억")))
+        jisu.letters.send(letter, emptyList())
+        roundTrip()
+
+        val settingsStore = androidx.datastore.preferences.core.PreferenceDataStoreFactory.createWithPath {
+            (root / "jisu-settings.preferences_pb")
+        }
+        UnlinkService(jisu.db, jisu.vault, com.sadturtleman.flowershoes.core.data.DeviceSettings(settingsStore), cloud).unlink(AfterUnlink.KEEP_AS_MEMORIES)
+        assertNull(jisu.vault.currentCoupleKey())
+        assertEquals(emptyList(), jisu.db.syncDao().log("dev-a:app"))
+        assertEquals(1, jisu.letters.observeInbox().first().size, "추억으로 보관")
+        assertEquals("", jisu.db.coupleDao().get()?.partnerUserId)
+        assertEquals(1, cloud.unlinked.size)
+
+        // 민준은 해제 알림을 받고 모두 지우기를 골랐다.
+        val minjunSettings = androidx.datastore.preferences.core.PreferenceDataStoreFactory.createWithPath { (root / "minjun-settings.preferences_pb") }
+        UnlinkService(minjun.db, minjun.vault, com.sadturtleman.flowershoes.core.data.DeviceSettings(minjunSettings), null).onPartnerUnlinked(AfterUnlink.WIPE)
+        assertEquals(0, minjun.letters.observeInbox().first().size)
+        assertNull(minjun.db.coupleDao().get())
+    }
 }

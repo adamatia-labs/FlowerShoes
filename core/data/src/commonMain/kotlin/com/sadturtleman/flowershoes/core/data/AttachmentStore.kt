@@ -32,6 +32,11 @@ class AttachmentStore(
         return id
     }
 
+    /** 연결 해제 "모두 지우기" · 탈퇴. */
+    fun deleteAllFiles() {
+        if (fs.exists(root)) fs.deleteRecursively(root)
+    }
+
     suspend fun read(id: String): ByteArray? {
         val row = db.attachmentDao().get(id) ?: return null
         val path = root / row.id

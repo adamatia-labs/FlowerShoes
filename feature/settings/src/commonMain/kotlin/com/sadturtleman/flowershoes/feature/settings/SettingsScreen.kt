@@ -30,6 +30,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
+import com.sadturtleman.flowershoes.core.data.sync.AfterUnlink
+import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
+import com.sadturtleman.flowershoes.core.designsystem.KkTextField
 import com.sadturtleman.flowershoes.core.designsystem.KkCard
 import com.sadturtleman.flowershoes.core.designsystem.KkChoice
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
@@ -71,7 +74,12 @@ data class SettingsState(
 class SettingsViewModel(
     private val settings: DeviceSettings,
     private val profile: ProfileRepository,
+    private val unlink: UnlinkService,
 ) : ViewModel() {
+
+    /** 되돌릴 수 없다. 화면이 확인 문구 입력(+ 기기 인증)을 받은 뒤에만 부른다. */
+    fun unlink(after: AfterUnlink) = viewModelScope.launch { unlink.unlink(after) }
+
 
     val state: StateFlow<SettingsState> = combine(settings.state, profile.observeTimelines()) { d, t ->
         SettingsState(theme = d.theme, service = t.firstOrNull()?.first, timeline = t.firstOrNull()?.second, linked = d.keyEpoch > 0)
@@ -127,6 +135,18 @@ fun SettingsRoute(
         Section("연결")
         if (state.linked) {
             Text("연인과 연결돼 있어요.", style = KkTheme.type.bodyM, color = c.textPrimary)
+            var confirm by remember { mutableStateOf("") }
+            var keep by remember { mutableStateOf(true) }
+            KkCard {
+                Text("연결 해제", style = KkTheme.type.titleS, color = c.statusDanger)
+                Text("되돌릴 수 없어요. 해제하면 상대도 더 이상 받을 수 없어요. 상대 폰에 남은 사본은 내가 지울 수 없어요.", style = KkTheme.type.bodyS, color = c.textSecondary)
+                KkChoice("추억으로 보관(읽기 전용)", keep, { keep = true })
+                KkChoice("이 폰에서 모두 지우기", !keep, { keep = false })
+                KkTextField(confirm, { confirm = it }, placeholder = "'연결 해제'라고 입력")
+                Link(if (confirm.trim() == "연결 해제") "해제하기" else "확인 문구를 입력하면 해제할 수 있어요") {
+                    if (confirm.trim() == "연결 해제") viewModel.unlink(if (keep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE)
+                }
+            }
         } else {
             Link("연인과 연결하기", onOpenPairing)
         }
