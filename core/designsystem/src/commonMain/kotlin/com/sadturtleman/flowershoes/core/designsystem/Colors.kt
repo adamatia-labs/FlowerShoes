@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.core.designsystem
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import com.sadturtleman.flowershoes.core.model.ThemeAccent
 
 /**
@@ -13,6 +14,7 @@ object Palette {
     val Rose300 = Color(0xFFFF99BB)
     val Rose500 = Color(0xFFED4773)
     val Rose600 = Color(0xFFC72C4D)
+    val Rose700 = Color(0xFFA31A31)
     val Rose900 = Color(0xFF47070E)
 
     val Olive50 = Color(0xFFF7F7EB)
@@ -77,10 +79,20 @@ data class KkColors(
     val borderBrand: Color,
     val shadowKey: Color,
     val shadowAmbient: Color,
+    /** 누른 상태(Figma bg/pressed · bg/brand-pressed · bg/brand-subtle-pressed). */
+    val bgPressed: Color,
+    val bgBrandPressed: Color,
+    val bgBrandSubtlePressed: Color,
+    /** 시트 · 다이얼로그처럼 띄운 표면(bg/surface-raised). */
+    val bgSurfaceRaised: Color,
+    /** 포커스 링(border/focus) 과 그 안쪽 틈(shadow/focus-gap). */
+    val borderFocus: Color,
+    val focusGap: Color,
     val isDark: Boolean,
 ) {
     val heart: Color get() = Palette.Rose600
     val heartSubtle: Color get() = if (isDark) Palette.Rose900 else Palette.Rose50
+    val textHeart: Color get() = if (isDark) Palette.Rose300 else Palette.Rose600
 
     val statusSuccess: Color get() = Palette.Green500
     val statusWarning: Color get() = Palette.Amber500
@@ -142,6 +154,11 @@ fun kkColors(theme: ThemeAccent, dark: Boolean): KkColors {
             textInverse = Palette.Gray0,
             borderDefault = Palette.Gray200, borderStrong = Palette.Gray300, borderBrand = a.border,
             shadowKey = a.shadowTint.copy(alpha = 0x1A / 255f), shadowAmbient = a.shadowTint.copy(alpha = 0x0D / 255f),
+            bgPressed = Palette.Gray200,
+            bgBrandPressed = if (theme == ThemeAccent.ROSE) Palette.Rose700 else lerp(a.brand, Color.Black, 0.18f),
+            bgBrandSubtlePressed = if (theme == ThemeAccent.ROSE) Palette.Rose100 else lerp(a.subtle, a.brand, 0.12f),
+            bgSurfaceRaised = Palette.Gray0,
+            borderFocus = Palette.Rose600, focusGap = Palette.Gray0,
             isDark = false,
         )
     } else {
@@ -157,6 +174,11 @@ fun kkColors(theme: ThemeAccent, dark: Boolean): KkColors {
             textInverse = Palette.Gray900,
             borderDefault = Palette.Gray700, borderStrong = Palette.Gray500, borderBrand = a.textBrandDark,
             shadowKey = Color(0x73000000), shadowAmbient = Color(0x4D000000),
+            bgPressed = Palette.Gray700,
+            bgBrandPressed = lerp(a.brandDark, Color.Black, 0.18f),
+            bgBrandSubtlePressed = lerp(a.subtleDark, a.brandDark, 0.18f),
+            bgSurfaceRaised = Palette.Gray700,
+            borderFocus = Palette.Rose300, focusGap = Palette.Gray900,
             isDark = true,
         )
     }

@@ -97,3 +97,12 @@ class ServiceCalculator(private val table: ServiceRulesTable = ServiceRulesTable
         return steps
     }
 }
+
+/** 계급 한글 이름(D-day 카드 · 위젯). */
+val Rank.koreanName: String
+    get() = when (this) {
+        Rank.PRIVATE -> "이병"
+        Rank.PRIVATE_FIRST_CLASS -> "일병"
+        Rank.CORPORAL -> "상병"
+        Rank.SERGEANT -> "병장"
+    }

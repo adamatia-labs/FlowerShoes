@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -44,6 +45,7 @@ import com.sadturtleman.flowershoes.feature.letter.LetterInboxRoute
 import com.sadturtleman.flowershoes.feature.letter.LetterIntent
 import com.sadturtleman.flowershoes.feature.letter.LetterViewModel
 import com.sadturtleman.flowershoes.feature.memory.MemoryRoute
+import com.sadturtleman.flowershoes.feature.pairing.InviteConnect
 import com.sadturtleman.flowershoes.feature.pairing.PairingRoute
 import org.koin.compose.viewmodel.koinViewModel
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingRoute
@@ -79,11 +81,14 @@ fun KkotsinApp() {
         }
     }
     val current = device
+    val share = rememberPlatformShare()
     KkotsinTheme(accent = current?.theme ?: ThemeAccent.ROSE) {
-        when {
-            current == null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.bgCanvas))
-            !current.onboarded -> OnboardingFlow()
-            else -> MainShell()
+        CompositionLocalProvider(com.sadturtleman.flowershoes.core.designsystem.LocalKkShare provides share) {
+            when {
+                current == null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.bgCanvas))
+                !current.onboarded -> OnboardingFlow()
+                else -> MainShell()
+            }
         }
     }
 }
@@ -97,6 +102,7 @@ private fun OnboardingFlow() {
             onFinished = {},
             onOpenRestore = { overlay = Overlay.RESTORE },
             onOpenPairing = { overlay = Overlay.PAIRING },
+            connect = { onAdvance -> InviteConnect(onAdvance) },
         )
         Overlay.PAIRING -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
         Overlay.RESTORE -> RestoreRoute(onBack = { overlay = null })

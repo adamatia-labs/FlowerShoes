@@ -1,6 +1,22 @@
 package com.sadturtleman.flowershoes.feature.pairing
 
 import androidx.compose.foundation.background
+import com.sadturtleman.flowershoes.core.designsystem.kkElevation
+import com.sadturtleman.flowershoes.core.designsystem.LocalKkShare
+import com.sadturtleman.flowershoes.core.designsystem.KkRadius
+import com.sadturtleman.flowershoes.core.designsystem.KkInput
+import com.sadturtleman.flowershoes.core.designsystem.KkElevation
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -222,3 +238,74 @@ private fun BigText(text: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).semantics { contentDescription = text.toList().joinToString(" ") },
     )
 }
+
+/**
+ * 온보딩 3 · 연결(Figma 53:923)의 본문: 내 초대 코드(눌러서 복사) · 카카오톡으로 초대 보내기 · 상대 코드 입력.
+ * 들어오면 바로 내 코드를 만든다. 상대가 내 코드를 넣었거나 내가 상대 코드를 넣으면 [onAdvance] — 확인 코드(SAS) 비교로 넘어간다.
+ */
+@Composable
+fun ColumnScope.InviteConnect(onAdvance: () -> Unit, viewModel: PairingViewModel = koinViewModel()) {
+    val ui by viewModel.ui.collectAsStateWithLifecycle()
+    val c = KkTheme.colors
+    val clipboard = LocalClipboardManager.current
+    val share = LocalKkShare.current
+    LaunchedEffect(ui.available) { if (ui.available && ui.state is PairingState.Idle) viewModel.create() }
+    LaunchedEffect(ui.state) {
+        when (ui.state) {
+            PairingState.WaitingPartner, is PairingState.CompareSas, PairingState.WaitingConfirm -> onAdvance()
+            else -> Unit
+        }
+    }
+    val code = (ui.state as? PairingState.ShowCode)?.code?.let(CrockfordCode::format)
+    var copied by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(KkRadius.xl)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .kkElevation(KkElevation.Low, shape)
+            .clip(shape)
+            .background(c.bgBrandSubtle)
+            .clickable(enabled = code != null) {
+                clipboard.setText(AnnotatedString(code.orEmpty()))
+                copied = true
+            }
+            .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.xxl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+    ) {
+        Text("내 초대 코드", style = KkTheme.type.labelM, color = c.textBrand)
+        Text(code ?: "····-····", style = KkTheme.type.display, color = c.textPrimary)
+        Text(
+            when {
+                !ui.available -> "서버 설정이 들어가면 코드를 만들 수 있어요"
+                copied -> "복사했어요"
+                else -> "24시간 동안 유효 · 눌러서 복사"
+            },
+            style = KkTheme.type.caption, color = c.textSecondary,
+        )
+    }
+    KkPrimaryButton(
+        "카카오톡으로 초대 보내기",
+        onClick = { code?.let { share("꽃신에서 나랑 연결해 줘! 초대 코드: $it (24시간 동안 유효)") } },
+        enabled = code != null,
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).height(1.dp).background(c.borderDefault))
+        Text("코드를 받았나요?", style = KkTheme.type.caption, color = c.textTertiary)
+        Box(Modifier.weight(1f).height(1.dp).background(c.borderDefault))
+    }
+    KkInput(
+        value = ui.codeInput,
+        onValueChange = {
+            viewModel.editCode(it)
+            // 8자리를 다 넣으면 바로 연결을 시작한다(디자인에 별도 버튼이 없다).
+            if (CrockfordCode.normalize(it)?.length == 8) viewModel.join()
+        },
+        label = "상대 초대 코드",
+        placeholder = "XXXX-XXXX",
+        helper = "연인이 보낸 코드를 입력하세요",
+        error = (ui.state as? PairingState.Failed)?.reason,
+        enabled = ui.available,
+    )
+}
+

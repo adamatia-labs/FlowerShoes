@@ -61,6 +61,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setOnboarded() = store.edit { it[ONBOARDED] = 1 }
 
+    /** 약관 동의(온보딩 0-1)의 선택 항목: 이벤트 · 혜택 알림. 필수 항목은 동의해야 시작할 수 있어 따로 두지 않는다. */
+    suspend fun setMarketingConsent(agreed: Boolean) = store.edit { it[MARKETING] = if (agreed) 1 else 0 }
+
+    val marketingConsent: kotlinx.coroutines.flow.Flow<Boolean> = store.data.map { (it[MARKETING] ?: 0) == 1 }
+
     suspend fun setKeyEpoch(epoch: Int) = store.edit { it[KEY_EPOCH] = epoch }
 
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
@@ -73,6 +78,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val THEME = stringPreferencesKey("theme_accent")
         val ONBOARDED = intPreferencesKey("onboarded")
         val KEY_EPOCH = intPreferencesKey("key_epoch")
+        val MARKETING = intPreferencesKey("marketing_consent")
     }
 }
 
