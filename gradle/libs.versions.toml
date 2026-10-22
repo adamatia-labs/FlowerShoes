@@ -38,6 +38,8 @@ javaxInject = "1"
 kotlinxDatetime = "0.7.1"
 # libsodium KMP 바인딩. Kotlin/Native 호환은 macOS 에서 iOS 빌드로 따로 확인해야 한다(설계 10장 0단계).
 libsodiumBindings = "0.9.2"
+# Room KMP 의 번들 SQLite. Android · iOS 가 같은 SQLite 버전을 쓴다.
+sqlite = "2.6.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -86,6 +88,7 @@ androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-per
 
 # TTI 측정 기록 저장 (:tti:data)
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycleRuntimeKtx" }
 
@@ -112,3 +115,5 @@ kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref 
 kotlinx-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+androidx-room = { id = "androidx.room", version.ref = "room" }
