@@ -105,11 +105,12 @@ class SyncClient(
         is OpPayload.Snapshot -> p.copy(items = p.items.map { uploadBlobs(couple, it) })
         is OpPayload.LetterPut -> if (p.drawings.isEmpty()) p else p.copy(
             drawings = p.drawings.map { d ->
-                val bytes = d.docAttachmentId?.let { attachments.read(it) } ?: return@map d
-                val blobKey = Sodium.random(Aead.KEY_BYTES)
-                val blobId = Uuid.random().toString()
-                blobs.put(couple.id, blobId, Aead.seal(blobKey, bytes))
-                d.copy(docBlobId = blobId, docBlobKey = blobKey.b64())
+                var out = d
+                d.docAttachmentId?.let { id -> upload(couple, id)?.let { (blobId, key) -> out = out.copy(docBlobId = blobId, docBlobKey = key) } }
+                if (d.pngAttachmentId != d.docAttachmentId) {
+                    upload(couple, d.pngAttachmentId)?.let { (blobId, key) -> out = out.copy(pngBlobId = blobId, pngBlobKey = key) }
+                }
+                out
             },
         )
         else -> p
@@ -144,6 +145,22 @@ class SyncClient(
         return true
     }
 
+    /** 첨부 하나를 무작위 키로 암호화해 blob 으로. 돌려주는 값은 (blob id, base64 키). */
+    private suspend fun upload(couple: CoupleEntity, attachmentId: String): Pair<String, String>? {
+        val bytes = attachments.read(attachmentId) ?: return null
+        val blobKey = Sodium.random(Aead.KEY_BYTES)
+        val blobId = Uuid.random().toString()
+        blobs.put(couple.id, blobId, Aead.seal(blobKey, bytes))
+        return blobId to blobKey.b64()
+    }
+
+    private suspend fun download(couple: CoupleEntity, blobId: String?, key: String?, attachmentId: String?, kind: AttachmentKind) {
+        if (blobId == null || key == null || attachmentId == null) return
+        val sealed = blobs.get(couple.id, blobId) ?: return
+        attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
+        blobs.delete(couple.id, blobId)
+    }
+
     /** 편지 안 그림 문서를 받아 보낸 쪽과 같은 첨부 id 로 둔다. 다 받은 뒤에 편지를 반영한다(반쯤 받은 편지를 보여 주지 않게). */
     private suspend fun downloadBlobs(couple: CoupleEntity, payload: ByteArray) {
         OpCodec.decode(payload)?.let { fetchBlobs(couple, it) }
@@ -153,11 +170,8 @@ class SyncClient(
         when (p) {
             is OpPayload.Snapshot -> p.items.forEach { fetchBlobs(couple, it) }
             is OpPayload.LetterPut -> p.drawings.forEach { d ->
-                val blobId = d.docBlobId ?: return@forEach
-                val key = d.docBlobKey?.unb64() ?: return@forEach
-                val sealed = blobs.get(couple.id, blobId) ?: return@forEach
-                attachments.putWithId(checkNotNull(d.docAttachmentId), AttachmentKind.DRAWING_DOC, Aead.open(key, sealed))
-                blobs.delete(couple.id, blobId)
+                download(couple, d.docBlobId, d.docBlobKey, d.docAttachmentId, AttachmentKind.DRAWING_DOC)
+                download(couple, d.pngBlobId, d.pngBlobKey, d.pngAttachmentId, AttachmentKind.DRAWING_PNG)
             }
             else -> Unit
         }

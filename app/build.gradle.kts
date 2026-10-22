@@ -80,6 +80,7 @@ dependencies {
     implementation(project(":core:widget-bridge"))
     implementation(project(":core:notification"))
     implementation(project(":core:backup"))
+    implementation(project(":core:media"))
     // 푸시(초인종). google-services.json 이 있는 빌드에서만 실제로 동작한다.
     implementation(project(":core:firebase"))
     implementation(project.dependencies.platform(libs.firebase.bom))

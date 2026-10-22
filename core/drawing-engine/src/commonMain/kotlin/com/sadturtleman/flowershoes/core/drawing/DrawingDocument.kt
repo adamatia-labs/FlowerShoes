@@ -142,3 +142,8 @@ data class DrawingDocument(
         const val CURRENT_VERSION = 1
     }
 }
+
+/** 문서 → 완성 PNG. 플랫폼 렌더러(:core:media)를 앱 셸이 꽂는다. 위젯 · 알림 · 목록이 이 PNG 를 쓴다. */
+fun interface DrawingRasterizer {
+    fun png(doc: DrawingDocument): ByteArray
+}

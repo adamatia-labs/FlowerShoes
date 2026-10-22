@@ -1,4 +1,4 @@
-package com.sadturtleman.flowershoes.widget
+package com.sadturtleman.flowershoes.core.media
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -6,7 +6,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
-import androidx.core.graphics.createBitmap
 import com.sadturtleman.flowershoes.core.drawing.DrawingCodec
 import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
 import com.sadturtleman.flowershoes.core.drawing.EraserStroke
@@ -20,7 +19,7 @@ import java.io.File
  * 그림 문서를 비트맵으로(위젯 · 알림용). Compose 렌더러(:core:drawing-ui)와 같은 규칙으로 그린다:
  * 배경은 고정 ARGB, 지우개는 실제로 지우고(획 레이어에서 CLEAR), 형광펜은 35% 불투명.
  *
- * 나중에 :core:media 의 PNG 렌더러(설계 5-3, 위젯 크기의 2배)가 붙으면 그 PNG 를 쓴다.
+ * [DrawingPng] 가 이것으로 PNG 를 만든다. 문서를 그 자리에서 그려야 할 때(옛 그림 등)도 쓴다.
  */
 object DrawingBitmap {
 
@@ -33,7 +32,7 @@ object DrawingBitmap {
     fun render(doc: DrawingDocument, widthPx: Int): Bitmap {
         val scale = widthPx.toFloat() / doc.canvas.width
         val heightPx = (doc.canvas.height * scale).toInt()
-        val bitmap = createBitmap(widthPx, heightPx)
+        val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(doc.canvas.backgroundArgb.toInt())
 
@@ -91,4 +90,15 @@ object DrawingBitmap {
         "heart" to "💗", "rose" to "🌹", "star" to "⭐", "kiss" to "😘", "hug" to "🤗",
         "boot" to "🥾", "tag" to "🏷️", "cap" to "🎓", "letter" to "💌", "calendar" to "📅",
     )
+}
+
+actual object DrawingPng {
+    actual fun render(doc: DrawingDocument, widthPx: Int): ByteArray {
+        val bitmap = DrawingBitmap.render(doc, widthPx)
+        return java.io.ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            bitmap.recycle()
+            out.toByteArray()
+        }
+    }
 }

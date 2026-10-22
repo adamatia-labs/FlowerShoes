@@ -77,8 +77,7 @@
    - 연결 해제는 끝났다: `UnlinkService`(키 · 동기화 상태 정리, 보관/모두 지우기), 설정 화면, callable `unlinkCouple`
    - 자동 승인하지 못한 교체 요청(`SyncScheduler.pendingManual`)을 안내하는 화면
    - 기기 교체 자동 승인은 동기화 루프에 연결돼 있다(`RotationApprover`, Firestore 어댑터 `FirestoreRotation`).
-6. **PNG 렌더러(`:core:media`)**
-   - 위젯 · 알림용 완성 PNG를 위젯 크기의 2배로 만든다. 지금 Android 위젯은 문서를 그 자리에서 비트맵으로 그린다.
+6. **PNG 렌더러** — Android는 끝났다(`:core:media` `DrawingPng`). 저장할 때 완성 PNG를 만들고, 동기화 · 위젯이 그 PNG를 쓴다. iOS 구현(Compose + Skia)은 macOS 빌드 확인이 남았다.
 8. **iOS**
    - macOS에서 `xcodegen`으로 프로젝트를 만든다.
    - Kotlin/Native로 libsodium · Room · DataStore를 빌드한다. 설계 10장 0단계 PoC의 남은 항목이다.

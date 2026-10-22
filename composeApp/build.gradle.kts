@@ -43,6 +43,7 @@ kotlin {
             api(project(":feature:settings"))
             api(project(":core:widget-bridge"))
             implementation(project(":core:backup"))
+            implementation(project(":core:media"))
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)

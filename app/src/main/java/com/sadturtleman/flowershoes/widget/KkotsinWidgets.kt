@@ -39,6 +39,7 @@ import com.sadturtleman.flowershoes.core.data.MissYouRepository
 import com.sadturtleman.flowershoes.core.designsystem.KkColors
 import com.sadturtleman.flowershoes.core.designsystem.kkColors
 import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.media.DrawingBitmap
 import com.sadturtleman.flowershoes.core.widget.SnapshotStore
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshot
 import okio.Path.Companion.toPath
@@ -181,7 +182,9 @@ class DrawingWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val s = snapshotStore(context).read()
         val p = Palette(ThemeAccentOf(s))
-        val bitmap: Bitmap? = s?.drawingDocPath?.let { DrawingBitmap.render(it, widthPx = 680) }
+        // 완성 PNG 가 있으면 그대로, 없으면(옛 그림) 문서를 그 자리에서 그린다.
+        val bitmap: Bitmap? = s?.drawingPngPath?.let { android.graphics.BitmapFactory.decodeFile(it) }
+            ?: s?.drawingDocPath?.let { DrawingBitmap.render(it, widthPx = 680) }
         provideContent {
             GlanceTheme {
                 val open = s?.drawingLetterId?.let {

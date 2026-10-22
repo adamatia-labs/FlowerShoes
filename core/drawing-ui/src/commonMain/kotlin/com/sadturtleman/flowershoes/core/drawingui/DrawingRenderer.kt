@@ -139,6 +139,9 @@ fun DrawingView(doc: DrawingDocument, modifier: Modifier = Modifier, showGuides:
     }
 }
 
+/** PNG 내보내기(:core:media)용. 컴포지션 밖에서 만든 [measurer] 로 그린다. */
+fun DrawScope.drawStickerForExport(s: StickerElement, sx: Float, measurer: androidx.compose.ui.text.TextMeasurer) = drawSticker(s, sx, 1f, measurer)
+
 internal fun DrawScope.drawSticker(s: StickerElement, sx: Float, pop: Float, measurer: androidx.compose.ui.text.TextMeasurer) {
     val glyph = STICKERS[s.stickerId] ?: "❔"
     val layout = measurer.measure(glyph, TextStyle(fontSize = (64 * sx).sp))

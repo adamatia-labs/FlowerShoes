@@ -73,6 +73,9 @@ data class DrawingMeta(
     /** 보낼 때 채운다: 그림 문서를 무작위 키로 암호화해 올린 blob 과 그 키(base64). Op 본문 자체가 커플 키로 암호화된다. */
     val docBlobId: String? = null,
     val docBlobKey: String? = null,
+    /** 완성 PNG 도 같은 방식으로(위젯 · 알림에 바로 쓴다). */
+    val pngBlobId: String? = null,
+    val pngBlobKey: String? = null,
 )
 
 object OpCodec {

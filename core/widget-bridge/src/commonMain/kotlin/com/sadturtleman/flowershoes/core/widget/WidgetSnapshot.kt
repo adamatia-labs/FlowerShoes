@@ -45,6 +45,8 @@ data class WidgetSnapshot(
     val linked: Boolean = false,
     /** 받은 그림 위젯: 공개된(예약 편지 제외) 가장 최근 편지의 첫 그림. 문서 첨부 경로와 모양. */
     val drawingDocPath: String? = null,
+    /** 완성 PNG 가 있으면 위젯은 이것을 그대로 쓴다(문서를 그 자리에서 그리지 않는다). */
+    val drawingPngPath: String? = null,
     val drawingShape: String? = null,
     val drawingLetterId: String? = null,
     val updatedAtMs: Long,
@@ -116,6 +118,7 @@ class WidgetSnapshotPublisher(
                     missYouFromPartnerToday = count,
                     linked = partner.isNotEmpty(),
                     drawingDocPath = drawing?.docAttachmentId?.let { (attachmentsRoot / it).toString() },
+                    drawingPngPath = drawing?.takeIf { it.pngAttachmentId != it.docAttachmentId }?.let { (attachmentsRoot / it.pngAttachmentId).toString() },
                     drawingShape = drawing?.shape,
                     drawingLetterId = drawing?.letterId,
                     updatedAtMs = 0,

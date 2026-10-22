@@ -40,6 +40,8 @@ import com.sadturtleman.flowershoes.core.data.sync.RelinkSession
 import com.sadturtleman.flowershoes.core.data.sync.RelinkTransport
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
+import com.sadturtleman.flowershoes.core.drawing.DrawingRasterizer
+import com.sadturtleman.flowershoes.core.media.DrawingPng
 import okio.Path
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
@@ -98,7 +100,7 @@ fun kkotsinModules(
         viewModel { HomeViewModel(get(), get(), get(), get()) }
         viewModel { CalendarViewModel(get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get()) }
-        viewModel { DrawingEditorViewModel(get(), get()) }
+        viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { DrawingPng.render(it) }, get()) }
         viewModel { MemoryViewModel(get(), get(), get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
         viewModel { SettingsViewModel(get(), get(), get()) }

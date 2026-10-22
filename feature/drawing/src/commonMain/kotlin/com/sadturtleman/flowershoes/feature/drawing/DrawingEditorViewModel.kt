@@ -8,6 +8,7 @@ import com.sadturtleman.flowershoes.core.drawing.BrushSize
 import com.sadturtleman.flowershoes.core.drawing.CanvasSpec
 import com.sadturtleman.flowershoes.core.drawing.DrawingCodec
 import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
+import com.sadturtleman.flowershoes.core.drawing.DrawingRasterizer
 import com.sadturtleman.flowershoes.core.drawing.Element
 import com.sadturtleman.flowershoes.core.drawing.EraserStroke
 import com.sadturtleman.flowershoes.core.drawing.PointBuffer
@@ -91,6 +92,8 @@ sealed interface DrawingEvent {
  */
 class DrawingEditorViewModel(
     private val attachments: AttachmentStore,
+    /** 완성 PNG(위젯 · 알림용). 없는 플랫폼에서는 문서로 그린다. */
+    private val rasterizer: DrawingRasterizer? = null,
     @Suppress("unused") private val clock: Clock = Clock.System,
 ) : ViewModel() {
 
@@ -184,13 +187,13 @@ class DrawingEditorViewModel(
                 DrawingDocument(canvas = CanvasSpec(s.shape), elements = s.elements, totalDurationMs = nowMs()),
             )
             val docId = attachments.put(AttachmentKind.DRAWING_DOC, DrawingCodec.encode(doc))
-            // PNG(위젯 · 알림용)은 :core:media 의 플랫폼 렌더러가 붙으면 여기서 함께 만든다. 지금은 문서로 그린다.
+            val pngId = rasterizer?.let { r -> runCatching { attachments.put(AttachmentKind.DRAWING_PNG, r.png(doc)) }.getOrNull() } ?: docId
             val meta = DrawingMeta(
                 id = newId(),
                 orderInLetter = 0,
                 shape = s.shape.name,
                 docAttachmentId = docId,
-                pngAttachmentId = docId,
+                pngAttachmentId = pngId,
                 caption = null,
                 replayEnabled = s.replayEnabled,
                 replayDurationMs = ReplayTimeline.of(doc).durationMs,
