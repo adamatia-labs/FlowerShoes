@@ -60,6 +60,19 @@ class AndroidBackupSource(
 
     override suspend fun coupleKeys(): Map<Int, ByteArray> = vault.allCoupleKeys().associate { it.epoch to it.export() }
 
+    override suspend fun summary(): com.sadturtleman.flowershoes.core.backup.BackupSummary {
+        val kinds = db.attachmentDao().all().groupingBy { it.kind }.eachCount()
+        val me = settings.state.first().userId
+        val partner = db.coupleDao().get()?.partnerUserId
+        return com.sadturtleman.flowershoes.core.backup.BackupSummary(
+            letters = db.letterDao().allActive().size,
+            drawings = kinds[AttachmentKind.DRAWING_DOC.name] ?: 0,
+            photos = kinds[AttachmentKind.PHOTO.name] ?: 0,
+            myName = db.userDao().get(me)?.nickname.orEmpty(),
+            partnerName = partner?.let { db.userDao().get(it)?.nickname }.orEmpty(),
+        )
+    }
+
     override suspend fun deviceSettings(): ByteArray {
         val s = settings.state.first()
         return Json.encodeToString(DeviceSettingsBackup.serializer(), DeviceSettingsBackup(s.theme.name, s.role?.name, s.onboarded)).encodeToByteArray()

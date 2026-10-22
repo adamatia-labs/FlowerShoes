@@ -38,11 +38,28 @@ interface BackupSource {
     /** 이 기기만 쓰는 설정(테마 · 알림 · 임시저장). 복원할 때 편의로 함께 돌려준다. */
     suspend fun deviceSettings(): ByteArray
 
+    /** 복원 화면이 보여 주는 요약(편지 · 그림 · 사진 개수, 이름). manifest 와 함께 암호화된다. */
+    suspend fun summary(): BackupSummary = BackupSummary()
+
     val schemaVersion: Int
 }
 
 @Serializable
 data class BlobRef(val attachmentId: String, val kind: String, val name: String)
+
+/** 복원 화면(복원 · 백업 찾음)의 "편지 128 · 그림 42 · 사진 310 · 1.2GB" 와 인사말 이름. */
+@Serializable
+data class BackupSummary(
+    val letters: Int = 0,
+    val drawings: Int = 0,
+    val photos: Int = 0,
+    val bytes: Long = 0,
+    val myName: String = "",
+    val partnerName: String = "",
+)
+
+/** 복원 단계(복원 · 복원 중 화면의 줄). */
+enum class RestoreStage { DATA, MEDIA, RELINK }
 
 @Serializable
 data class BackupManifest(
@@ -53,6 +70,7 @@ data class BackupManifest(
     val blobs: List<BlobRef>,
     val coupleKeys: Map<Int, String>,
     val deviceSettings: String,
+    val summary: BackupSummary = BackupSummary(),
 )
 
 /** 복원 결과. 앱이 DB 파일을 바꿔 끼우고 첨부 · 키 · 설정을 되돌린다. */
@@ -92,11 +110,14 @@ class BackupEngine(
 
         // 1) 첨부(없는 것만)
         val existing = storage.list("$root/blobs/").map { it.path.substringAfterLast('/') }.toSet()
+        var blobsBytes = 0L
         val blobs = source.attachments().map { a ->
             val name = key.blobName(a.sha256)
             if (name !in existing) {
                 val path = "$root/blobs/$name"
-                storage.put(path, Aead.seal(dataKey, Zstd.packFlagged(a.read()), path.encodeToByteArray()))
+                val bytes = a.read()
+                blobsBytes += bytes.size
+                storage.put(path, Aead.seal(dataKey, Zstd.packFlagged(bytes), path.encodeToByteArray()))
             }
             BlobRef(a.id, a.kind, name)
         }
@@ -119,6 +140,7 @@ class BackupEngine(
             blobs = blobs,
             coupleKeys = source.coupleKeys().mapValues { Base64.encode(it.value) },
             deviceSettings = Base64.encode(source.deviceSettings()),
+            summary = runCatching { source.summary() }.getOrDefault(BackupSummary()).copy(bytes = db.size.toLong() + blobsBytes),
         )
         val manifestPath = "$root/manifests/$version"
         storage.put(manifestPath, Aead.seal(dataKey, json.encodeToString(BackupManifest.serializer(), manifest).encodeToByteArray(), manifestPath.encodeToByteArray()))
@@ -128,24 +150,39 @@ class BackupEngine(
     }
 
     /** 가장 최근 manifest 로 복원한다. 백업이 없으면 null. 앱보다 새 스키마면 [BackupTooNewException]. */
-    suspend fun restore(uid: String, appSchemaVersion: Int): RestoredBackup? {
+    suspend fun restore(
+        uid: String,
+        appSchemaVersion: Int,
+        onProgress: (fraction: Float, stage: RestoreStage) -> Unit = { _, _ -> },
+    ): RestoredBackup? {
         val root = "backups/$uid"
         val dataKey = key.dataKey()
-        val manifest = manifests(root).maxByOrNull { it.version } ?: return null
+        val manifest = latestManifest(uid) ?: return null
         if (manifest.schemaVersion > appSchemaVersion) throw BackupTooNewException(manifest.schemaVersion)
+        val total = (manifest.dbChunks.size + manifest.blobs.size).coerceAtLeast(1)
+        var done = 0
+        onProgress(0f, RestoreStage.DATA)
         val db = manifest.dbChunks.fold(ByteArray(0)) { acc, path ->
-            acc + Zstd.unpackFlagged(Aead.open(dataKey, checkNotNull(storage.get(path)) { "조각이 없다: $path" }, path.encodeToByteArray()))
+            val part = Zstd.unpackFlagged(Aead.open(dataKey, checkNotNull(storage.get(path)) { "조각이 없다: $path" }, path.encodeToByteArray()))
+            onProgress(++done / total.toFloat(), RestoreStage.DATA)
+            acc + part
         }
         val attachments = manifest.blobs.associate { b ->
             val path = "$root/blobs/${b.name}"
-            b.attachmentId to (b.kind to Zstd.unpackFlagged(Aead.open(dataKey, checkNotNull(storage.get(path)) { "첨부가 없다: $path" }, path.encodeToByteArray())))
+            val bytes = Zstd.unpackFlagged(Aead.open(dataKey, checkNotNull(storage.get(path)) { "첨부가 없다: $path" }, path.encodeToByteArray()))
+            onProgress(++done / total.toFloat(), RestoreStage.MEDIA)
+            b.attachmentId to (b.kind to bytes)
         }
+        onProgress(1f, RestoreStage.RELINK)
         return RestoredBackup(
             manifest, db, attachments,
             manifest.coupleKeys.mapValues { Base64.decode(it.value) },
             Base64.decode(manifest.deviceSettings),
         )
     }
+
+    /** 가장 최근 manifest(이 키로 풀리는 것). 없으면 null. */
+    suspend fun latestManifest(uid: String): BackupManifest? = manifests("backups/$uid").maxByOrNull { it.version }
 
     private suspend fun manifests(root: String): List<BackupManifest> {
         val dataKey = key.dataKey()

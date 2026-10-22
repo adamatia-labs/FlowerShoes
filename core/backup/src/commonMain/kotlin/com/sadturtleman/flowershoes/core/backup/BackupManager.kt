@@ -31,6 +31,15 @@ fun interface RestoreApplier {
     suspend fun apply(restored: RestoredBackup)
 }
 
+/**
+ * 로그인 직후 보여 줄 백업 정보(복원 · 백업 찾음). 열쇠가 있으면 manifest 를 풀어 요약까지,
+ * 없으면 시각만 안다([summary] null).
+ */
+class BackupPreview(val createdAtMs: Long, val summary: BackupSummary?, val keySource: KeySource)
+
+/** 백업 열쇠를 어디서 찾았는지. NONE 이면 복구 코드가 필요하다. */
+enum class KeySource { THIS_DEVICE, PLATFORM_SYNC, NONE }
+
 sealed interface RestoreResult {
     data object NoBackup : RestoreResult
 
@@ -84,8 +93,25 @@ class BackupManager(
 
     suspend fun hasBackup(uid: String): Boolean = storage.list("backups/$uid/manifests/").isNotEmpty()
 
+    suspend fun preview(uid: String): BackupPreview? {
+        val newest = storage.list("backups/$uid/manifests/").maxByOrNull { it.createdAtMs } ?: return null
+        val local = vault.backupSecrets()?.first
+        val synced = if (local == null) runCatching { keySync?.load() }.getOrNull() else null
+        val source = when {
+            local != null -> KeySource.THIS_DEVICE
+            synced != null -> KeySource.PLATFORM_SYNC
+            else -> KeySource.NONE
+        }
+        val manifest = (local ?: synced)?.let { runCatching { BackupEngine(BackupKey(it), storage, clock).latestManifest(uid) }.getOrNull() }
+        return BackupPreview(manifest?.createdAtMs ?: newest.createdAtMs, manifest?.summary, source)
+    }
+
     /** [recoveryCode] 가 null 이면 동기화된 BK 로만 시도한다. */
-    suspend fun restore(uid: String, recoveryCode: String? = null): RestoreResult {
+    suspend fun restore(
+        uid: String,
+        recoveryCode: String? = null,
+        onProgress: (fraction: Float, stage: RestoreStage) -> Unit = { _, _ -> },
+    ): RestoreResult {
         if (!hasBackup(uid)) return RestoreResult.NoBackup
         val key = when {
             recoveryCode != null -> try {
@@ -97,7 +123,7 @@ class BackupManager(
                 ?: return RestoreResult.NeedsRecoveryCode
         }
         val restored = try {
-            BackupEngine(key, storage, clock).restore(uid, appSchemaVersion)
+            BackupEngine(key, storage, clock).restore(uid, appSchemaVersion, onProgress)
         } catch (e: BackupTooNewException) {
             return RestoreResult.TooNew(e.schemaVersion)
         } ?: return RestoreResult.NeedsRecoveryCode // 이 키로 풀리는 manifest 가 없다

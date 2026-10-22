@@ -33,6 +33,8 @@ class AndroidPlatformActions(private val context: Context) : PlatformActions {
         return AppWidgetManager.getInstance(context).requestPinAppWidget(ComponentName(context, target), null, null)
     }
 
+    override val keySyncName: String get() = "Google 계정 백업"
+
     override suspend fun deleteSyncedBackupKey() {
         com.sadturtleman.flowershoes.app.backup.BlockStoreKeySync(context).delete()
     }

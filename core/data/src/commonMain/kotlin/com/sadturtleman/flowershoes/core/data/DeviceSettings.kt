@@ -49,7 +49,13 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         return state.first()
     }
 
-    suspend fun bindAccount(uid: String) = store.edit { it[USER_ID] = uid }
+    /** [provider] 는 로그인 방법(KAKAO · APPLE · GOOGLE) — 복원 · 설정 › 로그인 계정 화면에 보인다. */
+    suspend fun bindAccount(uid: String, provider: String? = null) = store.edit {
+        it[USER_ID] = uid
+        if (provider != null) it[PROVIDER] = provider
+    }
+
+    val accountProvider: Flow<String?> = store.data.map { it[PROVIDER] }
 
     suspend fun setRole(role: Role) = store.edit {
         it[ROLE] = role.name
@@ -79,6 +85,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val ONBOARDED = intPreferencesKey("onboarded")
         val KEY_EPOCH = intPreferencesKey("key_epoch")
         val MARKETING = intPreferencesKey("marketing_consent")
+        val PROVIDER = stringPreferencesKey("account_provider")
     }
 }
 

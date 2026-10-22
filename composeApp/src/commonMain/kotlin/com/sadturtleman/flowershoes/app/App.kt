@@ -105,7 +105,20 @@ private fun OnboardingFlow() {
             connect = { onAdvance -> InviteConnect(onAdvance) },
         )
         Overlay.PAIRING -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
-        Overlay.RESTORE -> RestoreRoute(onBack = { overlay = null })
+        Overlay.RESTORE -> {
+            val onboarding = koinViewModel<com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel>()
+            RestoreRoute(
+                onBack = { overlay = null },
+                onStartFresh = { overlay = null },
+                // 복구 코드도 없으면 연인 폰에서 넘겨받는다(6 · 재연결).
+                onRelink = { overlay = Overlay.PAIRING },
+                onOtherAccount = {
+                    onboarding.onIntent(com.sadturtleman.flowershoes.feature.onboarding.OnboardingIntent.SignOut)
+                    overlay = null
+                },
+                platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
+            )
+        }
         else -> ComingSoon(overlay!!.title(), onBack = { overlay = null })
     }
 }
@@ -205,6 +218,12 @@ private fun MainShell() {
     }
     val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
     val restoreState = scheduler?.restoreState?.collectAsState()?.value
+    // 복원 뒤 다시 시작했을 때 한 번: "거의 다 됐어요"(복원 · 지수 폰 확인 대기). 둘러보기를 누르면 배너만 남는다.
+    var waitingSeen by rememberSaveable { mutableStateOf(false) }
+    if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner && !waitingSeen) {
+        com.sadturtleman.flowershoes.feature.settings.RestoreWaitingScreen(partnerName = "연인", onBrowse = { waitingSeen = true })
+        return
+    }
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
         if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner) {
             // 복원 뒤 기기 교체(7-3-A): 상대 폰이 동기화하면 자동으로 확인된다.

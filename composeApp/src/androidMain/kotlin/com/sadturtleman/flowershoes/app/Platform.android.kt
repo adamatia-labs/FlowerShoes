@@ -28,14 +28,17 @@ fun kkotsinAndroidModules(
     val firebase = com.google.firebase.FirebaseApp.getApps(app).isNotEmpty()
     (app as? android.app.Application)?.registerActivityLifecycleCallbacks(com.sadturtleman.flowershoes.app.auth.CurrentActivity)
     // Firebase 가 연결된 빌드에서만 실제 로그인. 아니면 로그인 없이 이 기기 안에서만.
-    var backupForAuth: com.sadturtleman.flowershoes.core.backup.BackupManager? = null
+    // 로그인 직후 "백업이 있나" — BackupManager 는 처음 쓸 때 만들어지므로 그 자리에서 Koin 에서 꺼낸다.
+    val hasBackup: suspend (String) -> Boolean = { uid ->
+        org.koin.mp.KoinPlatform.getKoin().getOrNull<com.sadturtleman.flowershoes.core.backup.BackupManager>()?.hasBackup(uid) ?: false
+    }
     val auth: com.sadturtleman.flowershoes.core.auth.AuthGateway =
         if (firebase && (emulatorHost.isNotBlank() || devEmailLogin)) {
             com.sadturtleman.flowershoes.app.auth.DevEmailAuthGateway(
                 deviceTag = { "dev-" + android.provider.Settings.Secure.getString(app.contentResolver, android.provider.Settings.Secure.ANDROID_ID) },
-                hasBackup = { uid -> backupForAuth?.hasBackup(uid) ?: false },
+                hasBackup = hasBackup,
             )
-        } else if (firebase) com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys, hasBackup = { uid -> backupForAuth?.hasBackup(uid) ?: false })
+        } else if (firebase) com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys, hasBackup = hasBackup)
         else com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway()
     val attachments = app.filesDir.resolve("attachments").absolutePath.toPath()
     return kkotsinModules(
@@ -53,14 +56,14 @@ fun kkotsinAndroidModules(
             val storage: com.sadturtleman.flowershoes.core.backup.BackupStorage =
                 if (firebase) com.sadturtleman.flowershoes.app.backup.FirebaseStorageBackup()
                 else com.sadturtleman.flowershoes.core.backup.FileBackupStorage(app.filesDir.resolve("backup-local").absolutePath.toPath())
-            backupForAuth ?: com.sadturtleman.flowershoes.core.backup.BackupManager(
+            com.sadturtleman.flowershoes.core.backup.BackupManager(
                 storage = storage,
                 source = com.sadturtleman.flowershoes.app.backup.AndroidBackupSource(app, get(), get(), get(), get()),
                 vault = get(),
                 keySync = com.sadturtleman.flowershoes.app.backup.BlockStoreKeySync(app),
                 applier = com.sadturtleman.flowershoes.app.backup.AndroidRestoreApplier(app, get(), get(), get(), get()),
                 appSchemaVersion = com.sadturtleman.flowershoes.app.backup.AndroidBackupSource.DB_VERSION,
-            ).also { backupForAuth = it }
+            )
         }
     }
 }

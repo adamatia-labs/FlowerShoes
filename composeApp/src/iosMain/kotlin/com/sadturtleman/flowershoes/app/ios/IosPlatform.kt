@@ -57,6 +57,8 @@ fun appGroupRoot(): Path {
 
 /** 기기 인증: LAContext .deviceOwnerAuthentication(Face ID · Touch ID, 없으면 기기 암호). */
 class IosPlatformActions : PlatformActions {
+    override val keySyncName: String get() = "iCloud 키체인"
+
     override suspend fun authenticate(reason: String): DeviceAuth {
         val context = LAContext()
         if (!context.canEvaluatePolicy(LAPolicyDeviceOwnerAuthentication, null)) return DeviceAuth.NoLockScreen

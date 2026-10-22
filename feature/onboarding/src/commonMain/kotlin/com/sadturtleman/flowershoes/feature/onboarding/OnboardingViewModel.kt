@@ -92,6 +92,9 @@ sealed interface OnboardingIntent {
 
     /** 폰을 바꿨다 — 백업에서 복원. */
     data object OpenRestore : OnboardingIntent
+
+    /** 복원 · 백업 없음 › "다른 방법으로 로그인했었나요?" — 로그아웃하고 처음 화면으로. */
+    data object SignOut : OnboardingIntent
 }
 
 sealed interface OnboardingEvent {
@@ -145,6 +148,10 @@ class OnboardingViewModel(
             OnboardingIntent.FinishSolo -> finish(OnboardingEvent.Finished)
             OnboardingIntent.StartPairing -> finish(OnboardingEvent.OpenPairing)
             OnboardingIntent.OpenRestore -> viewModelScope.launch { _events.send(OnboardingEvent.OpenRestore) }
+            OnboardingIntent.SignOut -> viewModelScope.launch {
+                runCatching { auth.signOut() }
+                _state.update { it.copy(step = OnboardingStep.LOGIN, agreed = emptySet()) }
+            }
         }
     }
 
@@ -154,9 +161,10 @@ class OnboardingViewModel(
         viewModelScope.launch {
             when (val r = auth.signIn(provider)) {
                 is SignInResult.Success -> {
-                    if (r.uid.isNotEmpty()) settings.bindAccount(r.uid)
+                    if (r.uid.isNotEmpty()) settings.bindAccount(r.uid, r.provider.name)
                     if (r.hasBackup) {
-                        _state.update { it.copy(signingIn = false) }
+                        // 복원 화면에서 "처음 시작하기"로 돌아오면 약관부터.
+                        _state.update { it.copy(signingIn = false, step = OnboardingStep.TERMS) }
                         _events.send(OnboardingEvent.OpenRestore)
                     } else {
                         _state.update { it.copy(signingIn = false, step = OnboardingStep.TERMS) }

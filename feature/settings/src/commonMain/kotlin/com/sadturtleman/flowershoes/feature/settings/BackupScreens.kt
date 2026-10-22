@@ -1,6 +1,37 @@
 package com.sadturtleman.flowershoes.feature.settings
 
 import androidx.compose.foundation.background
+import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.number
+import kotlinx.datetime.TimeZone
+import kotlinx.coroutines.flow.first
+import com.sadturtleman.flowershoes.core.designsystem.kkElevation
+import com.sadturtleman.flowershoes.core.designsystem.KkSpinner
+import com.sadturtleman.flowershoes.core.designsystem.KkRadius
+import com.sadturtleman.flowershoes.core.designsystem.KkInput
+import com.sadturtleman.flowershoes.core.designsystem.KkIcons
+import com.sadturtleman.flowershoes.core.designsystem.KkIcon
+import com.sadturtleman.flowershoes.core.designsystem.KkElevation
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
+import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import com.sadturtleman.flowershoes.core.backup.RestoreStage
+import com.sadturtleman.flowershoes.core.backup.KeySource
+import com.sadturtleman.flowershoes.core.backup.BackupPreview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -120,26 +151,262 @@ fun BackupSection(platform: PlatformActions = NoPlatformActions, viewModel: Back
     }
 }
 
-/** 새 폰 · 재설치: 백업에서 복원. */
+/** 복원 화면 상태(Figma 1 · 온보딩의 복원 다섯 화면). */
+sealed interface RestoreUi {
+    data object Loading : RestoreUi
+    data class Found(val preview: BackupPreview) : RestoreUi
+    data class Code(val input: String = "", val error: String? = null, val busy: Boolean = false) : RestoreUi
+    data class Restoring(val fraction: Float, val stage: RestoreStage) : RestoreUi
+    data class NoBackup(val accountLabel: String) : RestoreUi
+    data class Failed(val message: String) : RestoreUi
+    data object Unavailable : RestoreUi
+}
+
+/** 복원 흐름. 성공하면 앱이 DB 를 바꿔 끼우고 다시 시작한다(그 뒤 "거의 다 됐어요"는 셸이 보여 준다). */
+class RestoreViewModel(
+    private val manager: BackupManager?,
+    private val identity: Identity,
+    private val settings: com.sadturtleman.flowershoes.core.data.DeviceSettings,
+) : ViewModel() {
+    private val _ui = MutableStateFlow<RestoreUi>(if (manager == null) RestoreUi.Unavailable else RestoreUi.Loading)
+    val ui: StateFlow<RestoreUi> = _ui.asStateFlow()
+
+    init {
+        manager?.let { m ->
+            viewModelScope.launch {
+                val preview = runCatching { m.preview(identity.userId) }.getOrNull()
+                _ui.value = if (preview != null) RestoreUi.Found(preview) else RestoreUi.NoBackup(accountLabel())
+            }
+        }
+    }
+
+    private suspend fun accountLabel(): String {
+        val provider = when (settings.accountProvider.first()) {
+            "KAKAO" -> "카카오"
+            "APPLE" -> "Apple"
+            "GOOGLE" -> "Google"
+            else -> "이 기기"
+        }
+        return "$provider 계정"
+    }
+
+    fun useRecoveryCode() { _ui.value = RestoreUi.Code() }
+
+    fun editCode(text: String) = _ui.update { (it as? RestoreUi.Code)?.copy(input = text.uppercase(), error = null) ?: it }
+
+    fun restore() {
+        val m = manager ?: return
+        val code = (_ui.value as? RestoreUi.Code)?.input?.takeIf { it.isNotBlank() }
+        viewModelScope.launch {
+            _ui.update { if (it is RestoreUi.Code) it.copy(busy = true) else RestoreUi.Restoring(0f, RestoreStage.DATA) }
+            val result = runCatching {
+                m.restore(identity.userId, code) { f, stage -> _ui.value = RestoreUi.Restoring(f, stage) }
+            }.getOrElse { e -> _ui.value = RestoreUi.Failed("복원하지 못했어요: ${e.message}"); return@launch }
+            _ui.value = when (result) {
+                RestoreResult.NoBackup -> RestoreUi.NoBackup(accountLabel())
+                RestoreResult.NeedsRecoveryCode -> RestoreUi.Code()
+                RestoreResult.WrongRecoveryCode -> RestoreUi.Code(code.orEmpty(), "복구 코드가 맞지 않아요. 다시 확인해 주세요")
+                is RestoreResult.TooNew -> RestoreUi.Failed("앱을 업데이트한 뒤 다시 복원해 주세요")
+                is RestoreResult.Restored -> RestoreUi.Restoring(1f, RestoreStage.RELINK)
+            }
+        }
+    }
+}
+
+/**
+ * 새 폰 · 재설치: 백업에서 복원.
+ * [onStartFresh] 처음 시작하기 · [onRelink] 복구 코드가 없어요(연인 폰에서 넘겨받기) · [onOtherAccount] 다른 방법으로 로그인했었나요?
+ */
 @Composable
-fun RestoreRoute(onBack: () -> Unit, viewModel: BackupViewModel = koinViewModel()) {
+fun RestoreRoute(
+    onBack: () -> Unit,
+    onStartFresh: () -> Unit = onBack,
+    onRelink: () -> Unit = onBack,
+    onOtherAccount: () -> Unit = onBack,
+    platform: PlatformActions = NoPlatformActions,
+    viewModel: RestoreViewModel = koinViewModel(),
+) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val c = KkTheme.colors
+    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+        ) {
+            when (val s = ui) {
+                RestoreUi.Loading -> Box(Modifier.fillMaxWidth().padding(top = 120.dp), contentAlignment = Alignment.Center) { KkSpinner(c.textBrand, 28.dp) }
+                RestoreUi.Unavailable -> Header("백업에서 복원하기", "이 플랫폼에서는 아직 백업을 쓸 수 없어요.")
+                is RestoreUi.Found -> FoundContent(s.preview, platform.keySyncName)
+                is RestoreUi.Code -> {
+                    Header(
+                        "복구 코드를 입력해 주세요",
+                        "다른 기종으로 바꿨거나 키체인 동기화가 꺼져 있으면 열쇠가 넘어오지 않아요. 백업을 켤 때 적어 둔 24자리 코드를 입력해 주세요.",
+                    )
+                    KkInput(
+                        value = s.input,
+                        onValueChange = viewModel::editCode,
+                        label = "복구 코드",
+                        placeholder = "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX",
+                        helper = "대문자와 숫자 24자리 · 하이픈은 없어도 돼요",
+                        error = s.error,
+                    )
+                }
+                is RestoreUi.Restoring -> RestoringContent(s)
+                is RestoreUi.NoBackup -> {
+                    Header("이 계정에는 백업이 없어요", "처음 쓰는 거라면 바로 시작하면 돼요. 예전에 다른 방법으로 로그인했다면 그 계정에 기록이 있어요.")
+                    InfoCard {
+                        Text("지금 로그인한 계정", style = KkTheme.type.caption, color = c.textTertiary)
+                        Text(s.accountLabel, style = KkTheme.type.titleS, color = c.textPrimary)
+                        Text("백업 없음 · 처음 로그인", style = KkTheme.type.bodyS, color = c.textSecondary)
+                    }
+                }
+                is RestoreUi.Failed -> Header("복원하지 못했어요", s.message)
+            }
+        }
+        Column(
+            Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+        ) {
+            when (val s = ui) {
+                is RestoreUi.Found -> {
+                    KkPrimaryButton("복원하기", viewModel::restore, enabled = s.preview.keySource != KeySource.NONE)
+                    KkButton("복구 코드로 복원하기", viewModel::useRecoveryCode, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+                }
+                is RestoreUi.Code -> {
+                    KkPrimaryButton("복원하기", viewModel::restore, enabled = s.input.isNotBlank(), loading = s.busy)
+                    KkButton("복구 코드가 없어요", onRelink, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+                }
+                is RestoreUi.NoBackup -> {
+                    KkPrimaryButton("처음 시작하기", onStartFresh)
+                    KkSecondaryButton("다른 방법으로 로그인했었나요?", onOtherAccount)
+                }
+                is RestoreUi.Failed, RestoreUi.Unavailable -> KkButton("돌아가기", onBack, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+                // 복원 중에는 버튼이 없다(Figma: 빈 Footer).
+                else -> Spacer(Modifier.height(52.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Header(title: String, body: String) {
+    Text(title, style = KkTheme.type.titleL, color = KkTheme.colors.textPrimary)
+    Text(body, style = KkTheme.type.bodyL, color = KkTheme.colors.textSecondary)
+}
+
+/** 흰 카드(반경 12, Elevation/Low, 여백 20). */
+@Composable
+private fun InfoCard(spacing: androidx.compose.ui.unit.Dp = 10.dp, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().padding(KkSpacing.screen),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
-    ) {
-        Text("← 돌아가기", style = KkTheme.type.labelM, color = c.textSecondary, modifier = Modifier.clickable(onClick = onBack))
-        KkScreenHeader("백업에서 복원하기", "같은 계정으로 로그인했다면 편지 · 그림 · 일정을 그대로 되살릴 수 있어요.")
-        if (!ui.available) {
-            Text("이 플랫폼에서는 아직 백업을 쓸 수 없어요.", style = KkTheme.type.bodyM, color = c.textTertiary)
-            return@Column
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(KkTheme.colors.bgSurface).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(spacing),
+        content = content,
+    )
+}
+
+@Composable
+private fun FoundContent(preview: BackupPreview, keySyncName: String) {
+    val c = KkTheme.colors
+    val sum = preview.summary
+    Header(
+        if (!sum?.myName.isNullOrBlank()) "다시 오셨네요, ${sum?.myName}님" else "다시 오셨네요",
+        "이 계정의 백업을 찾았어요. 복원하면 ${sum?.partnerName?.takeIf { it.isNotBlank() } ?: "연인"}과 바로 다시 이어져요.",
+    )
+    InfoCard {
+        Text("마지막 백업", style = KkTheme.type.caption, color = c.textTertiary)
+        Text(backupTime(preview.createdAtMs), style = KkTheme.type.titleS, color = c.textPrimary)
+        Text(
+            sum?.let { "편지 ${it.letters} · 그림 ${it.drawings} · 사진 ${it.photos} · ${bytesLabel(it.bytes)}" } ?: "열쇠를 찾으면 담긴 내용을 볼 수 있어요",
+            style = KkTheme.type.bodyS, color = c.textSecondary,
+        )
+        val found = preview.keySource != KeySource.NONE
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgBrandSubtle).padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (found) c.statusSuccess else c.statusDanger))
+            Text(
+                when (preview.keySource) {
+                    KeySource.THIS_DEVICE -> "이 폰에 백업 열쇠가 있어요"
+                    KeySource.PLATFORM_SYNC -> "${keySyncName}에서 백업 열쇠를 찾았어요"
+                    KeySource.NONE -> "백업 열쇠를 찾지 못했어요 · 복구 코드가 필요해요"
+                },
+                style = KkTheme.type.bodyS, color = c.textPrimary, modifier = Modifier.weight(1f),
+            )
         }
-        if (ui.needsCode) {
-            KkTextField(ui.codeInput, viewModel::editCode, placeholder = "복구 코드 24자리")
+    }
+}
+
+@Composable
+private fun RestoringContent(s: RestoreUi.Restoring) {
+    val c = KkTheme.colors
+    Header("백업을 복원하는 중이에요", "앱을 닫지 말고 와이파이에 연결해 두세요.")
+    InfoCard(spacing = 14.dp) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("${(s.fraction * 100).toInt()}%", style = KkTheme.type.titleM, color = c.textBrand)
+            Text(if (s.stage == RestoreStage.RELINK) "곧 다시 시작해요" else "받는 중", style = KkTheme.type.caption, color = c.textTertiary)
         }
-        KkPrimaryButton(if (ui.busy) "복원 중…" else "복원하기", onClick = viewModel::restore, enabled = !ui.busy)
-        ui.message?.let { Text(it, style = KkTheme.type.bodyM, color = c.textSecondary) }
-        Text("백업도 복구 코드도 없다면, 연인 폰의 설정 › '연인 폰 교체 받기'로 데이터를 넘겨받을 수 있어요.", style = KkTheme.type.bodyS, color = c.textTertiary)
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgSubtle)) {
+            Box(Modifier.fillMaxWidth(s.fraction.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(c.bgBrand))
+        }
+        fun state(stage: RestoreStage) = when {
+            s.stage.ordinal > stage.ordinal -> "완료" to c.textSecondary
+            s.stage == stage && stage != RestoreStage.RELINK -> "받는 중" to c.textBrand
+            s.stage == stage -> "이어 가는 중" to c.textBrand
+            else -> "대기" to c.textTertiary
+        }
+        listOf("편지 · 일정 · 설정" to RestoreStage.DATA, "그림 · 사진" to RestoreStage.MEDIA, "연인과 다시 연결" to RestoreStage.RELINK).forEach { (label, stage) ->
+            val (text, color) = state(stage)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(label, style = KkTheme.type.bodyM, color = c.textPrimary)
+                Text(text, style = KkTheme.type.labelS, color = color)
+            }
+        }
+    }
+}
+
+/** "2026.10.21 (화) 21:40" (서울 시간). */
+internal fun backupTime(ms: Long): String {
+    val t = kotlin.time.Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.of("Asia/Seoul"))
+    val day = listOf("월", "화", "수", "목", "금", "토", "일")[t.dayOfWeek.ordinal]
+    fun two(n: Int) = n.toString().padStart(2, '0')
+    return "${t.year}.${two(t.month.number)}.${two(t.day)} ($day) ${two(t.hour)}:${two(t.minute)}"
+}
+
+internal fun bytesLabel(b: Long): String = when {
+    b >= 1_000_000_000 -> "${(b / 100_000_000) / 10.0}GB"
+    b >= 1_000_000 -> "${b / 1_000_000}MB"
+    else -> "${maxOf(1, b / 1_000)}KB"
+}
+
+/**
+ * 복원 · 지수 폰 확인 대기("거의 다 됐어요"). 복원 뒤 다시 시작했을 때 상대 폰의 자동 확인을 기다리는 동안 셸이 한 번 보여 준다.
+ */
+@Composable
+fun RestoreWaitingScreen(partnerName: String, onBrowse: () -> Unit) {
+    val c = KkTheme.colors
+    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+        Column(Modifier.weight(1f).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg), verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
+            Box(Modifier.size(64.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
+                KkIcon(KkIcons.Clock, tint = c.textPrimary)
+            }
+            Header("거의 다 됐어요", "${partnerName} 폰이 새 폰을 확인하면 바로 이어져요. ${partnerName}가 따로 할 일은 없어요.")
+            InfoCard(spacing = 14.dp) {
+                listOf(
+                    Triple("백업 복원", "완료", c.statusSuccess to c.textSecondary),
+                    Triple("${partnerName} 폰 확인", "기다리는 중", c.bgBrand to c.textBrand),
+                    Triple("편지 · 보고싶어 보내기", "확인 후", c.borderStrong to c.textTertiary),
+                ).forEach { (label, state, colors) ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(colors.first))
+                        Text(label, style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
+                        Text(state, style = KkTheme.type.labelS, color = colors.second)
+                    }
+                }
+            }
+        }
+        KkPrimaryButton("기록 둘러보기", onBrowse, Modifier.padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp))
     }
 }

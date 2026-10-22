@@ -67,6 +67,9 @@ interface PlatformActions {
      */
     suspend fun authenticate(reason: String): DeviceAuth = DeviceAuth.NoLockScreen
 
+    /** 백업 열쇠를 동기화하는 곳의 이름(복원 · 백업 찾음 화면). */
+    val keySyncName: String get() = "기기 백업"
+
     /** 탈퇴: 플랫폼에 동기화해 둔 백업 키(Block Store · iCloud 키체인)를 지운다. */
     suspend fun deleteSyncedBackupKey() = Unit
 }

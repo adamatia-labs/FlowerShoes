@@ -120,5 +120,6 @@ fun kkotsinModules(
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
         viewModel { SettingsViewModel(get(), get(), get()) }
         viewModel { BackupViewModel(getOrNull(), get()) }
+        viewModel { com.sadturtleman.flowershoes.feature.settings.RestoreViewModel(getOrNull(), get(), get()) }
     },
 )
