@@ -40,6 +40,7 @@ import com.sadturtleman.flowershoes.feature.letter.LetterInboxRoute
 import com.sadturtleman.flowershoes.feature.letter.LetterIntent
 import com.sadturtleman.flowershoes.feature.letter.LetterViewModel
 import com.sadturtleman.flowershoes.feature.memory.MemoryRoute
+import com.sadturtleman.flowershoes.feature.pairing.PairingRoute
 import org.koin.compose.viewmodel.koinViewModel
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingRoute
 import org.koin.compose.koinInject
@@ -83,6 +84,7 @@ private fun OnboardingFlow() {
             onOpenRestore = { overlay = Overlay.RESTORE },
             onOpenPairing = { overlay = Overlay.PAIRING },
         )
+        Overlay.PAIRING -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
         else -> ComingSoon(overlay!!.title(), onBack = { overlay = null })
     }
 }
@@ -124,7 +126,11 @@ private fun MainShell() {
             )
             return
         }
-        Overlay.PAIRING, Overlay.RESTORE -> {
+        Overlay.PAIRING -> {
+            PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
+            return
+        }
+        Overlay.RESTORE -> {
             ComingSoon(overlay!!.title(), onBack = { overlay = null })
             return
         }

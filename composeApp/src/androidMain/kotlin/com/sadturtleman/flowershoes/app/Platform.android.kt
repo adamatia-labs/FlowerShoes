@@ -18,7 +18,15 @@ fun kkotsinAndroidModules(context: Context): List<Module> {
         database = databaseBuilder(app).buildKkotsin(),
         settingsStore = settingsDataStore(app),
         attachmentsRoot = app.filesDir.resolve("attachments").absolutePath.toPath(),
+        cloud = firebaseBackendOrNull(app),
     )
+}
+
+/** google-services.json 이 들어간 빌드면 FirebaseApp 이 자동으로 초기화돼 있다. 없으면 혼자 모드만. */
+private fun firebaseBackendOrNull(context: Context): CloudBackend? {
+    if (com.google.firebase.FirebaseApp.getApps(context).isEmpty()) return null
+    val transport = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
+    return CloudBackend(mailbox = transport, blobs = transport, pairing = transport)
 }
 
 private fun settingsDataStore(context: Context): DataStore<Preferences> =

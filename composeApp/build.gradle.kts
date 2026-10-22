@@ -38,6 +38,7 @@ kotlin {
             implementation(project(":feature:letter"))
             implementation(project(":feature:drawing"))
             implementation(project(":feature:memory"))
+            implementation(project(":feature:pairing"))
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
@@ -45,6 +46,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
+            // Firebase 설정(google-services.json)이 있을 때만 쓰인다.
+            implementation(project(":core:firebase"))
+            implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation("com.google.firebase:firebase-common")
         }
     }
 }

@@ -47,6 +47,7 @@ include(":feature:calendar")
 include(":feature:letter")
 include(":feature:drawing")
 include(":feature:memory")
+include(":feature:pairing")
 
 // 공통 레이어. 모든 feature 가 참조한다.
 include(":common:presentation")
