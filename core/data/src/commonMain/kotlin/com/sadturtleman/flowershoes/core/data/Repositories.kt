@@ -40,6 +40,8 @@ class ProfileRepository(
 ) {
     fun observeUsers(): Flow<List<UserEntity>> = db.userDao().observeAll()
 
+    fun myUserId(): String = identity.userId
+
     /** 커플 중 군인의 복무 일정. 혼자 모드에서 곰신이 입력한 값이어도 여기서 보인다. */
     fun observeTimelines(): Flow<List<Pair<Service, ServiceTimeline>>> =
         db.serviceDao().observeAll().map { list -> list.map { it.toModel() }.map { it to calculator.timeline(it) } }

@@ -21,8 +21,7 @@ import com.sadturtleman.flowershoes.navigation.LocalBizLogger
 import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
 import com.sadturtleman.flowershoes.tti.presentation.LocalTtiRecorder
 import com.sadturtleman.flowershoes.deeplink.resolveNewIntentRoute
-import com.sadturtleman.flowershoes.deeplink.resolveStartStack
-import com.sadturtleman.flowershoes.navigation.RootComposable
+import com.sadturtleman.flowershoes.app.KkotsinApp
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -83,9 +82,6 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        // deep-link 진입 시 Intent.data 에서 시작 백스택을 구성한다.
-        val startStack = resolveStartStack(intent?.data)
-
         enableEdgeToEdge()
         setContent {
             CompositionLocalProvider(
@@ -95,7 +91,8 @@ class MainActivity : ComponentActivity() {
                 LocalBizLogger provides bizLogger,
                 LocalJankReporter provides jankReporter,
             ) {
-                RootComposable(startStack = startStack)
+                // 화면은 공유 앱 셸이 그린다. 딥링크 시작 화면(resolveStartStack)은 셸에 라우팅이 붙으면 넘긴다.
+                KkotsinApp()
             }
         }
     }

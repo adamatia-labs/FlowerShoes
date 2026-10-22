@@ -75,6 +75,10 @@ kotlin {
 }
 
 dependencies {
+    // 꽃신 공유 앱 셸(Compose Multiplatform · Koin). 화면은 전부 여기서 온다.
+    implementation(project(":composeApp"))
+    implementation(libs.koin.android)
+
     implementation(project(":common:presentation"))
     implementation(project(":common:domain"))
     implementation(project(":common:data"))

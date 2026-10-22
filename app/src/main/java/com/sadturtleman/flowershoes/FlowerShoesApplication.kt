@@ -7,6 +7,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import com.sadturtleman.flowershoes.app.kkotsinAndroidModules
 import com.sadturtleman.flowershoes.common.presentation.ui.image.flowerImageLoader
 import com.sadturtleman.flowershoes.featureflag.domain.FeatureFlagProvider
 import com.sadturtleman.flowershoes.logging.domain.BizLogger
@@ -16,6 +17,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import org.koin.android.ext.koin.androidContext
+import org.koin.core.context.startKoin
 
 @HiltAndroidApp
 class FlowerShoesApplication :
@@ -45,6 +48,11 @@ class FlowerShoesApplication :
 
     override fun onCreate() {
         super<Application>.onCreate()
+        // 꽃신 공유 그래프(Koin). 계측 모듈(TTI · jank · 로깅 · 플래그)은 아직 Hilt 에 있다 — 옮기는 것은 다음 단계.
+        startKoin {
+            androidContext(this@FlowerShoesApplication)
+            modules(kkotsinAndroidModules(this@FlowerShoesApplication))
+        }
         // 지난 실행이 쏘지 못하고 죽은 기록도 이 시점에 함께 나간다.
         ttiRecorder.init()
         // 이 실행의 사용자 UUID 도 여기서 만들어진다. 로그인 지점에서 makeUUID 로 갈아 끼운다.

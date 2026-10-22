@@ -24,6 +24,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "FlowerShoes"
 include(":app")
+// 공유 앱 셸(Compose Multiplatform). :app 과 iosApp 이 이것을 띄운다.
+include(":composeApp")
 
 // KMP 공용 코어. commonMain 에 순수 코틀린으로 두고 Android(jvm) · iOS 가 함께 쓴다.
 include(":core:model")
@@ -34,6 +36,11 @@ include(":core:crypto")
 include(":core:database")
 include(":core:data")
 include(":core:designsystem")
+include(":core:auth")
+
+// 화면 단위 기능. core 만 의존하고 서로는 모른다.
+include(":feature:onboarding")
+include(":feature:home")
 
 // 공통 레이어. 모든 feature 가 참조한다.
 include(":common:presentation")

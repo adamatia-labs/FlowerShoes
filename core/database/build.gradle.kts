@@ -26,8 +26,9 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":core:model"))
-            implementation(libs.androidx.room.runtime)
-            implementation(libs.androidx.sqlite.bundled)
+            // 빌더 · DAO 가 Room 타입을 그대로 내보낸다.
+            api(libs.androidx.room.runtime)
+            api(libs.androidx.sqlite.bundled)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
         }
