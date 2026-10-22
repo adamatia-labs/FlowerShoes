@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlinx.serialization)
 }
 
 kotlin {
@@ -41,6 +42,8 @@ kotlin {
             implementation(project(":feature:pairing"))
             api(project(":feature:settings"))
             api(project(":core:widget-bridge"))
+            implementation(project(":core:backup"))
+            implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
@@ -54,6 +57,9 @@ kotlin {
             implementation(project(":core:firebase"))
             implementation(project.dependencies.platform(libs.firebase.bom))
             implementation("com.google.firebase:firebase-common")
+            implementation("com.google.firebase:firebase-storage")
+            implementation(libs.play.services.blockstore)
+            implementation(libs.kotlinx.coroutines.play.services)
         }
     }
 }

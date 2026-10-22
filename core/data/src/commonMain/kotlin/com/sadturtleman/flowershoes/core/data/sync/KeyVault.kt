@@ -18,6 +18,17 @@ interface KeyVault {
 
     suspend fun currentCoupleKey(): CoupleKey?
 
+    /** 백업에 넣을 커플 키 전부(현재 + 31일 보관 중인 직전 epoch). */
+    suspend fun allCoupleKeys(): List<CoupleKey>
+
+    /**
+     * 이 기기의 백업 키(BK) 사본과 복구 코드. 플랫폼 동기화(iCloud 키체인 · Block Store)와 별개로 이 기기에도 둔다 —
+     * 설정 › 백업 › 복구 코드에서 보여 주기 위해서다.
+     */
+    suspend fun backupSecrets(): Pair<ByteArray, String>?
+
+    suspend fun putBackupSecrets(backupKey: ByteArray, recoveryCode: String)
+
     suspend fun putCoupleKey(key: CoupleKey)
 
     suspend fun dropEpochsBefore(epoch: Int)
@@ -30,6 +41,15 @@ interface KeyVault {
 class InMemoryKeyVault : KeyVault {
     private var device: DeviceKeys? = null
     private val couple = mutableMapOf<Int, CoupleKey>()
+    private var backup: Pair<ByteArray, String>? = null
+
+    override suspend fun allCoupleKeys() = couple.values.sortedBy { it.epoch }
+
+    override suspend fun backupSecrets() = backup
+
+    override suspend fun putBackupSecrets(backupKey: ByteArray, recoveryCode: String) {
+        backup = backupKey to recoveryCode
+    }
 
     override suspend fun deviceKeys() = device
 

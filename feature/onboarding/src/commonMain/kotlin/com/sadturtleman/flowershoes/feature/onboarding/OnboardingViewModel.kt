@@ -64,8 +64,11 @@ sealed interface OnboardingIntent {
     /** "혼자 먼저 둘러볼게요". 연결은 나중에 설정에서 한다. */
     data object FinishSolo : OnboardingIntent
 
-    /** 초대 코드로 연결. 연결 흐름(:core:sync 우편함)이 붙기 전에는 혼자 모드로 마친다. */
+    /** 초대 코드로 연결. */
     data object StartPairing : OnboardingIntent
+
+    /** 폰을 바꿨다 — 백업에서 복원. */
+    data object OpenRestore : OnboardingIntent
 }
 
 sealed interface OnboardingEvent {
@@ -106,6 +109,7 @@ class OnboardingViewModel(
             }
             OnboardingIntent.FinishSolo -> finish(OnboardingEvent.Finished)
             OnboardingIntent.StartPairing -> finish(OnboardingEvent.OpenPairing)
+            OnboardingIntent.OpenRestore -> viewModelScope.launch { _events.send(OnboardingEvent.OpenRestore) }
         }
     }
 

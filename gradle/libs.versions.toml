@@ -48,6 +48,8 @@ gitliveFirebase = "2.1.0"
 firebaseBom = "33.16.0"
 # 홈 화면 위젯(Android)
 glance = "1.1.1"
+# 백업 키 동기화(Android)
+blockstore = "16.4.0"
 jbNavigation = "2.9.1"
 jbLifecycle = "2.9.4"
 
@@ -121,6 +123,8 @@ jb-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", nam
 okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
+play-services-blockstore = { group = "com.google.android.gms", name = "play-services-auth-blockstore", version.ref = "blockstore" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 gitlive-firebase-firestore = { group = "dev.gitlive", name = "firebase-firestore", version.ref = "gitliveFirebase" }
 gitlive-firebase-storage = { group = "dev.gitlive", name = "firebase-storage", version.ref = "gitliveFirebase" }

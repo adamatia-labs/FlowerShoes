@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.feature.onboarding
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -132,6 +133,11 @@ private fun LoginStep(state: OnboardingState, onIntent: (OnboardingIntent) -> Un
         )
     }
     state.error?.let { Text(it, style = KkTheme.type.bodyS, color = c.statusDanger) }
+    Text(
+        "폰을 바꿨나요? 백업에서 복원하기",
+        style = KkTheme.type.labelM, color = c.textBrand,
+        modifier = Modifier.clickable { onIntent(OnboardingIntent.OpenRestore) }.padding(vertical = KkSpacing.sm),
+    )
     Text("시작하면 이용약관과 개인정보처리방침에 동의하게 돼요.", style = KkTheme.type.caption, color = c.textTertiary)
 }
 

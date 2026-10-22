@@ -52,6 +52,7 @@ import org.koin.compose.koinInject
 import com.sadturtleman.flowershoes.feature.settings.NoPlatformActions
 import com.sadturtleman.flowershoes.feature.settings.PlatformActions
 import com.sadturtleman.flowershoes.feature.settings.SettingsRoute
+import com.sadturtleman.flowershoes.feature.settings.RestoreRoute
 
 /** 하단 탭. 화면 이동은 여기서만 정한다 — feature 끼리는 서로 모른다. */
 enum class Tab(val label: String) { HOME("홈"), CALENDAR("캘린더"), LETTER("편지"), MEMORY("추억") }
@@ -93,6 +94,7 @@ private fun OnboardingFlow() {
             onOpenPairing = { overlay = Overlay.PAIRING },
         )
         Overlay.PAIRING -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
+        Overlay.RESTORE -> RestoreRoute(onBack = { overlay = null })
         else -> ComingSoon(overlay!!.title(), onBack = { overlay = null })
     }
 }
@@ -175,7 +177,7 @@ private fun MainShell() {
             return
         }
         Overlay.RESTORE -> {
-            ComingSoon(overlay!!.title(), onBack = { overlay = null })
+            RestoreRoute(onBack = { overlay = null })
             return
         }
         Overlay.SETTINGS -> {
@@ -183,6 +185,7 @@ private fun MainShell() {
                 platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
                 onOpenPairing = { overlay = Overlay.PAIRING },
                 onHandOver = { overlay = Overlay.HAND_OVER },
+                onRestore = { overlay = Overlay.RESTORE },
                 onBack = { overlay = null },
             )
             return

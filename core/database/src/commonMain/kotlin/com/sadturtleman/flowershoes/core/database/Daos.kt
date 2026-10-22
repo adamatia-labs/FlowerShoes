@@ -204,6 +204,9 @@ interface AttachmentDao {
     @Query("SELECT * FROM attachment WHERE id = :id")
     suspend fun get(id: String): AttachmentEntity?
 
+    @Query("SELECT * FROM attachment")
+    suspend fun all(): List<AttachmentEntity>
+
     @Upsert
     suspend fun upsert(attachment: AttachmentEntity)
 }

@@ -36,6 +36,8 @@ class AndroidKeyVault(context: Context) : KeyVault {
         val boxPub: String? = null,
         val deviceSecret: String? = null,
         val coupleKeys: Map<Int, String> = emptyMap(),
+        val backupKey: String? = null,
+        val recoveryCode: String? = null,
     )
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -68,6 +70,19 @@ class AndroidKeyVault(context: Context) : KeyVault {
 
     override suspend fun currentCoupleKey(): CoupleKey? = lock.withLock {
         load().coupleKeys.maxByOrNull { it.key }?.let { CoupleKey(it.key, it.value.unb64()) }
+    }
+
+    override suspend fun allCoupleKeys(): List<CoupleKey> = lock.withLock {
+        load().coupleKeys.map { CoupleKey(it.key, it.value.unb64()) }.sortedBy { it.epoch }
+    }
+
+    override suspend fun backupSecrets(): Pair<ByteArray, String>? = lock.withLock {
+        val s = load()
+        if (s.backupKey == null || s.recoveryCode == null) null else s.backupKey.unb64() to s.recoveryCode
+    }
+
+    override suspend fun putBackupSecrets(backupKey: ByteArray, recoveryCode: String) = lock.withLock {
+        save(load().copy(backupKey = backupKey.b64(), recoveryCode = recoveryCode))
     }
 
     override suspend fun putCoupleKey(key: CoupleKey) = lock.withLock {

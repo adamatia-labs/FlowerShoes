@@ -100,6 +100,7 @@ fun SettingsRoute(
     platform: PlatformActions,
     onOpenPairing: () -> Unit,
     onHandOver: () -> Unit = {},
+    onRestore: () -> Unit = {},
     onBack: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
@@ -163,6 +164,10 @@ fun SettingsRoute(
             }
             pinMessage?.let { Text(it, style = KkTheme.type.bodyS, color = c.textTertiary) }
         }
+
+        Section("백업")
+        BackupSection()
+        Link("백업에서 복원하기", onRestore)
 
         Section("알림")
         Text("조용한 시간 23:00–07:00에는 알림 없이 모아 두었다가 아침에 한 번 알려요.", style = KkTheme.type.bodyS, color = c.textSecondary)

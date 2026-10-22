@@ -23,6 +23,7 @@ import com.sadturtleman.flowershoes.feature.letter.LetterViewModel
 import com.sadturtleman.flowershoes.feature.memory.MemoryViewModel
 import com.sadturtleman.flowershoes.feature.pairing.PairingViewModel
 import com.sadturtleman.flowershoes.feature.settings.SettingsViewModel
+import com.sadturtleman.flowershoes.feature.settings.BackupViewModel
 import com.sadturtleman.flowershoes.core.data.sync.BlobStore
 import com.sadturtleman.flowershoes.core.data.sync.InMemoryKeyVault
 import com.sadturtleman.flowershoes.core.data.sync.KeyVault
@@ -101,5 +102,6 @@ fun kkotsinModules(
         viewModel { MemoryViewModel(get(), get(), get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
         viewModel { SettingsViewModel(get(), get(), get()) }
+        viewModel { BackupViewModel(getOrNull(), get()) }
     },
 )
