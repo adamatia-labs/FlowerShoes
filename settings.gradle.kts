@@ -32,6 +32,7 @@ include(":core:sync")
 include(":core:drawing-engine")
 include(":core:crypto")
 include(":core:database")
+include(":core:data")
 
 // 공통 레이어. 모든 feature 가 참조한다.
 include(":common:presentation")

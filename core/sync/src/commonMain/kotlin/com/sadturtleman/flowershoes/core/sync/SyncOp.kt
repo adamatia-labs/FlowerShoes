@@ -38,7 +38,10 @@ enum class OpKind(val wire: String, val silent: Boolean) {
     EVENT("event", false),
     RECEIPT("receipt", true),
     DELETE("delete", true),
-    SNAPSHOT("snapshot", true);
+    SNAPSHOT("snapshot", true),
+
+    /** 입대일 · 군종 · 전역일 수정값 · 기념일 · 닉네임. 알림 없이 반영한다. */
+    PROFILE("profile", true);
 
     companion object {
         fun fromWire(wire: String): OpKind? = entries.firstOrNull { it.wire == wire }

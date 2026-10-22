@@ -60,9 +60,11 @@ data class RevokedDevice(
 class RevocationFilter(revoked: List<RevokedDevice>) {
     private val byDevice = revoked.associateBy { it.deviceId }
 
-    fun accepts(op: SyncOp): Boolean {
-        val device = byDevice[op.stream.deviceId] ?: return true
-        val limit = device.cutoff[op.stream] ?: return false
-        return op.seq <= limit
+    fun accepts(op: SyncOp): Boolean = accepts(op.stream, op.seq)
+
+    fun accepts(stream: StreamId, seq: Long): Boolean {
+        val device = byDevice[stream.deviceId] ?: return true
+        val limit = device.cutoff[stream] ?: return false
+        return seq <= limit
     }
 }
