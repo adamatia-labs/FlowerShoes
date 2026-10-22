@@ -23,6 +23,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
+        optIn.add("kotlin.uuid.ExperimentalUuidApi")
     }
 
     sourceSets {
@@ -34,6 +35,9 @@ kotlin {
             implementation(project(":feature:onboarding"))
             implementation(project(":feature:home"))
             implementation(project(":feature:calendar"))
+            implementation(project(":feature:letter"))
+            implementation(project(":feature:drawing"))
+            implementation(project(":feature:memory"))
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)

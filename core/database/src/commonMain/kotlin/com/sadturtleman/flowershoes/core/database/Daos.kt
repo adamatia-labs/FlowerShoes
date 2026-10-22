@@ -116,6 +116,10 @@ interface LetterDao {
     @Query("SELECT * FROM letter WHERE deletedAtMs IS NULL AND visibleAtMs <= :nowMs ORDER BY visibleAtMs DESC")
     fun observeVisible(nowMs: Long): Flow<List<LetterEntity>>
 
+    /** 지우지 않은 편지 전부. 공개 여부는 시각이 흐르면 바뀌므로 Repository 가 지금 시각으로 거른다. */
+    @Query("SELECT * FROM letter WHERE deletedAtMs IS NULL ORDER BY visibleAtMs DESC")
+    fun observeAll(): Flow<List<LetterEntity>>
+
     /** 내가 보낸 예약 편지(작성자에게는 보인다). */
     @Query("SELECT * FROM letter WHERE deletedAtMs IS NULL AND authorId = :authorId AND visibleAtMs > :nowMs ORDER BY visibleAtMs")
     fun observeScheduledBy(authorId: String, nowMs: Long): Flow<List<LetterEntity>>

@@ -36,6 +36,7 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             // 이 기기에만 저장하는 설정(테마 · 온보딩 진행 · 로컬 신원). 동기화하지 않는다.
             api(libs.androidx.datastore.preferences.core)
+            api(libs.okio)
         }
         getByName("jvmTest").dependencies {
             implementation(kotlin("test"))

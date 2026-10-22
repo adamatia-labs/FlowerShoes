@@ -33,7 +33,14 @@ import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
 import com.sadturtleman.flowershoes.core.model.ThemeAccent
 import com.sadturtleman.flowershoes.feature.calendar.CalendarRoute
+import com.sadturtleman.flowershoes.feature.drawing.DrawingEditorRoute
 import com.sadturtleman.flowershoes.feature.home.HomeRoute
+import com.sadturtleman.flowershoes.feature.letter.LetterComposeRoute
+import com.sadturtleman.flowershoes.feature.letter.LetterInboxRoute
+import com.sadturtleman.flowershoes.feature.letter.LetterIntent
+import com.sadturtleman.flowershoes.feature.letter.LetterViewModel
+import com.sadturtleman.flowershoes.feature.memory.MemoryRoute
+import org.koin.compose.viewmodel.koinViewModel
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingRoute
 import org.koin.compose.koinInject
 
@@ -41,7 +48,7 @@ import org.koin.compose.koinInject
 enum class Tab(val label: String) { HOME("홈"), CALENDAR("캘린더"), LETTER("편지"), MEMORY("추억") }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, RESTORE }
+private enum class Overlay { PAIRING, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY }
 
 @Composable
 fun KkotsinApp() {
@@ -84,11 +91,44 @@ private fun OnboardingFlow() {
 private fun MainShell() {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
+    // 편지 쓰기 · 편지함 · 그림만 보내기가 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
+    val letters = koinViewModel<LetterViewModel>()
     val c = KkTheme.colors
 
-    overlay?.let {
-        ComingSoon(it.title(), onBack = { overlay = null })
-        return
+    when (overlay) {
+        Overlay.COMPOSE -> {
+            LetterComposeRoute(onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER }, onClose = { overlay = null }, viewModel = letters)
+            return
+        }
+        Overlay.DRAW_FOR_LETTER -> {
+            DrawingEditorRoute(
+                onSaved = {
+                    letters.onIntent(LetterIntent.AddDrawing(it))
+                    overlay = Overlay.COMPOSE
+                },
+                onClose = { overlay = Overlay.COMPOSE },
+            )
+            return
+        }
+        Overlay.DRAW_ONLY -> {
+            // 그림만 보내기 = 글 없는 편지 한 통.
+            DrawingEditorRoute(
+                onSaved = {
+                    letters.onIntent(LetterIntent.ResetDraft)
+                    letters.onIntent(LetterIntent.AddDrawing(it))
+                    letters.onIntent(LetterIntent.Send)
+                    overlay = null
+                    tab = Tab.LETTER
+                },
+                onClose = { overlay = null },
+            )
+            return
+        }
+        Overlay.PAIRING, Overlay.RESTORE -> {
+            ComingSoon(overlay!!.title(), onBack = { overlay = null })
+            return
+        }
+        null -> Unit
     }
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
         Box(Modifier.weight(1f)) {
@@ -98,7 +138,15 @@ private fun MainShell() {
                     onOpenCalendar = { tab = Tab.CALENDAR },
                 )
                 Tab.CALENDAR -> CalendarRoute()
-                else -> ComingSoon(tab.label, onBack = null)
+                Tab.LETTER -> LetterInboxRoute(
+                    onCompose = { overlay = Overlay.COMPOSE },
+                    onDrawOnly = { overlay = Overlay.DRAW_ONLY },
+                    viewModel = letters,
+                )
+                Tab.MEMORY -> MemoryRoute(onOpenLetter = {
+                    letters.onIntent(LetterIntent.Open(it))
+                    tab = Tab.LETTER
+                })
             }
         }
         BottomBar(tab, onSelect = { tab = it })
@@ -145,6 +193,6 @@ private fun ComingSoon(title: String, onBack: (() -> Unit)?) {
 }
 
 private fun Overlay.title() = when (this) {
-    Overlay.PAIRING -> "연인과 연결하기"
     Overlay.RESTORE -> "백업에서 복원하기"
+    else -> "연인과 연결하기"
 }

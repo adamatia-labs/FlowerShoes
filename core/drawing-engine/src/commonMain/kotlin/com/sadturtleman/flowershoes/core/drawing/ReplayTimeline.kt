@@ -32,10 +32,21 @@ class ReplayTimeline private constructor(
         /** 이 인덱스까지의 점을 그린다(포함). replaySegments 밖의 점은 렌더러가 건너뛴다. */
         val drawnThrough: Int,
         val finished: Boolean,
+        /**
+         * [drawnThrough] 다음 점까지 간 비율(0..1). 간소화로 직선 위의 점이 빠져도 펜이 실제 속도로 나아가 보이게
+         * 렌더러가 두 점 사이를 이만큼 이어 그린다.
+         */
+        val toward: Float = 0f,
     ) {
-        /** 진행 중인 획의 펜 끝. 끝난 획이면 null. */
-        val penTip: Pair<Int, Int>? get() =
-            if (finished || drawnThrough < 0) null else stroke.points.xs[drawnThrough] to stroke.points.ys[drawnThrough]
+        /** 진행 중인 획의 펜 끝(다음 점 쪽으로 [toward] 만큼 간 위치). 끝난 획이면 null. */
+        val penTip: Pair<Int, Int>?
+            get() {
+                if (finished || drawnThrough < 0) return null
+                val p = stroke.points
+                val i = drawnThrough
+                if (i + 1 >= p.size) return p.xs[i] to p.ys[i]
+                return (p.xs[i] + (p.xs[i + 1] - p.xs[i]) * toward).toInt() to (p.ys[i] + (p.ys[i + 1] - p.ys[i]) * toward).toInt()
+            }
     }
 
     data class StickerProgress(val sticker: StickerElement, val scale: Float)
@@ -67,7 +78,11 @@ class ReplayTimeline private constructor(
                     val ts = e.points.ts
                     var i = -1
                     while (i + 1 < ts.size && ts[i + 1] <= local) i++
-                    strokes += StrokeProgress(e, i, finished = i == ts.size - 1)
+                    val toward = if (i in 0 until ts.size - 1) {
+                        val span = (ts[i + 1] - ts[i]).coerceAtLeast(1)
+                        ((local - ts[i]) / span).toFloat().coerceIn(0f, 1f)
+                    } else 0f
+                    strokes += StrokeProgress(e, i, finished = i == ts.size - 1, toward = toward)
                 }
                 is StickerElement -> stickers += StickerProgress(e, popScale(((t - item.startMs) / POP_MS).toFloat()))
                 else -> Unit

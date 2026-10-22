@@ -25,6 +25,7 @@ fun MainViewController(): UIViewController {
                 kkotsinModules(
                     database = databaseBuilder().buildKkotsin(),
                     settingsStore = PreferenceDataStoreFactory.createWithPath { settingsPath.toPath() },
+                    attachmentsRoot = (requireNotNull(support?.path) + "/db/attachments").toPath(),
                 ),
             )
         }

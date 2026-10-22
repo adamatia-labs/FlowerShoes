@@ -20,7 +20,14 @@ import com.sadturtleman.flowershoes.core.sync.OpKind
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.delay
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -30,6 +37,14 @@ import kotlinx.datetime.todayIn
 val SEOUL: TimeZone = TimeZone.of("Asia/Seoul")
 
 fun Clock.today(): LocalDate = todayIn(SEOUL)
+
+/** 지금 시각을 [period] 마다 다시 내보낸다. 예약 편지 공개 · 상태 만료처럼 시간이 흐르면 바뀌는 화면에 쓴다. */
+fun Clock.ticker(period: Duration = 30.seconds): Flow<Instant> = flow {
+    while (true) {
+        emit(now())
+        delay(period)
+    }
+}
 
 /** 내 정보 · 복무 정보 · 기념일. */
 class ProfileRepository(
@@ -114,8 +129,14 @@ class LetterRepository(
     private val identity: Identity,
     private val clock: Clock = Clock.System,
 ) {
+    /**
+     * 편지함. 공개 시각이 지난 것만 — 예약 편지는 공개 전에 어디에도 보이지 않는다.
+     * 시각을 쿼리에 고정하면 그 뒤에 보낸 편지 · 공개 시각이 지난 예약 편지가 계속 빠지므로, 시계와 묶어 다시 거른다.
+     */
     fun observeInbox(): Flow<List<Letter>> =
-        db.letterDao().observeVisible(clock.now().toEpochMilliseconds()).map { list -> list.map { it.toModel() } }
+        combine(db.letterDao().observeAll(), clock.ticker()) { list, now ->
+            list.filter { it.visibleAtMs <= now.toEpochMilliseconds() }.map { it.toModel() }
+        }.distinctUntilChanged()
 
     suspend fun drawingsOf(letterId: String): List<DrawingEntity> = db.drawingDao().forLetter(letterId)
 

@@ -37,6 +37,7 @@ include(":core:database")
 include(":core:data")
 include(":core:designsystem")
 include(":core:auth")
+include(":core:drawing-ui")
 
 // 화면 단위 기능. core 만 의존하고 서로는 모른다.
 include(":feature:onboarding")

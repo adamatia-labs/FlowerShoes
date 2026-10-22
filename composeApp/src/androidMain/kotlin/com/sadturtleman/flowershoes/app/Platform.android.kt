@@ -17,6 +17,7 @@ fun kkotsinAndroidModules(context: Context): List<Module> {
     return kkotsinModules(
         database = databaseBuilder(app).buildKkotsin(),
         settingsStore = settingsDataStore(app),
+        attachmentsRoot = app.filesDir.resolve("attachments").absolutePath.toPath(),
     )
 }
 

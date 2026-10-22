@@ -127,7 +127,8 @@ class DrawingEngineTest {
         val timeline = ReplayTimeline.of(sample)
         val early = timeline.frame(5)
         assertEquals(0, early.strokes.single().drawnThrough)
-        assertEquals(10 to 10, early.strokes.single().penTip)
+        // 첫 점(10,10 · 0ms)과 둘째 점(20,12 · 10ms)의 한가운데
+        assertEquals(15 to 11, early.strokes.single().penTip)
         assertTrue(early.stickers.isEmpty())
         assertEquals(0f, early.finishAlpha)
 
@@ -141,5 +142,18 @@ class DrawingEngineTest {
         val end = timeline.frame(timeline.durationMs - 1)
         assertTrue(end.finishAlpha > 0.9f)
         assertTrue(timeline.completeFrame().isComplete)
+    }
+
+    @Test
+    fun `간소화로 점이 둘만 남아도 펜은 시간에 맞춰 나아간다`() {
+        val doc = DrawingDocument(
+            canvas = CanvasSpec(WidgetShape.SQUARE),
+            elements = listOf(stroke("s", 0, PointBuffer(intArrayOf(0, 1000), intArrayOf(0, 0), intArrayOf(0, 600)))),
+            totalDurationMs = 600,
+        )
+        val half = ReplayTimeline.of(doc).frame(300).strokes.single()
+        assertEquals(0, half.drawnThrough)
+        assertEquals(0.5f, half.toward)
+        assertEquals(500 to 0, half.penTip)
     }
 }

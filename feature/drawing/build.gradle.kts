@@ -19,6 +19,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
+        optIn.add("kotlin.uuid.ExperimentalUuidApi")
     }
 
     sourceSets {
@@ -28,6 +29,7 @@ kotlin {
             implementation(project(":core:data"))
             implementation(project(":core:auth"))
             implementation(project(":core:drawing-engine"))
+            implementation(project(":core:drawing-ui"))
             implementation(libs.jb.lifecycle.viewmodel.compose)
             implementation(libs.jb.lifecycle.runtime.compose)
             implementation(libs.koin.compose.viewmodel)

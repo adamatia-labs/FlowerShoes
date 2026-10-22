@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import com.sadturtleman.flowershoes.core.auth.AuthGateway
 import com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway
+import com.sadturtleman.flowershoes.core.data.AttachmentStore
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.Identity
@@ -16,9 +17,13 @@ import com.sadturtleman.flowershoes.core.data.StatusRepository
 import com.sadturtleman.flowershoes.core.data.SyncWriter
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel
+import com.sadturtleman.flowershoes.feature.drawing.DrawingEditorViewModel
 import com.sadturtleman.flowershoes.feature.home.HomeViewModel
+import com.sadturtleman.flowershoes.feature.letter.LetterViewModel
+import com.sadturtleman.flowershoes.feature.memory.MemoryViewModel
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
+import okio.Path
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
@@ -31,6 +36,7 @@ import org.koin.dsl.module
 fun kkotsinModules(
     database: AppDatabase,
     settingsStore: DataStore<Preferences>,
+    attachmentsRoot: Path,
     auth: AuthGateway = LocalOnlyAuthGateway(),
 ): List<Module> = listOf(
     module {
@@ -42,6 +48,7 @@ fun kkotsinModules(
         single { auth }
 
         single { SyncWriter(get(), get(), get()) }
+        single { AttachmentStore(get(), attachmentsRoot) }
         single { InboxApplier(get(), get()) }
         single { ProfileRepository(get(), get(), get()) }
         single { EventRepository(get(), get(), get(), get()) }
@@ -53,5 +60,8 @@ fun kkotsinModules(
         viewModel { OnboardingViewModel(get(), get(), get()) }
         viewModel { HomeViewModel(get(), get(), get(), get()) }
         viewModel { CalendarViewModel(get(), get()) }
+        viewModel { LetterViewModel(get(), get(), get(), get()) }
+        viewModel { DrawingEditorViewModel(get(), get()) }
+        viewModel { MemoryViewModel(get(), get(), get()) }
     },
 )
