@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.core.backup
 
+import com.sadturtleman.flowershoes.core.compression.Zstd
 import com.sadturtleman.flowershoes.core.crypto.Aead
 import com.sadturtleman.flowershoes.core.crypto.BackupKey
 import com.sadturtleman.flowershoes.core.crypto.KeyWrap
@@ -95,7 +96,7 @@ class BackupEngine(
             val name = key.blobName(a.sha256)
             if (name !in existing) {
                 val path = "$root/blobs/$name"
-                storage.put(path, Aead.seal(dataKey, a.read(), path.encodeToByteArray()))
+                storage.put(path, Aead.seal(dataKey, Zstd.packFlagged(a.read()), path.encodeToByteArray()))
             }
             BlobRef(a.id, a.kind, name)
         }
@@ -105,7 +106,7 @@ class BackupEngine(
         val chunks = (0 until maxOf(1, (db.size + CHUNK - 1) / CHUNK)).map { n ->
             val path = "$root/db/$version/$n"
             val part = db.copyOfRange(n * CHUNK, minOf(db.size, (n + 1) * CHUNK))
-            storage.put(path, Aead.seal(dataKey, part, path.encodeToByteArray()))
+            storage.put(path, Aead.seal(dataKey, Zstd.packFlagged(part), path.encodeToByteArray()))
             path
         }
 
@@ -133,11 +134,11 @@ class BackupEngine(
         val manifest = manifests(root).maxByOrNull { it.version } ?: return null
         if (manifest.schemaVersion > appSchemaVersion) throw BackupTooNewException(manifest.schemaVersion)
         val db = manifest.dbChunks.fold(ByteArray(0)) { acc, path ->
-            acc + Aead.open(dataKey, checkNotNull(storage.get(path)) { "조각이 없다: $path" }, path.encodeToByteArray())
+            acc + Zstd.unpackFlagged(Aead.open(dataKey, checkNotNull(storage.get(path)) { "조각이 없다: $path" }, path.encodeToByteArray()))
         }
         val attachments = manifest.blobs.associate { b ->
             val path = "$root/blobs/${b.name}"
-            b.attachmentId to (b.kind to Aead.open(dataKey, checkNotNull(storage.get(path)) { "첨부가 없다: $path" }, path.encodeToByteArray()))
+            b.attachmentId to (b.kind to Zstd.unpackFlagged(Aead.open(dataKey, checkNotNull(storage.get(path)) { "첨부가 없다: $path" }, path.encodeToByteArray())))
         }
         return RestoredBackup(
             manifest, db, attachments,

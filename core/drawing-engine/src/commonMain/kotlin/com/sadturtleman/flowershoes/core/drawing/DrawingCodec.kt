@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.drawing
 
+import com.sadturtleman.flowershoes.core.compression.Zstd
+
 /**
  * 그림 문서 인코딩.
  *
@@ -9,7 +11,7 @@ package com.sadturtleman.flowershoes.core.drawing
  * 읽는 쪽은 모르는 typeTag 를 건너뛴다 — 새 요소가 생겨도 옛 앱은 아는 요소만 재생하고
  * 마지막에 완성 PNG 로 마무리하므로 결과는 똑같이 보인다. kotlinx ProtoBuf 의 sealed 다형성을 쓰지 않는 이유다.
  *
- * 좌표는 앞 점과의 차이를 zigzag varint 로 담는다. zstd 압축은 이 바이트에 플랫폼 쪽(:core:media)이 덧씌운다.
+ * 좌표는 앞 점과의 차이를 zigzag varint 로 담는다. 저장 · 전송할 때는 이 바이트를 zstd 프레임으로 감싼다([encodeForStorage]).
  */
 object DrawingCodec {
 
@@ -68,6 +70,9 @@ object DrawingCodec {
         return w.toByteArray()
     }
 
+    /** 저장 · 전송용: zstd 로 줄인다(작아질 때만). [decode] 는 두 형식을 모두 읽는다. */
+    fun encodeForStorage(doc: DrawingDocument): ByteArray = Zstd.pack(encode(doc))
+
     sealed interface Result {
         data class Ok(val document: DrawingDocument, val skippedUnknown: Int) : Result
 
@@ -75,7 +80,8 @@ object DrawingCodec {
         data class TooNew(val minReaderVersion: Int) : Result
     }
 
-    fun decode(bytes: ByteArray, readerVersion: Int = DrawingDocument.CURRENT_VERSION): Result {
+    fun decode(stored: ByteArray, readerVersion: Int = DrawingDocument.CURRENT_VERSION): Result {
+        val bytes = Zstd.unpack(stored)
         if (bytes.size < MAGIC.size || !bytes.copyOf(MAGIC.size).contentEquals(MAGIC)) {
             throw DrawingFormatException("그림 문서가 아니다")
         }

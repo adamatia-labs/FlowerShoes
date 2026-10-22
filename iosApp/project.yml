@@ -20,6 +20,10 @@ packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
     from: 11.0.0
+  # zstd 저장소의 Package.swift(C 모듈 libzstd). 그림 문서 · 백업 압축.
+  Zstd:
+    url: https://github.com/facebook/zstd
+    from: 1.5.6
 settings:
   base:
     DEVELOPMENT_TEAM: ""   # 팀 id 를 넣는다
@@ -49,6 +53,8 @@ targets:
       - target: KkotsinNotification
       - target: KkotsinWidgets
       - package: Sodium
+      - package: Zstd
+        product: libzstd
       # GitLive firebase-kotlin-sdk 가 링크하는 Firebase iOS SDK(앱 타깃만 — NSE · 위젯에는 넣지 않는다)
       - package: Firebase
         product: FirebaseCore

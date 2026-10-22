@@ -17,7 +17,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // 순수 계산만 한다. 의존 없음.
+            // 저장 형식의 zstd 압축만 밖에서 받는다.
+            api(project(":core:compression"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

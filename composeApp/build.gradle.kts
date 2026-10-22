@@ -19,6 +19,8 @@ kotlin {
         it.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+            // Swift 가 Compressor 를 구현해 Zstd.codec 에 꽂는다.
+            export(project(":core:compression"))
         }
     }
 
@@ -53,6 +55,7 @@ kotlin {
             implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composeMultiplatform.get()}")
         }
         iosMain.dependencies {
+            api(project(":core:compression"))
             // iOS 도 같은 Firestore 어댑터(GitLive). Firebase iOS SDK 는 Xcode(SPM)에서 링크한다.
             implementation(project(":core:firebase"))
             implementation(project(":core:notification"))

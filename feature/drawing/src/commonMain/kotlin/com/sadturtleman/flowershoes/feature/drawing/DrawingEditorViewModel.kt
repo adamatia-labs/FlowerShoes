@@ -186,7 +186,7 @@ class DrawingEditorViewModel(
             val doc = StrokeProcessing.prepareForSave(
                 DrawingDocument(canvas = CanvasSpec(s.shape), elements = s.elements, totalDurationMs = nowMs()),
             )
-            val docId = attachments.put(AttachmentKind.DRAWING_DOC, DrawingCodec.encode(doc))
+            val docId = attachments.put(AttachmentKind.DRAWING_DOC, DrawingCodec.encodeForStorage(doc))
             val pngId = rasterizer?.let { r -> runCatching { attachments.put(AttachmentKind.DRAWING_PNG, r.png(doc)) }.getOrNull() } ?: docId
             val meta = DrawingMeta(
                 id = newId(),
