@@ -57,10 +57,15 @@ import com.sadturtleman.flowershoes.feature.settings.SettingsRoute
 import com.sadturtleman.flowershoes.feature.settings.RestoreRoute
 
 /** 하단 탭. 화면 이동은 여기서만 정한다 — feature 끼리는 서로 모른다. */
-enum class Tab(val label: String) { HOME("홈"), CALENDAR("캘린더"), LETTER("편지"), MEMORY("추억") }
+enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.designsystem.KkIcons) {
+    HOME("홈", com.sadturtleman.flowershoes.core.designsystem.KkIcons.Home),
+    CALENDAR("캘린더", com.sadturtleman.flowershoes.core.designsystem.KkIcons.Calendar),
+    LETTER("편지", com.sadturtleman.flowershoes.core.designsystem.KkIcons.Mail),
+    MEMORY("추억", com.sadturtleman.flowershoes.core.designsystem.KkIcons.Album),
+}
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, HAND_OVER, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
+private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, RESTORE, COMPOSE, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
 
 @Composable
 fun KkotsinApp() {
@@ -93,9 +98,12 @@ fun KkotsinApp() {
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun OnboardingFlow() {
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
+    // 복원 · 연결 화면에서 뒤로 가면 온보딩으로(복원을 원하지 않으면 약관부터 새로 시작).
+    BackHandler(enabled = overlay != null) { overlay = null }
     when (overlay) {
         null -> OnboardingRoute(
             // 온보딩 완료는 DeviceSettings.onboarded 로 바뀌어 셸이 알아서 바뀐다.
@@ -105,13 +113,14 @@ private fun OnboardingFlow() {
             connect = { onAdvance -> InviteConnect(onAdvance) },
         )
         Overlay.PAIRING -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
+        Overlay.RECEIVE -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = Overlay.RESTORE }, mode = com.sadturtleman.flowershoes.feature.pairing.PairingMode.RECEIVE)
         Overlay.RESTORE -> {
             val onboarding = koinViewModel<com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel>()
             RestoreRoute(
                 onBack = { overlay = null },
                 onStartFresh = { overlay = null },
                 // 복구 코드도 없으면 연인 폰에서 넘겨받는다(6 · 재연결).
-                onRelink = { overlay = Overlay.PAIRING },
+                onRelink = { overlay = Overlay.RECEIVE },
                 onOtherAccount = {
                     onboarding.onIntent(com.sadturtleman.flowershoes.feature.onboarding.OnboardingIntent.SignOut)
                     overlay = null
@@ -200,6 +209,10 @@ private fun MainShell() {
             PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, handOver = true)
             return
         }
+        Overlay.RECEIVE -> {
+            PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, mode = com.sadturtleman.flowershoes.feature.pairing.PairingMode.RECEIVE)
+            return
+        }
         Overlay.RESTORE -> {
             RestoreRoute(onBack = { overlay = null })
             return
@@ -240,6 +253,7 @@ private fun MainShell() {
                     onOpenPairing = { overlay = Overlay.PAIRING },
                     onOpenCalendar = { tab = Tab.CALENDAR },
                     onOpenSettings = { overlay = Overlay.SETTINGS },
+                    onWriteLetter = { overlay = Overlay.COMPOSE },
                 )
                 Tab.CALENDAR -> CalendarRoute()
                 Tab.LETTER -> LetterInboxRoute(
@@ -257,27 +271,14 @@ private fun MainShell() {
     }
 }
 
+/** 하단 탭 바(Figma Tab Bar): 홈 · 캘린더 · 편지 · 추억. */
 @Composable
 private fun BottomBar(current: Tab, onSelect: (Tab) -> Unit) {
-    val c = KkTheme.colors
-    Row(
-        Modifier.fillMaxWidth().background(c.bgSurface).navigationBarsPadding().padding(vertical = KkSpacing.xs),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        Tab.entries.forEach { t ->
-            val selected = t == current
-            Box(
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = 56.dp)
-                    .semantics { this.selected = selected }
-                    .clickable(role = Role.Tab) { onSelect(t) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(t.label, style = KkTheme.type.labelM, color = if (selected) c.textBrand else c.textTertiary)
-            }
-        }
-    }
+    com.sadturtleman.flowershoes.core.designsystem.KkTabBar(
+        tabs = Tab.entries.map { com.sadturtleman.flowershoes.core.designsystem.KkTab(it.label, it.icon) },
+        selected = current.ordinal,
+        onSelect = { onSelect(Tab.entries[it]) },
+    )
 }
 
 /** 아직 붙지 않은 화면. 개발 순서(설계 10장)대로 채운다. */

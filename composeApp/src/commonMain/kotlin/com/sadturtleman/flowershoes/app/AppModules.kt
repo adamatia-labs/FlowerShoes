@@ -112,7 +112,7 @@ fun kkotsinModules(
     },
     module {
         viewModel { OnboardingViewModel(get(), get(), get()) }
-        viewModel { HomeViewModel(get(), get(), get(), get()) }
+        viewModel { HomeViewModel(get(), get(), get(), get(), get()) }
         viewModel { CalendarViewModel(get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { DrawingPng.render(it) }, get()) }

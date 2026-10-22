@@ -106,3 +106,16 @@ val Rank.koreanName: String
         Rank.CORPORAL -> "상병"
         Rank.SERGEANT -> "병장"
     }
+
+/**
+ * 복무 기간 전체의 연가 일수(홈 › 남은 휴가). 군 인사 규정의 기본 연가만 — 포상 · 위로 휴가는 캘린더에 적은 휴가로 따로 센다.
+ * 사회복무요원은 복무 기관 규정이 달라 0(남은 휴가 칸을 숨긴다).
+ */
+val com.sadturtleman.flowershoes.core.model.Branch.annualLeaveDays: Int
+    get() = when (this) {
+        com.sadturtleman.flowershoes.core.model.Branch.ARMY, com.sadturtleman.flowershoes.core.model.Branch.MARINE -> 24
+        com.sadturtleman.flowershoes.core.model.Branch.NAVY -> 27
+        com.sadturtleman.flowershoes.core.model.Branch.AIR_FORCE -> 28
+        com.sadturtleman.flowershoes.core.model.Branch.SOCIAL_SERVICE -> 0
+    }
+

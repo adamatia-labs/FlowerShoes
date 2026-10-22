@@ -1,6 +1,15 @@
 package com.sadturtleman.flowershoes.feature.pairing
 
 import androidx.compose.foundation.background
+import com.sadturtleman.flowershoes.core.designsystem.KkTopBarLeading
+import com.sadturtleman.flowershoes.core.designsystem.KkTopBar
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
+import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.designsystem.LocalKkShare
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
@@ -162,82 +171,226 @@ class PairingViewModel(
     }
 }
 
+/** 연결 화면 모드. CONNECT 처음 연결 · HAND_OVER 연인 폰 교체 받기(넘겨주는 쪽) · RECEIVE 다시 연결하기(새 폰). */
+enum class PairingMode { CONNECT, HAND_OVER, RECEIVE }
+
 @Composable
 fun PairingRoute(
     onDone: () -> Unit,
     onBack: () -> Unit,
-    /** 설정 › "연인 폰 교체 받기"로 들어오면 바로 넘겨주기 코드를 만든다. */
+    /** 설정 › "연인 폰 교체 받기"로 들어오면 넘겨주는 쪽. */
     handOver: Boolean = false,
+    mode: PairingMode = if (handOver) PairingMode.HAND_OVER else PairingMode.CONNECT,
     viewModel: PairingViewModel = koinViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    LaunchedEffect(handOver) { if (handOver && ui.state is PairingState.Idle) viewModel.offerRelink() }
     LaunchedEffect(ui.state) { if (ui.state is PairingState.Linked) onDone() }
-    PairingScreen(ui, viewModel, onBack)
+    // 새 폰은 확인 코드가 뜨면 바로 확인한다 — 비교 · 넘겨주기는 넘겨주는 폰(데이터를 가진 쪽)이 한다.
+    LaunchedEffect(ui.state, mode) {
+        if (mode == PairingMode.RECEIVE && ui.state is PairingState.CompareSas && !ui.busy) viewModel.confirm()
+    }
+    val close = {
+        viewModel.reset()
+        onBack()
+    }
+    when (mode) {
+        PairingMode.CONNECT -> ConnectScreen(ui, viewModel, close, onDone)
+        PairingMode.HAND_OVER -> HandOverScreen(ui, viewModel, close)
+        PairingMode.RECEIVE -> ReceiveScreen(ui, viewModel, close)
+    }
+}
+
+/** 화면 틀: 상단 바 + 본문(좌우 20 · 사이 16) + 하단 버튼. */
+@Composable
+private fun Frame(
+    title: String,
+    leading: KkTopBarLeading,
+    onClose: () -> Unit,
+    footer: @Composable ColumnScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val c = KkTheme.colors
+    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+        KkTopBar(title, onLeading = onClose, leading = leading, modifier = Modifier.padding(horizontal = KkSpacing.xl))
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+            content = content,
+        )
+        Column(
+            Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+            content = footer,
+        )
+    }
 }
 
 @Composable
-private fun PairingScreen(ui: PairingUi, vm: PairingViewModel, onBack: () -> Unit) {
+private fun Title(title: String, body: String) {
+    Text(title, style = KkTheme.type.titleL, color = KkTheme.colors.textPrimary)
+    Text(body, style = KkTheme.type.bodyL, color = KkTheme.colors.textSecondary)
+}
+
+/** "● 기다리는 중…" 한 줄. */
+@Composable
+private fun Waiting(text: String) {
     val c = KkTheme.colors
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(c.bgBrand))
+        Text(text, style = KkTheme.type.bodyS, color = c.textSecondary, modifier = Modifier.weight(1f))
+    }
+}
+
+/** 코드 카드(brand-subtle, 반경 24): 라벨 · 큰 코드 · 설명. 누르면 복사. */
+@Composable
+private fun CodeCard(label: String, code: String, caption: String, copyable: Boolean = true) {
+    val c = KkTheme.colors
+    val clipboard = LocalClipboardManager.current
+    var copied by remember(code) { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().padding(KkSpacing.screen),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.xl)).background(c.bgBrandSubtle)
+            .clickable(enabled = copyable) {
+                clipboard.setText(AnnotatedString(code))
+                copied = true
+            }
+            .padding(horizontal = 20.dp, vertical = 24.dp)
+            .semantics { contentDescription = "$label ${code.toList().joinToString(" ")}" },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("← 돌아가기", style = KkTheme.type.labelM, color = c.textSecondary, modifier = Modifier.clickable {
-            vm.reset()
-            onBack()
-        })
-        if (!ui.available) {
-            KkScreenHeader("연인과 연결하기", "이 빌드에는 아직 서버(Firebase) 설정이 없어요. 설정이 들어가면 여기서 초대 코드로 연결할 수 있어요.")
-            return@Column
+        Text(label, style = KkTheme.type.labelM, color = c.textBrand)
+        Text(code, style = KkTheme.type.display, color = c.textPrimary)
+        Text(if (copied) "복사했어요" else caption, style = KkTheme.type.caption, color = c.textSecondary)
+    }
+}
+
+/** 처음 연결: 온보딩 연결과 같은 본문 → 확인 코드 비교. */
+@Composable
+private fun ConnectScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit, onDone: () -> Unit) {
+    when (val s = ui.state) {
+        PairingState.Idle, is PairingState.ShowCode -> Frame("연인과 연결", KkTopBarLeading.Close, close) {
+            Title("연인과 연결해요", "초대 코드를 보내면 둘의 D-day와 상태가 함께 보여요.")
+            InviteConnect(onAdvance = {}, viewModel = vm)
         }
-        when (val s = ui.state) {
-            PairingState.Idle -> {
-                KkScreenHeader("연인과 연결하기", "한 사람이 코드를 만들고, 다른 사람이 그 코드를 입력해요.")
-                Spacer(Modifier.height(KkSpacing.md))
-                KkPrimaryButton("초대 코드 만들기", onClick = vm::create, enabled = !ui.busy)
-                Spacer(Modifier.height(KkSpacing.lg))
-                Text("받은 코드가 있나요?", style = KkTheme.type.labelM, color = c.textSecondary)
-                KkTextField(ui.codeInput, vm::editCode, placeholder = "8자리 코드")
-                KkSecondaryButton("코드로 연결하기", onClick = vm::join)
-                if (ui.relinkAvailable) {
-                    Spacer(Modifier.height(KkSpacing.lg))
-                    Text("폰을 바꿨나요? 연인 폰의 설정 › '연인 폰 교체 받기'에서 받은 코드를 위에 넣고 눌러 주세요.", style = KkTheme.type.bodyS, color = c.textSecondary)
-                    KkSecondaryButton("연인 폰에서 받은 코드로 다시 연결하기", onClick = vm::acceptRelink)
+        PairingState.WaitingPartner -> Frame("연인과 연결", KkTopBarLeading.Close, close, footer = { GhostButton("취소", close) }) {
+            Title("코드가 맞았어요", "연인 폰이 응답하면 확인 코드가 떠요.")
+            Waiting("연인 폰을 기다리는 중…")
+        }
+        is PairingState.CompareSas -> Frame("연인과 연결", KkTopBarLeading.Close, close, footer = {
+            KkPrimaryButton("맞아요", vm::confirm, enabled = !ui.busy, loading = ui.busy)
+            GhostButton("달라요 — 그만할게요", close)
+        }) {
+            Title("두 화면의 숫자가 같나요?", "전화 · 면회 · 메시지로 서로 읽어 주세요. 다르면 누군가 가운데서 바꿔치기한 거예요.")
+            CodeCard("확인 코드", s.sas.chunked(3).joinToString(" "), "연인 폰에도 같은 숫자가 떠 있어요", copyable = false)
+        }
+        PairingState.WaitingConfirm -> Frame("연인과 연결", KkTopBarLeading.Close, close, footer = { GhostButton("취소", close) }) {
+            Title("거의 다 됐어요", "연인도 [맞아요]를 누르면 바로 연결돼요.")
+            Waiting("연인이 확인하길 기다리는 중…")
+        }
+        is PairingState.Linked -> Frame("연인과 연결", KkTopBarLeading.Close, onDone) {
+            Title("연결됐어요", "이제 보고싶어 · 편지 · 일정을 함께 써요.")
+        }
+        is PairingState.Failed -> Frame("연인과 연결", KkTopBarLeading.Close, close, footer = { GhostButton("처음부터", vm::reset) }) {
+            Title("연결하지 못했어요", s.reason)
+        }
+    }
+}
+
+/** 연인 폰 교체 받기(넘겨주는 쪽, Figma 재연결 / 지수 · 교체 받기 · 코드 · 확인). */
+@Composable
+private fun HandOverScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit) {
+    val share = LocalKkShare.current
+    val c = KkTheme.colors
+    when (val s = ui.state) {
+        PairingState.Idle -> Frame("상대 폰 교체 받기", KkTopBarLeading.Back, close, footer = {
+            KkPrimaryButton("코드 만들기", vm::offerRelink, enabled = !ui.busy, loading = ui.busy)
+        }) {
+            Title("연인이 폰을 바꿨나요?", "새 폰에서 코드를 입력하면, 확인을 거쳐 지금까지의 기록을 이 폰에서 넘겨줘요.")
+            val shape = RoundedCornerShape(KkRadius.lg)
+            Column(
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                listOf("코드를 만들어 연인에게 알려 주세요", "연인이 새 폰에 코드를 입력해요", "넘겨주기를 누르면 기록이 새 폰으로 옮겨져요").forEachIndexed { i, step ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
+                            Text("${i + 1}", style = KkTheme.type.labelS, color = c.textBrand)
+                        }
+                        Text(step, style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
+                    }
                 }
             }
-            is PairingState.ShowCode -> {
-                KkScreenHeader("이 코드를 연인에게 알려 주세요", "24시간 동안 한 번만 쓸 수 있어요. 카메라가 막힌 부대 폰에서도 직접 입력하면 돼요.")
-                BigText(CrockfordCode.format(s.code))
-                Text("상대가 입력하기를 기다리는 중…", style = KkTheme.type.bodyS, color = c.textTertiary)
+        }
+        is PairingState.ShowCode -> Frame("상대 폰 교체 받기", KkTopBarLeading.Close, close, footer = { GhostButton("코드 취소", close) }) {
+            val code = CrockfordCode.format(s.code)
+            Title("연인에게 코드를 알려 주세요", "전화나 문자로 불러 줘도 돼요. 코드는 한 번만 쓸 수 있어요.")
+            CodeCard("교체 코드", code, "24시간 동안 유효 · 눌러서 복사")
+            KkSecondaryButton("메시지로 보내기", { share("꽃신 교체 코드: $code (새 폰의 '다시 연결하기'에 입력해 줘)") })
+            Waiting("연인이 새 폰에 코드를 입력하길 기다리는 중…")
+        }
+        PairingState.WaitingPartner -> Frame("상대 폰 교체 받기", KkTopBarLeading.Close, close, footer = { GhostButton("코드 취소", close) }) {
+            Title("새 폰을 확인하는 중이에요", "새 폰이 응답하면 확인 코드가 떠요.")
+            Waiting("새 폰을 기다리는 중…")
+        }
+        is PairingState.CompareSas -> Frame("상대 폰 교체 받기", KkTopBarLeading.Close, close, footer = {
+            KkPrimaryButton("넘겨줄게요", vm::confirm, enabled = !ui.busy, loading = ui.busy)
+            GhostButton("취소", close)
+        }) {
+            Title("연인이 새 폰으로 다시 연결하려고 해요", "교체 코드가 맞는 새 폰이에요. 넘겨주면 지금까지의 기록이 새 폰으로 옮겨져요.")
+            val shape = RoundedCornerShape(KkRadius.lg)
+            Column(
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("새 기기 확인 코드", style = KkTheme.type.caption, color = c.textTertiary)
+                Text(s.sas.chunked(3).joinToString(" "), style = KkTheme.type.titleS, color = c.textPrimary)
+                Text("새 폰 화면의 숫자와 같을 때만 넘겨주세요", style = KkTheme.type.bodyS, color = c.textSecondary)
             }
-            PairingState.WaitingPartner -> KkScreenHeader("상대 폰을 기다리는 중", "코드를 만든 폰이 응답하면 확인 코드가 떠요.")
-            is PairingState.CompareSas -> {
-                KkScreenHeader("두 화면의 숫자가 같나요?", "전화 · 면회 · 메시지로 서로 읽어 주세요. 다르면 누군가 가운데서 바꿔치기한 거예요.")
-                BigText(s.sas.chunked(3).joinToString(" "))
-                KkPrimaryButton("맞아요", onClick = vm::confirm, enabled = !ui.busy)
-                KkSecondaryButton("달라요 — 그만할게요", onClick = vm::reset)
+        }
+        PairingState.WaitingConfirm, is PairingState.Linked -> Frame("상대 폰 교체 받기", KkTopBarLeading.Close, close) {
+            Title("기록을 넘겨주는 중이에요", "앱을 닫지 말고 와이파이에 연결해 두세요.")
+            Waiting("새 폰이 받는 중…")
+        }
+        is PairingState.Failed -> Frame("상대 폰 교체 받기", KkTopBarLeading.Close, close, footer = { GhostButton("처음부터", vm::reset) }) {
+            Title("넘겨주지 못했어요", s.reason)
+        }
+    }
+}
+
+/** 다시 연결하기(새 폰, Figma 재연결 / 민준 · 코드 입력 · 확인 대기 · 넘겨받는 중). */
+@Composable
+private fun ReceiveScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit) {
+    when (val s = ui.state) {
+        PairingState.Idle, is PairingState.Failed -> Frame("다시 연결하기", KkTopBarLeading.Back, close, footer = {
+            KkPrimaryButton("다음", vm::acceptRelink, enabled = CrockfordCode.normalize(ui.codeInput)?.length == 8 && !ui.busy, loading = ui.busy)
+        }) {
+            Title("연인 폰에서 받은 코드를 입력해 주세요", "연인이 [설정 › 상대 폰 교체 받기]에서 만든 8자리 코드예요.")
+            KkInput(
+                value = ui.codeInput,
+                onValueChange = vm::editCode,
+                label = "교체 코드",
+                placeholder = "XXXX-XXXX",
+                helper = "대문자와 숫자 8자리",
+                error = (s as? PairingState.Failed)?.reason,
+            )
+        }
+        PairingState.WaitingPartner, is PairingState.CompareSas, PairingState.WaitingConfirm, is PairingState.ShowCode ->
+            Frame("다시 연결하기", KkTopBarLeading.Close, close, footer = { GhostButton("취소", close) }) {
+                Title("코드가 맞았어요", "연인 폰에서 넘겨주기를 누르면 바로 넘겨받기 시작해요.")
+                if (s is PairingState.CompareSas) {
+                    CodeCard("확인 코드", s.sas.chunked(3).joinToString(" "), "연인 폰에도 같은 숫자가 떠 있어요", copyable = false)
+                }
+                Waiting("연인이 확인하길 기다리는 중…")
             }
-            PairingState.WaitingConfirm -> KkScreenHeader("상대 확인을 기다리는 중", "상대도 [맞아요]를 누르면 연결돼요.")
-            is PairingState.Linked -> KkScreenHeader("연결됐어요", "이제 보고싶어 · 편지 · 일정을 함께 써요.")
-            is PairingState.Failed -> {
-                KkScreenHeader("연결하지 못했어요", s.reason)
-                KkSecondaryButton("처음부터", onClick = vm::reset)
-            }
+        is PairingState.Linked -> Frame("다시 연결하기", KkTopBarLeading.Close, close) {
+            Title("기록을 넘겨받는 중이에요", "앱을 닫지 말고 와이파이에 연결해 두세요.")
         }
     }
 }
 
 @Composable
-private fun BigText(text: String) {
-    Text(
-        text,
-        style = KkTheme.type.display.copy(fontSize = 40.sp, letterSpacing = 4.sp),
-        color = KkTheme.colors.textBrand,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).semantics { contentDescription = text.toList().joinToString(" ") },
-    )
-}
+private fun GhostButton(text: String, onClick: () -> Unit) =
+    KkButton(text, onClick, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
 
 /**
  * 온보딩 3 · 연결(Figma 53:923)의 본문: 내 초대 코드(눌러서 복사) · 카카오톡으로 초대 보내기 · 상대 코드 입력.

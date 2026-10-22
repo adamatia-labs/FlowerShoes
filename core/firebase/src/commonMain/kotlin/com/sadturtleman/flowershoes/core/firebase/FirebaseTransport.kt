@@ -153,7 +153,10 @@ class FirestoreTransport(
     override suspend fun linkedCoupleId(code: String): String? {
         val uid = Firebase.auth.currentUser?.uid ?: return null
         val snap = db.collection("users").document(uid).get()
-        return if (snap.exists) snap.get<String?>("coupleId") else null
+        if (!snap.exists) return null
+        // 이 코드로 생긴 커플일 때만(다시 연결하면 coupleId 가 잠깐 옛 커플을 가리킨다).
+        if (snap.get<String?>("linkedVia") != code) return null
+        return snap.get<String?>("coupleId")
     }
 
     override suspend fun wrappedKeyFor(coupleId: String, deviceId: String): ByteArray? {

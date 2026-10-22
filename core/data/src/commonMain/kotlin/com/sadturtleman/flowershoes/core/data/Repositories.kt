@@ -32,6 +32,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.todayIn
+import kotlinx.datetime.toLocalDateTime
 
 /** 한국 대상 앱이라 날짜 경계는 항상 서울 기준이다. */
 val SEOUL: TimeZone = TimeZone.of("Asia/Seoul")
@@ -59,6 +60,9 @@ class ProfileRepository(
 
     /** 연결된 연인의 uid. 연결 전 · 해제 뒤에는 null. */
     fun observePartnerId(): Flow<String?> = db.coupleDao().observe().map { it?.partnerUserId }
+
+    /** 커플(연결 · 기념일). 혼자 모드면 null 이거나 상대가 비어 있다. */
+    fun observeCouple(): Flow<com.sadturtleman.flowershoes.core.database.CoupleEntity?> = db.coupleDao().observe()
 
     /** 커플 중 군인의 복무 일정. 혼자 모드에서 곰신이 입력한 값이어도 여기서 보인다. */
     fun observeTimelines(): Flow<List<Pair<Service, ServiceTimeline>>> =
@@ -139,6 +143,18 @@ class LetterRepository(
     fun observeInbox(): Flow<List<Letter>> =
         combine(db.letterDao().observeAll(), clock.ticker()) { list, now ->
             list.filter { it.visibleAtMs <= now.toEpochMilliseconds() }.map { it.toModel() }
+        }.distinctUntilChanged()
+
+    /**
+     * 내가 예약해 둔 편지 중 오늘(서울) 아직 도착하지 않은 것(홈 › 오늘 도착할 메시지). 시계와 묶어 도착하면 빠진다.
+     */
+    fun observeMyScheduledToday(): Flow<List<Letter>> =
+        combine(db.letterDao().observeAll(), clock.ticker()) { list, now ->
+            val today = now.toLocalDateTime(SEOUL).date
+            list.filter {
+                it.authorId == identity.userId && it.deletedAtMs == null && it.visibleAtMs > now.toEpochMilliseconds() &&
+                    kotlin.time.Instant.fromEpochMilliseconds(it.visibleAtMs).toLocalDateTime(SEOUL).date == today
+            }.sortedBy { it.visibleAtMs }.map { it.toModel() }
         }.distinctUntilChanged()
 
     suspend fun drawingsOf(letterId: String): List<DrawingEntity> = db.drawingDao().forLetter(letterId)

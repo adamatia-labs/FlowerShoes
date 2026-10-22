@@ -189,8 +189,10 @@ export const onPairingStep = onDocumentCreated({ document: 'pairings/{code}/step
   });
   // 커플 키(epoch 1)는 초대한 폰이 초대받은 폰의 boxPub 으로 봉인해 confirm 에 실어 보냈다.
   batch.set(coupleRef.collection('keys').doc(reveal.get('deviceId')), { wrapped: ci.get('wrappedKey'), epoch: 1 });
-  batch.set(db.doc(`users/${inviterUid}`), { coupleId: coupleRef.id, deviceId: inviter.get('deviceId') }, { merge: true });
-  batch.set(db.doc(`users/${joinerUid}`), { coupleId: coupleRef.id, deviceId: reveal.get('deviceId') }, { merge: true });
+  // linkedVia: 이 초대 코드로 생긴 커플이라는 표시. 같은 두 사람이 다시 연결하면 coupleId 가 잠깐 옛 값이라
+  // 앱은 linkedVia 가 지금 코드와 같을 때만 coupleId 를 믿는다.
+  batch.set(db.doc(`users/${inviterUid}`), { coupleId: coupleRef.id, deviceId: inviter.get('deviceId'), linkedVia: code }, { merge: true });
+  batch.set(db.doc(`users/${joinerUid}`), { coupleId: coupleRef.id, deviceId: reveal.get('deviceId'), linkedVia: code }, { merge: true });
   await batch.commit();
   await db.recursiveDelete(base);
   await Promise.all([inviterUid, joinerUid].map((u) => push(u, { data: { kind: 'linked', coupleId: coupleRef.id } })));
