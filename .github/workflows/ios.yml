@@ -86,18 +86,29 @@ jobs:
           xcrun simctl boot 'iPhone 16' || true
           xcrun simctl bootstatus 'iPhone 16' -b
           xcrun simctl install booted "$APP"
-          xcrun simctl launch booted com.sadturtleman.kkotsin
+          # --console: 앱의 stdout/stderr(Kotlin 예외 포함)를 파일로 받는다.
+          (xcrun simctl launch --console booted com.sadturtleman.kkotsin > console.log 2>&1 &)
           sleep 20
           xcrun simctl io booted screenshot launch.png
-          xcrun simctl spawn booted launchctl list | grep -q com.sadturtleman.kkotsin || { echo '앱이 종료됐다'; xcrun simctl spawn booted log show --last 2m --predicate 'process == "Kkotsin"' | tail -60; exit 1; }
-          echo '앱이 20초 뒤에도 실행 중'
+          if xcrun simctl spawn booted launchctl list | grep -q 'com.sadturtleman.kkotsin'; then
+            echo '앱이 20초 뒤에도 실행 중'
+          else
+            echo '앱이 종료됐다 — 콘솔:'
+            tail -120 console.log
+            echo '— 크래시 리포트:'
+            for f in $(ls -t ~/Library/Logs/DiagnosticReports/Kkotsin* 2>/dev/null | head -1); do head -150 "$f"; cp "$f" crash.ips; done
+            exit 1
+          fi
 
       - name: 스크린샷 올리기
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-launch
-          path: iosApp/launch.png
+          path: |
+            iosApp/launch.png
+            iosApp/console.log
+            iosApp/crash.ips
           if-no-files-found: ignore
 
       - name: 로그 올리기
