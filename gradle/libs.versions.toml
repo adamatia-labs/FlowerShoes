@@ -36,6 +36,8 @@ jankStats = "1.0.0-beta02"
 javaxInject = "1"
 # KMP 공용 코어(:core:*)
 kotlinxDatetime = "0.7.1"
+# libsodium KMP 바인딩. Kotlin/Native 호환은 macOS 에서 iOS 빌드로 따로 확인해야 한다(설계 10장 0단계).
+libsodiumBindings = "0.9.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -98,6 +100,7 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
+libsodium-bindings = { group = "com.ionspin.kotlin", name = "multiplatform-crypto-libsodium-bindings", version.ref = "libsodiumBindings" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 [plugins]
