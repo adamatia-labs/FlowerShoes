@@ -11,6 +11,7 @@ import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
+import kotlinx.coroutines.launch
 
 private var started = false
 
@@ -20,16 +21,47 @@ fun MainViewController(): UIViewController {
     if (!started) {
         val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
         val settingsPath = requireNotNull(support?.path) + "/kkotsin_device.preferences_pb"
+        // Firebase 는 Swift 쪽(KkotsinApp)이 GoogleService-Info.plist 가 있을 때만 configure 한다.
+        val firebase = runCatching { dev.gitlive.firebase.Firebase.app }.isSuccess
+        val cloud = if (firebase) {
+            val t = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
+            CloudBackend(
+                mailbox = t, blobs = t, pairing = t,
+                rotation = com.sadturtleman.flowershoes.core.firebase.FirestoreRotation(),
+                account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(),
+                relink = com.sadturtleman.flowershoes.core.firebase.FirestoreRelink(),
+            )
+        } else null
+        val group = com.sadturtleman.flowershoes.app.ios.appGroupRoot()
         startKoin {
             modules(
                 kkotsinModules(
                     database = databaseBuilder().buildKkotsin(),
                     settingsStore = PreferenceDataStoreFactory.createWithPath { settingsPath.toPath() },
                     attachmentsRoot = (requireNotNull(support?.path) + "/db/attachments").toPath(),
-                ),
+                    cloud = cloud,
+                    vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
+                ) + org.koin.dsl.module {
+                    single<com.sadturtleman.flowershoes.feature.settings.PlatformActions> { com.sadturtleman.flowershoes.app.ios.IosPlatformActions() }
+                    // 위젯 스냅샷은 App Group 에(위젯 확장이 읽는다).
+                    single { com.sadturtleman.flowershoes.core.widget.SnapshotStore(group / "widget/snapshot.json") }
+                },
             )
         }
         started = true
     }
     return ComposeUIViewController { KkotsinApp() }
+}
+
+/**
+ * iosApp 이 앱이 앞으로 나올 때 부른다: NSE 대기열 합치기 → 동기화 → 위젯 연결 정보 갱신.
+ * 위젯 스냅샷 · 로컬 알림 발행기는 첫 화면이 뜬 뒤 한 번 시작한다.
+ */
+fun onForeground() {
+    val koin = org.koin.core.context.GlobalContext.getOrNull() ?: return
+    kotlinx.coroutines.MainScope().launch {
+        koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncClient>()?.let { com.sadturtleman.flowershoes.app.ios.mergeNseQueue(it) }
+        koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()?.requestNow()
+        com.sadturtleman.flowershoes.app.ios.writeLinkConfig(koin.get(), koin.get())
+    }
 }

@@ -52,6 +52,11 @@ kotlin {
             // 시스템 뒤로 가기(Android) · 스와이프 뒤로(iOS)로 덮어 띄운 화면을 닫는다.
             implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composeMultiplatform.get()}")
         }
+        iosMain.dependencies {
+            // iOS 도 같은 Firestore 어댑터(GitLive). Firebase iOS SDK 는 Xcode(SPM)에서 링크한다.
+            implementation(project(":core:firebase"))
+            implementation(project(":core:notification"))
+        }
         androidMain.dependencies {
             implementation(libs.koin.android)
             // Firebase 설정(google-services.json)이 있을 때만 쓰인다.

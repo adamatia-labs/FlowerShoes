@@ -98,3 +98,12 @@
 cd firebase/functions && npm install && npm test
 cd firebase/rules-test && npm install && npm test   # Firestore 에뮬레이터
 ```
+
+## iOS 어댑터(작성됨, macOS 빌드 미확인)
+
+- `IosKeyVault`: Keychain(access group 공유, ThisDeviceOnly). NSE · 위젯용 개별 항목(coupleKey.{epoch}, device.signSecret, partner.signPub)도 함께 쓴다.
+- `IosPlatformActions`: LAContext 기기 인증. `IosNotificationScheduler`: UNUserNotificationCenter.
+- App Group: 위젯 스냅샷, `link.json`(WidgetSender), NSE 대기열 합치기(`mergeNseQueue` → `SyncClient.receiveQueued`).
+- `KkotsinApp.swift`: GoogleService-Info.plist 가 있을 때만 Firebase configure, 딥링크, 앞으로 나올 때 `onForeground()`.
+- 남은 것: macOS 에서 `xcodegen` → 빌드 → 실기기 확인, iOS 로그인 SDK, iCloud 키체인 백업 키 동기화.
+

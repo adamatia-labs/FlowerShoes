@@ -130,6 +130,14 @@ class SyncClient(
         return applied to rejected
     }
 
+    /** iOS: NSE 가 App Group 에 받아 둔 Op 을 반영한다(우편함과 같은 확인 · 중복 제거를 거친다). */
+    suspend fun receiveQueued(items: List<MailItem>): Int {
+        val couple = db.coupleDao().get() ?: return 0
+        return items.count { runCatching { receive(couple, it) }.getOrDefault(false) }
+    }
+
+    suspend fun receiveQueued(item: MailItem): Boolean = receiveQueued(listOf(item)) == 1
+
     private suspend fun receive(couple: CoupleEntity, item: MailItem): Boolean {
         val sender = db.deviceDao().get(item.from) ?: return false
         val header = OpHeader.fromBytes(item.header)

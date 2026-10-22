@@ -17,6 +17,9 @@ packages:
   Sodium:
     url: https://github.com/jedisct1/swift-sodium
     from: 0.9.1
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 11.0.0
 settings:
   base:
     DEVELOPMENT_TEAM: ""   # 팀 id 를 넣는다
@@ -46,6 +49,19 @@ targets:
       - target: KkotsinNotification
       - target: KkotsinWidgets
       - package: Sodium
+      # GitLive firebase-kotlin-sdk 가 링크하는 Firebase iOS SDK(앱 타깃만 — NSE · 위젯에는 넣지 않는다)
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseStorage
+      - package: Firebase
+        product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseMessaging
     info:
       path: App/Info.plist
       properties:
