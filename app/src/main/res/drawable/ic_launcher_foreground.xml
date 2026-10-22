@@ -1,30 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 꽃신 로고(꽃)를 108dp 적응형 아이콘 가운데(안전 영역 66dp 안)에 둔다. logo_mark.xml 과 같은 경로. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:pathData="M31,63.928c0,0 6.4,-11 12.1,-13.1c7.2,-2.6 26,-1.4 26,-1.4l38.1,38.1L107,108.928l-32,-1L31,63.928z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:endX="85.84757"
-                android:endY="92.4963"
-                android:startX="42.9492"
-                android:startY="49.59793"
-                android:type="linear">
-                <item
-                    android:color="#44000000"
-                    android:offset="0.0" />
-                <item
-                    android:color="#00000000"
-                    android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-    <path
-        android:fillColor="#FFFFFF"
-        android:fillType="nonZero"
-        android:pathData="M65.3,45.828l3.8,-6.6c0.2,-0.4 0.1,-0.9 -0.3,-1.1c-0.4,-0.2 -0.9,-0.1 -1.1,0.3l-3.9,6.7c-6.3,-2.8 -13.4,-2.8 -19.7,0l-3.9,-6.7c-0.2,-0.4 -0.7,-0.5 -1.1,-0.3C38.8,38.328 38.7,38.828 38.9,39.228l3.8,6.6C36.2,49.428 31.7,56.028 31,63.928h46C76.3,56.028 71.8,49.428 65.3,45.828zM43.4,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2c-0.3,-0.7 -0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C45.3,56.528 44.5,57.328 43.4,57.328L43.4,57.328zM64.6,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2s-0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C66.5,56.528 65.6,57.328 64.6,57.328L64.6,57.328z"
-        android:strokeWidth="1"
-        android:strokeColor="#00000000" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:translateX="18.8" android:translateY="18.8">
+        <path android:pathData="M35.2 31.2C40.0601 31.2 44 27.2601 44 22.4C44 17.5399 40.0601 13.6 35.2 13.6C30.3399 13.6 26.4 17.5399 26.4 22.4C26.4 27.2601 30.3399 31.2 35.2 31.2Z" android:fillColor="#FFEE4672" />
+        <path android:pathData="M47.36 40C52.2201 40 56.16 36.0601 56.16 31.2C56.16 26.3399 52.2201 22.4 47.36 22.4C42.4999 22.4 38.56 26.3399 38.56 31.2C38.56 36.0601 42.4999 40 47.36 40Z" android:fillColor="#FFEE4672" />
+        <path android:pathData="M42.72 54.4C47.5801 54.4 51.52 50.4601 51.52 45.6C51.52 40.7399 47.5801 36.8 42.72 36.8C37.8599 36.8 33.92 40.7399 33.92 45.6C33.92 50.4601 37.8599 54.4 42.72 54.4Z" android:fillColor="#FFEE4672" />
+        <path android:pathData="M27.68 54.4C32.5401 54.4 36.48 50.4601 36.48 45.6C36.48 40.7399 32.5401 36.8 27.68 36.8C22.8199 36.8 18.88 40.7399 18.88 45.6C18.88 50.4601 22.8199 54.4 27.68 54.4Z" android:fillColor="#FFEE4672" />
+        <path android:pathData="M23.04 40C27.9001 40 31.84 36.0601 31.84 31.2C31.84 26.3399 27.9001 22.4 23.04 22.4C18.1799 22.4 14.24 26.3399 14.24 31.2C14.24 36.0601 18.1799 40 23.04 40Z" android:fillColor="#FFEE4672" />
+        <path android:pathData="M35.2 41.6C38.7346 41.6 41.6 38.7346 41.6 35.2C41.6 31.6654 38.7346 28.8 35.2 28.8C31.6654 28.8 28.8 31.6654 28.8 35.2C28.8 38.7346 31.6654 41.6 35.2 41.6Z" android:fillColor="#FFF2A93B" />
+    </group>
 </vector>
