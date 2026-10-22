@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.sadturtleman.flowershoes.app.auth.AuthKeys
 import com.sadturtleman.flowershoes.app.kkotsinAndroidModules
 import com.sadturtleman.flowershoes.core.backup.BackupManager
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
@@ -54,7 +55,12 @@ class FlowerShoesApplication :
         // DI 그래프 하나(Koin): 꽃신 공유 앱 + 안드로이드 계측 모듈.
         startKoin {
             androidContext(this@FlowerShoesApplication)
-            modules(kkotsinAndroidModules(this@FlowerShoesApplication))
+            modules(
+                kkotsinAndroidModules(
+                    this@FlowerShoesApplication,
+                    AuthKeys(BuildConfig.KAKAO_NATIVE_APP_KEY, BuildConfig.GOOGLE_WEB_CLIENT_ID),
+                ),
+            )
             modules(telemetryModules(this@FlowerShoesApplication))
         }
         appScope.launch {

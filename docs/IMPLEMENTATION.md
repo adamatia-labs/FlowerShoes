@@ -27,7 +27,7 @@
 | 리플레이 길이 | 3~8초, 마지막 150ms 크로스페이드 | 그리기는 최대 7,850ms, 그 뒤 150ms 크로스페이드 | 마지막 획이 그려지는 도중에 덮이지 않게 |
 | 리플레이 점 사이 | — | 남은 점 사이를 시간 비율로 이어 그림 | 간소화로 직선 위의 점이 빠지면 획이 끝에 한 번에 나타났다 |
 | 그림 첨부 저장 | Storage | **Firestore `couples/{c}/blobs`** (base64, 1MB 한도) | GitLive Storage에 바이트 다운로드 API가 없다. 그림 문서는 5~15KB. 큰 사진은 Storage로 옮길 것 |
-| 압축(zstd) | 그림 문서 · 백업 | 아직 없음 | 순수 Kotlin 구현이 없다. 플랫폼 쪽에서 덧씌울 것 |
+| 압축(zstd) | 그림 문서 · 백업 | **넣지 않음**(형식은 압축 없이 확정) | 그림 문서는 Android ↔ iOS 가 주고받으므로 양쪽이 같은 zstd 여야 한다. iOS 는 libzstd 를 cinterop 으로 넣어야 해 macOS 없이 만들 수 없다. 델타 · varint 로 이미 5~15KB, 백업은 암호문이라 이득이 작다. 넣을 때는 문서 헤더에 압축 플래그 필드를 추가한다(TLV 라 옛 앱과 호환) |
 | 전역일 계산 | — | 민법 기간 계산(같은 날의 전날, 그런 날이 없으면 그 달 말일) | 8월 31일 입대 같은 경우를 맞추기 위해 |
 | 복무 규칙 기본값 | 시행일별 표 | 육군·해병 18, 해군 20, 공군 22, 사회복무 21개월, 진급 2/6/6 | **출시 전 병무청 공지와 대조 필요** |
 | 테마 토큰 | Figma 변수 | Figma에서 받은 값. 시안에 쓰이지 않은 `bg/brand`와 다크 테두리 일부는 팔레트 단계로 추정 | `core/designsystem/.../Colors.kt`에 표시 |
@@ -62,9 +62,9 @@
    - `google-services.json` · `GoogleService-Info.plist`를 넣는다.
    - `firebase deploy`(규칙 · 함수 · TTL · Storage lifecycle 32일)를 실행한다.
    - 함수 파라미터 `KAKAO_APP_ID`와 `KAKAO_ADMIN_KEY`를 설정한다.
-2. **소셜 로그인 SDK**
-   - 카카오 SDK(Android · iOS), Google Credential Manager, Sign in with Apple을 `AuthGateway`에 연결한다.
-   - Apple 탈퇴 시 `/auth/revoke`를 호출한다(Apple 키 필요).
+2. **소셜 로그인 키**
+   - Android 는 붙었다: `AndroidAuthGateway`(카카오 SDK → 함수 `kakaoSignIn`, Google Credential Manager, Apple OAuth). `local.properties` 에 `KAKAO_NATIVE_APP_KEY` · `GOOGLE_WEB_CLIENT_ID` 를 넣고 Firebase 가 연결되면 동작한다. 키가 없으면 그 제공자는 "설정 전"으로 안내한다.
+   - 남은 것: iOS 로그인(카카오 iOS SDK · Sign in with Apple · Google), Apple 탈퇴 시 `/auth/revoke`(Apple 키 필요).
 3. **iOS 키 보관함**
    - Keychain(access group 공유, ThisDeviceOnly)으로 `KeyVault`를 구현한다.
    - Android는 끝났다. `AndroidKeyVault`가 Keystore AES-GCM으로 감싼 파일을 쓰고, 재시작 뒤에도 키가 남는 것을 확인했다.

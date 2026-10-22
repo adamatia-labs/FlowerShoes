@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -20,6 +21,15 @@ android {
         versionName = libs.versions.versionName.get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 소셜 로그인 키(local.properties). 비어 있으면 그 제공자는 "설정 전"으로 안내한다.
+        val props = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }
+        val kakaoKey = props.getProperty("KAKAO_NATIVE_APP_KEY", "")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoKey\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${props.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"")
+        manifestPlaceholders["kakaoScheme"] = if (kakaoKey.isBlank()) "kakaonotconfigured" else "kakao$kakaoKey"
     }
 
     buildTypes {

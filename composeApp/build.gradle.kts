@@ -61,6 +61,13 @@ kotlin {
             implementation("com.google.firebase:firebase-storage")
             implementation(libs.play.services.blockstore)
             implementation(libs.kotlinx.coroutines.play.services)
+            // 소셜 로그인
+            implementation("com.google.firebase:firebase-auth")
+            implementation("com.google.firebase:firebase-functions")
+            implementation(libs.kakao.user)
+            implementation(libs.androidx.credentials)
+            implementation(libs.androidx.credentials.play)
+            implementation(libs.googleid)
         }
     }
 }

@@ -42,6 +42,18 @@
                 <data android:scheme="kkotsin" />
             </intent-filter>
         </activity>
+        <!-- 카카오 로그인(카카오톡 → 앱으로 돌아오기) -->
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:host="oauth" android:scheme="${kakaoScheme}" />
+            </intent-filter>
+        </activity>
+
         <!-- 푸시: 우편함에 새 Op 이 왔다는 초인종. 받으면 동기화를 돌린다 -->
         <service
             android:name=".push.KkotsinMessagingService"
