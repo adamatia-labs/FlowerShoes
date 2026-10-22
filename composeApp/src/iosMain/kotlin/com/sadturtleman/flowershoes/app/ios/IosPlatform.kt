@@ -21,6 +21,8 @@ import okio.Path
 import okio.Path.Companion.toPath
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSUserDomainMask
+import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.LocalAuthentication.LAContext
 import platform.LocalAuthentication.LAPolicyDeviceOwnerAuthentication
@@ -39,9 +41,19 @@ import platform.Foundation.NSCalendarUnitYear
 
 const val APP_GROUP = "group.com.sadturtleman.kkotsin"
 
-/** App Group 컨테이너. 위젯 스냅샷 · 받은 Op 대기열 · link.json 이 여기 있다(SharedStore.swift 와 같은 경로). */
-fun appGroupRoot(): Path =
-    requireNotNull(NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(APP_GROUP)?.path) { "App Group 이 없다" }.toPath()
+/**
+ * App Group 컨테이너. 위젯 스냅샷 · 받은 Op 대기열 · link.json 이 여기 있다(SharedStore.swift 와 같은 경로).
+ * App Group 권한이 없는 빌드(서명 없는 시뮬레이터 빌드 · 설정 누락)에서는 앱 자체 폴더를 쓴다 —
+ * 위젯 · 알림 확장과 공유되지 않을 뿐 앱은 그대로 동작한다.
+ */
+fun appGroupRoot(): Path {
+    NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(APP_GROUP)?.path?.let { return it.toPath() }
+    val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
+    val fallback = (requireNotNull(support?.path) + "/shared").toPath()
+    FileSystem.SYSTEM.createDirectories(fallback)
+    println("Kkotsin: App Group 이 없어 앱 폴더를 쓴다 — 위젯 · 알림 확장과 공유되지 않는다")
+    return fallback
+}
 
 /** 기기 인증: LAContext .deviceOwnerAuthentication(Face ID · Touch ID, 없으면 기기 암호). */
 class IosPlatformActions : PlatformActions {
