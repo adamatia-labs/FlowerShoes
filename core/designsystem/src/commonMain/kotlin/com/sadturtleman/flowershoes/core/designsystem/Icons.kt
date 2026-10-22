@@ -38,6 +38,11 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_toast_info
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_toast_success
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_trace
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_undo
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_camera
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_download
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_pause
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_play
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_replay
 import com.sadturtleman.flowershoes.core.designsystem.res.logo_mark
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -55,6 +60,11 @@ enum class KkIcons(internal val res: DrawableResource) {
     Highlighter(Res.drawable.ic_highlighter),
     Eraser(Res.drawable.ic_eraser),
     Undo(Res.drawable.ic_undo),
+    Download(Res.drawable.ic_download),
+    Camera(Res.drawable.ic_camera),
+    Play(Res.drawable.ic_play),
+    Pause(Res.drawable.ic_pause),
+    Replay(Res.drawable.ic_replay),
     Redo(Res.drawable.ic_redo),
     Sticker(Res.drawable.ic_sticker),
     Photo(Res.drawable.ic_photo),

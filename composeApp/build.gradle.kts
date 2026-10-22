@@ -34,6 +34,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":core:designsystem"))
+            implementation(project(":core:drawing-ui"))
             implementation(project(":core:data"))
             implementation(project(":core:database"))
             implementation(project(":core:auth"))
@@ -64,6 +65,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.koin.android)
+            implementation(libs.androidx.activity.compose)
             // Firebase 설정(google-services.json)이 있을 때만 쓰인다.
             implementation(project(":core:firebase"))
             implementation(project.dependencies.platform(libs.firebase.bom))

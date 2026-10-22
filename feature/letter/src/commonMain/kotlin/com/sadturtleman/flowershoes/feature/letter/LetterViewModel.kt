@@ -80,10 +80,19 @@ data class ComposeDraft(
     }
 }
 
+/** 한 줄 알림. [openLetterId] 가 있으면 "보기" 로 그 편지를 연다. */
+data class LetterToast(val message: String, val openLetterId: String? = null)
+
 /** 읽는 중인 편지. 그림 문서는 첨부에서 읽어 둔다. */
 data class OpenLetter(
     val letter: Letter,
     val mine: Boolean,
+    /** 글 없는 그림 한 장(그림만 보내기) — 리플레이 화면으로 연다. */
+    val drawingOnly: Boolean = false,
+    /** "민준이 보낸 그림" · "내가 보낸 그림". */
+    val drawingTitle: String = "",
+    /** "10월 21일 21:05". */
+    val sentAt: String = "",
     /** "연인 → 나 · 10.21 (화)". */
     val meta: String,
     val drawings: Map<String, DrawingDocument>,
@@ -125,6 +134,9 @@ sealed interface LetterIntent {
     data class DrawingSeen(val drawingId: String) : LetterIntent
     data object Close : LetterIntent
     data class Delete(val letterId: String) : LetterIntent
+
+    /** 그림만 보내기: 그림 한 장 + 한 줄(선택)로 글 없는 편지를 바로 보낸다. 쓰던 편지(임시저장)는 건드리지 않는다. */
+    data class SendDrawing(val meta: DrawingMeta, val caption: String?, val revealAt: LocalDateTime?) : LetterIntent
 }
 
 class LetterViewModel(
@@ -140,9 +152,18 @@ class LetterViewModel(
     private val thumbs = MutableStateFlow<Map<String, DrawingDocument?>>(emptyMap())
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val _toasts = MutableSharedFlow<String>(extraBufferCapacity = 4)
-    /** "임시저장했어요" · "고마워를 보냈어요" 같은 한 줄 알림. */
-    val toasts: SharedFlow<String> = _toasts
+    private val _toasts = MutableSharedFlow<LetterToast>(replay = 1, extraBufferCapacity = 4)
+    /** "임시저장했어요" · "고마워를 보냈어요" 같은 한 줄 알림. 화면이 바뀌는 사이에 나와도 놓치지 않게 마지막 하나는 남긴다. */
+    val toasts: SharedFlow<LetterToast> = _toasts
+
+    private fun toast(message: String, openLetterId: String? = null) {
+        _toasts.tryEmit(LetterToast(message, openLetterId))
+    }
+
+    /** 보여 준 알림은 다시 띄우지 않는다. */
+    fun toastShown() {
+        _toasts.resetReplayCache()
+    }
 
     private val names = combine(profile.observeCouple(), profile.observeUsers()) { couple, users ->
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
@@ -209,18 +230,26 @@ class LetterViewModel(
             LetterIntent.SaveDraft -> viewModelScope.launch {
                 val d = ui.value.draft
                 settings.saveLetterDraft(if (d.isEmpty) null else json.encodeToString(ComposeDraft.serializer(), d))
-                _toasts.tryEmit("임시저장했어요")
+                toast("임시저장했어요")
             }
             LetterIntent.ResetDraft -> ui.update { it.copy(draft = ComposeDraft(), draftThumbs = emptyMap()) }
             LetterIntent.Thanks -> viewModelScope.launch {
                 letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
-                _toasts.tryEmit("고마워를 보냈어요")
+                toast("고마워를 보냈어요")
             }
             is LetterIntent.Open -> open(intent.letterId)
             is LetterIntent.DrawingSeen -> viewModelScope.launch {
                 if (ui.value.open?.mine == false) letters.markRead(ReceiptEntity.DRAWING, intent.drawingId)
             }
             LetterIntent.Close -> ui.update { it.copy(open = null) }
+            is LetterIntent.SendDrawing -> viewModelScope.launch {
+                val visibleAt = intent.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
+                val letter = letters.newLetter(listOf(LetterBlock.DrawingRef(intent.meta.id)), paper = Paper.PLAIN.id, title = intent.caption, visibleAt = visibleAt)
+                letters.send(letter, listOf(intent.meta))
+                val partner = state.value.partnerName
+                if (intent.revealAt != null) toast("${intent.revealAt.month.ordinal + 1}월 ${intent.revealAt.day}일 ${intent.revealAt.hour}시에 ${partner}에게 도착해요")
+                else toast("${partner}에게 그림을 보냈어요", openLetterId = letter.id)
+            }
             is LetterIntent.Delete -> viewModelScope.launch {
                 letters.delete(intent.letterId)
                 ui.update { it.copy(open = null) }
@@ -254,7 +283,7 @@ class LetterViewModel(
             letters.send(letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt), d.drawings)
             settings.saveLetterDraft(null)
             ui.update { it.copy(draft = ComposeDraft(), draftThumbs = emptyMap()) }
-            if (d.revealAt != null) _toasts.tryEmit("${d.revealAt.month.ordinal + 1}월 ${d.revealAt.day}일 ${d.revealAt.hour}시에 도착해요")
+            if (d.revealAt != null) toast("${d.revealAt.month.ordinal + 1}월 ${d.revealAt.day}일 ${d.revealAt.hour}시에 도착해요")
         }
     }
 
@@ -269,7 +298,18 @@ class LetterViewModel(
             val (my, partner) = names.first()
             val at = letter.visibleAt.toLocalDateTime(SEOUL)
             val meta = (if (mine) "$my → $partner" else "$partner → $my") + " · ${at.short()} (${weekday(at.date)})"
-            ui.update { it.copy(open = OpenLetter(letter, mine, meta, docs, first)) }
+            val drawingOnly = !letter.hasText && letter.drawingCount == 1
+            ui.update {
+                it.copy(
+                    open = OpenLetter(
+                        letter, mine,
+                        drawingOnly = drawingOnly,
+                        drawingTitle = if (mine) "내가 보낸 그림" else "${partner.withSubject()} 보낸 그림",
+                        sentAt = "${at.month.ordinal + 1}월 ${at.day}일 ${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}",
+                        meta = meta, drawings = docs, firstView = first,
+                    ),
+                )
+            }
             if (!mine) letters.markRead(ReceiptEntity.LETTER, letterId)
         }
     }
@@ -277,5 +317,12 @@ class LetterViewModel(
 
 
 private fun LocalDateTime.short() = "${month.ordinal + 1}.$day"
+
+/** 이름 + 주격 조사: 받침이 있으면 "민준이", 없으면 "지수가". 한글이 아니면 "가". */
+internal fun String.withSubject(): String {
+    val last = lastOrNull() ?: return this
+    val batchim = last in '가'..'힣' && (last - '가') % 28 != 0
+    return this + if (batchim) "이" else "가"
+}
 
 internal fun weekday(d: LocalDate) = listOf("월", "화", "수", "목", "금", "토", "일")[d.dayOfWeek.ordinal]

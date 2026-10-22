@@ -25,6 +25,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":core:drawing-engine"))
             api(project(":core:model"))
             api(project(":core:database"))
             api(project(":core:sync"))

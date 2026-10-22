@@ -76,6 +76,12 @@ data class DrawingMeta(
     /** 완성 PNG 도 같은 방식으로(위젯 · 알림에 바로 쓴다). */
     val pngBlobId: String? = null,
     val pngBlobKey: String? = null,
+    /** 받는 폰 위젯에 띄울지(그림 보내기 › 위젯에 띄우기). 예전 앱이 보낸 그림은 띄운다. */
+    val showOnWidget: Boolean = true,
+    /** 배경 사진(그림 / 사진). 문서의 PhotoBackground 가 이 첨부 id 를 가리킨다. 그림 문서처럼 blob 으로 따로 간다. */
+    val photoAttachmentId: String? = null,
+    val photoBlobId: String? = null,
+    val photoBlobKey: String? = null,
 )
 
 object OpCodec {

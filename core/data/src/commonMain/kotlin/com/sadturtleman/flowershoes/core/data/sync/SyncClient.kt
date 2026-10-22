@@ -110,6 +110,7 @@ class SyncClient(
                 if (d.pngAttachmentId != d.docAttachmentId) {
                     upload(couple, d.pngAttachmentId)?.let { (blobId, key) -> out = out.copy(pngBlobId = blobId, pngBlobKey = key) }
                 }
+                d.photoAttachmentId?.let { id -> upload(couple, id)?.let { (blobId, key) -> out = out.copy(photoBlobId = blobId, photoBlobKey = key) } }
                 out
             },
         )
@@ -180,6 +181,7 @@ class SyncClient(
             is OpPayload.LetterPut -> p.drawings.forEach { d ->
                 download(couple, d.docBlobId, d.docBlobKey, d.docAttachmentId, AttachmentKind.DRAWING_DOC)
                 download(couple, d.pngBlobId, d.pngBlobKey, d.pngAttachmentId, AttachmentKind.DRAWING_PNG)
+                download(couple, d.photoBlobId, d.photoBlobKey, d.photoAttachmentId, AttachmentKind.PHOTO)
             }
             else -> Unit
         }
@@ -258,7 +260,7 @@ class SyncClient(
             db.eventDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.EventPut(it.toModel())) }
             db.letterDao().byAuthor(identity.userId).forEach { l ->
                 val drawings = db.drawingDao().forLetter(l.id).map {
-                    com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs)
+                    com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs, showOnWidget = it.showOnWidget, photoAttachmentId = photoOf(it.docAttachmentId))
                 }
                 add(OpPayload.LetterPut(l.toModel(), drawings))
             }
@@ -292,8 +294,16 @@ class SyncClient(
         writer.write(OpKind.SNAPSHOT, "snapshot", "full", localWrite = {}, payload = { OpPayload.Snapshot(covers, items) })
     }
 
+    /** 그림 문서가 가리키는 배경 사진 첨부(스냅샷에서 사진도 함께 보내려고). DB 에 따로 두지 않고 문서에서 읽는다. */
+    private suspend fun photoOf(docAttachmentId: String?): String? {
+        val bytes = docAttachmentId?.let { attachments.read(it) } ?: return null
+        // 깨진 문서는 사진 없이 보낸다(스냅샷 전체를 막지 않는다).
+        val doc = (runCatching { com.sadturtleman.flowershoes.core.drawing.DrawingCodec.decode(bytes) }.getOrNull() as? com.sadturtleman.flowershoes.core.drawing.DrawingCodec.Result.Ok)?.document
+        return doc?.elements?.filterIsInstance<com.sadturtleman.flowershoes.core.drawing.PhotoBackground>()?.firstOrNull()?.attachmentId
+    }
+
     private suspend fun drawingMetas(letterId: String) = db.drawingDao().forLetter(letterId).map {
-        com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs)
+        com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs, showOnWidget = it.showOnWidget, photoAttachmentId = photoOf(it.docAttachmentId))
     }
 
     private fun uploadedKey(stream: String) = "uploaded:$stream"

@@ -8,7 +8,7 @@ plugins {
 kotlin {
     jvmToolchain(17)
 
-    // 완성 PNG(위젯 · 알림 · 목록용, 설계 5-3). Android 는 android.graphics, iOS 는 Compose(Skia)로 그린다.
+    // 완성 PNG(위젯 · 알림 · 목록용, 설계 5-3). 두 플랫폼 모두 화면과 같은 Compose 렌더러로 그린다.
     android {
         namespace = "com.sadturtleman.flowershoes.core.media"
         compileSdk = libs.versions.compileSdk.get().toInt()
@@ -20,10 +20,10 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":core:drawing-engine"))
-            implementation(compose.runtime)
-        }
-        iosMain.dependencies {
             implementation(project(":core:drawing-ui"))
+            implementation(compose.runtime)
+            implementation(compose.ui)
+            implementation(compose.components.resources)
         }
     }
 }

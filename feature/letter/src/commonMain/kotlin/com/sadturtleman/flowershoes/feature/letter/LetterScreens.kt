@@ -59,6 +59,10 @@ import com.sadturtleman.flowershoes.core.designsystem.KkColors
 import com.sadturtleman.flowershoes.core.designsystem.KkDatePicker
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkEmptyState
+import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
+import com.sadturtleman.flowershoes.core.designsystem.KkScheduleSheet
+import com.sadturtleman.flowershoes.core.designsystem.KkToastType
+import com.sadturtleman.flowershoes.core.designsystem.hhmm
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
@@ -93,14 +97,18 @@ import org.koin.compose.viewmodel.koinViewModel
 fun LetterInboxRoute(
     onCreate: () -> Unit,
     onReply: () -> Unit,
+    onReplyDrawing: () -> Unit = onReply,
     viewModel: LetterViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
         val open = state.open
-        if (open != null) LetterReadScreen(open, viewModel::onIntent, onReply)
-        else LetterInboxScreen(state, viewModel::onIntent, onCreate)
-        ToastHost(viewModel.toasts)
+        when {
+            open != null && open.drawingOnly -> DrawingLetterScreen(open, viewModel::onIntent, onReplyDrawing)
+            open != null -> LetterReadScreen(open, viewModel::onIntent, onReply)
+            else -> LetterInboxScreen(state, viewModel::onIntent, onCreate)
+        }
+        ToastHost(viewModel.toasts, viewModel::toastShown) { viewModel.onIntent(LetterIntent.Open(it)) }
     }
 }
 
@@ -171,7 +179,7 @@ private fun InboxItem(card: LetterCard, modifier: Modifier, onClick: () -> Unit)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (drawing) "그림만" else "편지", style = KkTheme.type.labelS, color = if (drawing) c.textBrand else c.textMilitary,
+                if (drawing) "그림" else "편지", style = KkTheme.type.labelS, color = if (drawing) c.textBrand else c.textMilitary,
                 modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(if (drawing) c.bgBrandSubtle else c.bgSurface)
                     .padding(horizontal = KkSpacing.xs, vertical = KkSpacing.xxs),
             )
@@ -218,24 +226,6 @@ private fun CreateOption(icon: KkIcons, tint: Color, bg: Color, title: String, d
             Text(title, style = KkTheme.type.titleS, color = c.textPrimary)
             Text(description, style = KkTheme.type.bodyS, color = c.textSecondary)
         }
-    }
-}
-
-/** 디자인 시스템 시트 모양(위 모서리 24 · 좌우 · 위 20 / 아래 40)의 Material 모달 시트. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun KkModalSheet(onDismiss: () -> Unit, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = KkTheme.colors.bgSurfaceRaised,
-        dragHandle = null,
-        shape = RoundedCornerShape(topStart = KkRadius.xl, topEnd = KkRadius.xl),
-    ) {
-        Column(
-            Modifier.verticalScroll(rememberScrollState()).padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xl, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
-            content = content,
-        )
     }
 }
 
@@ -357,12 +347,12 @@ fun LetterComposeRoute(
                 }, modifier = Modifier.weight(1f), enabled = d.canSend, loading = d.sending)
             }
         }
-        ToastHost(viewModel.toasts)
+        ToastHost(viewModel.toasts, viewModel::toastShown) {}
     }
     if (scheduling) {
-        ScheduleSheet(
+        KkScheduleSheet(
             initial = d.revealAt,
-            canSend = d.canSend,
+            confirmLabel = if (d.canSend) null else "이 시각으로 정하기",
             onDismiss = { scheduling = false },
             onPick = { at ->
                 viewModel.onIntent(LetterIntent.Schedule(at))
@@ -520,41 +510,22 @@ private fun StickerGrid(onPick: (String) -> Unit) {
     }
 }
 
-private val SEND_TIMES = listOf(LocalTime(12, 0), LocalTime(18, 0), LocalTime(19, 0), LocalTime(21, 0))
-
-/**
- * 예약 시트: 날짜 + 도착 시각(폰 받는 시간대). 지난 시각은 고를 수 없다.
- * 편지가 비어 있으면(만들기 › 예약 메시지로 들어와 아직 안 썼으면) 시각만 정하고 돌아간다.
- */
-@Composable
-private fun ScheduleSheet(initial: LocalDateTime?, canSend: Boolean, onDismiss: () -> Unit, onPick: (LocalDateTime) -> Unit) {
-    val now = Clock.System.now().toLocalDateTime(SEOUL)
-    var date by remember { mutableStateOf(initial?.date ?: now.date) }
-    var time by remember { mutableStateOf(initial?.time ?: SEND_TIMES[1]) }
-    val at = LocalDateTime(date, time)
-    KkModalSheet(onDismiss) {
-        KkSheetHeader("언제 도착할까요?", "폰 사용 시간에 맞춰 도착해요")
-        KkDatePicker(date, { date = it })
-        KkSegmentedControl(SEND_TIMES.map { it.hhmm() }, SEND_TIMES.indexOf(time).coerceAtLeast(0), { time = SEND_TIMES[it] })
-        val past = at <= now
-        if (past) Text("이미 지난 시각이에요", style = KkTheme.type.bodyS, color = KkTheme.colors.statusDanger)
-        KkButton(
-            if (canSend) "${date.month.ordinal + 1}월 ${date.day}일 ${time.hhmm()}에 보내기" else "이 시각으로 정하기",
-            { onPick(at) }, Modifier.fillMaxWidth(), style = KkButtonStyle.Primary, enabled = !past,
-        )
-    }
-}
-
 // ── 공용 ──────────────────────────────────────────────────────────────────
 
-/** 한 줄 알림(Toast): 아래에서 2.5초. */
+/** 한 줄 알림(Toast): 아래에서 3초. 편지를 가리키면 "보기". */
 @Composable
-private fun BoxScope.ToastHost(toasts: SharedFlow<String>) {
-    var message by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(toasts) { toasts.collect { message = it } }
-    LaunchedEffect(message) { if (message != null) { delay(2_500); message = null } }
-    message?.let {
-        KkToast(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = KkSpacing.xl, vertical = 96.dp))
+private fun BoxScope.ToastHost(toasts: SharedFlow<LetterToast>, onShown: () -> Unit, onOpen: (String) -> Unit) {
+    var current by remember { mutableStateOf<LetterToast?>(null) }
+    LaunchedEffect(toasts) { toasts.collect { current = it; onShown() } }
+    LaunchedEffect(current) { if (current != null) { delay(3_000); current = null } }
+    current?.let { t ->
+        KkToast(
+            t.message,
+            Modifier.align(Alignment.BottomCenter).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
+            type = if (t.openLetterId != null) KkToastType.Success else KkToastType.Default,
+            action = t.openLetterId?.let { "보기" },
+            onAction = { t.openLetterId?.let(onOpen); current = null },
+        )
     }
 }
 
@@ -574,4 +545,3 @@ private fun Paper.rule(c: KkColors): Color = when (this) {
     Paper.NIGHT -> c.textInverse.copy(alpha = 0.18f)
 }
 
-private fun LocalTime.hhmm() = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"

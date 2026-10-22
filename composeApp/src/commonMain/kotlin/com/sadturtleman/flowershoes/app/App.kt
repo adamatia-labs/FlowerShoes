@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -87,8 +88,14 @@ fun KkotsinApp() {
     }
     val current = device
     val share = rememberPlatformShare()
+    // 그림의 배경 사진: 문서는 첨부 id 만 갖고 있어 렌더러가 여기서 읽는다.
+    val attachmentStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.AttachmentStore>()
+    val photoLoader: suspend (String) -> ByteArray? = remember(attachmentStore) { { id -> attachmentStore?.read(id) } }
     KkotsinTheme(accent = current?.theme ?: ThemeAccent.ROSE) {
-        CompositionLocalProvider(com.sadturtleman.flowershoes.core.designsystem.LocalKkShare provides share) {
+        CompositionLocalProvider(
+            com.sadturtleman.flowershoes.core.designsystem.LocalKkShare provides share,
+            com.sadturtleman.flowershoes.core.drawingui.LocalDrawingPhotoLoader provides photoLoader,
+        ) {
             when {
                 current == null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.bgCanvas))
                 !current.onboarded -> OnboardingFlow()
@@ -185,6 +192,7 @@ private fun MainShell() {
         }
         Overlay.DRAW_FOR_LETTER -> {
             DrawingEditorRoute(
+                photoPicker = { rememberPhotoPicker(it) },
                 onSaved = {
                     letters.onIntent(LetterIntent.AddDrawing(it))
                     overlay = Overlay.COMPOSE
@@ -194,16 +202,19 @@ private fun MainShell() {
             return
         }
         Overlay.DRAW_ONLY -> {
-            // 그림만 보내기 = 글 없는 편지 한 통.
+            // 그림만 보내기 = 글 없는 편지 한 통(그림 + 한 줄).
+            val saver = rememberImageSaver()
             DrawingEditorRoute(
-                onSaved = {
-                    letters.onIntent(LetterIntent.ResetDraft)
-                    letters.onIntent(LetterIntent.AddDrawing(it))
-                    letters.onIntent(LetterIntent.Send)
+                onSaved = {},
+                onClose = { overlay = null },
+                forLetter = false,
+                photoPicker = { rememberPhotoPicker(it) },
+                saveImage = saver,
+                onSend = { meta, caption, at ->
+                    letters.onIntent(LetterIntent.SendDrawing(meta, caption, at))
                     overlay = null
                     tab = Tab.LETTER
                 },
-                onClose = { overlay = null },
             )
             return
         }
@@ -267,6 +278,10 @@ private fun MainShell() {
                     onReply = {
                         letters.onIntent(LetterIntent.Close)
                         overlay = Overlay.COMPOSE
+                    },
+                    onReplyDrawing = {
+                        letters.onIntent(LetterIntent.Close)
+                        overlay = Overlay.DRAW_ONLY
                     },
                     viewModel = letters,
                 )

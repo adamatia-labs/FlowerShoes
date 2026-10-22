@@ -115,7 +115,7 @@ fun kkotsinModules(
         viewModel { HomeViewModel(get(), get(), get(), get(), get()) }
         viewModel { CalendarViewModel(get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get()) }
-        viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { DrawingPng.render(it) }, get()) }
+        viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get()) }
         viewModel { MemoryViewModel(get(), get(), get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
         viewModel { SettingsViewModel(get(), get(), get()) }

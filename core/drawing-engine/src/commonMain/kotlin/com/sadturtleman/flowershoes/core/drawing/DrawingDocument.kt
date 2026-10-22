@@ -145,5 +145,6 @@ data class DrawingDocument(
 
 /** 문서 → 완성 PNG. 플랫폼 렌더러(:core:media)를 앱 셸이 꽂는다. 위젯 · 알림 · 목록이 이 PNG 를 쓴다. */
 fun interface DrawingRasterizer {
-    fun png(doc: DrawingDocument): ByteArray
+    /** [photos] = 배경 사진 첨부 id → 이미지 바이트(JPEG). */
+    fun png(doc: DrawingDocument, photos: Map<String, ByteArray>): ByteArray
 }

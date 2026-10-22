@@ -16,6 +16,17 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FlowerShoes">
+        <!-- 그림 / 사진 › 카메라로 찍기: 찍은 원본을 앱 캐시에 받는다. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

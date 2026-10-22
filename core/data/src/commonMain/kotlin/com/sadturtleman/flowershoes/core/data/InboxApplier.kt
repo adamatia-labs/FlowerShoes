@@ -103,7 +103,7 @@ class InboxApplier(
                                 orderInLetter = d.orderInLetter, authorId = p.letter.authorId, shape = d.shape,
                                 docAttachmentId = d.docAttachmentId, pngAttachmentId = d.pngAttachmentId, thumbPath = "",
                                 caption = d.caption, replayEnabled = d.replayEnabled, replayDurationMs = d.replayDurationMs,
-                                showOnWidget = true, sentAtMs = p.letter.visibleAt.ms(),
+                                showOnWidget = d.showOnWidget, sentAtMs = p.letter.visibleAt.ms(),
                                 receivedAtMs = clock.now().toEpochMilliseconds(), deletedAtMs = null,
                             ),
                         )

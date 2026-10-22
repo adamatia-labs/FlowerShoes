@@ -176,7 +176,7 @@ class LetterRepository(
                         DrawingEntity(
                             d.id, db.coupleDao().get()?.id.orEmpty(), letter.id, d.orderInLetter, identity.userId, d.shape,
                             d.docAttachmentId, d.pngAttachmentId, thumbPath = "", d.caption, d.replayEnabled, d.replayDurationMs,
-                            showOnWidget = false, sentAtMs = clock.now().toEpochMilliseconds(), receivedAtMs = null, deletedAtMs = null,
+                            showOnWidget = d.showOnWidget, sentAtMs = clock.now().toEpochMilliseconds(), receivedAtMs = null, deletedAtMs = null,
                         ),
                     )
                 }

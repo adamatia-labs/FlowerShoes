@@ -66,6 +66,8 @@ class FlowerShoesApplication :
 
     override fun onCreate() {
         super<Application>.onCreate()
+        // 위젯 · 알림 PNG 는 화면과 같은 Compose 렌더러로 그린다(글자 스티커를 재는 글꼴 해석기에 Context 가 필요).
+        com.sadturtleman.flowershoes.core.media.DrawingBitmap.install(this)
         // DI 그래프 하나(Koin): 꽃신 공유 앱 + 안드로이드 계측 모듈.
         startKoin {
             androidContext(this@FlowerShoesApplication)
