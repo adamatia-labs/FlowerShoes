@@ -108,3 +108,18 @@ cd firebase/rules-test && npm install && npm test   # Firestore 에뮬레이터
 - `KkotsinApp.swift`: GoogleService-Info.plist 가 있을 때만 Firebase configure, 딥링크, 앞으로 나올 때 `onForeground()`.
 - 남은 것: macOS 에서 `xcodegen` → 빌드 → 실기기 확인, iCloud 키체인 백업 키 동기화.
 
+## 실제 커플 동기화 확인(로컬 Firebase 에뮬레이터, 2026-10-22)
+
+`google-services.json` 없이 Auth · Firestore · Functions · Storage 에뮬레이터(`demo-kkotsin`)와 Android 에뮬레이터 두 대로 끝까지 돌렸다.
+
+1. `cd firebase && firebase emulators:start --project demo-kkotsin --only auth,firestore,functions,storage`
+   - 함수 파라미터는 `functions/.env.demo-kkotsin`(데모 값)
+2. `local.properties` 에 `FIREBASE_EMULATOR_HOST=10.0.2.2` → `./gradlew :app:assembleDevDebug`
+   - 디버그 빌드만 10.0.2.2 평문 허용, 로그인은 Auth 에뮬레이터 이메일 계정(규칙이 익명을 막는다)
+3. 확인한 것
+   - 두 폰 로그인 → 초대 코드 → 커밋 · 공개 → 양쪽 같은 SAS(387 324) → 함수 `onPairingStep` 이 couples 문서 생성 → 연결
+   - 보고싶어: 곰신 → 군인 우편함(inbox/{device}/ops 2건) → 군인 폰 반영
+   - 앱이 열려 있으면 Firestore 초인종(`Mailbox.rings`)으로 5초 안에 반영(FCM 은 앱이 꺼져 있을 때)
+   - 그림 편지: 군인 → 곰신, zstd 문서 + PNG 가 blob 으로 와서 그대로 보이고 리플레이 가능
+4. 고친 버그: 홈의 `linked` 를 아무도 채우지 않아 연결 뒤에도 "연결 전"이었다 → 커플 테이블을 관찰, 연결되면 "연인의 마음"(오늘 받은 보고싶어) 카드
+

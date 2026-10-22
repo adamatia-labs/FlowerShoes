@@ -84,7 +84,17 @@ fun HomeScreen(
             }
         }
 
-        if (!state.linked) {
+        if (state.linked) {
+            KkCard {
+                Text("연인의 마음", style = KkTheme.type.labelM, color = c.textSecondary)
+                Spacer(Modifier.height(KkSpacing.xs))
+                Text(
+                    if (state.partnerMissYouToday == 0) "오늘은 아직 소식이 없어요" else "오늘 보고싶어 ${state.partnerMissYouToday}번을 받았어요",
+                    style = KkTheme.type.titleS,
+                    color = c.textPrimary,
+                )
+            }
+        } else {
             KkCard {
                 Text("아직 연인과 연결 전이에요", style = KkTheme.type.titleS, color = c.textPrimary)
                 Spacer(Modifier.height(KkSpacing.xs))

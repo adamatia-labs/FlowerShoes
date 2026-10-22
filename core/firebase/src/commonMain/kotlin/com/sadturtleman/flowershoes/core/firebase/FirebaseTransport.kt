@@ -14,6 +14,8 @@ import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 
 // Firestore 문서 모양. firestore.rules 의 hasOnly 목록과 1:1 이다.
@@ -86,6 +88,9 @@ class FirestoreTransport(
             MailItem(snap.id, d.kind, d.from, d.header.unb64(), d.ct.unb64(), d.sig.unb64(), d.resend)
         }
     }
+
+    override fun rings(coupleId: String, myDevice: String): kotlinx.coroutines.flow.Flow<Unit> =
+        ops(coupleId, myDevice).snapshots.filter { it.documents.isNotEmpty() }.map { }
 
     override suspend fun delete(coupleId: String, myDevice: String, opId: String) {
         ops(coupleId, myDevice).document(opId).delete()

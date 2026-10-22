@@ -29,6 +29,12 @@ interface Mailbox {
     suspend fun putControl(coupleId: String, myDevice: String, doc: ControlDoc)
 
     suspend fun getControl(coupleId: String, device: String): ControlDoc?
+
+    /**
+     * 앱이 살아 있는 동안의 초인종: 내 우편함에 무언가 들어오면 한 번씩 울린다(내용은 동기화가 가져간다).
+     * FCM 은 앱이 꺼져 있을 때를 맡는다. 지원하지 않는 우편함은 울리지 않는다.
+     */
+    fun rings(coupleId: String, myDevice: String): kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow()
 }
 
 /** 첨부(그림 문서 · PNG · 사진)의 암호문 덩어리. couples/{c}/{blobId}. 받으면 지운다. */

@@ -57,6 +57,9 @@ class ProfileRepository(
 
     fun myUserId(): String = identity.userId
 
+    /** 연결된 연인의 uid. 연결 전 · 해제 뒤에는 null. */
+    fun observePartnerId(): Flow<String?> = db.coupleDao().observe().map { it?.partnerUserId }
+
     /** 커플 중 군인의 복무 일정. 혼자 모드에서 곰신이 입력한 값이어도 여기서 보인다. */
     fun observeTimelines(): Flow<List<Pair<Service, ServiceTimeline>>> =
         db.serviceDao().observeAll().map { list -> list.map { it.toModel() }.map { it to calculator.timeline(it) } }

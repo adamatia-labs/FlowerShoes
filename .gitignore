@@ -23,3 +23,6 @@ docs/*.visual-check.*
 
 # iOS 로그인 키
 iosApp/Config.xcconfig
+
+# Firebase 에뮬레이터 로그
+firebase/*-debug.log

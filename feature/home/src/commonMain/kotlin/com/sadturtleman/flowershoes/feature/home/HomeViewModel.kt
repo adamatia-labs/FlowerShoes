@@ -13,6 +13,9 @@ import kotlin.time.Clock
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
@@ -40,6 +43,8 @@ data class HomeState(
     val sentMissYouToday: Int = 0,
     /** 아직 연결 전이면 상대 상태 대신 연결 안내를 보여 준다. */
     val linked: Boolean = false,
+    /** 오늘 연인에게 받은 보고싶어. */
+    val partnerMissYouToday: Int = 0,
 )
 
 sealed interface HomeIntent {
@@ -55,11 +60,17 @@ class HomeViewModel(
 
     private val me = profile.myUserId()
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val partner: kotlinx.coroutines.flow.Flow<Pair<Boolean, Int>> = profile.observePartnerId().flatMapLatest { id ->
+        if (id == null) flowOf(false to 0) else missYou.observeTodayFrom(id).map { true to it }
+    }
+
     val state: StateFlow<HomeState> = combine(
         profile.observeTimelines(),
         events.observeNext(),
         missYou.observeTodayFrom(me),
-    ) { timelines, next, sent ->
+        partner,
+    ) { timelines, next, sent, (linked, received) ->
         val today = clock.today()
         HomeState(
             loading = false,
@@ -67,6 +78,8 @@ class HomeViewModel(
             nextEvent = next,
             daysToNextEvent = next?.let { today.daysUntil(it.start.date) },
             sentMissYouToday = sent,
+            linked = linked,
+            partnerMissYouToday = received,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 

@@ -59,6 +59,7 @@ class FlowerShoesApplication :
                 kkotsinAndroidModules(
                     this@FlowerShoesApplication,
                     AuthKeys(BuildConfig.KAKAO_NATIVE_APP_KEY, BuildConfig.GOOGLE_WEB_CLIENT_ID),
+                    emulatorHost = BuildConfig.FIREBASE_EMULATOR_HOST,
                 ),
             )
             modules(telemetryModules(this@FlowerShoesApplication))

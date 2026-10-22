@@ -28,6 +28,7 @@ android {
         }
         val kakaoKey = props.getProperty("KAKAO_NATIVE_APP_KEY", "")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoKey\"")
+        buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"${props.getProperty("FIREBASE_EMULATOR_HOST", "")}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${props.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"")
         manifestPlaceholders["kakaoScheme"] = if (kakaoKey.isBlank()) "kakaonotconfigured" else "kakao$kakaoKey"
     }

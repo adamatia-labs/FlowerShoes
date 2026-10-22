@@ -42,6 +42,7 @@ import com.sadturtleman.flowershoes.core.data.sync.RelinkSession
 import com.sadturtleman.flowershoes.core.data.sync.RelinkTransport
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
+import kotlinx.coroutines.flow.flatMapLatest
 import com.sadturtleman.flowershoes.core.drawing.DrawingRasterizer
 import com.sadturtleman.flowershoes.core.media.DrawingPng
 import okio.Path
@@ -100,7 +101,12 @@ fun kkotsinModules(
                         cloud.account?.signInWithCustomToken(token)
                     })
                 }
-                SyncScheduler(get(), client, approver, afterRestore)
+                val identity = get<com.sadturtleman.flowershoes.core.data.Identity>()
+                @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+                val doorbell = get<AppDatabase>().coupleDao().observe().flatMapLatest { c ->
+                    if (c == null) kotlinx.coroutines.flow.emptyFlow() else cloud.mailbox.rings(c.id, identity.deviceId)
+                }
+                SyncScheduler(get(), client, approver, afterRestore, doorbell)
             }
         }
     },

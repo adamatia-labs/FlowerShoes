@@ -12,6 +12,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -35,6 +37,8 @@ class SyncScheduler(
     private val approver: RotationApprover? = null,
     /** 백업 복원 뒤 자동 기기 교체(7-3-A). 동기화 앞에서 한 걸음씩. */
     private val afterRestore: PostRestoreRotation? = null,
+    /** 앱이 살아 있는 동안 우편함 초인종(Firestore 리스너). */
+    private val doorbell: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
     private val period: Duration = 15.minutes,
 ) {
     private val _restoreState = kotlinx.coroutines.flow.MutableStateFlow(RestoreRotationState.NotNeeded)
@@ -66,7 +70,8 @@ class SyncScheduler(
             }
         }
         requestNow()
-        merge(kicks.receiveAsFlow(), writes, ticks).collect { runOnce() }
+        val rings = doorbell.catch { }.debounce(300.milliseconds)
+        merge(kicks.receiveAsFlow(), writes, ticks, rings).collect { runOnce() }
     }
 
     /** 푸시 수신처럼 결과를 기다려야 할 때. */

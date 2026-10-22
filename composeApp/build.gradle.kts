@@ -69,6 +69,7 @@ kotlin {
             implementation(project.dependencies.platform(libs.firebase.bom))
             implementation("com.google.firebase:firebase-common")
             implementation("com.google.firebase:firebase-storage")
+            implementation("com.google.firebase:firebase-firestore")
             implementation(libs.play.services.blockstore)
             implementation(libs.kotlinx.coroutines.play.services)
             // 소셜 로그인
