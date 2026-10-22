@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.core.designsystem
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,9 +23,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /** 주 버튼. 화면 아래 "다음" · "보내기" 같은 하나뿐인 주 행동. 높이 52dp(터치 영역 48dp 이상). */
@@ -78,6 +82,7 @@ fun KkCard(
     val shape = RoundedCornerShape(KkRadius.xl)
     Column(
         modifier = modifier
+            .fillMaxWidth()
             .shadow(6.dp, shape, ambientColor = c.shadowAmbient, spotColor = c.shadowKey)
             .clip(shape)
             .background(c.bgSurface)
@@ -157,8 +162,28 @@ fun KkHeartButton(onClick: () -> Unit, modifier: Modifier = Modifier, label: Str
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
-        Text("♥", style = KkTheme.type.titleS, color = c.textOnBrand)
+        KkHeartIcon(color = c.textOnBrand, size = 20.dp)
         Text(label, style = KkTheme.type.labelM, color = c.textOnBrand)
+    }
+}
+
+/**
+ * 하트. 글자(♥)는 기기에 따라 컬러 이모지로 그려져 배경색과 겹치므로 직접 그린다.
+ */
+@Composable
+fun KkHeartIcon(color: Color, size: Dp = 20.dp, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val path = Path().apply {
+            moveTo(w * 0.5f, h * 0.9f)
+            cubicTo(w * 0.1f, h * 0.62f, -w * 0.02f, h * 0.32f, w * 0.2f, h * 0.15f)
+            cubicTo(w * 0.34f, h * 0.04f, w * 0.46f, h * 0.12f, w * 0.5f, h * 0.24f)
+            cubicTo(w * 0.54f, h * 0.12f, w * 0.66f, h * 0.04f, w * 0.8f, h * 0.15f)
+            cubicTo(w * 1.02f, h * 0.32f, w * 0.9f, h * 0.62f, w * 0.5f, h * 0.9f)
+            close()
+        }
+        drawPath(path, color)
     }
 }
 
