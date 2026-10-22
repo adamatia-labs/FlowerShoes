@@ -1,0 +1,138 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlinx.serialization)
+    alias(libs.plugins.hilt.android)
+    alias(libs.plugins.ksp)
+}
+
+android {
+    namespace = "com.sadturtleman.flowershoes"
+    compileSdk {
+        version = release(libs.versions.compileSdk.get().toInt())
+    }
+
+    defaultConfig {
+        applicationId = "com.sadturtleman.flowershoes"
+        minSdk = libs.versions.minSdk.get().toInt()
+        targetSdk = libs.versions.targetSdk.get().toInt()
+        versionCode = libs.versions.versionCode.get().toInt()
+        versionName = libs.versions.versionName.get()
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
+    // 피처 플래그와 AB 테스트는 환경마다 따로 있다. 어느 환경인지는 빌드가 정해 심어 주고,
+    // :featureflag 는 그 값을 AppEnvironment 로 읽어 리모트 키 앞에 붙인다.
+    // dev · qa 는 applicationId 가 달라 한 기기에 나란히 깔린다.
+    flavorDimensions += "env"
+    productFlavors {
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            buildConfigField("String", "APP_ENV", "\"DEV\"")
+        }
+        create("qa") {
+            dimension = "env"
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-qa"
+            buildConfigField("String", "APP_ENV", "\"QA\"")
+        }
+        create("prod") {
+            dimension = "env"
+            buildConfigField("String", "APP_ENV", "\"PROD\"")
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        compose = true
+        // 플레이버가 심는 APP_ENV 를 코드에서 읽는다.
+        buildConfig = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+        freeCompilerArgs.add("-Xexplicit-backing-fields")
+    }
+}
+
+dependencies {
+    implementation(project(":common:presentation"))
+    implementation(project(":common:domain"))
+    implementation(project(":common:data"))
+    implementation(project(":common:network"))
+    implementation(project(":common:entity"))
+    implementation(project(":common:di"))
+    implementation(project(":common:navigation"))
+
+    // 기기 정보. 빌드 변형만은 이 모듈이 BuildConfig 에서 읽어 꽂아 준다(DeviceInfoAppModule).
+    implementation(project(":common:util"))
+
+    // 화면 진입 시간 계측. Application 이 init · destroy 를 잡는다.
+    // domain 은 계약(TtiRecorder · PrintTtiShooter), data 는 Hilt 바인딩,
+    // presentation 은 라우팅 테이블이 화면을 감싸는 TtiPage 때문에 필요하다.
+    implementation(project(":tti:domain"))
+    implementation(project(":tti:data"))
+    implementation(project(":tti:presentation"))
+
+    // 비즈니스 이벤트 로깅. TTI 와 마찬가지로 Application 이 init · destroy 를 잡는다.
+    // domain 은 계약(BizLogger · BizEvent), data 는 Hilt 조립과 전송 구현이다.
+    implementation(project(":logging:domain"))
+    implementation(project(":logging:data"))
+
+    // 피처 플래그 · AB 테스트. Application 이 init 을 잡고, 환경은 이 모듈이 BuildConfig 에서 읽어 준다.
+    implementation(project(":featureflag:domain"))
+    implementation(project(":featureflag:data"))
+
+    // 프레임 드랍 계측. Activity 가 JankStats 를 달고, 라우팅 테이블이 화면 이름을 등록한다.
+    implementation(project(":jank:domain"))
+    implementation(project(":jank:presentation"))
+    implementation(project(":jank:data"))
+
+    implementation(project(":home:presentation"))
+    implementation(project(":home:navigation"))
+    implementation(project(":home:domain"))
+    implementation(project(":home:data"))
+    implementation(project(":home:entity"))
+
+    implementation(libs.androidx.activity.compose)
+    // 앱이 앞/뒤로 오갈 때를 TTI 기록기의 init · destroy 신호로 쓴다.
+    implementation(libs.androidx.lifecycle.process)
+
+    // Navigation 3. 백스택 · 라우팅 테이블이 이 모듈에 있다.
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    // GenericNavKey 백스택 직렬화용
+    implementation(libs.kotlinx.serialization.json)
+
+    // Hilt
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+
+    testImplementation(libs.junit)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.junit)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        연결 타입 · 종량제 여부 · 대역폭 추정치를 읽는 데 필요하다.
+        일반 권한이라 사용자에게 묻지 않고, 이 모듈을 넣은 앱에 자동으로 병합된다.
+        통신사 이름은 권한이 필요 없는 networkOperatorName 만 읽으므로
+        READ_PHONE_STATE 는 요구하지 않는다.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

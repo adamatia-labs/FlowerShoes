@@ -1,0 +1,22 @@
+# Gradle / build
+.gradle
+build/
+/captures
+.externalNativeBuild
+.cxx
+.kotlin
+
+# 로컬 환경 (SDK 경로 등)
+local.properties
+
+# IDE
+*.iml
+.idea/
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
+
+# OS
+.DS_Store
+
+# archify visual-check 가 남기는 증거 파일(스크린샷 · 리포트)
+docs/*.visual-check.*
