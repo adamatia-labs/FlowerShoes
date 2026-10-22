@@ -214,6 +214,10 @@ interface SyncDao {
     @Query("SELECT * FROM sync_op WHERE stream = :stream AND seq > :afterSeq ORDER BY seq")
     suspend fun opsAfter(stream: String, afterSeq: Long): List<SyncOpEntity>
 
+    /** 내가 쓸 때마다 늘어난다. 동기화 예약기가 지켜본다. */
+    @Query("SELECT MAX(seq) FROM sync_op")
+    fun observeLatestSeq(): Flow<Long?>
+
     @Query("SELECT DISTINCT stream FROM sync_op")
     suspend fun streamsWithLog(): List<String>
 

@@ -30,6 +30,7 @@ import com.sadturtleman.flowershoes.core.data.sync.Mailbox
 import com.sadturtleman.flowershoes.core.data.sync.PairingSession
 import com.sadturtleman.flowershoes.core.data.sync.PairingTransport
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
+import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
 import okio.Path
@@ -76,6 +77,7 @@ fun kkotsinModules(
         if (cloud != null) {
             single { PairingSession(get(), get(), get(), cloud.pairing, get()) }
             single { SyncClient(get(), get(), get(), cloud.mailbox, cloud.blobs, get(), get(), get(), get()) }
+            single { SyncScheduler(get(), get()) }
         }
     },
     module {

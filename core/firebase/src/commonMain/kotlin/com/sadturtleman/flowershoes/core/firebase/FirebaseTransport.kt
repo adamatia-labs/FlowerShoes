@@ -156,3 +156,11 @@ class FirestoreTransport(
         return if (snap.exists) snap.data(KeyDoc.serializer()).wrapped.unb64() else null
     }
 }
+
+/** 푸시 토큰을 users/{uid}.fcmTokens 에 둔다. 서버(onInboxCreated)가 여기로 보낸다. 만료된 토큰은 서버가 지운다. */
+class PushTokenRegistry(private val db: FirebaseFirestore = Firebase.firestore) {
+    suspend fun register(token: String) {
+        val uid = Firebase.auth.currentUser?.uid ?: return
+        db.collection("users").document(uid).set(mapOf("fcmTokens" to dev.gitlive.firebase.firestore.FieldValue.arrayUnion(token)), merge = true)
+    }
+}

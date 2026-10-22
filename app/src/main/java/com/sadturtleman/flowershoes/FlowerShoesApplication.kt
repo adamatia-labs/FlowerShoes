@@ -22,6 +22,7 @@ import com.sadturtleman.flowershoes.core.data.IdentityHolder
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
 import com.sadturtleman.flowershoes.widget.updateAllWidgets
 import com.sadturtleman.flowershoes.core.notification.NotificationSync
+import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
 import com.sadturtleman.flowershoes.widget.AndroidPlatformActions
 import com.sadturtleman.flowershoes.feature.settings.PlatformActions
@@ -68,6 +69,8 @@ class FlowerShoesApplication :
             koin.get<IdentityHolder>().update(koin.get<DeviceSettings>().ensureIdentity())
             koin.get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
             NotificationSync(koin.get(), koin.get(), koin.get(), koin.get(), AndroidNotificationScheduler(this@FlowerShoesApplication)).start(this)
+            // 서버 설정이 있는 빌드에서만 등록돼 있다.
+            koin.getOrNull<SyncScheduler>()?.start(this)
         }
         // 지난 실행이 쏘지 못하고 죽은 기록도 이 시점에 함께 나간다.
         ttiRecorder.init()
@@ -80,6 +83,8 @@ class FlowerShoesApplication :
 
     /** 앱이 다시 앞으로 나왔다. [onStop] 에서 접어 둔 기록기를 다시 연다. */
     override fun onStart(owner: LifecycleOwner) {
+        // 앞으로 나오면 바로 동기화(빠진 푸시 복구).
+        org.koin.core.context.GlobalContext.getOrNull()?.getOrNull<SyncScheduler>()?.requestNow()
         ttiRecorder.init()
         bizLogger.init()
     }

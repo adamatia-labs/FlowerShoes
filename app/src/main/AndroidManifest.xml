@@ -44,6 +44,15 @@
                     android:scheme="flowershoes" />
             </intent-filter>
         </activity>
+        <!-- 푸시: 우편함에 새 Op 이 왔다는 초인종. 받으면 동기화를 돌린다 -->
+        <service
+            android:name=".push.KkotsinMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- 로컬 알림(예약 편지 공개 · 일정 전날 · 기념일) -->
         <receiver android:name=".notification.LocalNotificationReceiver" android:exported="false" />
 
