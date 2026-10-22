@@ -23,7 +23,7 @@ fun MainViewController(signInUi: com.sadturtleman.flowershoes.core.firebase.Soci
         val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
         val settingsPath = requireNotNull(support?.path) + "/kkotsin_device.preferences_pb"
         // Firebase 는 Swift 쪽(KkotsinApp)이 GoogleService-Info.plist 가 있을 때만 configure 한다.
-        val firebase = runCatching { dev.gitlive.firebase.Firebase.app }.isSuccess
+        val firebase = com.sadturtleman.flowershoes.core.firebase.firebaseConfigured()
         val cloud = if (firebase) {
             val t = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
             CloudBackend(
@@ -64,10 +64,13 @@ fun MainViewController(signInUi: com.sadturtleman.flowershoes.core.firebase.Soci
  * 위젯 스냅샷 · 로컬 알림 발행기는 첫 화면이 뜬 뒤 한 번 시작한다.
  */
 fun onForeground() {
-    val koin = org.koin.core.context.GlobalContext.getOrNull() ?: return
+    val koin = org.koin.mp.KoinPlatform.getKoinOrNull() ?: return
     kotlinx.coroutines.MainScope().launch {
         koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncClient>()?.let { com.sadturtleman.flowershoes.app.ios.mergeNseQueue(it) }
         koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()?.requestNow()
-        com.sadturtleman.flowershoes.app.ios.writeLinkConfig(koin.get(), koin.get())
+        com.sadturtleman.flowershoes.app.ios.writeLinkConfig(
+            koin.get<com.sadturtleman.flowershoes.core.database.AppDatabase>(),
+            koin.get<com.sadturtleman.flowershoes.core.data.Identity>(),
+        )
     }
 }

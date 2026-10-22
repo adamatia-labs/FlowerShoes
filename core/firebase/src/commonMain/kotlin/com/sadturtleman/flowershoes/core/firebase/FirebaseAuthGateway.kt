@@ -4,6 +4,7 @@ import com.sadturtleman.flowershoes.core.auth.AuthGateway
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.auth.SignInResult
 import dev.gitlive.firebase.Firebase
+import dev.gitlive.firebase.app
 import dev.gitlive.firebase.auth.GoogleAuthProvider
 import dev.gitlive.firebase.auth.OAuthProvider
 import dev.gitlive.firebase.auth.auth
@@ -102,4 +103,7 @@ class FirebaseAuthGateway(
 /** 로그인 직후 "백업에서 복원하기"를 보여 줄지: Storage 에 manifest 가 있는지만 본다(내용은 백업 키 없이 못 연다). */
 suspend fun hasCloudBackup(uid: String): Boolean =
     Firebase.storage.reference.child("backups/$uid/manifests").listAll().items.isNotEmpty()
+
+/** Firebase 가 초기화됐는지(iOS: GoogleService-Info.plist 가 있어 Swift 가 configure 했는지). */
+fun firebaseConfigured(): Boolean = runCatching { Firebase.app }.isSuccess
 
