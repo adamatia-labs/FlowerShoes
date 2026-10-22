@@ -20,6 +20,8 @@ fun kkotsinAndroidModules(
     authKeys: com.sadturtleman.flowershoes.app.auth.AuthKeys = com.sadturtleman.flowershoes.app.auth.AuthKeys("", ""),
     /** 개발용 로컬 Firebase 에뮬레이터 주소. 비어 있으면 google-services.json 그대로. */
     emulatorHost: String = "",
+    /** 디버그 빌드에서 소셜 키 없이 실제 프로젝트에 이메일 계정으로 로그인(두 폰 확인용). */
+    devEmailLogin: Boolean = false,
 ): List<Module> {
     val app = context.applicationContext
     if (emulatorHost.isNotBlank()) com.sadturtleman.flowershoes.app.auth.EmulatorFirebase.init(app, emulatorHost)
@@ -28,8 +30,8 @@ fun kkotsinAndroidModules(
     // Firebase 가 연결된 빌드에서만 실제 로그인. 아니면 로그인 없이 이 기기 안에서만.
     var backupForAuth: com.sadturtleman.flowershoes.core.backup.BackupManager? = null
     val auth: com.sadturtleman.flowershoes.core.auth.AuthGateway =
-        if (firebase && emulatorHost.isNotBlank()) {
-            com.sadturtleman.flowershoes.app.auth.EmulatorAuthGateway(
+        if (firebase && (emulatorHost.isNotBlank() || devEmailLogin)) {
+            com.sadturtleman.flowershoes.app.auth.DevEmailAuthGateway(
                 deviceTag = { "dev-" + android.provider.Settings.Secure.getString(app.contentResolver, android.provider.Settings.Secure.ANDROID_ID) },
                 hasBackup = { uid -> backupForAuth?.hasBackup(uid) ?: false },
             )

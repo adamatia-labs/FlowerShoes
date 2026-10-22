@@ -34,10 +34,10 @@ object EmulatorFirebase {
 }
 
 /**
- * 에뮬레이터 전용 로그인: 소셜 키 없이 기기마다 이메일 계정을 만든다(규칙이 익명 로그인을 막으므로).
- * 어느 버튼을 눌러도 같은 계정으로 들어간다.
+ * 개발용 로그인: 소셜 키 없이 기기마다 이메일 계정을 만든다(규칙이 익명 로그인을 막으므로).
+ * 어느 버튼을 눌러도 같은 계정으로 들어간다. 에뮬레이터 또는 디버그 빌드의 DEV_EMAIL_LOGIN 에서만 쓴다.
  */
-class EmulatorAuthGateway(private val deviceTag: () -> String, private val hasBackup: suspend (String) -> Boolean) : AuthGateway {
+class DevEmailAuthGateway(private val deviceTag: () -> String, private val hasBackup: suspend (String) -> Boolean) : AuthGateway {
     override val providers: List<AuthProvider> = AuthProvider.entries
 
     override suspend fun signIn(provider: AuthProvider): SignInResult = try {
@@ -48,7 +48,7 @@ class EmulatorAuthGateway(private val deviceTag: () -> String, private val hasBa
         val uid = checkNotNull(user).uid
         SignInResult.Success(uid, provider, hasBackup = runCatching { hasBackup(uid) }.getOrDefault(false))
     } catch (e: Exception) {
-        SignInResult.Failed("에뮬레이터 로그인 실패: ${e.message}")
+        SignInResult.Failed("개발용 로그인 실패: ${e.message}")
     }
 
     override suspend fun signOut() = FirebaseAuth.getInstance().signOut()

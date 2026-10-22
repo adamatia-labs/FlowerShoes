@@ -60,6 +60,7 @@ class FlowerShoesApplication :
                     this@FlowerShoesApplication,
                     AuthKeys(BuildConfig.KAKAO_NATIVE_APP_KEY, BuildConfig.GOOGLE_WEB_CLIENT_ID),
                     emulatorHost = BuildConfig.FIREBASE_EMULATOR_HOST,
+                    devEmailLogin = BuildConfig.DEBUG && BuildConfig.DEV_EMAIL_LOGIN,
                 ),
             )
             modules(telemetryModules(this@FlowerShoesApplication))
