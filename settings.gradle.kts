@@ -25,6 +25,11 @@ dependencyResolutionManagement {
 rootProject.name = "FlowerShoes"
 include(":app")
 
+// KMP 공용 코어. commonMain 에 순수 코틀린으로 두고 Android(jvm) · iOS 가 함께 쓴다.
+include(":core:model")
+include(":core:military")
+include(":core:sync")
+
 // 공통 레이어. 모든 feature 가 참조한다.
 include(":common:presentation")
 include(":common:domain")
