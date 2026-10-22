@@ -93,6 +93,9 @@ targets:
         CFBundleDisplayName: 꽃신
         # Compose Multiplatform: 120Hz 화면에서 프레임 제한을 풀어야 한다(없으면 시작 시 검사에서 멈춘다).
         CADisableMinimumFrameDurationOnPhone: true
+        # 실행 화면이 없으면 iOS 가 구형 호환(레터박스) 모드로 띄운다 — 전체 화면을 쓰려면 필요.
+        UILaunchScreen:
+          UIColorName: ""
         # 키는 Config.xcconfig(커밋하지 않음)에서: KAKAO_NATIVE_APP_KEY, GOOGLE_CLIENT_ID, GOOGLE_REVERSED_CLIENT_ID
         KakaoNativeAppKey: $(KAKAO_NATIVE_APP_KEY)
         GIDClientID: $(GOOGLE_CLIENT_ID)
