@@ -101,6 +101,7 @@ dependencies {
     implementation(project(":core:firebase"))
     implementation(project.dependencies.platform(libs.firebase.bom))
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-auth")
     implementation(project(":core:drawing-engine"))
     implementation(project(":core:designsystem"))
     implementation(libs.androidx.glance.appwidget)

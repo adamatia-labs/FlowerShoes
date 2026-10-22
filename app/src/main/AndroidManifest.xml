@@ -42,6 +42,14 @@
                 <data android:scheme="kkotsin" />
             </intent-filter>
         </activity>
+        <!-- 서버가 보낸 화면 알림(FCM)의 아이콘 · 색 -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_heart_white" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/kk_rose" />
+
         <!-- 카카오 로그인(카카오톡 → 앱으로 돌아오기) -->
         <activity
             android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"

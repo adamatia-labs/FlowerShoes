@@ -52,6 +52,12 @@ class NotificationPlannerTest {
     }
 
     @Test
+    fun `시계 차이로 조금 미래인 일반 편지는 예약 알림을 걸지 않는다`() {
+        val letter = Letter("l2", "minjun", null, listOf(LetterBlock.Text("안녕")), "plain", Instant.parse("2026-10-22T03:00:20Z"))
+        assertTrue(NotificationPlanner().plan(now, "민준", listOf(letter), emptyList(), null, null).isEmpty())
+    }
+
+    @Test
     fun `전역일과 복무 100일 단위를 알린다`() {
         val t = ServiceCalculator().timeline(Service("minjun", Branch.ARMY, LocalDate.parse("2026-04-16"), 1))
         val ids = NotificationPlanner().plan(now, "민준", emptyList(), emptyList(), t, null).map { it.id }

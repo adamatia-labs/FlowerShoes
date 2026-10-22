@@ -124,3 +124,23 @@ cd firebase/rules-test && npm install && npm test   # Firestore 에뮬레이터
    - 그림 편지: 군인 → 곰신, zstd 문서 + PNG 가 blob 으로 와서 그대로 보이고 리플레이 가능
 4. 고친 버그: 홈의 `linked` 를 아무도 채우지 않아 연결 뒤에도 "연결 전"이었다 → 커플 테이블을 관찰, 연결되면 "연인의 마음"(오늘 받은 보고싶어) 카드
 
+## 실제 Firebase 프로젝트(kkotsin-dev) 배포 · 확인(2026-10-22)
+
+배포: Firestore(서울 asia-northeast3, 규칙 · 인덱스 · 우편 TTL) · Storage(서울 기본 버킷, 규칙) · Functions 13개(서울, 배포 이미지 1일 정리 정책) · Auth(일반 Firebase Auth, 이메일 로그인은 개발용).
+
+- 설정 파일(`app/google-services.json`, `iosApp/App/GoogleService-Info.plist`)은 커밋하지 않는다. `firebase apps:sdkconfig` 로 받는다.
+- 함수 파라미터: `firebase/functions/.env.kkotsin-dev`. KAKAO_APP_ID 는 아직 0(카카오 앱을 만들면 바꿔서 재배포), Apple 키는 비어 있어 토큰 보관 · 폐기를 건너뛴다. 비밀 값은 이 파일에 넣지 않는다.
+- 개발 확인용 로그인: `local.properties` 의 `DEV_EMAIL_LOGIN=true`(디버그 빌드만).
+
+Android 에뮬레이터 두 대로 확인한 것(실제 프로젝트):
+1. 두 계정 생성 → 초대 코드 → 같은 SAS(469 459) → 함수 `onPairingStep` 이 couples 문서 생성 → 두 폰 연결
+2. 보고싶어 양방향 2초 안 반영(앱이 열려 있을 때 Firestore 초인종)
+3. 그림 편지: zstd 문서 + PNG 가 암호화 blob 으로 도착해 그대로 보이고 리플레이 가능
+4. FCM: 받는 앱이 뒤에 있을 때 편지 → `onInboxCreated` → 화면 알림 2초. 보고싶어는 정책대로 하루 첫 번째만 화면 알림, 이후는 data 만
+5. 백업: 실제 Storage 에 keywrap · blobs · db 조각 · manifest(모두 암호문)
+
+확인하며 고친 것:
+- FCM 토큰이 로그인 전에 발급돼 등록이 빠졌다 → 로그인 상태가 될 때마다 현재 토큰 등록
+- 보낸 폰 시계가 조금 빠르면 일반 편지를 예약 편지로 보고 "예약 편지가 열렸어요" 알림을 걸었다 → 2분 이내 미래는 시계 차이로 본다(테스트 추가)
+- FCM 화면 알림 아이콘 · 색(하트, rose)
+

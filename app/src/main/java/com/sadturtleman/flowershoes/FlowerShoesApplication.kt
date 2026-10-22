@@ -50,6 +50,20 @@ class FlowerShoesApplication :
      */
     private val appScope = CoroutineScope(SupervisorJob())
 
+    /**
+     * 푸시 토큰은 앱을 처음 켤 때 발급되는데 그때는 로그인 전이라 등록이 빠진다(onNewToken 은 다시 오지 않는다).
+     * 로그인 상태가 될 때마다 지금 토큰을 users/{uid}.fcmTokens 에 넣는다(arrayUnion 이라 중복 없음).
+     */
+    private fun registerPushTokenOnSignIn() {
+        if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) return
+        com.google.firebase.auth.FirebaseAuth.getInstance().addAuthStateListener { auth ->
+            if (auth.currentUser == null) return@addAuthStateListener
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                appScope.launch { runCatching { com.sadturtleman.flowershoes.core.firebase.PushTokenRegistry().register(token) } }
+            }
+        }
+    }
+
     override fun onCreate() {
         super<Application>.onCreate()
         // DI 그래프 하나(Koin): 꽃신 공유 앱 + 안드로이드 계측 모듈.
@@ -78,6 +92,7 @@ class FlowerShoesApplication :
             NotificationSync(get(), get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication)).start(this)
             // 서버 설정이 있는 빌드에서만 등록돼 있다.
             getKoin().getOrNull<SyncScheduler>()?.start(this)
+            registerPushTokenOnSignIn()
         }
         // 지난 실행이 쏘지 못하고 죽은 기록도 이 시점에 함께 나간다.
         ttiRecorder.init()

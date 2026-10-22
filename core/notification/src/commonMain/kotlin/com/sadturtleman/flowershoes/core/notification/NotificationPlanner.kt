@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.core.notification
 
+import kotlin.time.Duration.Companion.minutes
 import com.sadturtleman.flowershoes.core.data.SEOUL
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Event
@@ -48,7 +49,8 @@ class NotificationPlanner(private val budget: Int = 50) {
     ): List<LocalNotification> {
         val out = mutableListOf<LocalNotification>()
 
-        scheduledLetters.filter { it.visibleAt > now && it.deletedAt == null }.forEach { l ->
+        // 보낸 폰 시계 기준이라 몇 초~몇십 초 미래인 일반 편지가 있다 — 그건 예약이 아니다.
+        scheduledLetters.filter { it.visibleAt > now + CLOCK_SKEW && it.deletedAt == null }.forEach { l ->
             out += LocalNotification(
                 id = "letter-${l.id}",
                 at = l.visibleAt,
@@ -114,6 +116,11 @@ class NotificationPlanner(private val budget: Int = 50) {
         EventType.VISIT -> "면회"
         EventType.TRAINING -> "훈련"
         EventType.DUTY -> "당직"
+    }
+
+    private companion object {
+        /** 이보다 가까운 미래의 편지는 두 폰 시계 차이로 본다. */
+        val CLOCK_SKEW = 2.minutes
     }
 }
 
