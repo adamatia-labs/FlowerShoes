@@ -52,6 +52,8 @@ glance = "1.1.1"
 blockstore = "16.4.0"
 # 소셜 로그인(Android)
 kakaoSdk = "2.24.0"
+# 기기 생체 · 암호 인증(연결 해제 · 복구 코드 · 넘겨주기 전)
+biometric = "1.1.0"
 credentials = "1.6.0"
 googleId = "1.2.0"
 jbNavigation = "2.9.1"
@@ -127,6 +129,7 @@ jb-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", nam
 okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
+androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 kakao-user = { group = "com.kakao.sdk", name = "v2-user", version.ref = "kakaoSdk" }
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
 androidx-credentials-play = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }

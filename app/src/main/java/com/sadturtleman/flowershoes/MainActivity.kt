@@ -2,10 +2,10 @@ package com.sadturtleman.flowershoes
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.metrics.performance.JankStats
@@ -18,7 +18,8 @@ import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
 import com.sadturtleman.flowershoes.tti.presentation.LocalTtiRecorder
 import org.koin.android.ext.android.inject
 
-class MainActivity : ComponentActivity() {
+/** FragmentActivity: 기기 인증(BiometricPrompt)이 필요로 한다. ComponentActivity 의 하위 클래스다. */
+class MainActivity : FragmentActivity() {
 
     /** TTI 기록기. 화면 계측은 전부 컴포지션에서 일어나므로 트리에 꽂아 준다. */
     private val ttiRecorder: TtiRecorder by inject()

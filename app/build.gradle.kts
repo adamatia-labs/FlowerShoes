@@ -98,6 +98,7 @@ dependencies {
     implementation(project(":core:drawing-engine"))
     implementation(project(":core:designsystem"))
     implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.biometric)
     implementation(libs.androidx.glance.material3)
 
     implementation(project(":common:di"))

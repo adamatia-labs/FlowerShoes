@@ -90,9 +90,10 @@ class BackupViewModel(private val manager: BackupManager?, private val identity:
 
 /** 설정 안의 백업 섹션. */
 @Composable
-fun BackupSection(viewModel: BackupViewModel = koinViewModel()) {
+fun BackupSection(platform: PlatformActions = NoPlatformActions, viewModel: BackupViewModel = koinViewModel()) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val c = KkTheme.colors
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     if (!ui.available) {
         Text("이 플랫폼에서는 아직 백업을 쓸 수 없어요.", style = KkTheme.type.bodyS, color = c.textTertiary)
         return
@@ -105,7 +106,11 @@ fun BackupSection(viewModel: BackupViewModel = koinViewModel()) {
         Text(
             if (ui.showCode) "숨기기" else "복구 코드 보기",
             style = KkTheme.type.labelM, color = c.textBrand,
-            modifier = Modifier.clickable { if (ui.showCode) viewModel.hideCode() else viewModel.revealCode() }.padding(vertical = KkSpacing.sm),
+            modifier = Modifier.clickable {
+                if (ui.showCode) viewModel.hideCode()
+                // 복구 코드는 기기 인증 뒤에만 보여 준다.
+                else scope.launch { if (platform.authenticate("복구 코드를 보려면 본인 확인이 필요해요") != DeviceAuth.Failed) viewModel.revealCode() }
+            }.padding(vertical = KkSpacing.sm),
         )
         if (ui.showCode) {
             Text(ui.recoveryCode?.let(CrockfordCode::format) ?: "아직 백업하지 않았어요", style = KkTheme.type.titleS, color = c.textBrand)

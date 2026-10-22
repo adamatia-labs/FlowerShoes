@@ -60,7 +60,15 @@ interface PlatformActions {
     val pinnableWidgets: List<Pair<String, String>> get() = emptyList()
 
     fun requestPinWidget(kind: String): Boolean = false
+
+    /**
+     * 기기 생체 · 암호 인증(설계 7-5). 되돌릴 수 없는 일(연결 해제 · 넘겨주기) · 비밀(복구 코드) 앞에서 부른다.
+     * 화면 잠금이 없는 기기는 막을 방법이 없어 [DeviceAuth.NoLockScreen] 을 돌려주고, 화면이 경고를 띄운 뒤 진행한다.
+     */
+    suspend fun authenticate(reason: String): DeviceAuth = DeviceAuth.NoLockScreen
 }
+
+enum class DeviceAuth { Passed, Failed, NoLockScreen }
 
 object NoPlatformActions : PlatformActions
 
@@ -108,6 +116,8 @@ fun SettingsRoute(
     val c = KkTheme.colors
     var picking by remember { mutableStateOf(false) }
     var pinMessage by remember { mutableStateOf<String?>(null) }
+    var authMessage by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     Column(
         Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().verticalScroll(rememberScrollState()).padding(KkSpacing.screen),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
@@ -138,7 +148,12 @@ fun SettingsRoute(
         if (state.linked) {
             Text("연인과 연결돼 있어요.", style = KkTheme.type.bodyM, color = c.textPrimary)
             Text("연인이 폰을 잃어버렸고 백업도 없다면, 이 폰이 데이터를 넘겨줄 수 있어요.", style = KkTheme.type.bodyS, color = c.textSecondary)
-            Link("연인 폰 교체 받기", onHandOver)
+            Link("연인 폰 교체 받기") {
+                scope.launch {
+                    if (platform.authenticate("데이터를 넘겨주려면 본인 확인이 필요해요") != DeviceAuth.Failed) onHandOver()
+                    else authMessage = "본인 확인을 하지 못했어요"
+                }
+            }
             var confirm by remember { mutableStateOf("") }
             var keep by remember { mutableStateOf(true) }
             KkCard {
@@ -148,8 +163,20 @@ fun SettingsRoute(
                 KkChoice("이 폰에서 모두 지우기", !keep, { keep = false })
                 KkTextField(confirm, { confirm = it }, placeholder = "'연결 해제'라고 입력")
                 Link(if (confirm.trim() == "연결 해제") "해제하기" else "확인 문구를 입력하면 해제할 수 있어요") {
-                    if (confirm.trim() == "연결 해제") viewModel.unlink(if (keep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE)
+                    if (confirm.trim() == "연결 해제") {
+                        scope.launch {
+                            when (platform.authenticate("연결을 해제하려면 본인 확인이 필요해요")) {
+                                DeviceAuth.Failed -> authMessage = "본인 확인을 하지 못했어요"
+                                DeviceAuth.NoLockScreen -> {
+                                    authMessage = "이 폰에는 화면 잠금이 없어 본인 확인 없이 해제했어요"
+                                    viewModel.unlink(if (keep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE)
+                                }
+                                DeviceAuth.Passed -> viewModel.unlink(if (keep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE)
+                            }
+                        }
+                    }
                 }
+                authMessage?.let { Text(it, style = KkTheme.type.bodyS, color = c.textSecondary) }
             }
         } else {
             Link("연인과 연결하기", onOpenPairing)
@@ -166,7 +193,7 @@ fun SettingsRoute(
         }
 
         Section("백업")
-        BackupSection()
+        BackupSection(platform)
         Link("백업에서 복원하기", onRestore)
 
         Section("알림")
