@@ -22,6 +22,7 @@ import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { decide, DEFAULT_PREFS, inDigestWindow, INLINE_MAX_BASE64, NotifyPrefs, NotifyState, quietEndUtcMinute } from './policy';
 import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from './sig';
+import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 
 initializeApp();
 const db = getFirestore();
@@ -29,6 +30,14 @@ const db = getFirestore();
 const REGION = 'asia-northeast3'; // 서울
 const KAKAO_APP_ID = defineString('KAKAO_APP_ID');
 const KAKAO_ADMIN_KEY = defineString('KAKAO_ADMIN_KEY', { default: '' });
+// Sign in with Apple 토큰 폐기용. 비어 있으면 보관 · 폐기를 건너뛴다(Apple 로그인 자체는 Firebase Auth 가 한다).
+const APPLE_TEAM_ID = defineString('APPLE_TEAM_ID', { default: '' });
+const APPLE_KEY_ID = defineString('APPLE_KEY_ID', { default: '' });
+const APPLE_CLIENT_ID = defineString('APPLE_CLIENT_ID', { default: '' });
+const APPLE_PRIVATE_KEY = defineString('APPLE_PRIVATE_KEY', { default: '' });
+const appleConfig = (): AppleConfig => ({
+  teamId: APPLE_TEAM_ID.value(), keyId: APPLE_KEY_ID.value(), clientId: APPLE_CLIENT_ID.value(), privateKey: APPLE_PRIVATE_KEY.value(),
+});
 
 const b64 = (s: string) => Buffer.from(s, 'base64');
 
@@ -390,9 +399,30 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
       body: `target_id_type=user_id&target_id=${uid.slice('kakao:'.length)}`,
     }).catch(() => undefined);
   }
-  // Apple: 로그인 때 받아 서버에 보관한 refresh token 으로 /auth/revoke 를 불러야 한다(App Store 심사 기준).
-  // Apple 키(Team ID · Key ID · p8)를 설정한 뒤 붙인다 — docs/IMPLEMENTATION.md 출시 전 할 일 참고.
+  // Apple: 로그인 때 보관한 refresh token 을 폐기한다(App Store 심사 기준 5.1.1(v)).
+  const apple = await db.doc(`appleTokens/${uid}`).get();
+  const refreshToken = apple.get('refreshToken') as string | undefined;
+  if (refreshToken && appleConfigured(appleConfig())) await revokeApple(appleConfig(), refreshToken).catch(() => false);
+  await apple.ref.delete();
   await db.recursiveDelete(db.doc(`users/${uid}`));
   await getAuth().deleteUser(uid);
   return { ok: true };
 });
+
+/**
+ * Sign in with Apple 직후 iOS 가 부른다: 일회용 authorization code → refresh token 을 appleTokens/{uid} 에 보관.
+ * 이 컬렉션은 규칙에 없어 클라이언트가 읽고 쓸 수 없다(관리자 SDK 만).
+ */
+export const appleStoreToken = onCall({ region: REGION }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
+  if (req.auth?.token.firebase?.sign_in_provider !== 'apple.com') throw new HttpsError('failed-precondition', 'Apple 로그인이 아니다');
+  const code = (req.data as { code?: unknown })?.code;
+  if (typeof code !== 'string' || code.length === 0 || code.length > 1024) throw new HttpsError('invalid-argument', 'code 가 없다');
+  if (!appleConfigured(appleConfig())) return { stored: false };
+  const refreshToken = await exchangeCode(appleConfig(), code);
+  if (!refreshToken) throw new HttpsError('permission-denied', 'Apple 이 code 를 거절했다');
+  await db.doc(`appleTokens/${uid}`).set({ refreshToken, storedAt: FieldValue.serverTimestamp() });
+  return { stored: true };
+});
+

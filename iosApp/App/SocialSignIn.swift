@@ -32,11 +32,11 @@ final class SocialSignIn: NSObject, SocialSignInUi {
     func kakao(done: @escaping (ProviderToken) -> Void) {
         let callback: (OAuthToken?, Error?) -> Void = { token, error in
             if let error = error as? SdkError, case .ClientFailed(let reason, _) = error, reason == .Cancelled {
-                done(ProviderToken(token: nil, rawNonce: nil, error: nil))
+                done(ProviderToken(token: nil, rawNonce: nil, error: nil, authCode: nil))
             } else if let error {
-                done(ProviderToken(token: nil, rawNonce: nil, error: error.localizedDescription))
+                done(ProviderToken(token: nil, rawNonce: nil, error: error.localizedDescription, authCode: nil))
             } else {
-                done(ProviderToken(token: token?.accessToken, rawNonce: nil, error: nil))
+                done(ProviderToken(token: token?.accessToken, rawNonce: nil, error: nil, authCode: nil))
             }
         }
         DispatchQueue.main.async {
@@ -78,17 +78,17 @@ final class SocialSignIn: NSObject, SocialSignInUi {
     func google(done: @escaping (ProviderToken) -> Void) {
         DispatchQueue.main.async {
             guard let presenter = Self.topViewController() else {
-                done(ProviderToken(token: nil, rawNonce: nil, error: "화면을 찾지 못했어요"))
+                done(ProviderToken(token: nil, rawNonce: nil, error: "화면을 찾지 못했어요", authCode: nil))
                 return
             }
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: self.googleClientId)
             GIDSignIn.sharedInstance.signIn(withPresenting: presenter) { result, error in
                 if let error = error as? NSError, error.code == GIDSignInError.canceled.rawValue {
-                    done(ProviderToken(token: nil, rawNonce: nil, error: nil))
+                    done(ProviderToken(token: nil, rawNonce: nil, error: nil, authCode: nil))
                 } else if let error {
-                    done(ProviderToken(token: nil, rawNonce: nil, error: error.localizedDescription))
+                    done(ProviderToken(token: nil, rawNonce: nil, error: error.localizedDescription, authCode: nil))
                 } else {
-                    done(ProviderToken(token: result?.user.idToken?.tokenString, rawNonce: nil, error: nil))
+                    done(ProviderToken(token: result?.user.idToken?.tokenString, rawNonce: nil, error: nil, authCode: nil))
                 }
             }
         }
@@ -110,13 +110,14 @@ extension SocialSignIn: ASAuthorizationControllerDelegate, ASAuthorizationContro
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
         let credential = authorization.credential as? ASAuthorizationAppleIDCredential
         let token = credential?.identityToken.flatMap { String(data: $0, encoding: .utf8) }
-        appleDone?(ProviderToken(token: token, rawNonce: appleNonce, error: token == nil ? "Apple 토큰이 없어요" : nil))
+        let code = credential?.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
+        appleDone?(ProviderToken(token: token, rawNonce: appleNonce, error: token == nil ? "Apple 토큰이 없어요" : nil, authCode: code))
         appleDone = nil
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
         let cancelled = (error as? ASAuthorizationError)?.code == .canceled
-        appleDone?(ProviderToken(token: nil, rawNonce: nil, error: cancelled ? nil : error.localizedDescription))
+        appleDone?(ProviderToken(token: nil, rawNonce: nil, error: cancelled ? nil : error.localizedDescription, authCode: nil))
         appleDone = nil
     }
 }

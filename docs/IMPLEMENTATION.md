@@ -65,7 +65,8 @@
 2. **소셜 로그인 키**
    - Android 는 붙었다: `AndroidAuthGateway`(카카오 SDK → 함수 `kakaoSignIn`, Google Credential Manager, Apple OAuth). `local.properties` 에 `KAKAO_NATIVE_APP_KEY` · `GOOGLE_WEB_CLIENT_ID` 를 넣고 Firebase 가 연결되면 동작한다. 키가 없으면 그 제공자는 "설정 전"으로 안내한다.
    - iOS 로그인 작성됨(macOS 빌드 미확인): Swift `SocialSignIn`(카카오 SDK · Sign in with Apple(nonce) · GoogleSignIn) → 공통 `FirebaseAuthGateway`(core:firebase, Android 컴파일 확인). 키는 `Config.xcconfig` 의 KAKAO_NATIVE_APP_KEY · GOOGLE_CLIENT_ID · GOOGLE_REVERSED_CLIENT_ID.
-   - 남은 것: Apple 탈퇴 시 `/auth/revoke`(Apple 키 필요).
+   - Apple 토큰 폐기 구현됨: iOS 가 authorization code 를 함수 `appleStoreToken` 에 넘기면 refresh token 을 `appleTokens/{uid}`(클라이언트 접근 불가, 규칙 테스트)에 보관하고 `deleteAccount` 가 `/auth/revoke` 한다. client secret(ES256 JWT)은 테스트로 확인. 함수 파라미터 APPLE_TEAM_ID · APPLE_KEY_ID · APPLE_CLIENT_ID · APPLE_PRIVATE_KEY 가 비면 건너뛴다.
+   - Android 의 Apple 로그인(Firebase 웹 흐름)은 authorization code 를 주지 않아 폐기 대상이 아니다 — 심사 기준은 iOS 앱에 적용된다.
 3. **iOS 키 보관함**
    - Keychain(access group 공유, ThisDeviceOnly)으로 `KeyVault`를 구현한다.
    - Android는 끝났다. `AndroidKeyVault`가 Keystore AES-GCM으로 감싼 파일을 쓰고, 재시작 뒤에도 키가 남는 것을 확인했다.

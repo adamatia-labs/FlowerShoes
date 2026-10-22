@@ -14,7 +14,13 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.Serializable
 
 /** 제공자 화면이 돌려준 토큰. 취소면 [token] · [error] 가 모두 null. */
-class ProviderToken(val token: String?, val rawNonce: String? = null, val error: String? = null)
+class ProviderToken(
+    val token: String?,
+    val rawNonce: String? = null,
+    val error: String? = null,
+    /** Apple 일회용 authorization code. 서버가 refresh token 으로 바꿔 두었다가 탈퇴 때 폐기한다. */
+    val authCode: String? = null,
+)
 
 /**
  * 제공자 SDK 화면(카카오 SDK · Sign in with Apple · Google Sign-In). iOS 에서는 Swift 가 구현한다 —
@@ -62,7 +68,12 @@ class FirebaseAuthGateway(
             AuthProvider.APPLE -> {
                 val t = await(ui::apple)
                 val idToken = t.token ?: return SignInResult.Cancelled
-                Firebase.auth.signInWithCredential(OAuthProvider.credential("apple.com", idToken = idToken, rawNonce = t.rawNonce)).user?.uid
+                val uid = Firebase.auth.signInWithCredential(OAuthProvider.credential("apple.com", idToken = idToken, rawNonce = t.rawNonce)).user?.uid
+                // 탈퇴 때 Apple 토큰을 폐기할 수 있게 code 를 맡긴다. 실패해도 로그인은 그대로.
+                t.authCode?.let { code ->
+                    runCatching { Firebase.functions(region).httpsCallable("appleStoreToken").invoke(mapOf("code" to code)) }
+                }
+                uid
             }
             AuthProvider.GOOGLE -> {
                 if (!ui.googleConfigured) return SignInResult.Failed("Google 로그인 설정 전이에요")

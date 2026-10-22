@@ -154,3 +154,9 @@ test('넘겨주기 확인은 코드를 만든 활성 멤버(지수)만 쓴다', 
   // 커플 밖 사람은 넘겨주기 코드를 만들 수 없다.
   await assertFails(setDoc(doc(as('mallory'), 'relinks/R2'), { uid: 'mallory', coupleId: 'c1', expireAt: later() }));
 });
+
+test('Apple refresh token 보관함은 본인도 읽고 쓸 수 없다(함수만)', async () => {
+  await assertFails(getDoc(doc(as('jisu'), 'appleTokens/jisu')));
+  await assertFails(setDoc(doc(as('jisu'), 'appleTokens/jisu'), { refreshToken: 'x' }));
+});
+
