@@ -13,3 +13,8 @@ actual object DrawingPng {
         return Image.makeFromBitmap(bitmap.asSkiaBitmap()).encodeToData(EncodedImageFormat.PNG)!!.bytes
     }
 }
+
+/** iOS(Skia): 바이트로 바로 글꼴을 만든다. */
+internal actual fun exportFont(bytes: ByteArray): androidx.compose.ui.text.font.FontFamily? = runCatching {
+    androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.platform.Font("sticker-jua", bytes))
+}.getOrNull()

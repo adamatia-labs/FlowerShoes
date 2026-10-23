@@ -2,6 +2,11 @@
 
 package com.sadturtleman.flowershoes.feature.drawing
 
+import androidx.compose.ui.unit.sp
+import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
+import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
+import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -438,28 +443,61 @@ private fun BrightnessPopup(base: Long, current: Long, modifier: Modifier, onPic
     }
 }
 
+/**
+ * 스티커(Figma 그림 / 스티커): 회색 띠 안 탭 칩(하트 · 꽃 · 표정 · 일상 · 글자 · D-day · 군 생활 · 평생 · 봄 소풍 · 1,100원)
+ * + 56 칸 서랍(가로로 넘김). 잠긴 팩은 흐리게 미리보기만 — 누르면 안내.
+ */
 @Composable
 private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
     val c = KkTheme.colors
-    KkSegmentedControl(STICKER_TABS.map { it.first }, state.stickerTab, { onIntent(DrawingIntent.SetStickerTab(it)) })
-    val items = if (STICKER_TABS[state.stickerTab].first == "D-day") state.ddayStickers else STICKER_TABS[state.stickerTab].second
+    var lockedInfo by remember { mutableStateOf<com.sadturtleman.flowershoes.core.drawingui.StickerTab?>(null) }
+    val tab = STICKER_TABS[state.stickerTab.coerceIn(STICKER_TABS.indices)]
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
+            .horizontalScroll(rememberScrollState()).padding(KkSpacing.xxs),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        STICKER_TABS.forEachIndexed { i, t ->
+            KkStatusChip(
+                t.chip, selected = i == state.stickerTab, onClick = { onIntent(DrawingIntent.SetStickerTab(i)) },
+                dot = if (i == state.stickerTab) Color.White else c.statusWarning,
+            )
+        }
+    }
+    val items = if (tab.dday) state.ddayStickers else tab.ids
     if (items.isEmpty()) {
         Text("복무 정보를 넣으면 D-day 스티커가 생겨요", style = KkTheme.type.bodyS, color = c.textTertiary, modifier = Modifier.padding(vertical = KkSpacing.lg))
         return
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         items.forEach { id ->
             val on = state.sticker == id
             Box(
                 Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
                     .then(if (on) Modifier.border(2.dp, c.borderBrand, RoundedCornerShape(KkRadius.md)) else Modifier)
-                    .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetSticker(id)) }
-                    .semantics { contentDescription = "스티커 ${id.substringAfter(':').substringAfter('.')}"; selected = on },
+                    .clickable(role = Role.RadioButton) { if (tab.locked) lockedInfo = tab else onIntent(DrawingIntent.SetSticker(id)) }
+                    .semantics {
+                        contentDescription = "스티커 ${com.sadturtleman.flowershoes.core.drawingui.stickerLabel(id)}" + if (tab.locked) ", 잠김" else ""
+                        selected = on
+                    },
                 contentAlignment = Alignment.Center,
-            ) { StickerPreview(id, Modifier.size(48.dp)) }
+            ) {
+                StickerPreview(id, Modifier.size(48.dp).alpha(if (tab.locked) 0.4f else 1f))
+                if (tab.locked) Text("🔒", fontSize = 12.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp))
+            }
         }
     }
-    Text("캔버스를 누르면 그 자리에 붙어요", style = KkTheme.type.caption, color = c.textTertiary)
+    Text(if (tab.locked) "${tab.chip} — 잠긴 스티커예요" else "캔버스를 누르면 그 자리에 붙어요", style = KkTheme.type.caption, color = c.textTertiary)
+    lockedInfo?.let { t ->
+        KkModalSheet({ lockedInfo = null }) {
+            KkSheetHeader(
+                t.label + " 스티커",
+                if (t.price == "평생") "꽃신 평생(한 번 결제)에 들어 있는 팩이에요. 결제는 앱 출시와 함께 열려요."
+                else "${t.price} 스티커 팩이에요. 결제는 앱 출시와 함께 열려요.",
+            )
+            KkPrimaryButton("확인", { lockedInfo = null }, Modifier.fillMaxWidth())
+        }
+    }
 }
 
 /** 사진(Figma 그림 / 사진): 앨범 · 카메라 + 사진 흐리게(0~60%). 사진을 넣으면 배경으로 깔린다. */

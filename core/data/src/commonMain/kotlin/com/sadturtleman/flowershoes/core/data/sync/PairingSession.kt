@@ -23,7 +23,8 @@ sealed interface PairingState {
     data object WaitingPartner : PairingState
 
     /** 두 화면에 같은 숫자가 떠야 한다. 전화 · 면회 · 메시지로 서로 확인한다. */
-    data class CompareSas(val sas: String) : PairingState
+    /** [device] · [provider]: 상대 폰 교체 받기에서 새 폰 이름 · 로그인 제공자(새 폰이 알려 준 표시 정보, 서명 밖). */
+    data class CompareSas(val sas: String, val device: String? = null, val provider: String? = null) : PairingState
 
     /** 내 쪽은 [맞아요] 를 눌렀고 상대 확인 · 서버의 커플 생성을 기다린다. */
     data object WaitingConfirm : PairingState

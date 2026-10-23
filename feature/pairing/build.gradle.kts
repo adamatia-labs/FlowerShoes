@@ -32,5 +32,10 @@ kotlin {
             implementation(libs.jb.lifecycle.runtime.compose)
             implementation(libs.koin.compose.viewmodel)
         }
+        // 화면 렌더 확인(넘겨받는 중처럼 실기기에서 잠깐 스치는 화면을 이미지로).
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(compose.desktop.currentOs)
+        }
     }
 }

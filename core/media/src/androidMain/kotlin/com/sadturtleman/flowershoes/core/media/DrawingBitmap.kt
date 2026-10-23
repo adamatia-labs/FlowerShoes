@@ -24,6 +24,8 @@ object DrawingBitmap {
         this.attachmentsDir = attachmentsDir
     }
 
+    internal fun cacheDir(): File? = context?.cacheDir
+
     fun render(docPath: String, widthPx: Int): Bitmap? {
         val bytes = runCatching { File(docPath).readBytes() }.getOrNull() ?: return null
         val doc = (DrawingCodec.decode(bytes) as? DrawingCodec.Result.Ok)?.document ?: return null
@@ -49,3 +51,12 @@ actual object DrawingPng {
         }
     }
 }
+
+private var exportFontFile: File? = null
+
+/** Android: 바이트를 캐시 파일로 한 번 써 두고 File 글꼴로. */
+internal actual fun exportFont(bytes: ByteArray): androidx.compose.ui.text.font.FontFamily? = runCatching {
+    val dir = DrawingBitmap.cacheDir() ?: return null
+    val file = exportFontFile ?: File(dir, "sticker_jua.ttf").also { if (!it.exists() || it.length() != bytes.size.toLong()) it.writeBytes(bytes); exportFontFile = it }
+    androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(file))
+}.getOrNull()

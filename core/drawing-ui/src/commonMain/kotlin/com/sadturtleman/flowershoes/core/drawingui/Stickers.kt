@@ -22,30 +22,141 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import com.sadturtleman.flowershoes.core.drawingui.res.jua
 import com.sadturtleman.flowershoes.core.drawing.StickerElement
 
 /**
- * 스티커(Figma 그림 / 스티커). id 하나가 모양 하나다 — 받는 폰도 같은 id 로 똑같이 그린다.
+ * 스티커(Figma 그림 / 스티커 · 🌸 스티커). id 하나가 모양 하나다 — 받는 폰도 같은 id 로 똑같이 그린다.
  *
- * - 벡터: 48 뷰박스 경로([VECTOR_STICKERS]).
- * - `text:보고싶어`: 로즈 테두리 도장(-8°).
- * - `dday:D-547`: 올리브 알약. 붙인 순간의 글자가 그대로 남는다(받는 날 다시 세지 않는다).
- * - 그 밖(예전 앱의 heart · rose …): 글리프([STICKERS]).
+ * - `img:heart/00`: 그림 스티커([IMAGE_PACKS], 앱에 든 PNG).
+ * - `text:보고싶어`: 글자 알약(Jua, 흰 테두리, 문구마다 색 — [TEXT_STYLES]).
+ * - `dday:전역|D-547`: D-day 타일(이름 · 값). 붙인 순간의 글자가 그대로 남는다(받는 날 다시 세지 않는다).
+ * - 벡터 `v.*` · 글리프: 예전 앱이 보낸 그림을 그대로 그리려고 남겨 둔다.
  */
 object StickerIds {
+    const val IMAGE = "img:"
     const val TEXT = "text:"
     const val DDAY = "dday:"
     fun text(s: String) = TEXT + s
-    fun dday(s: String) = DDAY + s
+    fun dday(label: String, value: String) = "$DDAY$label|$value"
 }
 
-/** 스티커 서랍 분류(하트·꽃 · 군대 · 글자 · D-day). D-day 는 그림 화면이 지금 숫자로 채운다. */
-val STICKER_TABS: List<Pair<String, List<String>>> = listOf(
-    "하트·꽃" to listOf("v.heart", "v.flower", "v.star", "v.boot", "v.mail"),
-    "군대" to listOf("v.helmet", "v.dogtag", "v.medal", "v.boot", "v.star"),
-    "글자" to listOf("보고싶어", "사랑해", "힘내", "고생했어", "잘 자").map(StickerIds::text),
-    "D-day" to emptyList(),
+/** 그림 스티커 한 장: [file] 은 composeResources/drawable 의 이름. */
+internal class ImageSticker(val id: String, val label: String, val file: String)
+
+internal class StickerPack(val key: String, val label: String, val price: String?, val items: List<ImageSticker>)
+
+/** 서랍 탭(Figma Sticker Tabs): 그림 팩 · 글자 · D-day. [price] 가 있으면 잠긴 팩(미리보기만). */
+class StickerTab(val label: String, val ids: List<String>, val price: String? = null, val dday: Boolean = false) {
+    val locked: Boolean get() = price != null
+    /** 칩 글자: "군 생활 · 평생", "봄 소풍 · 1,100원". */
+    val chip: String get() = price?.let { "$label · $it" } ?: label
+}
+
+private val INK = Color(0xFF3B2B30)
+private val SHADOW = Color(0x2E3B2B30)
+
+/** 글자 스티커 12(Figma 🌸 스티커 › 글자). 문구 → (바탕, 글자). */
+private val TEXT_STYLES: Map<String, Pair<Color, Color>> = linkedMapOf(
+    "보고싶어" to (Color(0xFFF05A6E) to Color.White),
+    "사랑해" to (Color(0xFFFF9EB5) to Color.White),
+    "고생했어" to (Color(0xFFFFD54F) to INK),
+    "힘내" to (Color(0xFFFF9F43) to Color.White),
+    "잘자" to (Color(0xFF5AA9E6) to Color.White),
+    "밥 잘 챙겨 먹어" to (Color(0xFF7CC46A) to Color.White),
+    "곧 만나" to (Color(0xFFBFE3FF) to INK),
+    "오늘도 수고했어" to (Color(0xFFF3D9B1) to INK),
+    "기다릴게" to (Color(0xFFF05A6E) to Color.White),
+    "전역 축하해" to (Color(0xFF6B7F2A) to Color.White),
+    "휴가 나와!" to (Color(0xFFFFD54F) to INK),
+    "최고야" to (Color(0xFFFF9EB5) to INK),
 )
+
+/** D-day 타일 색(Figma 🌸 스티커 › D-day). 이름 → (바탕, 글자). 전역 당일은 노랑. */
+private fun ddayStyle(label: String, value: String): Pair<Color, Color> = when {
+    label == "전역" && value == "D-DAY" -> Color(0xFFFFD54F) to INK
+    label == "전역" -> Color(0xFF6B7F2A) to Color.White
+    label == "휴가" -> Color(0xFFF05A6E) to Color.White
+    label == "면회" -> Color(0xFFFF9EB5) to INK
+    label == "외박" -> Color(0xFF5AA9E6) to Color.White
+    label == "진급" -> Color(0xFFB08A4A) to Color.White
+    label == "우리" && value.endsWith("년") -> Color(0xFFFF9EB5) to INK
+    label == "우리" -> Color(0xFFF05A6E) to Color.White
+    else -> Color(0xFF6B7F2A) to Color.White
+}
+
+/**
+ * 서랍 탭(Figma 순서): 하트 · 꽃 · 표정 · 일상 · 글자 · D-day · 군 생활(평생) · 봄 소풍(1,100원).
+ * D-day 는 그림 화면이 지금 숫자로 채운다.
+ */
+val STICKER_TABS: List<StickerTab> = buildList {
+    IMAGE_PACKS.filter { it.price == null }.forEach { add(StickerTab(it.label, it.items.map(ImageSticker::id))) }
+    add(StickerTab("글자", TEXT_STYLES.keys.map(StickerIds::text)))
+    add(StickerTab("D-day", emptyList(), dday = true))
+    IMAGE_PACKS.filter { it.price != null }.forEach { add(StickerTab(it.label, it.items.map(ImageSticker::id), it.price)) }
+}
+
+/** 스티커의 사람이 읽는 이름(스크린리더). */
+fun stickerLabel(id: String): String = when {
+    id.startsWith(StickerIds.IMAGE) -> IMAGE_STICKERS[id]?.label ?: "스티커"
+    id.startsWith(StickerIds.DDAY) -> id.removePrefix(StickerIds.DDAY).replace('|', ' ')
+    else -> id.substringAfter(':').substringAfter('.')
+}
+
+private val IMAGE_STICKERS: Map<String, ImageSticker> by lazy { IMAGE_PACKS.flatMap { it.items }.associateBy { it.id } }
+
+/**
+ * 그림 스티커 비트맵 캐시. 화면이 [rememberStickerImages] 로 채우고, 그리는 쪽(화면 · PNG 내보내기)이 여기서 꺼낸다.
+ * 아직 못 읽었으면 연한 자리표시로 그리고, 읽히면 스냅샷 상태라 다시 그려진다.
+ */
+object StickerImages {
+    internal val cache = androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.graphics.ImageBitmap>()
+
+    @OptIn(org.jetbrains.compose.resources.ExperimentalResourceApi::class)
+    suspend fun load(ids: Collection<String>) {
+        ids.filter { it.startsWith(StickerIds.IMAGE) && it !in cache }.forEach { id ->
+            val file = IMAGE_STICKERS[id]?.file ?: return@forEach
+            runCatching {
+                com.sadturtleman.flowershoes.core.drawingui.res.Res.readBytes("drawable/$file.png")
+            }.getOrNull()?.let { bytes ->
+                runCatching { bytes.decodeToImageBitmap() }.getOrNull()?.let { cache[id] = it }
+            }
+        }
+    }
+}
+
+/** [ids] 의 그림 스티커를 읽어 둔다(문서 · 서랍이 바뀔 때). */
+@Composable
+fun rememberStickerImages(ids: Collection<String>) {
+    val need = ids.filter { it.startsWith(StickerIds.IMAGE) }.toSet()
+    androidx.compose.runtime.LaunchedEffect(need) { StickerImages.load(need) }
+}
+
+/** 글자 · D-day 스티커 글꼴(Jua). 화면이 [rememberStickerFont] 로 한 번 넣는다 — PNG 내보내기도 같은 글꼴을 쓴다. */
+object StickerFont {
+    var family: androidx.compose.ui.text.font.FontFamily? = null
+        internal set
+
+    /** 글꼴 원본(TTF). PNG 내보내기는 화면의 글꼴 해석기 밖이라 이 바이트로 플랫폼 글꼴을 만든다. */
+    var bytes: ByteArray? = null
+        internal set
+
+    /** PNG 내보내기 동안만 쓰는 글꼴(:core:media 가 [bytes] 로 만든다). 있으면 [family] 대신. */
+    var exportFamily: androidx.compose.ui.text.font.FontFamily? = null
+
+    internal val current: androidx.compose.ui.text.font.FontFamily? get() = exportFamily ?: family
+}
+
+@OptIn(org.jetbrains.compose.resources.ExperimentalResourceApi::class)
+@Composable
+fun rememberStickerFont() {
+    val font = org.jetbrains.compose.resources.Font(com.sadturtleman.flowershoes.core.drawingui.res.Res.font.jua)
+    androidx.compose.runtime.remember(font) { androidx.compose.ui.text.font.FontFamily(font).also { StickerFont.family = it } }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (StickerFont.bytes == null) StickerFont.bytes = runCatching { com.sadturtleman.flowershoes.core.drawingui.res.Res.readBytes("font/jua.ttf") }.getOrNull()
+    }
+}
 
 private class VectorPart(val d: String, val fill: Color?, val stroke: Color? = null, val strokeWidth: Float = 0f) {
     val path: Path by lazy { PathParser().parsePathString(d).toPath() }
@@ -114,26 +225,54 @@ private fun DrawScope.drawStickerAt(id: String, sx: Float, measurer: TextMeasure
                 }
             }
         }
+        id.startsWith(StickerIds.IMAGE) -> {
+            val side = VECTOR_SIZE * sx
+            val img = StickerImages.cache[id]
+            if (img == null) {
+                drawCircle(Color(0x14000000), side * 0.4f, Offset.Zero)
+            } else {
+                drawImage(
+                    img, dstOffset = androidx.compose.ui.unit.IntOffset((-side / 2).toInt(), (-side / 2).toInt()),
+                    dstSize = androidx.compose.ui.unit.IntSize(side.toInt(), side.toInt()),
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                )
+            }
+        }
         id.startsWith(StickerIds.TEXT) -> {
-            val layout = measurer.measure(id.removePrefix(StickerIds.TEXT), TextStyle(color = BRAND, fontSize = (STAMP_FONT * sx).toSp(), fontWeight = FontWeight.Bold))
-            val padH = 26f * sx
-            val padV = 14f * sx
+            // Figma 글자: 알약 · 흰 테두리 4 · 그림자, 문구마다 색. 살짝 기울인다(-3°).
+            val text = id.removePrefix(StickerIds.TEXT)
+            val (bg, fg) = TEXT_STYLES[text] ?: (ROSE to Color.White)
+            val layout = measurer.measure(text, TextStyle(color = fg, fontSize = (STAMP_FONT * sx).toSp(), fontFamily = StickerFont.current))
+            val padH = 32f * sx
+            val padV = 16f * sx
+            val border = 8f * sx
             val w = layout.size.width + padH * 2
             val h = layout.size.height + padV * 2
-            rotate(-8f, pivot = Offset.Zero) {
-                drawRoundRect(Color.White, Offset(-w / 2, -h / 2), Size(w, h), CornerRadius(h / 2))
-                drawRoundRect(ROSE, Offset(-w / 2, -h / 2), Size(w, h), CornerRadius(h / 2), style = DrawStroke(6f * sx))
+            rotate(-3f, pivot = Offset.Zero) {
+                drawRoundRect(SHADOW, Offset(-w / 2 - border, -h / 2 - border + 4f * sx), Size(w + border * 2, h + border * 2), CornerRadius(h))
+                drawRoundRect(Color.White, Offset(-w / 2 - border, -h / 2 - border), Size(w + border * 2, h + border * 2), CornerRadius(h))
+                drawRoundRect(bg, Offset(-w / 2, -h / 2), Size(w, h), CornerRadius(h / 2))
                 drawText(layout, topLeft = Offset(-layout.size.width / 2f, -layout.size.height / 2f))
             }
         }
         id.startsWith(StickerIds.DDAY) -> {
-            val layout = measurer.measure(id.removePrefix(StickerIds.DDAY), TextStyle(color = Color.White, fontSize = (DDAY_FONT * sx).toSp(), fontWeight = FontWeight.Bold))
-            val padH = 40f * sx
-            val padV = 18f * sx
-            val w = layout.size.width + padH * 2
-            val h = layout.size.height + padV * 2
-            drawRoundRect(OLIVE, Offset(-w / 2, -h / 2), Size(w, h), CornerRadius(h / 2))
-            drawText(layout, topLeft = Offset(-layout.size.width / 2f, -layout.size.height / 2f))
+            // Figma D-day: 둥근 타일(반경 16) · 흰 테두리 4 · 위 이름(14) · 아래 값(30). 예전 "dday:D-547" 은 이름 없이.
+            val raw = id.removePrefix(StickerIds.DDAY)
+            val label = raw.substringBefore('|', "")
+            val value = raw.substringAfter('|')
+            val (bg, fg) = ddayStyle(label, value)
+            val top = label.takeIf { it.isNotEmpty() }?.let { measurer.measure(it, TextStyle(color = fg, fontSize = (DDAY_FONT * 0.47f * sx).toSp(), fontFamily = StickerFont.current)) }
+            val main = measurer.measure(value, TextStyle(color = fg, fontSize = (DDAY_FONT * sx).toSp(), fontFamily = StickerFont.current))
+            val padH = 28f * sx
+            val border = 8f * sx
+            val w = maxOf(main.size.width, top?.size?.width ?: 0) + padH * 2
+            val h = main.size.height + (top?.size?.height ?: 0) + 36f * sx
+            drawRoundRect(SHADOW, Offset(-w / 2 - border, -h / 2 - border + 4f * sx), Size(w + border * 2, h + border * 2), CornerRadius(40f * sx))
+            drawRoundRect(Color.White, Offset(-w / 2 - border, -h / 2 - border), Size(w + border * 2, h + border * 2), CornerRadius(40f * sx))
+            drawRoundRect(bg, Offset(-w / 2, -h / 2), Size(w, h), CornerRadius(32f * sx))
+            var y = -h / 2 + 16f * sx
+            top?.let { drawText(it, topLeft = Offset(-it.size.width / 2f, y)); y += it.size.height }
+            drawText(main, topLeft = Offset(-main.size.width / 2f, y))
         }
         else -> {
             val glyph = STICKERS[id] ?: "❔"
@@ -147,15 +286,18 @@ private fun DrawScope.drawStickerAt(id: String, sx: Float, measurer: TextMeasure
 @Composable
 fun StickerPreview(id: String, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
+    rememberStickerFont()
+    rememberStickerImages(listOf(id))
     Canvas(modifier) {
         // 미리보기 칸에 스티커가 꽉 차도록 논리 단위를 맞춘다. 글자 스티커는 길이를 재서 줄인다.
         val base = when {
             id.startsWith(StickerIds.TEXT) || id.startsWith(StickerIds.DDAY) -> {
                 val dday = id.startsWith(StickerIds.DDAY)
                 val font = if (dday) DDAY_FONT else STAMP_FONT
-                val w = measurer.measure(id.substringAfter(':'), TextStyle(fontSize = font.toSp(), fontWeight = FontWeight.Bold)).size.width +
-                    (if (dday) 80f else 52f)
-                minOf(size.width / 300f, size.width * 0.92f / w)
+                val text = id.substringAfter(':').substringAfter('|')
+                val w = measurer.measure(text, TextStyle(fontSize = font.toSp(), fontFamily = StickerFont.current)).size.width +
+                    (if (dday) 72f else 80f)
+                minOf(size.width / 260f, size.width * 0.92f / w)
             }
             else -> size.width / VECTOR_SIZE
         }

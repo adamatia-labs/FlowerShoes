@@ -892,7 +892,8 @@ private val LICENSES = listOf(
     "libsodium" to "ISC License",
     "Zstandard" to "BSD License",
     "Kakao SDK" to "Apache License 2.0",
-    "Noto Sans KR · 나눔손글씨 펜 · 나눔명조" to "SIL Open Font License 1.1",
+    "Noto Sans KR · 나눔손글씨 펜 · 나눔명조 · Jua" to "SIL Open Font License 1.1",
+    "Fluent Emoji(스티커 그림, Microsoft)" to "MIT License",
 )
 
 @Composable

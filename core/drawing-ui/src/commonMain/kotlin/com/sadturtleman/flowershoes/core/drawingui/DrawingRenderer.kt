@@ -115,6 +115,8 @@ internal fun DrawScope.drawPoints(
 fun DrawingView(doc: DrawingDocument, modifier: Modifier = Modifier, showGuides: Boolean = false) {
     val measurer = rememberTextMeasurer()
     val photos = rememberDrawingPhotos(doc)
+    rememberStickerFont()
+    rememberStickerImages(remember(doc) { doc.elements.filterIsInstance<StickerElement>().map { it.stickerId } })
     Canvas(
         modifier.fillMaxWidth().aspectRatio(doc.canvas.width.toFloat() / doc.canvas.height)
             .clip(RoundedCornerShape(KkRadius.lg)),
@@ -191,6 +193,8 @@ fun ReplayCanvas(doc: DrawingDocument, state: ReplayState, modifier: Modifier = 
     val frame = if (state.elapsedMs < timeline.durationMs) timeline.frame(state.elapsedMs) else timeline.completeFrame()
     val measurer = rememberTextMeasurer()
     val photos = rememberDrawingPhotos(doc)
+    rememberStickerFont()
+    rememberStickerImages(remember(doc) { doc.elements.filterIsInstance<StickerElement>().map { it.stickerId } })
     Canvas(
         modifier.fillMaxWidth().aspectRatio(doc.canvas.width.toFloat() / doc.canvas.height)
             .clip(RoundedCornerShape(KkRadius.lg))

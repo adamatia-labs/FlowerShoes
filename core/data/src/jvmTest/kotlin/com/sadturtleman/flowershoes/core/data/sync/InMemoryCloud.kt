@@ -155,6 +155,9 @@ class RelinkCloud : RelinkTransport {
         val newDevice = ci.getValue("newDeviceId")
         active += "$c/$newDevice"
         keys["$c/$newDevice"] = ci.getValue("wrappedKey").unb64()
+        // 함수(onRelinkStep)처럼 활성화하자마자 relinks/{code} 를 지운다.
+        docs.remove(code)
+        steps.remove(code)
     }
 
     override suspend fun getStep(code: String, name: String) = steps[code]?.get(name)

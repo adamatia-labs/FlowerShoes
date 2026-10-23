@@ -101,7 +101,14 @@ fun kkotsinModules(
         if (cloud != null) {
             single { PairingSession(get(), get(), get(), cloud.pairing, get()) }
             single { SyncClient(get(), get(), get(), cloud.mailbox, cloud.blobs, get(), get(), get(), get()) }
-            cloud.relink?.let { r -> single { RelinkSession(get(), get(), get(), r, get(), get()) } }
+            cloud.relink?.let { r ->
+                single {
+                    val settings = get<DeviceSettings>()
+                    RelinkSession(get(), get(), get(), r, get(), get(), deviceInfo = {
+                        (getKoin().getOrNull<com.sadturtleman.flowershoes.feature.settings.PlatformActions>()?.deviceName.orEmpty()) to (settings.accountProvider.first().orEmpty())
+                    })
+                }
+            }
             cloud.notifyPrefs?.let { t -> single { t } }
             cloud.inquiry?.let { t -> single { t } }
             single {
@@ -138,7 +145,7 @@ fun kkotsinModules(
         viewModel { CalendarViewModel(get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get()) }
-        viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get()) }
+        viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
         viewModel { MemoryViewModel(get(), get(), get(), get(), get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
         viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull(), getOrNull()) }

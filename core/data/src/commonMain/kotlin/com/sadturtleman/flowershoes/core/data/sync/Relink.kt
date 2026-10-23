@@ -50,6 +50,8 @@ class RelinkSession(
     private val transport: RelinkTransport,
     private val sync: SyncClient?,
     private val clock: Clock = Clock.System,
+    /** 새 폰 이름 · 로그인 제공자(KAKAO · APPLE · GOOGLE) — 넘겨주는 폰의 확인 카드에 보인다. */
+    private val deviceInfo: suspend () -> Pair<String, String> = { "" to "" },
 ) {
     var state: PairingState = PairingState.Idle
         private set
@@ -59,6 +61,27 @@ class RelinkSession(
     private var newDevice: Pair<String, Pairing.PublicKeys>? = null
     private var sas = ""
     private var giver = false
+
+    /**
+     * 받는 폰: 커플 id · 넘겨주는 사람 uid. 함수가 새 기기를 활성화하자마자 relinks/{code} 를 지우므로,
+     * 문서가 있을 때(확인 코드 단계) 미리 읽어 둔다 — 활성화 뒤에 읽으면 없어서 영영 기다린다.
+     */
+    private var relinkCoupleId: String? = null
+    private var relinkGiverUid: String? = null
+
+    /** 받는 폰: 넘겨줄 기록 수(넘겨주는 폰이 inviter 단계에 적는다) — 넘겨받는 중 진행률의 분모. */
+    var expected: RelinkCounts? = null
+        private set
+
+    /** 넘겨받은 내 역할(스냅샷의 내 사용자 행). 받는 폰은 온보딩을 건너뛰므로 이 값으로 역할을 정한다. */
+    suspend fun myRole(): String? = db.userDao().get(identity.userId)?.role
+
+    /** 이 폰에 지금 있는 기록 수(넘겨받는 중 진행률의 분자). */
+    suspend fun localCounts(): RelinkCounts = RelinkCounts(
+        letters = db.letterDao().allActive().size,
+        drawings = db.letterDao().allActive().sumOf { l -> db.drawingDao().forLetter(l.id).size },
+        events = db.eventDao().all().count { it.deletedAtMs == null },
+    )
 
     private suspend fun myKeys(): DeviceKeys = vault.deviceKeys() ?: DeviceKeys.generate().also { vault.putDeviceKeys(it) }
 
@@ -99,7 +122,14 @@ class RelinkSession(
             return PairingState.Failed("연인의 계정이 아니에요. 같은 계정으로 로그인했는지 확인해 주세요")
         }
         if (transport.getStep(code, Steps.INVITER) == null) {
-            transport.putStep(code, Steps.INVITER, mapOf("deviceId" to identity.deviceId, "signPub" to mine.signPub.b64(), "boxPub" to mine.boxPub.b64()))
+            val counts = localCounts()
+            transport.putStep(
+                code, Steps.INVITER,
+                mapOf(
+                    "deviceId" to identity.deviceId, "signPub" to mine.signPub.b64(), "boxPub" to mine.boxPub.b64(),
+                    "letters" to counts.letters.toString(), "drawings" to counts.drawings.toString(), "events" to counts.events.toString(),
+                ),
+            )
         }
         val reveal = transport.getStep(code, Steps.REVEAL) ?: return state
         val theirs = Pairing.PublicKeys(reveal.getValue("signPub").unb64(), reveal.getValue("boxPub").unb64())
@@ -109,7 +139,7 @@ class RelinkSession(
         }
         newDevice = reveal.getValue("deviceId") to theirs
         sas = Pairing.sas(code, inviter = mine, joiner = theirs, joinerNonce = theirNonce)
-        return PairingState.CompareSas(sas)
+        return PairingState.CompareSas(sas, reveal["deviceName"]?.takeIf { it.isNotBlank() }, reveal["provider"]?.takeIf { it.isNotBlank() })
     }
 
     private suspend fun pollReceiver(mine: Pairing.PublicKeys): PairingState {
@@ -117,10 +147,22 @@ class RelinkSession(
         if (state is PairingState.CompareSas) return state
         val inviter = transport.getStep(code, Steps.INVITER) ?: return state
         if (transport.getStep(code, Steps.REVEAL) == null) {
-            transport.putStep(code, Steps.REVEAL, mapOf("deviceId" to identity.deviceId, "signPub" to mine.signPub.b64(), "boxPub" to mine.boxPub.b64(), "nonce" to nonce.b64()))
+            val (deviceName, provider) = runCatching { deviceInfo() }.getOrDefault("" to "")
+            transport.putStep(
+                code, Steps.REVEAL,
+                mapOf(
+                    "deviceId" to identity.deviceId, "signPub" to mine.signPub.b64(), "boxPub" to mine.boxPub.b64(), "nonce" to nonce.b64(),
+                    "deviceName" to deviceName, "provider" to provider,
+                ),
+            )
         }
         val theirs = Pairing.PublicKeys(inviter.getValue("signPub").unb64(), inviter.getValue("boxPub").unb64())
         newDevice = inviter.getValue("deviceId") to theirs // 받는 쪽에게는 "상대(지수) 기기"
+        expected = expected ?: RelinkCounts(
+            inviter["letters"]?.toIntOrNull() ?: 0, inviter["drawings"]?.toIntOrNull() ?: 0, inviter["events"]?.toIntOrNull() ?: 0,
+        )
+        relinkCoupleId = relinkCoupleId ?: transport.coupleId(code)
+        relinkGiverUid = relinkGiverUid ?: transport.giverUid(code)
         sas = Pairing.sas(code, inviter = theirs, joiner = mine, joinerNonce = nonce)
         return PairingState.CompareSas(sas)
     }
@@ -171,13 +213,13 @@ class RelinkSession(
 
     /** 함수가 새 기기를 활성화하면 커플 키를 풀고 커플 · 기기 행을 만든다. 데이터는 이어지는 동기화로 들어온다. */
     private suspend fun finishReceiver(): PairingState {
-        val coupleId = transport.coupleId(code) ?: return PairingState.WaitingConfirm
+        val coupleId = relinkCoupleId ?: transport.coupleId(code)?.also { relinkCoupleId = it } ?: return PairingState.WaitingConfirm
         if (!transport.activated(coupleId, identity.deviceId)) return PairingState.WaitingConfirm
         val wrapped = transport.wrappedKeyFor(coupleId, identity.deviceId) ?: return PairingState.WaitingConfirm
         val key = CoupleKey.unwrap(myKeys(), wrapped)
         vault.putCoupleKey(key)
         val (giverDeviceId, giverKeys) = checkNotNull(newDevice)
-        val giverUid = transport.giverUid(code) ?: return PairingState.WaitingConfirm
+        val giverUid = relinkGiverUid ?: transport.giverUid(code)?.also { relinkGiverUid = it } ?: return PairingState.WaitingConfirm
         val keys = myKeys()
         val now = clock.now().toEpochMilliseconds()
         db.coupleDao().clear()
@@ -190,4 +232,9 @@ class RelinkSession(
 
     private fun cutoffJson(cutoff: Map<String, Long>): String =
         Json.encodeToString(JsonObject.serializer(), buildJsonObject { cutoff.forEach { (k, v) -> put(k, JsonPrimitive(v)) } })
+}
+
+/** 넘겨받는 중 화면의 세 줄(Figma 재연결 / 민준 · 넘겨받는 중): 편지 · 그림 · 일정. */
+data class RelinkCounts(val letters: Int, val drawings: Int, val events: Int) {
+    val total: Int get() = letters + drawings + events
 }

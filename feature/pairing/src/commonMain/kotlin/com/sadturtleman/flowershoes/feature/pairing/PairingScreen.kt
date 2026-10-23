@@ -77,6 +77,11 @@ data class PairingUi(
     val relinkAvailable: Boolean = false,
     val codeInput: String = "",
     val busy: Boolean = false,
+    /** 새 폰: 넘겨받는 중 진행(넘겨줄 기록 수 · 받은 수). 다 받으면 [receiveDone]. */
+    val expected: com.sadturtleman.flowershoes.core.data.sync.RelinkCounts? = null,
+    val received: com.sadturtleman.flowershoes.core.data.sync.RelinkCounts? = null,
+    val receiveStartedMs: Long = 0,
+    val receiveDone: Boolean = false,
 )
 
 /**
@@ -168,6 +173,36 @@ class PairingViewModel(
         settings.setKeyEpoch(1)
         // 혼자 모드에서 쌓인 내 데이터가 첫 동기화로 넘어간다.
         runCatching { sync?.syncOnce() }
+        val r = relink
+        val expected = r?.expected
+        // 받는 폰만 expected(넘겨줄 기록 수)를 안다 — 넘겨주는 폰 · 처음 연결은 바로 끝.
+        if (relinkMode && r != null && expected != null) receive(r, expected) else _ui.update { it.copy(receiveDone = true) }
+    }
+
+    /**
+     * 새 폰: 넘겨주는 폰의 전체 스냅샷이 들어올 때까지 동기화하며 받은 수를 센다(Figma 넘겨받는 중).
+     * 다 받았거나 2분이 지나면 끝 — 나머지는 평소 동기화로 이어 받는다.
+     */
+    private suspend fun receive(r: RelinkSession, expected: com.sadturtleman.flowershoes.core.data.sync.RelinkCounts) {
+        val start = kotlin.time.Clock.System.now().toEpochMilliseconds()
+        _ui.update { it.copy(expected = expected, received = r.localCounts(), receiveStartedMs = start) }
+        while (kotlin.time.Clock.System.now().toEpochMilliseconds() - start < 120_000) {
+            runCatching { sync?.syncOnce() }
+            val got = runCatching { r.localCounts() }.getOrNull() ?: break
+            _ui.update { it.copy(received = got) }
+            if (got.letters >= expected.letters && got.drawings >= expected.drawings && got.events >= expected.events) break
+            delay(1_500)
+        }
+        finishReceiving(r)
+    }
+
+    /** 받는 폰은 온보딩 없이 들어온다: 넘겨받은 내 역할로 정하고 온보딩을 끝낸 것으로 한다(셸이 홈으로 바뀐다). */
+    private suspend fun finishReceiving(r: RelinkSession) {
+        runCatching { r.myRole()?.let { settings.setRole(com.sadturtleman.flowershoes.core.model.Role.valueOf(it)) } }
+        // 다 받은 화면(100%)을 잠깐 보여 준 뒤 홈으로 — 기록이 적으면 첫 동기화로 바로 끝나 진행 화면이 스쳐 지나간다.
+        delay(1_500)
+        settings.setOnboarded()
+        _ui.update { it.copy(receiveDone = true) }
     }
 }
 
@@ -184,7 +219,10 @@ fun PairingRoute(
     viewModel: PairingViewModel = koinViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    LaunchedEffect(ui.state) { if (ui.state is PairingState.Linked) onDone() }
+    // 새 폰은 넘겨받기가 끝날 때까지 진행 화면을 보여 준 뒤 닫는다.
+    LaunchedEffect(ui.state, ui.receiveDone, ui.expected) {
+        if (ui.state is PairingState.Linked && (mode != PairingMode.RECEIVE || ui.receiveDone)) onDone()
+    }
     // 새 폰은 확인 코드가 뜨면 바로 확인한다 — 비교 · 넘겨주기는 넘겨주는 폰(데이터를 가진 쪽)이 한다.
     LaunchedEffect(ui.state, mode) {
         if (mode == PairingMode.RECEIVE && ui.state is PairingState.CompareSas && !ui.busy) viewModel.confirm()
@@ -338,13 +376,17 @@ private fun HandOverScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Uni
         }) {
             Title("연인이 새 폰으로 다시 연결하려고 해요", "교체 코드가 맞는 새 폰이에요. 넘겨주면 지금까지의 기록이 새 폰으로 옮겨져요.")
             val shape = RoundedCornerShape(KkRadius.lg)
+            // 새 기기(Figma 지수 · 확인): 기종 · 로그인 방법. 아래 확인 코드는 바꿔치기 방지(설계 7-3-B)라 함께 둔다.
             Column(
                 Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("새 기기 확인 코드", style = KkTheme.type.caption, color = c.textTertiary)
-                Text(s.sas.chunked(3).joinToString(" "), style = KkTheme.type.titleS, color = c.textPrimary)
-                Text("새 폰 화면의 숫자와 같을 때만 넘겨주세요", style = KkTheme.type.bodyS, color = c.textSecondary)
+                Text("새 기기", style = KkTheme.type.caption, color = c.textTertiary)
+                Text(s.device ?: "새 폰", style = KkTheme.type.titleS, color = c.textPrimary)
+                s.provider?.let { Text("${providerName(it)} 계정으로 로그인", style = KkTheme.type.bodyS, color = c.textSecondary) }
+                Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(c.borderDefault))
+                Text("확인 코드 ${s.sas.chunked(3).joinToString(" ")}", style = KkTheme.type.labelM, color = c.textPrimary)
+                Text("새 폰 화면의 숫자와 같을 때만 넘겨주세요", style = KkTheme.type.caption, color = c.textSecondary)
             }
         }
         PairingState.WaitingConfirm, is PairingState.Linked -> Frame("상대 폰 교체 받기", KkTopBarLeading.Close, close) {
@@ -360,6 +402,9 @@ private fun HandOverScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Uni
 /** 다시 연결하기(새 폰, Figma 재연결 / 민준 · 코드 입력 · 확인 대기 · 넘겨받는 중). */
 @Composable
 private fun ReceiveScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit) {
+    // 확인 코드는 바로 확인(넘겨주는 폰이 비교한다)해 상태가 넘어가도, 넘겨줄 때까지 계속 보여 준다.
+    var lastSas by remember { mutableStateOf<String?>(null) }
+    (ui.state as? PairingState.CompareSas)?.let { lastSas = it.sas }
     when (val s = ui.state) {
         PairingState.Idle, is PairingState.Failed -> Frame("다시 연결하기", KkTopBarLeading.Back, close, footer = {
             KkPrimaryButton("다음", vm::acceptRelink, enabled = CrockfordCode.normalize(ui.codeInput)?.length == 8 && !ui.busy, loading = ui.busy)
@@ -377,14 +422,10 @@ private fun ReceiveScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit
         PairingState.WaitingPartner, is PairingState.CompareSas, PairingState.WaitingConfirm, is PairingState.ShowCode ->
             Frame("다시 연결하기", KkTopBarLeading.Close, close, footer = { GhostButton("취소", close) }) {
                 Title("코드가 맞았어요", "연인 폰에서 넘겨주기를 누르면 바로 넘겨받기 시작해요.")
-                if (s is PairingState.CompareSas) {
-                    CodeCard("확인 코드", s.sas.chunked(3).joinToString(" "), "연인 폰에도 같은 숫자가 떠 있어요", copyable = false)
-                }
+                lastSas?.let { sas -> CodeCard("확인 코드", sas.chunked(3).joinToString(" "), "연인 폰에도 같은 숫자가 떠 있어요", copyable = false) }
                 Waiting("연인이 확인하길 기다리는 중…")
             }
-        is PairingState.Linked -> Frame("다시 연결하기", KkTopBarLeading.Close, close) {
-            Title("기록을 넘겨받는 중이에요", "앱을 닫지 말고 와이파이에 연결해 두세요.")
-        }
+        is PairingState.Linked -> ReceivingProgress(ui)
     }
 }
 
@@ -462,3 +503,73 @@ fun ColumnScope.InviteConnect(onAdvance: () -> Unit, viewModel: PairingViewModel
     )
 }
 
+
+/** "KAKAO" → "카카오". */
+private fun providerName(id: String) = when (id) {
+    "KAKAO" -> "카카오"
+    "APPLE" -> "Apple"
+    "GOOGLE" -> "Google"
+    else -> id
+}
+
+/** 민준 · 넘겨받는 중(Figma 118:1459): 상단 바 없이 제목 · 진행률 카드(퍼센트 · 남은 시간 · 막대 · 편지 · 그림 · 일정 줄). */
+@Composable
+internal fun ReceivingProgress(ui: PairingUi) {
+    val c = KkTheme.colors
+    val expected = ui.expected
+    val got = ui.received
+    val total = expected?.total ?: 0
+    val done = if (expected == null || got == null) 0 else
+        minOf(got.letters, expected.letters) + minOf(got.drawings, expected.drawings) + minOf(got.events, expected.events)
+    val percent = if (total == 0) 100 else (done * 100 / total)
+    val elapsed = (kotlin.time.Clock.System.now().toEpochMilliseconds() - ui.receiveStartedMs).coerceAtLeast(1)
+    val remainingSec = if (percent in 1..99) (elapsed * (100 - percent) / percent / 1000) else null
+    Column(
+        Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()
+            .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
+        verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+    ) {
+        Text("기록을 넘겨받는 중이에요", style = KkTheme.type.titleL, color = c.textPrimary)
+        val shape = RoundedCornerShape(KkRadius.lg)
+        Column(
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("$percent%", style = KkTheme.type.titleM, color = c.textBrand, modifier = Modifier.weight(1f))
+                Text(
+                    when {
+                        percent >= 100 -> "다 받았어요"
+                        remainingSec == null -> "준비 중"
+                        else -> "약 ${maxOf(1, (remainingSec + 59) / 60)}분 남음"
+                    },
+                    style = KkTheme.type.caption, color = c.textTertiary,
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgSubtle)) {
+                Box(Modifier.fillMaxWidth(percent / 100f).height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgBrand))
+            }
+            if (expected != null) {
+                val rows = listOf(
+                    Triple("편지 ${expected.letters}개", got?.letters ?: 0, expected.letters),
+                    Triple("그림 ${expected.drawings}개", got?.drawings ?: 0, expected.drawings),
+                    Triple("일정 · 추억", got?.events ?: 0, expected.events),
+                )
+                // 앞 줄이 끝나야 다음 줄이 "받는 중" — 스냅샷이 한 번에 오더라도 Figma 처럼 차례로 보인다.
+                var before = true
+                rows.forEach { (label, n, of) ->
+                    val state = when {
+                        n >= of -> "완료"
+                        before -> "받는 중"
+                        else -> "대기"
+                    }
+                    if (n < of) before = false
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, style = KkTheme.type.bodyS, color = c.textPrimary, modifier = Modifier.weight(1f))
+                        Text(state, style = KkTheme.type.caption, color = if (state == "받는 중") c.textBrand else c.textTertiary)
+                    }
+                }
+            }
+        }
+    }
+}

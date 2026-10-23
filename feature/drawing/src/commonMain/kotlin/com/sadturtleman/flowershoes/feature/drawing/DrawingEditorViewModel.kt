@@ -84,7 +84,7 @@ data class DrawingEditorState(
     val menu: EditorMenu = EditorMenu.PEN,
     val color: Long = PEN_COLORS[1],
     val brush: BrushSize = BrushSize.M,
-    val sticker: String = "v.heart",
+    val sticker: String = "img:heart/00",
     val stickerTab: Int = 0,
     /** D-day 서랍: 지금 숫자로 만든 알약("D-547" · "D+123"). */
     val ddayStickers: List<String> = emptyList(),
@@ -182,6 +182,8 @@ class DrawingEditorViewModel(
     private val rasterizer: DrawingRasterizer? = null,
     profile: ProfileRepository? = null,
     private val clock: Clock = Clock.System,
+    /** D-day 스티커의 휴가 · 면회 · 외박(다음 일정까지). */
+    events: com.sadturtleman.flowershoes.core.data.EventRepository? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DrawingEditorState())
@@ -202,19 +204,30 @@ class DrawingEditorViewModel(
     init {
         // 상대 이름(보내기 제목) · D-day 스티커 숫자.
         if (profile != null) viewModelScope.launch {
-            combine(profile.observeCouple(), profile.observeUsers(), profile.observeTimelines()) { couple, users, timelines ->
+            val today0 = clock.today()
+            val upcoming = events?.observeRange(today0, LocalDate(today0.year + 2, 12, 31)) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+            combine(profile.observeCouple(), profile.observeUsers(), profile.observeTimelines(), upcoming) { couple, users, timelines, evs ->
                 val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
                 val partner = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.nickname?.takeIf { it.isNotBlank() } ?: "연인"
                 val today = clock.today()
-                val left = timelines.firstOrNull()?.second?.daysLeft(today)
+                val timeline = timelines.firstOrNull()?.second
+                val left = timeline?.daysLeft(today)
                 val since = (couple?.anniversary?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
                     ?: couple?.linkedAtMs?.takeIf { partnerId != null }?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.of("Asia/Seoul")).date })
                     ?.let { it.daysUntil(today) + 1 }
+                fun next(type: com.sadturtleman.flowershoes.core.model.EventType) =
+                    evs.filter { it.type == type && it.start.date >= today }.minByOrNull { it.start }?.let { today.daysUntil(it.start.date) }
+                fun d(n: Int) = if (n == 0) "D-DAY" else "D-$n"
+                // Figma 🌸 스티커 › D-day 8: 전역 · 휴가 · 면회 · 외박 · 진급 · 우리 N일 · 우리 N년 · 전역 D-DAY. 값이 있는 것만.
                 val dday = listOfNotNull(
-                    left?.let { if (it > 0) "D-$it" else "전역!" },
-                    since?.let { "D+$it" },
-                    left?.takeIf { it > 0 }?.let { "전역까지 $it" },
-                ).map(StickerIds::dday)
+                    left?.takeIf { it >= 0 }?.let { "전역" to d(it) },
+                    next(com.sadturtleman.flowershoes.core.model.EventType.VACATION)?.let { "휴가" to d(it) },
+                    next(com.sadturtleman.flowershoes.core.model.EventType.VISIT)?.let { "면회" to d(it) },
+                    next(com.sadturtleman.flowershoes.core.model.EventType.OVERNIGHT)?.let { "외박" to d(it) },
+                    timeline?.nextRank(today)?.let { "진급" to d(today.daysUntil(it.from)) },
+                    since?.let { "우리" to "${it}일" },
+                    since?.takeIf { it >= 365 }?.let { "우리" to "${it / 365}년" },
+                ).map { (label, value) -> StickerIds.dday(label, value) }
                 partner to dday
             }.collect { (partner, dday) ->
                 _state.update { it.copy(partnerName = partner, ddayStickers = dday) }
