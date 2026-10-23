@@ -227,3 +227,9 @@ Figma 와 다르게 한 것(이유):
   오픈소스 라이선스(스티커 · 아이콘 / 라이브러리). 알림 상세 화면 대신 "알림 받기" 하나 + "이벤트 · 혜택 알림". 백업 사용량 "1.2GB / 2GB".
   문의하기는 유형 고르기 없이(서버에는 "기타").
 - 광고 지면(캘린더 · 휴가 · 설정): KkAd 자리만 — LocalAds 공급자를 붙이기 전에는 그리지 않는다.
+- AdMob 배너(Android): 앱 ID ca-app-pub-9179621242550991~5526504782, 배너 단위는 release 만 실제 ID, debug 는 Google 테스트 단위.
+  UMP 동의(필요한 지역만) 뒤 MobileAds 초기화. 지면은 캘린더(이번 주 아래) · 휴가(3번째 카드 뒤) · 설정(데이터와 계정 사이)에
+  고정 적응형 배너 1개씩(LocalAdBanner → AdmobBanner). 광고가 오기 전에는 높이 0. 꽃신 평생 숨김은 결제 연결과 함께.
+- AdMob 배너(iOS): 앱 ID ca-app-pub-9179621242550991~5857677275(Info.plist GADApplicationIdentifier + SKAdNetworkItems),
+  배너 단위 ca-app-pub-9179621242550991/4592697065(Release) · 테스트 단위(Debug). Swift AdBanners(GoogleMobileAds 12 · UMP 3, SPM)가
+  동의 → SDK 시작 → BannerView 를 만들고, Kotlin IosAdBanner 가 UIKitView 로 지면에 놓는다(MainViewController(ads:)).

@@ -35,9 +35,16 @@ enum class KkAdSlot { CALENDAR, LEAVE, SETTINGS }
  */
 val LocalAds = staticCompositionLocalOf<(KkAdSlot) -> KkAdContent?> { { null } }
 
-/** 지면 한 칸. 줄 광고가 없으면 아무것도 그리지 않는다. */
+/**
+ * 플랫폼 배너(Android: AdMob 적응형 배너). 앱이 넣어 주면 [KkAd] 가 네이티브 내용 대신 이것을 그린다.
+ * 배너는 광고가 오기 전까지 높이가 0 이라 빈 자리가 생기지 않는다.
+ */
+val LocalAdBanner = staticCompositionLocalOf<(@Composable (slot: KkAdSlot, modifier: Modifier) -> Unit)?> { null }
+
+/** 지면 한 칸. 배너도 줄 광고도 없으면 아무것도 그리지 않는다. */
 @Composable
 fun KkAd(slot: KkAdSlot, modifier: Modifier = Modifier) {
+    LocalAdBanner.current?.let { banner -> banner(slot, modifier); return }
     val ad = LocalAds.current(slot) ?: return
     KkNativeAd(ad, modifier)
 }

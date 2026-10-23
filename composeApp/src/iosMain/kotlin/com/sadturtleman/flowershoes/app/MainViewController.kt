@@ -17,8 +17,14 @@ private var started = false
 
 /** iosApp(SwiftUI)이 부르는 진입점. Koin 은 한 번만 시작한다. */
 @OptIn(ExperimentalForeignApi::class)
-/** [signInUi]: Swift 의 제공자 화면(카카오 SDK · Sign in with Apple · Google Sign-In). Firebase 가 없으면 쓰지 않는다. */
-fun MainViewController(signInUi: com.sadturtleman.flowershoes.core.firebase.SocialSignInUi? = null): UIViewController {
+/**
+ * [signInUi]: Swift 의 제공자 화면(카카오 SDK · Sign in with Apple · Google Sign-In). Firebase 가 없으면 쓰지 않는다.
+ * [ads]: Swift 의 AdMob 배너. 없으면 광고 지면이 비어 있다.
+ */
+fun MainViewController(
+    signInUi: com.sadturtleman.flowershoes.core.firebase.SocialSignInUi? = null,
+    ads: IosAdBanners? = null,
+): UIViewController {
     if (!started) {
         val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
         val settingsPath = requireNotNull(support?.path) + "/kkotsin_device.preferences_pb"
@@ -58,7 +64,15 @@ fun MainViewController(signInUi: com.sadturtleman.flowershoes.core.firebase.Soci
         }
         started = true
     }
-    return ComposeUIViewController { KkotsinApp() }
+    return ComposeUIViewController {
+        if (ads == null) {
+            KkotsinApp()
+        } else {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.sadturtleman.flowershoes.core.designsystem.LocalAdBanner provides { slot, modifier -> IosAdBanner(ads, slot, modifier) },
+            ) { KkotsinApp() }
+        }
+    }
 }
 
 /**
