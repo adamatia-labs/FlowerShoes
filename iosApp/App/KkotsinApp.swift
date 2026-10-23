@@ -8,6 +8,7 @@ import libzstd
 struct KkotsinApp: App {
     @Environment(\.scenePhase) private var phase
     private let signIn = SocialSignIn()
+    private let ads = AdBanners()
 
     init() {
         // 그림 문서 · 백업의 zstd. Android(zstd-jni)와 같은 프레임 형식.
@@ -20,7 +21,7 @@ struct KkotsinApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ComposeView(signIn: signIn).ignoresSafeArea()
+            ComposeView(signIn: signIn, ads: ads).ignoresSafeArea()
                 .onOpenURL { url in
                     // 카카오톡 · Google 로그인에서 돌아온 것이면 그쪽이, 아니면 앱 딥링크(kkotsin://)
                     if !signIn.handle(url: url) { DeepLinks.shared.open(uri: url.absoluteString) }
@@ -28,14 +29,19 @@ struct KkotsinApp: App {
         }
         .onChange(of: phase) { _, now in
             // 앞으로 나오면 NSE 대기열 합치기 · 동기화 · 위젯 연결 정보 갱신
-            if now == .active { MainViewControllerKt.onForeground() }
+            if now == .active {
+                MainViewControllerKt.onForeground()
+                // 광고 동의 → SDK 시작(한 번). 첫 화면이 뜬 뒤라야 동의 양식을 띄울 수 있다.
+                ads.gatherConsent()
+            }
         }
     }
 }
 
 struct ComposeView: UIViewControllerRepresentable {
     let signIn: SocialSignIn
-    func makeUIViewController(context: Context) -> UIViewController { MainViewControllerKt.MainViewController(signInUi: signIn) }
+    let ads: AdBanners
+    func makeUIViewController(context: Context) -> UIViewController { MainViewControllerKt.MainViewController(signInUi: signIn, ads: ads) }
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
