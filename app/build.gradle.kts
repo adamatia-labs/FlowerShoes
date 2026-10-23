@@ -39,7 +39,12 @@ android {
     }
 
     buildTypes {
+        // AdMob 배너 단위. 디버그는 Google 테스트 단위 — 자기 광고를 보거나 누르는 것은 정책 위반이다.
+        debug {
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/9214589741\"")
+        }
         release {
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-9179621242550991/1874200235\"")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -104,6 +109,9 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation(project(":core:drawing-engine"))
     implementation(project(":core:designsystem"))
+    // 광고(Figma 9 · 광고 지면): AdMob 배너 + 동의(UMP).
+    implementation(libs.play.services.ads)
+    implementation(libs.ump)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.glance.material3)

@@ -9,7 +9,10 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.metrics.performance.JankStats
+import com.sadturtleman.flowershoes.ads.AdConsent
+import com.sadturtleman.flowershoes.ads.AdmobBanner
 import com.sadturtleman.flowershoes.app.DeepLinks
+import com.sadturtleman.flowershoes.core.designsystem.LocalAdBanner
 import com.sadturtleman.flowershoes.app.KkotsinApp
 import com.sadturtleman.flowershoes.jank.domain.JankReporter
 import com.sadturtleman.flowershoes.jank.presentation.LocalJankReporter
@@ -68,11 +71,15 @@ class MainActivity : FragmentActivity() {
         // 알림 · 위젯에서 들어온 딥링크(kkotsin://letter/{id} 등)는 셸이 받아 그 화면을 연다.
         intent?.data?.let { DeepLinks.open(it.toString()) }
 
+        // 광고: 동의(필요한 지역만) 뒤 AdMob 을 켠다. 지면은 캘린더 · 휴가 · 설정의 배너 1개씩(Figma 9).
+        AdConsent.gather(this)
+
         enableEdgeToEdge()
         setContent {
             CompositionLocalProvider(
                 LocalTtiRecorder provides ttiRecorder,
                 LocalJankReporter provides jankReporter,
+                LocalAdBanner provides { slot, modifier -> AdmobBanner(slot, modifier) },
             ) {
                 KkotsinApp()
             }
