@@ -109,6 +109,28 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         p[WIDGET_PIN]?.split('|')?.takeIf { it.size == 2 }?.let { (id, at) -> at.toLongOrNull()?.let { id to it } }
     }
 
+    /**
+     * 위젯에 그림이 떠 있던 시간(추억 › 그림 상세 "위젯에 n시간 표시됨"). 위젯이 바뀔 때마다 부른다 —
+     * [drawingId] 가 null 이면 위젯이 없거나 그림이 없는 것. 지난 그림의 시간을 닫고 새 그림의 시작을 적는다.
+     */
+    suspend fun widgetShowing(drawingId: String?, nowMs: Long) = store.edit { p ->
+        val current = p[WIDGET_CURRENT]?.split('|')?.takeIf { it.size == 2 }
+        if (current?.get(0) == drawingId) return@edit
+        val totals = widgetJson.decodeFromString<Map<String, Long>>(p[WIDGET_TOTALS] ?: "{}").toMutableMap()
+        current?.let { (id, since) -> since.toLongOrNull()?.let { totals[id] = (totals[id] ?: 0) + (nowMs - it).coerceAtLeast(0) } }
+        p[WIDGET_TOTALS] = widgetJson.encodeToString<Map<String, Long>>(totals)
+        if (drawingId == null) p.remove(WIDGET_CURRENT) else p[WIDGET_CURRENT] = "$drawingId|$nowMs"
+    }
+
+    /** 그림 id → 위젯에 떠 있던 시간(ms). 지금 떠 있는 그림은 [nowMs] 까지 더한다. */
+    fun widgetShownMs(nowMs: () -> Long): Flow<Map<String, Long>> = store.data.map { p ->
+        val totals = widgetJson.decodeFromString<Map<String, Long>>(p[WIDGET_TOTALS] ?: "{}").toMutableMap()
+        p[WIDGET_CURRENT]?.split('|')?.takeIf { it.size == 2 }?.let { (id, since) ->
+            since.toLongOrNull()?.let { totals[id] = (totals[id] ?: 0) + (nowMs() - it).coerceAtLeast(0) }
+        }
+        totals
+    }
+
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
     suspend fun reset() = store.edit { it.clear() }
 
@@ -123,6 +145,9 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val PROVIDER = stringPreferencesKey("account_provider")
         val LETTER_DRAFT = stringPreferencesKey("letter_draft")
         val WIDGET_PIN = stringPreferencesKey("widget_pin")
+        val WIDGET_CURRENT = stringPreferencesKey("widget_current")
+        val WIDGET_TOTALS = stringPreferencesKey("widget_totals")
+        val widgetJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val NOTIFY_PREFS = stringPreferencesKey("notify_prefs")
         val AUTO_BACKUP = intPreferencesKey("auto_backup")
         val DISPLAY_MODE = stringPreferencesKey("display_mode")

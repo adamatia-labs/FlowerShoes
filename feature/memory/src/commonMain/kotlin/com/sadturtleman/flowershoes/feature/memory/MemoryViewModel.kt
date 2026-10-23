@@ -46,11 +46,11 @@ sealed interface MemoryEntry {
     val date: LocalDate
 
     /** 그림(글 없는 편지, 또는 그림이 든 편지의 첫 그림). */
-    data class Drawing(override val date: LocalDate, val letterId: String, val title: String, val meta: String, val thumb: DrawingDocument?) : MemoryEntry
-    data class Letter(override val date: LocalDate, val letterId: String, val title: String, val preview: String) : MemoryEntry
+    data class Drawing(override val date: LocalDate, val letterId: String, val title: String, val meta: String, val thumb: DrawingDocument?, val hearts: Int = 0) : MemoryEntry
+    data class Letter(override val date: LocalDate, val letterId: String, val title: String, val preview: String, val hearts: Int = 0) : MemoryEntry
 
-    /** 지난 휴가 · 외박 · 면회(캘린더에 적은 것). */
-    data class Meet(override val date: LocalDate, val label: String, val title: String) : MemoryEntry
+    /** 지난 휴가 · 외박 · 면회(캘린더에 적은 것). [photos] 는 만남 사진 첨부 id(최대 3). */
+    data class Meet(override val date: LocalDate, val label: String, val title: String, val eventId: String = "", val photos: List<String> = emptyList()) : MemoryEntry
 
     /** 입대 N일 · 진급 · 만난 지 N일. */
     data class Anniversary(override val date: LocalDate, val title: String) : MemoryEntry
@@ -98,6 +98,9 @@ sealed interface MemoryIntent {
     data object CloseDrawing : MemoryIntent
     data object PinToWidget : MemoryIntent
     data object Export : MemoryIntent
+    /** 만남 카드에 사진을 붙인다(줄인 JPEG). 일정에 실려 상대 폰에도 간다. */
+    data class AddMeetPhoto(val eventId: String, val jpeg: ByteArray) : MemoryIntent
+    data class RemoveMeetPhoto(val eventId: String, val attachmentId: String) : MemoryIntent
 }
 
 /**
@@ -105,7 +108,7 @@ sealed interface MemoryIntent {
  */
 class MemoryViewModel(
     private val letters: LetterRepository,
-    events: EventRepository,
+    private val events: EventRepository,
     profile: ProfileRepository,
     private val attachments: AttachmentStore,
     private val settings: DeviceSettings,
@@ -117,6 +120,10 @@ class MemoryViewModel(
     private val today = clock.today()
     private val ui = MutableStateFlow(MemoryState())
     private val docs = MutableStateFlow<Map<String, DrawingDocument?>>(emptyMap())
+
+    /** 만남 사진 원본(첨부 id → JPEG). 화면이 썸네일로 쓴다. */
+    private val _photos = MutableStateFlow<Map<String, ByteArray?>>(emptyMap())
+    val photos: StateFlow<Map<String, ByteArray?>> = _photos
 
     /** 그림 상세 › 저장 · 공유에 쓸 완성 PNG. */
     private val _exports = MutableSharedFlow<ByteArray>(extraBufferCapacity = 1)
@@ -136,24 +143,24 @@ class MemoryViewModel(
 
     val state: StateFlow<MemoryState> = combine(
         ui,
-        letters.observeInbox(),
+        combine(letters.observeInbox(), letters.observeHearts()) { l, h -> l to h },
         events.observeRange(today.minus(DatePeriod(years = 3)), today),
         combine(names, profile.observeTimelines()) { n, t -> n to t.firstOrNull()?.second },
         docs,
-    ) { s, ls, es, (n, timeline), thumbs ->
+    ) { s, (ls, hearts), es, (n, timeline), thumbs ->
         val (my, partner, since) = n
         val drawingEntries = ls.filter { it.drawingCount > 0 && !it.hasText }.map { l ->
-            MemoryEntry.Drawing(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: "그림 한 장", if (l.authorId == me) "$my → $partner" else "$partner → $my", thumbs[l.id])
+            MemoryEntry.Drawing(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: "그림 한 장", if (l.authorId == me) "$my → $partner" else "$partner → $my", thumbs[l.id], hearts[l.id] ?: 0)
         }
         val letterEntries = ls.filter { it.hasText }.map { l ->
             val text = l.blocks.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text }.replace('\n', ' ')
-            MemoryEntry.Letter(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: text.take(24), if (l.title.isNullOrBlank()) text.drop(24).take(60) else text.take(60))
+            MemoryEntry.Letter(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: text.take(24), if (l.title.isNullOrBlank()) text.drop(24).take(60) else text.take(60), hearts[l.id] ?: 0)
         }
         val meets = es.filter { it.type in MEETINGS && it.end.date <= today }.sortedBy { it.start }
         val firstVisit = meets.firstOrNull { it.type == EventType.VISIT }?.id
         val meetEntries = meets.map { e ->
             val kind = if (e.id == firstVisit) "첫 면회" else e.type.label()
-            MemoryEntry.Meet(e.start.date, "만남 · $kind", listOfNotNull(e.title.ifBlank { e.type.label() }, e.durationLabel()).joinToString(" · "))
+            MemoryEntry.Meet(e.start.date, "만남 · $kind", listOfNotNull(e.title.ifBlank { e.type.label() }, e.durationLabel()).joinToString(" · "), e.id, e.photoIds)
         }
         val anniversaries = buildList {
             timeline?.let { t ->
@@ -185,6 +192,14 @@ class MemoryViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryState())
 
     init {
+        // 만남 사진: 처음 보이는 첨부를 한 번씩 읽어 둔다(상대가 붙인 사진은 받은 뒤에 생긴다 — 없으면 다음에 다시).
+        viewModelScope.launch {
+            state.collect { st ->
+                st.entries.filterIsInstance<MemoryEntry.Meet>().flatMap { it.photos }.filter { _photos.value[it] == null }.forEach { id ->
+                    attachments.read(id)?.let { bytes -> _photos.update { it + (id to bytes) } }
+                }
+            }
+        }
         // 그림 썸네일: 편지의 첫 그림 문서를 한 번씩 읽어 둔다.
         viewModelScope.launch {
             letters.observeInbox().collect { list ->
@@ -205,6 +220,17 @@ class MemoryViewModel(
                 val d = ui.value.detail ?: return@launch
                 settings.pinWidgetDrawing(d.drawingId, clock.now().toEpochMilliseconds())
                 _notices.tryEmit("위젯에 다시 띄웠어요")
+            }
+            is MemoryIntent.AddMeetPhoto -> viewModelScope.launch {
+                val e = events.get(intent.eventId) ?: return@launch
+                if (e.photoIds.size >= MAX_MEET_PHOTOS) return@launch
+                val id = attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, intent.jpeg)
+                _photos.update { it + (id to intent.jpeg) }
+                events.save(e.copy(photoIds = e.photoIds + id))
+            }
+            is MemoryIntent.RemoveMeetPhoto -> viewModelScope.launch {
+                val e = events.get(intent.eventId) ?: return@launch
+                events.save(e.copy(photoIds = e.photoIds - intent.attachmentId))
             }
             MemoryIntent.Export -> viewModelScope.launch {
                 val d = ui.value.detail ?: return@launch
@@ -229,6 +255,8 @@ class MemoryViewModel(
         val (my, partner) = names.first().let { it.first to it.second }
         val mine = letter.authorId == me
         val at = letter.visibleAt.toLocalDateTime(SEOUL)
+        // 받은 그림이 이 폰 위젯에 떠 있던 시간(1시간 넘을 때만 적는다).
+        val widgetHours = if (mine) 0L else (settings.widgetShownMs { clock.now().toEpochMilliseconds() }.first()[drawingId] ?: 0L) / 3_600_000
         // 답장: 이 그림 뒤 사흘 안에 상대가 보낸 첫 편지.
         val reply = all.filter { it.authorId != letter.authorId && it.visibleAt > letter.visibleAt && it.visibleAt.minus(letter.visibleAt).inWholeDays < 3 && it.hasText }
             .minByOrNull { it.visibleAt }
@@ -243,7 +271,8 @@ class MemoryViewModel(
                     letterId, drawingId, doc, mine,
                     dateTitle = "${at.month.ordinal + 1}월 ${at.day}일 (${weekday(at.date)})",
                     title = letter.title?.takeIf { t -> t.isNotBlank() } ?: "그림 한 장",
-                    meta = (if (mine) "${my.subject()} ${partner}에게" else "${partner.subject()} ${my}에게") + " · ${at.time.hhmm()} 도착",
+                    meta = (if (mine) "${my.subject()} ${partner}에게" else "${partner.subject()} ${my}에게") + " · ${at.time.hhmm()} 도착" +
+                        (if (widgetHours > 0) " · 위젯에 ${widgetHours}시간 표시됨" else ""),
                     reply = reply,
                 ),
             )
@@ -252,6 +281,7 @@ class MemoryViewModel(
 
     private companion object {
         val MEETINGS = setOf(EventType.VACATION, EventType.OVERNIGHT, EventType.VISIT)
+        const val MAX_MEET_PHOTOS = 3
     }
 }
 

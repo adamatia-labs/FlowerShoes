@@ -50,6 +50,8 @@ data class WidgetSnapshot(
     val drawingPngPath: String? = null,
     val drawingShape: String? = null,
     val drawingLetterId: String? = null,
+    /** 떠 있는 그림 id(위젯에 떠 있던 시간을 센다). */
+    val drawingId: String? = null,
     val updatedAtMs: Long,
 )
 
@@ -86,7 +88,8 @@ class WidgetSnapshotPublisher(
     private val clock: Clock = Clock.System,
 ) {
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
-    fun start(scope: CoroutineScope, onUpdated: suspend () -> Unit): Job = scope.launch {
+    /** [drawingWidgetPlaced]: 홈 화면에 그림 위젯이 있는지 — 없으면 "위젯에 표시됨" 시간을 세지 않는다. */
+    fun start(scope: CoroutineScope, drawingWidgetPlaced: suspend () -> Boolean = { true }, onUpdated: suspend () -> Unit): Job = scope.launch {
         val partnerFlow = db.coupleDao().observe()
         partnerFlow.flatMapLatest { couple ->
             val partner = couple?.partnerUserId.orEmpty()
@@ -133,6 +136,7 @@ class WidgetSnapshotPublisher(
                     drawingPngPath = drawing?.takeIf { it.pngAttachmentId != it.docAttachmentId }?.let { (attachmentsRoot / it.pngAttachmentId).toString() },
                     drawingShape = drawing?.shape,
                     drawingLetterId = drawing?.letterId,
+                    drawingId = drawing?.id,
                     updatedAtMs = 0,
                 )
             }
@@ -142,6 +146,8 @@ class WidgetSnapshotPublisher(
             .collect { snap ->
                 store.write(snap.copy(updatedAtMs = clock.now().toEpochMilliseconds()))
                 onUpdated()
+                val placed = runCatching { drawingWidgetPlaced() }.getOrDefault(false)
+                settings.widgetShowing(snap.drawingId?.takeIf { placed }, clock.now().toEpochMilliseconds())
             }
     }
 }

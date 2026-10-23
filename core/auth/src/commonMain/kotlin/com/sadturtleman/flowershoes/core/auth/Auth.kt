@@ -25,6 +25,22 @@ interface AuthGateway {
     suspend fun signIn(provider: AuthProvider): SignInResult
 
     suspend fun signOut()
+
+    /** 이 계정에 연결된 Apple · Google(로그인 계정 › 다른 로그인 방법 연결). 카카오는 커스텀 토큰이라 연결 대상이 아니다. */
+    suspend fun linkedProviders(): Set<AuthProvider> = emptySet()
+
+    /** 지금 계정에 Apple · Google 로그인을 더한다. 성공하면 그 방법으로도 같은 계정에 들어온다. */
+    suspend fun link(provider: AuthProvider): SignInResult = SignInResult.Failed("이 빌드에서는 연결할 수 없어요")
+}
+
+/** 다른 로그인 방법으로 연결할 수 있는 제공자(Figma: Apple · Google). */
+val LINKABLE_PROVIDERS = listOf(AuthProvider.APPLE, AuthProvider.GOOGLE)
+
+/** Firebase 제공자 id → [AuthProvider]. */
+fun authProviderOf(firebaseProviderId: String): AuthProvider? = when (firebaseProviderId) {
+    "apple.com" -> AuthProvider.APPLE
+    "google.com" -> AuthProvider.GOOGLE
+    else -> null
 }
 
 /**

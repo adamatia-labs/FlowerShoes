@@ -79,6 +79,8 @@ data class EventEntity(
     val lastWriterDevice: String,
     val deletedAtMs: Long?,
     val leaveGrantId: String? = null,
+    /** 만남 사진 첨부 id 들(쉼표로 이음). */
+    val photoIds: String? = null,
 )
 
 /** 받은 휴가(휴가 관리). 일정과 같은 LWW · tombstone. */
@@ -106,6 +108,7 @@ data class LetterEntity(
     val visibleAtMs: Long,
     val deletedAtMs: Long?,
     val lamport: Long,
+    val font: String? = null,
 )
 
 @Entity(tableName = "drawing", indices = [Index("letterId")])

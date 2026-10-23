@@ -103,7 +103,13 @@ class SyncClient(
 
     private suspend fun uploadBlobs(couple: CoupleEntity, p: OpPayload): OpPayload = when (p) {
         is OpPayload.Snapshot -> p.copy(items = p.items.map { uploadBlobs(couple, it) })
-        is OpPayload.LetterPut -> if (p.drawings.isEmpty()) p else p.copy(
+        is OpPayload.EventPut -> if (p.event.photoIds.isEmpty() || p.event.deletedAt != null) p else p.copy(
+            photos = p.event.photoIds.mapNotNull { id -> upload(couple, id)?.let { (blobId, key) -> com.sadturtleman.flowershoes.core.data.PhotoRef(id, blobId, key) } },
+        )
+        is OpPayload.LetterPut -> if (p.drawings.isEmpty() && p.letter.photoCount == 0) p else p.copy(
+            photos = p.letter.blocks.filterIsInstance<com.sadturtleman.flowershoes.core.model.LetterBlock.Photo>().mapNotNull { b ->
+                upload(couple, b.attachmentId)?.let { (blobId, key) -> com.sadturtleman.flowershoes.core.data.PhotoRef(b.attachmentId, blobId, key) }
+            },
             drawings = p.drawings.map { d ->
                 var out = d
                 d.docAttachmentId?.let { id -> upload(couple, id)?.let { (blobId, key) -> out = out.copy(docBlobId = blobId, docBlobKey = key) } }
@@ -178,10 +184,16 @@ class SyncClient(
     private suspend fun fetchBlobs(couple: CoupleEntity, p: OpPayload) {
         when (p) {
             is OpPayload.Snapshot -> p.items.forEach { fetchBlobs(couple, it) }
-            is OpPayload.LetterPut -> p.drawings.forEach { d ->
-                download(couple, d.docBlobId, d.docBlobKey, d.docAttachmentId, AttachmentKind.DRAWING_DOC)
-                download(couple, d.pngBlobId, d.pngBlobKey, d.pngAttachmentId, AttachmentKind.DRAWING_PNG)
-                download(couple, d.photoBlobId, d.photoBlobKey, d.photoAttachmentId, AttachmentKind.PHOTO)
+            // 이미 받은 사진은 다시 받지 않는다(일정을 고칠 때마다 사진이 함께 다시 온다).
+            is OpPayload.EventPut -> p.photos.filter { attachments.read(it.attachmentId) == null }
+                .forEach { ph -> download(couple, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
+            is OpPayload.LetterPut -> {
+                p.drawings.forEach { d ->
+                    download(couple, d.docBlobId, d.docBlobKey, d.docAttachmentId, AttachmentKind.DRAWING_DOC)
+                    download(couple, d.pngBlobId, d.pngBlobKey, d.pngAttachmentId, AttachmentKind.DRAWING_PNG)
+                    download(couple, d.photoBlobId, d.photoBlobKey, d.photoAttachmentId, AttachmentKind.PHOTO)
+                }
+                p.photos.forEach { ph -> download(couple, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
             }
             else -> Unit
         }

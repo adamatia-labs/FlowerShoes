@@ -91,6 +91,30 @@ class FirebaseAuthGateway(
 
     override suspend fun signOut() = Firebase.auth.signOut()
 
+    override suspend fun linkedProviders(): Set<AuthProvider> =
+        Firebase.auth.currentUser?.providerData.orEmpty().mapNotNull { com.sadturtleman.flowershoes.core.auth.authProviderOf(it.providerId) }.toSet()
+
+    override suspend fun link(provider: AuthProvider): SignInResult = try {
+        val user = Firebase.auth.currentUser ?: return SignInResult.Failed("로그인 전이에요")
+        val credential = when (provider) {
+            AuthProvider.APPLE -> {
+                val t = await(ui::apple)
+                OAuthProvider.credential("apple.com", idToken = t.token ?: return SignInResult.Cancelled, rawNonce = t.rawNonce)
+            }
+            AuthProvider.GOOGLE -> {
+                if (!ui.googleConfigured) return SignInResult.Failed("Google 로그인 설정 전이에요")
+                GoogleAuthProvider.credential(await(ui::google).token ?: return SignInResult.Cancelled, null)
+            }
+            AuthProvider.KAKAO -> return SignInResult.Failed("카카오는 연결할 수 없어요")
+        }
+        user.linkWithCredential(credential)
+        SignInResult.Success(user.uid, provider, hasBackup = false)
+    } catch (e: ProviderFailed) {
+        SignInResult.Failed(e.message ?: "연결하지 못했어요")
+    } catch (e: Exception) {
+        SignInResult.Failed(linkError(e))
+    }
+
     private class ProviderFailed(message: String) : Exception(message)
 
     private suspend fun await(start: ((ProviderToken) -> Unit) -> Unit): ProviderToken {
@@ -99,6 +123,10 @@ class FirebaseAuthGateway(
         return t
     }
 }
+
+/** 연결 실패 문구: 다른 꽃신 계정이 이미 쓰는 Apple · Google 이면 그렇게 알린다. */
+fun linkError(e: Exception): String =
+    if (e.message.orEmpty().contains("already", ignoreCase = true)) "이미 다른 꽃신 계정에 연결된 계정이에요" else "연결하지 못했어요: ${e.message}"
 
 /** 로그인 직후 "백업에서 복원하기"를 보여 줄지: Storage 에 manifest 가 있는지만 본다(내용은 백업 키 없이 못 연다). */
 suspend fun hasCloudBackup(uid: String): Boolean =

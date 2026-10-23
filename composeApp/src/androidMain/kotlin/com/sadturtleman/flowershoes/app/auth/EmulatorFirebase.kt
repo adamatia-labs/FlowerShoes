@@ -37,7 +37,12 @@ object EmulatorFirebase {
  * 개발용 로그인: 소셜 키 없이 기기마다 이메일 계정을 만든다(규칙이 익명 로그인을 막으므로).
  * 어느 버튼을 눌러도 같은 계정으로 들어간다. 에뮬레이터 또는 디버그 빌드의 DEV_EMAIL_LOGIN 에서만 쓴다.
  */
-class DevEmailAuthGateway(private val deviceTag: () -> String, private val hasBackup: suspend (String) -> Boolean) : AuthGateway {
+class DevEmailAuthGateway(
+    private val deviceTag: () -> String,
+    private val hasBackup: suspend (String) -> Boolean,
+    /** 다른 로그인 방법 연결은 실제 제공자 화면이 필요해 Android 구현에 맡긴다. */
+    private val linker: AuthGateway? = null,
+) : AuthGateway {
     override val providers: List<AuthProvider> = AuthProvider.entries
 
     override suspend fun signIn(provider: AuthProvider): SignInResult = try {
@@ -52,6 +57,10 @@ class DevEmailAuthGateway(private val deviceTag: () -> String, private val hasBa
     }
 
     override suspend fun signOut() = FirebaseAuth.getInstance().signOut()
+
+    override suspend fun linkedProviders() = linker?.linkedProviders().orEmpty()
+
+    override suspend fun link(provider: AuthProvider) = linker?.link(provider) ?: super.link(provider)
 
     private companion object {
         const val PASSWORD = "kkotsin-dev"

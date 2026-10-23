@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 data class TermsRow(val title: String, val body: String, val retention: String? = null)
 
 /**
- * 약관 문서(Figma 1 · 약관 문서, 꽃신_약관.md 1–3). [회사명] · 시행일은 출시 전에 채운다.
+ * 약관 문서(Figma 1 · 약관 문서, 꽃신_약관.md 1–3). 회사명 Adamatia Labs · 시행일 2026.10.23.
  * [table] 은 흰 카드 안 줄, [sections] 는 카드 아래 제목 + 본문.
  */
 enum class TermsDoc(
@@ -34,10 +34,10 @@ enum class TermsDoc(
 ) {
     SERVICE(
         "서비스 이용약관",
-        "시행일 [2027.00.00] · 버전 1.0",
+        "시행일 2026.10.23 · 버전 1.0",
         emptyList(),
         listOf(
-            "제1조 목적" to "이 약관은 [회사명]이 제공하는 꽃신 앱과 관련 서비스를 이용할 때 회사와 회원 사이의 권리, 의무, 책임을 정합니다.",
+            "제1조 목적" to "이 약관은 Adamatia Labs이 제공하는 꽃신 앱과 관련 서비스를 이용할 때 회사와 회원 사이의 권리, 의무, 책임을 정합니다.",
             "제2조 용어" to "회원: 약관에 동의하고 소셜 로그인으로 이용하는 사람\n" +
                 "연결: 두 회원이 초대 코드로 서로를 연인으로 등록한 상태\n" +
                 "콘텐츠: 편지, 그림, 사진, 일정, 휴가 기록, 상태, 보고싶어 등\n" +
@@ -62,7 +62,7 @@ enum class TermsDoc(
     ),
     PRIVACY(
         "개인정보 수집 · 이용 동의",
-        "필수 · [회사명]",
+        "필수 · Adamatia Labs",
         listOf(
             TermsRow("회원 식별 · 로그인", "소셜 로그인 식별자, 제공자가 넘겨주는 이름(있는 경우)", "탈퇴 시까지"),
             TermsRow("연인 연결 · 소식 전달", "역할, 기기 공개키, 알림 토큰, 기기 종류 · OS 버전", "탈퇴 또는 연결 해제 시까지"),

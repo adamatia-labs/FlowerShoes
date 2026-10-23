@@ -2,6 +2,13 @@
 
 package com.sadturtleman.flowershoes.feature.memory
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.layout.ContentScale
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
+import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -68,9 +75,20 @@ fun MemoryRoute(
     onRecordMeeting: () -> Unit = {},
     saveImage: (suspend (ByteArray) -> Boolean)? = null,
     shareImage: ((ByteArray) -> Unit)? = null,
+    photoPicker: (@Composable (onPicked: (ByteArray) -> Unit) -> ((fromCamera: Boolean) -> Unit))? = null,
     viewModel: MemoryViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val photos by viewModel.photos.collectAsStateWithLifecycle()
+    // 만남 카드의 + 칸: 어느 만남에 붙일지 기억해 두고 사진을 고른다.
+    var photoFor by remember { mutableStateOf<String?>(null) }
+    var removing by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val pick = photoPicker?.invoke { bytes -> photoFor?.let { viewModel.onIntent(MemoryIntent.AddMeetPhoto(it, bytes)) } }
+    val meetPhotos = MeetPhotos(
+        bytes = photos,
+        onAdd = pick?.let { p -> { eventId: String -> photoFor = eventId; p(false) } },
+        onRemove = { eventId, id -> removing = eventId to id },
+    )
     var notice by remember { mutableStateOf<String?>(null) }
     // 저장 · 공유 중 무엇을 하려고 PNG 를 만들었는지.
     var exportFor by remember { mutableStateOf<String?>(null) }
@@ -95,14 +113,26 @@ fun MemoryRoute(
                 onPin = { viewModel.onIntent(MemoryIntent.PinToWidget) },
             )
         } else {
-            MemoryScreen(state, viewModel::onIntent, onOpenLetter, onRecordMeeting)
+            MemoryScreen(state, viewModel::onIntent, onOpenLetter, onRecordMeeting, meetPhotos)
+        }
+        removing?.let { (eventId, id) ->
+            KkModalSheet({ removing = null }) {
+                KkSheetHeader("사진 빼기", "만남 카드에서 이 사진을 빼요. 연인 폰에서도 빠져요")
+                KkButton("빼기", { viewModel.onIntent(MemoryIntent.RemoveMeetPhoto(eventId, id)); removing = null }, Modifier.fillMaxWidth(), danger = true)
+            }
         }
         notice?.let { KkToast(it, Modifier.align(Alignment.BottomCenter).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg)) }
     }
 }
 
 @Composable
-fun MemoryScreen(state: MemoryState, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit, onRecordMeeting: () -> Unit) {
+fun MemoryScreen(
+    state: MemoryState,
+    onIntent: (MemoryIntent) -> Unit,
+    onOpenLetter: (String) -> Unit,
+    onRecordMeeting: () -> Unit,
+    meetPhotos: MeetPhotos = MeetPhotos(),
+) {
     val c = KkTheme.colors
     Column(
         Modifier.fillMaxSize().background(c.bgCanvas).verticalScroll(rememberScrollState())
@@ -132,7 +162,7 @@ fun MemoryScreen(state: MemoryState, onIntent: (MemoryIntent) -> Unit, onOpenLet
                 Text("${month.first}년 ${month.second}월", style = KkTheme.type.labelM, color = c.textTertiary)
                 lastMonth = month
             }
-            Entry(entry, onIntent, onOpenLetter)
+            Entry(entry, onIntent, onOpenLetter, meetPhotos)
         }
         Spacer(Modifier.height(KkSpacing.lg))
     }
@@ -167,7 +197,7 @@ private fun Stat(value: String, label: String) {
 
 /** 타임라인 한 칸: 왼쪽 레일(날짜 · 점) + 카드. */
 @Composable
-private fun Entry(entry: MemoryEntry, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit) {
+private fun Entry(entry: MemoryEntry, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit, meetPhotos: MeetPhotos) {
     val c = KkTheme.colors
     val rose = entry is MemoryEntry.Drawing || entry is MemoryEntry.Meet
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
@@ -195,17 +225,24 @@ private fun Entry(entry: MemoryEntry, onIntent: (MemoryIntent) -> Unit, onOpenLe
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Pill("그림", c.bgBrandSubtle, c.textBrand)
                         Text(entry.title, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(entry.meta, style = KkTheme.type.caption, color = c.textTertiary)
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(entry.meta + if (entry.hearts > 0) " ·" else "", style = KkTheme.type.caption, color = c.textTertiary)
+                            if (entry.hearts > 0) Hearts(entry.hearts)
+                        }
                     }
                 }
                 is MemoryEntry.Letter -> {
-                    Pill("편지", c.bgMilitarySubtle, c.textMilitary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                        Pill("편지", c.bgMilitarySubtle, c.textMilitary)
+                        if (entry.hearts > 0) Hearts(entry.hearts)
+                    }
                     Text(entry.title, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (entry.preview.isNotBlank()) Text(entry.preview, style = KkTheme.type.bodyS, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 is MemoryEntry.Meet -> {
                     Pill(entry.label, c.bgBrandSubtle, c.textBrand)
                     Text(entry.title, style = KkTheme.type.labelM, color = c.textPrimary)
+                    MeetPhotoRow(entry, meetPhotos)
                 }
                 is MemoryEntry.Anniversary -> Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
                     Pill("기념일", c.bgMilitary, c.textOnBrand)
@@ -213,6 +250,55 @@ private fun Entry(entry: MemoryEntry, onIntent: (MemoryIntent) -> Unit, onOpenLe
                 }
             }
         }
+    }
+}
+
+/** 만남 사진 칸에 필요한 것: 원본 · 붙이기(사진 고르기, 없으면 칸을 숨긴다) · 빼기. */
+data class MeetPhotos(
+    val bytes: Map<String, ByteArray?> = emptyMap(),
+    val onAdd: ((eventId: String) -> Unit)? = null,
+    val onRemove: (eventId: String, attachmentId: String) -> Unit = { _, _ -> },
+)
+
+/** 만남 카드 사진 세 칸(Figma): 붙인 사진, 남은 칸은 + (사진 고르기). 붙일 수 없고 사진도 없으면 그리지 않는다. */
+@Composable
+private fun MeetPhotoRow(entry: MemoryEntry.Meet, meetPhotos: MeetPhotos) {
+    val c = KkTheme.colors
+    if (entry.photos.isEmpty() && meetPhotos.onAdd == null) return
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+        repeat(3) { i ->
+            val id = entry.photos.getOrNull(i)
+            val tint = listOf(c.heartSubtle, c.bgBrandSubtle, c.bgSubtle)[i]
+            val shape = RoundedCornerShape(KkRadius.md)
+            Box(
+                Modifier.weight(1f).aspectRatio(1f).clip(shape).background(tint)
+                    .then(
+                        when {
+                            id != null -> Modifier.clickable(role = Role.Button) { meetPhotos.onRemove(entry.eventId, id) }.semantics { contentDescription = "만남 사진 ${i + 1}" }
+                            i == entry.photos.size && meetPhotos.onAdd != null ->
+                                Modifier.clickable(role = Role.Button) { meetPhotos.onAdd.invoke(entry.eventId) }.semantics { contentDescription = "만남 사진 추가" }
+                            else -> Modifier
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                val bitmap = remember(id, meetPhotos.bytes[id]) { id?.let { meetPhotos.bytes[it] }?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
+                when {
+                    bitmap != null -> Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    id == null && i == entry.photos.size && meetPhotos.onAdd != null -> Text("+", style = KkTheme.type.titleM, color = c.textTertiary)
+                }
+            }
+        }
+    }
+}
+
+/** ♥ n(받은 고마워). */
+@Composable
+private fun Hearts(n: Int) {
+    val c = KkTheme.colors
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = "하트 ${n}개" }) {
+        KkHeartIcon(c.textTertiary, size = 12.dp)
+        Text("$n", style = KkTheme.type.caption, color = c.textTertiary)
     }
 }
 

@@ -72,7 +72,8 @@ class AndroidAuthGateway(
         return try {
             val uid = when (provider) {
                 AuthProvider.KAKAO -> kakao(activity) ?: return SignInResult.Cancelled
-                AuthProvider.GOOGLE -> google(activity) ?: return SignInResult.Cancelled
+                AuthProvider.GOOGLE -> googleToken(activity)?.let { auth.signInWithCredential(GoogleAuthProvider.getCredential(it, null)).await().user?.uid }
+                    ?: return SignInResult.Cancelled
                 AuthProvider.APPLE -> apple(activity)
             }
             SignInResult.Success(uid, provider, hasBackup = runCatching { hasBackup(uid) }.getOrDefault(false))
@@ -121,7 +122,35 @@ class AndroidAuthGateway(
         }
     }
 
-    private suspend fun google(activity: Activity): String? {
+    override suspend fun linkedProviders(): Set<AuthProvider> =
+        auth.currentUser?.providerData.orEmpty().mapNotNull { com.sadturtleman.flowershoes.core.auth.authProviderOf(it.providerId) }.toSet()
+
+    /** 다른 로그인 방법 연결: Google 은 Credential Manager id 토큰, Apple 은 Firebase OAuth 웹 흐름으로 지금 계정에 더한다. */
+    override suspend fun link(provider: AuthProvider): SignInResult {
+        val activity = CurrentActivity.activity ?: return SignInResult.Failed("화면을 찾지 못했어요")
+        val user = auth.currentUser ?: return SignInResult.Failed("로그인 전이에요")
+        return try {
+            when (provider) {
+                AuthProvider.GOOGLE -> {
+                    val idToken = googleToken(activity) ?: return SignInResult.Cancelled
+                    user.linkWithCredential(GoogleAuthProvider.getCredential(idToken, null)).await()
+                }
+                AuthProvider.APPLE -> {
+                    val p = OAuthProvider.newBuilder("apple.com").setScopes(listOf("email", "name")).build()
+                    user.startActivityForLinkWithProvider(activity, p).await()
+                }
+                AuthProvider.KAKAO -> return SignInResult.Failed("카카오는 연결할 수 없어요")
+            }
+            SignInResult.Success(user.uid, provider, hasBackup = false)
+        } catch (e: NotConfigured) {
+            SignInResult.Failed(e.message ?: "로그인 설정 전이에요")
+        } catch (e: Exception) {
+            SignInResult.Failed(com.sadturtleman.flowershoes.core.firebase.linkError(e))
+        }
+    }
+
+    /** Google id 토큰(Credential Manager). 취소면 null. */
+    private suspend fun googleToken(activity: Activity): String? {
         if (keys.googleWebClientId.isBlank()) throw NotConfigured("Google 로그인 설정 전이에요")
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(GetGoogleIdOption.Builder().setServerClientId(keys.googleWebClientId).setFilterByAuthorizedAccounts(false).build())
@@ -131,8 +160,7 @@ class AndroidAuthGateway(
         } catch (_: GetCredentialCancellationException) {
             return null
         }
-        val idToken = GoogleIdTokenCredential.createFrom(response.credential.data).idToken
-        return auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null)).await().user?.uid
+        return GoogleIdTokenCredential.createFrom(response.credential.data).idToken
     }
 
     private suspend fun apple(activity: Activity): String {

@@ -188,6 +188,23 @@ class EndToEndTest {
     }
 
     @Test
+    fun `해제 뒤 다시 연결해도 새로 쓴 것이 건너간다`() = runTest {
+        link()
+        // 첫 연결에서 여러 개를 올려 둔다 — 올린 위치(uploaded)가 앞서 있게.
+        repeat(3) { jisu.letters.send(jisu.letters.newLetter(listOf(LetterBlock.Text("처음 $it"))), emptyList()) }
+        roundTrip()
+        val jisuSettings = androidx.datastore.preferences.core.PreferenceDataStoreFactory.createWithPath { (root / "jisu-relink.preferences_pb") }
+        val minjunSettings = androidx.datastore.preferences.core.PreferenceDataStoreFactory.createWithPath { (root / "minjun-relink.preferences_pb") }
+        UnlinkService(jisu.db, jisu.vault, com.sadturtleman.flowershoes.core.data.DeviceSettings(jisuSettings), cloud).unlink(AfterUnlink.KEEP_AS_MEMORIES)
+        UnlinkService(minjun.db, minjun.vault, com.sadturtleman.flowershoes.core.data.DeviceSettings(minjunSettings), null).onPartnerUnlinked(AfterUnlink.WIPE)
+
+        link()
+        jisu.letters.send(jisu.letters.newLetter(listOf(LetterBlock.Text("다시 만나서"))), emptyList())
+        roundTrip()
+        assertEquals(listOf("다시 만나서"), minjun.letters.observeInbox().first().map { (it.blocks.first() as LetterBlock.Text).text })
+    }
+
+    @Test
     fun `탈퇴하면 이 폰의 데이터 · 키 · 설정이 모두 지워진다`() = runTest {
         link()
         jisu.profile.saveMe(com.sadturtleman.flowershoes.core.model.Role.GOMSIN, "지수")

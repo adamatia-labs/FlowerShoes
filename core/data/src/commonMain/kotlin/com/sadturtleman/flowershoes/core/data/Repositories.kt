@@ -111,6 +111,8 @@ class EventRepository(
     fun observeRange(from: LocalDate, to: LocalDate): Flow<List<Event>> =
         db.eventDao().observeRange("${from}T00:00", "${to}T23:59").map { list -> list.map { it.toModel() } }
 
+    suspend fun get(id: String): Event? = db.eventDao().get(id)?.toModel()
+
     fun observeNext(): Flow<Event?> =
         db.eventDao().observeNext("${clock.today()}T00:00").map { it?.toModel() }
 
@@ -275,6 +277,10 @@ class LetterRepository(
     }
 
     /** 내가 읽은 편지 id. 받은 편지 중 여기 없는 것이 안 읽은 편지다. */
+    /** 편지마다 받은 하트 수(받은 편지 › 고마워). */
+    fun observeHearts(): Flow<Map<String, Int>> =
+        db.receiptDao().observeAllIds(ReceiptEntity.HEART.name).map { ids -> ids.groupingBy { it }.eachCount() }
+
     fun observeReadLetterIds(): Flow<Set<String>> =
         db.receiptDao().observeIds(ReceiptEntity.LETTER.name, identity.userId).map { it.toSet() }
 
@@ -296,8 +302,8 @@ class LetterRepository(
         )
     }
 
-    fun newLetter(blocks: List<LetterBlock>, paper: String = "plain", title: String? = null, visibleAt: kotlin.time.Instant = clock.now()) =
-        Letter(Uuid.random().toString(), identity.userId, title, blocks, paper, visibleAt)
+    fun newLetter(blocks: List<LetterBlock>, paper: String = "plain", title: String? = null, visibleAt: kotlin.time.Instant = clock.now(), font: String? = null) =
+        Letter(Uuid.random().toString(), identity.userId, title, blocks, paper, visibleAt, font = font)
 }
 
 class MissYouRepository(

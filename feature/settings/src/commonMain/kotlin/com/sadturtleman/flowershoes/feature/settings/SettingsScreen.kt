@@ -692,13 +692,55 @@ private fun CodeAction(label: String, modifier: Modifier, enabled: Boolean, onCl
 /** 로그인 계정(Figma 7 · 로그인 계정). */
 @Composable
 private fun AccountPage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit, open: (SettingsPage) -> Unit) {
+    val c = KkTheme.colors
+    val scope = rememberCoroutineScope()
+    val auth = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.auth.AuthGateway>()
+    var linked by remember { mutableStateOf<Set<com.sadturtleman.flowershoes.core.auth.AuthProvider>>(emptySet()) }
+    var sheet by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf<com.sadturtleman.flowershoes.core.auth.AuthProvider?>(null) }
+    LaunchedEffect(auth) { linked = runCatching { auth?.linkedProviders() }.getOrNull().orEmpty() }
+    val linkable = com.sadturtleman.flowershoes.core.auth.LINKABLE_PROVIDERS.filter { it.name != state.provider }
     Page("로그인 계정", onBack) {
         Group(null) {
             KkListRow("로그인", value = "${viewModel.providerLabel(state.provider)} · ${state.myName}", trailing = KkRowTrailing.None)
             Divider()
+            // 다른 로그인 방법 연결(Figma): 폰을 잃어도 다른 방법으로 같은 계정 · 백업에 들어온다.
+            KkListRow(
+                "다른 로그인 방법 연결",
+                value = linkable.joinToString(" · ") { viewModel.providerLabel(it.name) + if (it in linked) " ✓" else "" },
+                onClick = { sheet = true },
+            )
+            Divider()
             KkListRow("이 폰", value = platform.deviceName.ifBlank { "-" }, trailing = KkRowTrailing.None)
         }
-        Group(null) { KkListRow("회원 탈퇴", labelColor = KkTheme.colors.statusDanger, onClick = { open(SettingsPage.DELETE_ACCOUNT) }) }
+        Group(null) { KkListRow("회원 탈퇴", labelColor = c.statusDanger, onClick = { open(SettingsPage.DELETE_ACCOUNT) }) }
+    }
+    if (sheet) {
+        KkModalSheet({ sheet = false }) {
+            KkSheetHeader("다른 로그인 방법 연결", "연결해 두면 그 방법으로도 이 계정과 백업에 들어올 수 있어요")
+            linkable.forEach { p ->
+                val done = p in linked
+                KkSheetOption(
+                    viewModel.providerLabel(p.name), selected = done,
+                    meta = when { done -> "연결됨"; busy == p -> "연결하는 중…"; else -> "연결하기" },
+                    onClick = {
+                        if (done || busy != null || auth == null) return@KkSheetOption
+                        busy = p
+                        scope.launch {
+                            when (val r = auth.link(p)) {
+                                is com.sadturtleman.flowershoes.core.auth.SignInResult.Success -> {
+                                    linked = linked + p
+                                    viewModel.notice("${viewModel.providerLabel(p.name)} 로그인을 연결했어요")
+                                }
+                                is com.sadturtleman.flowershoes.core.auth.SignInResult.Failed -> viewModel.notice(r.message)
+                                com.sadturtleman.flowershoes.core.auth.SignInResult.Cancelled -> Unit
+                            }
+                            busy = null
+                        }
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -850,7 +892,7 @@ private val LICENSES = listOf(
     "libsodium" to "ISC License",
     "Zstandard" to "BSD License",
     "Kakao SDK" to "Apache License 2.0",
-    "Noto Sans KR" to "SIL Open Font License 1.1",
+    "Noto Sans KR · 나눔손글씨 펜 · 나눔명조" to "SIL Open Font License 1.1",
 )
 
 @Composable

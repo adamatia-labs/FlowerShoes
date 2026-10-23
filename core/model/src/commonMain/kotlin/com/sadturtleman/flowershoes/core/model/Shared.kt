@@ -66,6 +66,8 @@ data class Event(
     val deletedAt: Instant? = null,
     /** 받은 휴가에서 쓴 날(휴가 › 사용 등록). 그 휴가의 남은 일수에서 빠진다. */
     val leaveGrantId: String? = null,
+    /** 만남 사진(추억 › 만남 카드, 최대 3). 첨부 id — 본문은 편지 사진처럼 blob 으로 간다. */
+    val photoIds: List<String> = emptyList(),
 )
 
 /** 받은 휴가 종류(휴가 › 추가). */
@@ -118,9 +120,12 @@ data class Letter(
     val paper: String,
     val visibleAt: Instant,
     val deletedAt: Instant? = null,
+    /** 편지 글꼴(편지 쓰기 › 글꼴: sans · pen · myeongjo). null · 모르는 값은 기본. */
+    val font: String? = null,
 ) {
     val hasText: Boolean get() = blocks.any { it is LetterBlock.Text && it.text.isNotBlank() }
     val drawingCount: Int get() = blocks.count { it is LetterBlock.DrawingRef }
+    val photoCount: Int get() = blocks.count { it is LetterBlock.Photo }
 
     /** [now] 기준으로 상대에게 보여도 되는지. 예약 편지 공개 전이거나 지운 편지면 false. */
     fun isVisible(now: Instant): Boolean = deletedAt == null && visibleAt <= now
@@ -130,12 +135,14 @@ data class Letter(
     }
 
     companion object {
+        const val MAX_PHOTOS = 3
         const val MAX_DRAWINGS = 3
     }
 }
 
 @Serializable
-enum class ReceiptEntity { LETTER, DRAWING }
+/** 읽음 · 처음 봄 · 하트(받은 편지 › 고마워 — 추억 타임라인의 ♥ 수). */
+enum class ReceiptEntity { LETTER, DRAWING, HEART }
 
 /** 읽음 · 처음 봄. 받는 사람만 쓰고, 한 번 기록되면 덮어쓰지 않는다(먼저 온 값 유지). */
 @Serializable

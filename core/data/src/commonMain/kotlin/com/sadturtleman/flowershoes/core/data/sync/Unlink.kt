@@ -66,6 +66,8 @@ class UnlinkService(
             tx.immediateTransaction {
                 // 동기화 상태는 어느 쪽이든 비운다 — 다시 연결하면 새 커플(새 id · 새 키)이다.
                 SYNC_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
+                // 올려 보낸 위치도 지운다 — 다시 연결하면 seq 가 1부터라, 남겨 두면 새 Op 을 "이미 보냄"으로 보고 보내지 않는다.
+                usePrepared("DELETE FROM meta WHERE `key` LIKE 'uploaded:%'") { it.step() }
                 if (after == AfterUnlink.WIPE) SHARED_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
             }
         }

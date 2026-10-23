@@ -26,16 +26,17 @@ sealed interface OpPayload {
     @Serializable @SerialName("status")
     data class StatusPut(val status: Status) : OpPayload
 
+    /** 일정. 만남 사진이 있으면 [photos] 를 보낼 때 채운다(편지 사진과 같은 blob). */
     @Serializable @SerialName("event")
-    data class EventPut(val event: Event) : OpPayload
+    data class EventPut(val event: Event, val photos: List<PhotoRef> = emptyList()) : OpPayload
 
     /** 받은 휴가(휴가 관리). 조용한 종류(PROFILE)로 보낸다 — 알림 없이 반영. */
     @Serializable @SerialName("leave")
     data class LeaveGrantPut(val grant: LeaveGrant) : OpPayload
 
-    /** 편지 한 통 = Op 하나. 그림 메타와 첨부 참조(키 포함)를 함께 싣는다. */
+    /** 편지 한 통 = Op 하나. 그림 메타와 첨부 참조(키 포함)를 함께 싣는다. [photos] 는 보낼 때 사진 블록에서 채운다. */
     @Serializable @SerialName("letter")
-    data class LetterPut(val letter: Letter, val drawings: List<DrawingMeta> = emptyList()) : OpPayload
+    data class LetterPut(val letter: Letter, val drawings: List<DrawingMeta> = emptyList(), val photos: List<PhotoRef> = emptyList()) : OpPayload
 
     @Serializable @SerialName("receipt")
     data class ReceiptPut(val receipt: Receipt) : OpPayload
@@ -63,6 +64,10 @@ sealed interface OpPayload {
 
 @Serializable
 enum class DeletableEntity { EVENT, LETTER, LEAVE_GRANT }
+
+/** 편지 안 사진(편지 쓰기 › 사진). 그림 문서처럼 무작위 키로 암호화한 blob 으로 따로 간다. */
+@Serializable
+data class PhotoRef(val attachmentId: String, val blobId: String? = null, val blobKey: String? = null)
 
 /** 편지 안 그림의 메타. 문서 · PNG 본문은 Storage 첨부로 따로 간다. */
 @Serializable

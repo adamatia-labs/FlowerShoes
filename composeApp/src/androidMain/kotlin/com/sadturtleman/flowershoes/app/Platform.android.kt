@@ -37,6 +37,7 @@ fun kkotsinAndroidModules(
             com.sadturtleman.flowershoes.app.auth.DevEmailAuthGateway(
                 deviceTag = { "dev-" + android.provider.Settings.Secure.getString(app.contentResolver, android.provider.Settings.Secure.ANDROID_ID) },
                 hasBackup = hasBackup,
+                linker = com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys, hasBackup = hasBackup),
             )
         } else if (firebase) com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys, hasBackup = hasBackup)
         else com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway()

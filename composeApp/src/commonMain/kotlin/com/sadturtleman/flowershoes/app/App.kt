@@ -202,6 +202,7 @@ private fun MainShell() {
                 onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
                 onClose = { overlay = null },
                 scheduleFirst = overlay == Overlay.COMPOSE_SCHEDULED,
+                photoPicker = { rememberPhotoPicker(it) },
                 viewModel = letters,
             )
             return
@@ -356,6 +357,7 @@ private fun MainShell() {
                     },
                     saveImage = imageSaver,
                     shareImage = imageShare,
+                    photoPicker = { rememberPhotoPicker(it) },
                     viewModel = memory,
                 )
             }

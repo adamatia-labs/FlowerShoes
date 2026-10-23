@@ -91,7 +91,10 @@ class FlowerShoesApplication :
             val keys = vault.deviceKeys() ?: DeviceKeys.generate().also { vault.putDeviceKeys(it) }
             if (BuildConfig.DEBUG) android.util.Log.d("Kkotsin", "device key ${keys.signPub.take(4).joinToString("") { "%02x".format(it) }}")
             // 위젯 스냅샷 · 로컬 알림은 DB 가 바뀌면 다시 쓴다.
-            get<WidgetSnapshotPublisher>().start(this) { updateAllWidgets(this@FlowerShoesApplication) }
+            get<WidgetSnapshotPublisher>().start(this, drawingWidgetPlaced = {
+                androidx.glance.appwidget.GlanceAppWidgetManager(this@FlowerShoesApplication)
+                    .getGlanceIds(com.sadturtleman.flowershoes.widget.DrawingWidget::class.java).isNotEmpty()
+            }) { updateAllWidgets(this@FlowerShoesApplication) }
             NotificationSync(get(), get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication), prefs = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs).start(this)
             // 서버 설정이 있는 빌드에서만 등록돼 있다.
             getKoin().getOrNull<SyncScheduler>()?.start(this)

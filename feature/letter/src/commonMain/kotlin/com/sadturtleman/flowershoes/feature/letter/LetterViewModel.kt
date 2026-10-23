@@ -69,11 +69,16 @@ data class ComposeDraft(
     val drawings: List<DrawingMeta> = emptyList(),
     /** 예약 공개 시각(서울). null 이면 바로. */
     val revealAt: LocalDateTime? = null,
+    /** 붙인 사진(첨부 id, 편지 쓰기 › 사진). */
+    val photos: List<String> = emptyList(),
+    /** 글꼴 id(편지 쓰기 › 글꼴). */
+    val font: String = "sans",
     @kotlinx.serialization.Transient val sending: Boolean = false,
 ) {
-    val canSend: Boolean get() = !sending && (text.isNotBlank() || drawings.isNotEmpty())
+    val canSend: Boolean get() = !sending && (text.isNotBlank() || drawings.isNotEmpty() || photos.isNotEmpty())
     val canAddDrawing: Boolean get() = drawings.size < Letter.MAX_DRAWINGS
-    val isEmpty: Boolean get() = title.isBlank() && text.isBlank() && drawings.isEmpty()
+    val canAddPhoto: Boolean get() = photos.size < Letter.MAX_PHOTOS
+    val isEmpty: Boolean get() = title.isBlank() && text.isBlank() && drawings.isEmpty() && photos.isEmpty()
 
     companion object {
         const val MAX_CHARS = 1000
@@ -98,6 +103,8 @@ data class OpenLetter(
     val drawings: Map<String, DrawingDocument>,
     /** 처음 보는 그림 — 화면에 들어오면 자동 재생한다. */
     val firstView: Set<String>,
+    /** 사진 블록의 원본(JPEG). 아직 받는 중이면 없다. */
+    val photos: Map<String, ByteArray> = emptyMap(),
 )
 
 data class LetterState(
@@ -106,6 +113,8 @@ data class LetterState(
     val draft: ComposeDraft = ComposeDraft(),
     /** 편지 쓰기 › 붙인 그림 썸네일. */
     val draftThumbs: Map<String, DrawingDocument> = emptyMap(),
+    /** 편지 쓰기 › 붙인 사진 원본. */
+    val draftPhotos: Map<String, ByteArray> = emptyMap(),
     val open: OpenLetter? = null,
     val partnerName: String = "연인",
 ) {
@@ -124,6 +133,10 @@ sealed interface LetterIntent {
     data class ChoosePaper(val paper: Paper) : LetterIntent
     data class AddDrawing(val meta: DrawingMeta) : LetterIntent
     data class RemoveDrawing(val id: String) : LetterIntent
+    /** 편지 쓰기 › 사진: 고른 사진(줄인 JPEG)을 첨부로 두고 붙인다. */
+    data class AddPhoto(val jpeg: ByteArray) : LetterIntent
+    data class RemovePhoto(val attachmentId: String) : LetterIntent
+    data class ChooseFont(val font: String) : LetterIntent
     data class Schedule(val at: LocalDateTime?) : LetterIntent
     data object Send : LetterIntent
     data object SaveDraft : LetterIntent
@@ -206,6 +219,7 @@ class LetterViewModel(
             val draft = runCatching { json.decodeFromString(ComposeDraft.serializer(), saved) }.getOrNull() ?: return@launch
             ui.update { it.copy(draft = draft) }
             draft.drawings.forEach { loadDraftThumb(it) }
+            draft.photos.forEach { id -> attachments.read(id)?.let { bytes -> ui.update { s -> s.copy(draftPhotos = s.draftPhotos + (id to bytes)) } } }
         }
     }
 
@@ -222,6 +236,15 @@ class LetterViewModel(
                 }
                 loadDraftThumb(intent.meta)
             }
+            is LetterIntent.AddPhoto -> viewModelScope.launch {
+                if (!ui.value.draft.canAddPhoto) return@launch
+                val id = attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, intent.jpeg)
+                ui.update { it.copy(draft = it.draft.copy(photos = it.draft.photos + id), draftPhotos = it.draftPhotos + (id to intent.jpeg)) }
+            }
+            is LetterIntent.RemovePhoto -> ui.update {
+                it.copy(draft = it.draft.copy(photos = it.draft.photos - intent.attachmentId), draftPhotos = it.draftPhotos - intent.attachmentId)
+            }
+            is LetterIntent.ChooseFont -> ui.update { it.copy(draft = it.draft.copy(font = intent.font)) }
             is LetterIntent.RemoveDrawing -> ui.update {
                 it.copy(draft = it.draft.copy(drawings = it.draft.drawings.filterNot { d -> d.id == intent.id }.mapIndexed { i, d -> d.copy(orderInLetter = i) }))
             }
@@ -232,8 +255,10 @@ class LetterViewModel(
                 settings.saveLetterDraft(if (d.isEmpty) null else json.encodeToString(ComposeDraft.serializer(), d))
                 toast("임시저장했어요")
             }
-            LetterIntent.ResetDraft -> ui.update { it.copy(draft = ComposeDraft(), draftThumbs = emptyMap()) }
+            LetterIntent.ResetDraft -> ui.update { it.copy(draft = ComposeDraft(), draftThumbs = emptyMap(), draftPhotos = emptyMap()) }
             LetterIntent.Thanks -> viewModelScope.launch {
+                // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번.
+                ui.value.open?.letter?.id?.let { letters.markRead(ReceiptEntity.HEART, it) }
                 letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
                 toast("고마워를 보냈어요")
             }
@@ -274,15 +299,17 @@ class LetterViewModel(
         if (!d.canSend) return
         ui.update { it.copy(draft = d.copy(sending = true)) }
         viewModelScope.launch {
-            // 글과 그림의 순서: 글 다음에 그림을 차례로(편지 쓰기 화면에서 보이는 순서 그대로).
+            // 글 · 그림 · 사진의 순서: 글 다음에 그림, 사진을 차례로(편지 쓰기 화면에서 보이는 순서 그대로).
             val blocks = buildList {
                 if (d.text.isNotBlank()) add(LetterBlock.Text(d.text.trim()))
                 d.drawings.forEach { add(LetterBlock.DrawingRef(it.id)) }
+                d.photos.forEach { add(LetterBlock.Photo(it)) }
             }
             val visibleAt = d.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
-            letters.send(letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt), d.drawings)
+            val font = d.font.takeIf { it != com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id }
+            letters.send(letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font), d.drawings)
             settings.saveLetterDraft(null)
-            ui.update { it.copy(draft = ComposeDraft(), draftThumbs = emptyMap()) }
+            ui.update { it.copy(draft = ComposeDraft(), draftThumbs = emptyMap(), draftPhotos = emptyMap()) }
             if (d.revealAt != null) toast("${d.revealAt.month.ordinal + 1}월 ${d.revealAt.day}일 ${d.revealAt.hour}시에 도착해요")
         }
     }
@@ -295,6 +322,7 @@ class LetterViewModel(
             val rows = letters.drawingsOf(letterId)
             val docs = rows.mapNotNull { row -> row.docAttachmentId?.let { decode(it) }?.let { row.id to it } }.toMap()
             val first = rows.filter { !mine && it.replayEnabled && letters.isFirstView(it.id) }.map { it.id }.toSet()
+            val photos = letter.blocks.filterIsInstance<LetterBlock.Photo>().mapNotNull { b -> attachments.read(b.attachmentId)?.let { b.attachmentId to it } }.toMap()
             val (my, partner) = names.first()
             val at = letter.visibleAt.toLocalDateTime(SEOUL)
             val meta = (if (mine) "$my → $partner" else "$partner → $my") + " · ${at.short()} (${weekday(at.date)})"
@@ -306,7 +334,7 @@ class LetterViewModel(
                         drawingOnly = drawingOnly,
                         drawingTitle = if (mine) "내가 보낸 그림" else "${partner.withSubject()} 보낸 그림",
                         sentAt = "${at.month.ordinal + 1}월 ${at.day}일 ${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}",
-                        meta = meta, drawings = docs, firstView = first,
+                        meta = meta, drawings = docs, firstView = first, photos = photos,
                     ),
                 )
             }

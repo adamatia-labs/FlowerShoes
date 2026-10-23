@@ -39,10 +39,12 @@ fun ServiceEntity.toModel() = Service(
 
 fun Event.toEntity() = EventEntity(
     id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(), leaveGrantId,
+    photoIds.takeIf { it.isNotEmpty() }?.joinToString(","),
 )
 fun EventEntity.toModel() = Event(
     id, EventType.valueOf(type), title, LocalDateTime.parse(start), LocalDateTime.parse(end), alarm,
     updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(), leaveGrantId,
+    photoIds?.split(',')?.filter { it.isNotBlank() }.orEmpty(),
 )
 
 fun LeaveGrant.toEntity() = LeaveGrantEntity(
@@ -54,11 +56,11 @@ fun LeaveGrantEntity.toModel() = LeaveGrant(
 )
 
 fun Letter.toEntity(lamport: Long) = LetterEntity(
-    id, authorId, title, letterJson.encodeToString(blocksSerializer, blocks), paper, visibleAt.ms(), deletedAt?.ms(), lamport,
+    id, authorId, title, letterJson.encodeToString(blocksSerializer, blocks), paper, visibleAt.ms(), deletedAt?.ms(), lamport, font,
 )
 fun LetterEntity.toModel() = Letter(
     id, authorId, title, letterJson.decodeFromString(blocksSerializer, blocksJson), paper,
-    visibleAtMs.instant(), deletedAtMs?.instant(),
+    visibleAtMs.instant(), deletedAtMs?.instant(), font,
 )
 
 fun Status.toEntity() = StatusEntity(id, authorId, label, color, createdAt.ms(), expiresAt?.ms(), lamport)
