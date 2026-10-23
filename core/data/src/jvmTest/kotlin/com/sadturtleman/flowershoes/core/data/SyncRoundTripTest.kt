@@ -41,6 +41,7 @@ class SyncRoundTripTest {
         val events = EventRepository(db, writer, identity, clock)
         val letters = LetterRepository(db, writer, identity, clock)
         val missYou = MissYouRepository(db, writer, identity, clock)
+        val leave = LeaveRepository(db, writer, identity, clock)
         val inbox = InboxApplier(db, clock)
         val stream = StreamId(deviceId, StreamId.Channel.APP)
 
@@ -148,6 +149,30 @@ class SyncRoundTripTest {
         val unknown = """{"t":"future-thing","x":1}""".encodeToByteArray()
         assertEquals(ApplyResult.UNKNOWN_SKIPPED, b.inbox.apply(ReceivedOp(a.stream, 1, "op-x", 1, unknown)))
         assertEquals(1L, b.db.syncDao().cursor(a.stream.wire))
+    }
+
+    @Test
+    fun `받은 휴가와 쓴 날이 상대에게 가고 지우면 tombstone 으로 간다`() = runTest {
+        val grant = com.sadturtleman.flowershoes.core.model.LeaveGrant(
+            "g1", com.sadturtleman.flowershoes.core.model.LeaveKind.REWARD, "포상휴가 · 사격 만발", 4,
+            kotlinx.datetime.LocalDate.parse("2026-10-02"), clock.now, 0, "",
+        )
+        a.leave.save(grant)
+        a.leave.use(grant, kotlinx.datetime.LocalDate.parse("2026-11-14"), kotlinx.datetime.LocalDate.parse("2026-11-15"), notify = false)
+        // 받은 휴가 · 알리지 않은 사용 등록은 조용한 종류로 나간다.
+        assertEquals(listOf("profile", "profile"), a.log().map { it.kind })
+        deliver(a, b)
+
+        val mirrored = b.leave.observeGrants().first().single()
+        assertEquals("포상휴가", mirrored.title)
+        assertEquals("포상휴가 · 사격 만발 · 2026.10.02에 받음", mirrored.subtitle)
+        val use = b.leave.observeUses().first().single()
+        assertEquals("g1", use.leaveGrantId)
+        assertEquals(2, use.dayCount)
+
+        a.leave.delete("g1")
+        deliver(a, b, a.log().takeLast(1))
+        assertEquals(emptyList(), b.leave.observeGrants().first())
     }
 
     @Test

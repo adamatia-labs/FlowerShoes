@@ -32,6 +32,7 @@ fun MainViewController(signInUi: com.sadturtleman.flowershoes.core.firebase.Soci
                 account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(),
                 relink = com.sadturtleman.flowershoes.core.firebase.FirestoreRelink(),
                 notifyPrefs = com.sadturtleman.flowershoes.core.firebase.FirestoreNotifyPrefs(),
+                inquiry = com.sadturtleman.flowershoes.core.firebase.FirestoreInquiry(),
             )
         } else null
         val group = com.sadturtleman.flowershoes.app.ios.appGroupRoot()

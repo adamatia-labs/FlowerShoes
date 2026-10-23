@@ -1,6 +1,9 @@
 package com.sadturtleman.flowershoes.core.data
 
 import com.sadturtleman.flowershoes.core.database.EventEntity
+import com.sadturtleman.flowershoes.core.database.LeaveGrantEntity
+import com.sadturtleman.flowershoes.core.model.LeaveGrant
+import com.sadturtleman.flowershoes.core.model.LeaveKind
 import com.sadturtleman.flowershoes.core.database.LetterEntity
 import com.sadturtleman.flowershoes.core.database.MissYouEntity
 import com.sadturtleman.flowershoes.core.database.ReceiptEntity
@@ -35,10 +38,18 @@ fun ServiceEntity.toModel() = Service(
 )
 
 fun Event.toEntity() = EventEntity(
-    id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(),
+    id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(), leaveGrantId,
 )
 fun EventEntity.toModel() = Event(
     id, EventType.valueOf(type), title, LocalDateTime.parse(start), LocalDateTime.parse(end), alarm,
+    updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(), leaveGrantId,
+)
+
+fun LeaveGrant.toEntity() = LeaveGrantEntity(
+    id, kind.name, name, days, grantedOn.toString(), updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(),
+)
+fun LeaveGrantEntity.toModel() = LeaveGrant(
+    id, runCatching { LeaveKind.valueOf(kind) }.getOrDefault(LeaveKind.OTHER), name, days, LocalDate.parse(grantedOn),
     updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(),
 )
 

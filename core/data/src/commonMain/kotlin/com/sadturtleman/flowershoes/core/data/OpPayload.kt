@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.core.data
 
 import com.sadturtleman.flowershoes.core.model.Event
+import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.MissYou
 import com.sadturtleman.flowershoes.core.model.Receipt
@@ -27,6 +28,10 @@ sealed interface OpPayload {
 
     @Serializable @SerialName("event")
     data class EventPut(val event: Event) : OpPayload
+
+    /** 받은 휴가(휴가 관리). 조용한 종류(PROFILE)로 보낸다 — 알림 없이 반영. */
+    @Serializable @SerialName("leave")
+    data class LeaveGrantPut(val grant: LeaveGrant) : OpPayload
 
     /** 편지 한 통 = Op 하나. 그림 메타와 첨부 참조(키 포함)를 함께 싣는다. */
     @Serializable @SerialName("letter")
@@ -57,7 +62,7 @@ sealed interface OpPayload {
 }
 
 @Serializable
-enum class DeletableEntity { EVENT, LETTER }
+enum class DeletableEntity { EVENT, LETTER, LEAVE_GRANT }
 
 /** 편지 안 그림의 메타. 문서 · PNG 본문은 Storage 첨부로 따로 간다. */
 @Serializable

@@ -23,6 +23,8 @@ class AndroidPlatformActions(private val context: Context) : PlatformActions {
         get() = android.provider.Settings.Global.getString(context.contentResolver, "device_name")?.takeIf { it.isNotBlank() }
             ?: android.os.Build.MODEL
 
+    override val osVersion: String get() = "Android ${android.os.Build.VERSION.RELEASE}"
+
     override val appVersion: String
         get() = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0.0"
 

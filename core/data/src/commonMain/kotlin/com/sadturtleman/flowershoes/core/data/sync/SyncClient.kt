@@ -258,6 +258,7 @@ class SyncClient(
             db.serviceDao().get(com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER)?.let { add(OpPayload.ServicePut(it.toModel())) }
             couple?.anniversary?.let { add(OpPayload.AnniversaryPut(it, couple.anniversaryLamport)) }
             db.eventDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.EventPut(it.toModel())) }
+            db.leaveDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
             db.letterDao().byAuthor(identity.userId).forEach { l ->
                 val drawings = db.drawingDao().forLetter(l.id).map {
                     com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs, showOnWidget = it.showOnWidget, photoAttachmentId = photoOf(it.docAttachmentId))
@@ -284,6 +285,7 @@ class SyncClient(
             db.serviceDao().all().forEach { add(OpPayload.ServicePut(it.toModel())) }
             couple?.anniversary?.let { add(OpPayload.AnniversaryPut(it, couple.anniversaryLamport)) }
             db.eventDao().all().forEach { add(OpPayload.EventPut(it.toModel())) }
+            db.leaveDao().all().forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
             db.letterDao().allActive().forEach { l -> add(OpPayload.LetterPut(l.toModel(), drawingMetas(l.id))) }
             db.missYouDao().all().forEach { add(OpPayload.MissYouPut(com.sadturtleman.flowershoes.core.model.MissYou(it.id, it.authorId, kotlin.time.Instant.fromEpochMilliseconds(it.sentAtMs)))) }
             db.receiptDao().all().forEach {

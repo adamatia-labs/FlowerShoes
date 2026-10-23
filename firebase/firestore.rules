@@ -213,6 +213,27 @@ service cloud.firestore {
           && request.resource.data.quietEnd >= 0 && request.resource.data.quietEnd < 1440;
         allow delete: if false;
       }
+      // 문의(설정 › 문의하기). 회사가 읽는 평문 — 암호화하지 않는다. 답변(answer · answeredAt · title)은 관리자 SDK 만 쓴다.
+      match /inquiries/{id} {
+        allow get, list: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['type', 'body', 'email', 'device', 'shots', 'status', 'createdAt'])
+          && request.resource.data.type in ['오류 신고', '연결 · 백업', '계정 · 탈퇴', '제안', '기타']
+          && request.resource.data.body is string && request.resource.data.body.size() > 0 && request.resource.data.body.size() <= 1000
+          && request.resource.data.email is string && request.resource.data.email.size() <= 200
+          && request.resource.data.shots is int && request.resource.data.shots >= 0 && request.resource.data.shots <= 3
+          && request.resource.data.status == 'pending'
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+        // 스크린샷(최대 3장). Storage 대신 문서에 base64 JPEG — 한 장 700KB 이하.
+        match /shots/{n} {
+          allow get: if signedIn() && request.auth.uid == uid;
+          allow create: if signedIn() && request.auth.uid == uid && n in ['0', '1', '2']
+            && request.resource.data.keys().hasOnly(['data'])
+            && request.resource.data.data is string && request.resource.data.data.size() <= 950000;
+          allow update, delete, list: if false;
+        }
+      }
     }
 
     // 서버만 쓰는 것들(알림 횟수 · 처리한 위젯 opId 등)

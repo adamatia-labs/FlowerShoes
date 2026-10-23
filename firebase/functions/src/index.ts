@@ -11,6 +11,7 @@
 // - sendFromWidget  : iOS 위젯(App Intent)의 보고싶어. Firebase SDK 없이 서명만으로 받는다
 // - kakaoSignIn     : 카카오 액세스 토큰(app_id 확인) → 커스텀 토큰
 // - unlinkCouple · deleteAccount : 연결 해제 · 탈퇴
+// - onInquiryAnswered : 문의에 답변(관리자가 answer 를 쓰면) → 문의한 사람에게 알림
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
@@ -409,6 +410,22 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
   await db.recursiveDelete(db.doc(`users/${uid}`));
   await getAuth().deleteUser(uid);
   return { ok: true };
+});
+
+/**
+ * 문의 답변 알림(Figma 7 · 문의 내역 "답변이 오면 알림"). 답변은 콘솔 · 관리자 SDK 로 answer 를 쓴다.
+ * answeredAt 이 없으면 채운다 — 그 쓰기로 다시 불려도 before 에 answer 가 있어 알림은 한 번만 간다.
+ */
+export const onInquiryAnswered = onDocumentWritten({ document: 'users/{uid}/inquiries/{id}', region: REGION }, async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!after || typeof after.answer !== 'string' || after.answer.length === 0) return;
+  if (before && typeof before.answer === 'string' && before.answer.length > 0) return;
+  if (!after.answeredAt) await event.data!.after.ref.update({ answeredAt: FieldValue.serverTimestamp(), status: 'answered' });
+  await push(event.params.uid, {
+    visible: { title: '꽃신', body: '문의에 답변이 왔어요' },
+    data: { kind: 'inquiry', id: event.params.id },
+  });
 });
 
 /**

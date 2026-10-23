@@ -64,6 +64,31 @@ data class Event(
     val lamport: Long,
     val lastWriterDevice: String,
     val deletedAt: Instant? = null,
+    /** 받은 휴가에서 쓴 날(휴가 › 사용 등록). 그 휴가의 남은 일수에서 빠진다. */
+    val leaveGrantId: String? = null,
+)
+
+/** 받은 휴가 종류(휴가 › 추가). */
+@Serializable
+enum class LeaveKind(val label: String) {
+    REGULAR("정기휴가"), REWARD("포상휴가"), CONSOLATION("위로휴가"), PETITION("청원휴가"), OTHER("기타"),
+}
+
+/**
+ * 받은 휴가 한 건(행정반 방식: 받은 휴가 단위로 관리). 둘 다 고치는 공유 데이터 — 일정처럼 행 단위 LWW · tombstone.
+ * 쓴 날은 [Event.leaveGrantId] 로 이 휴가를 가리키는 캘린더 휴가 일정이다.
+ */
+@Serializable
+data class LeaveGrant(
+    val id: String,
+    val kind: LeaveKind,
+    val name: String,
+    val days: Int,
+    val grantedOn: LocalDate,
+    val updatedAt: Instant,
+    val lamport: Long,
+    val lastWriterDevice: String,
+    val deletedAt: Instant? = null,
 )
 
 /** 편지 안의 한 덩어리. 목록 순서가 곧 화면 순서다. */

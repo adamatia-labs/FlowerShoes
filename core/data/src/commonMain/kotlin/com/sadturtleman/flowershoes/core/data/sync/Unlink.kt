@@ -80,7 +80,7 @@ class UnlinkService(
 
     private companion object {
         val SYNC_TABLES = listOf("sync_op", "stream_counter", "recv_cursor", "recv_pending", "peer_cursor", "revoked_device", "device")
-        val SHARED_TABLES = listOf("letter", "drawing", "receipt", "event", "miss_you", "status", "memory", "attachment")
+        val SHARED_TABLES = listOf("letter", "drawing", "receipt", "event", "leave_grant", "miss_you", "status", "memory", "attachment")
 
         /** 탈퇴 때만: 내 정보 · 복무 · 시계까지. 연결 해제는 내 D-day 를 남긴다. */
         val PROFILE_TABLES = listOf("service", "user", "meta", "couple")

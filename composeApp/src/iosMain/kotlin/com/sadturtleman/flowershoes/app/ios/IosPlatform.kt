@@ -61,6 +61,8 @@ class IosPlatformActions : PlatformActions {
 
     override val deviceName: String get() = platform.UIKit.UIDevice.currentDevice.model
 
+    override val osVersion: String get() = "iOS ${platform.UIKit.UIDevice.currentDevice.systemVersion}"
+
     override val appVersion: String
         get() = (platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String) ?: "1.0.0"
 

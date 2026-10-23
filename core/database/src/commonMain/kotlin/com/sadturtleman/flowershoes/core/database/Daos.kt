@@ -130,6 +130,29 @@ interface EventDao {
     /** 상대 커서가 지난 뒤 90일 지난 tombstone 정리. */
     @Query("DELETE FROM event WHERE deletedAtMs IS NOT NULL AND deletedAtMs < :beforeMs")
     suspend fun purgeTombstones(beforeMs: Long)
+
+    /** 받은 휴가에서 쓴 날(휴가 관리 · 상세). */
+    @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND leaveGrantId IS NOT NULL ORDER BY start")
+    fun observeLeaveUses(): Flow<List<EventEntity>>
+}
+
+@Dao
+interface LeaveDao {
+    @Query("SELECT * FROM leave_grant WHERE deletedAtMs IS NULL")
+    fun observeAll(): Flow<List<LeaveGrantEntity>>
+
+    @Query("SELECT * FROM leave_grant WHERE id = :id")
+    suspend fun get(id: String): LeaveGrantEntity?
+
+    /** 넘겨주기 스냅샷: tombstone 까지 전부. */
+    @Query("SELECT * FROM leave_grant")
+    suspend fun all(): List<LeaveGrantEntity>
+
+    @Query("SELECT * FROM leave_grant WHERE lastWriterDevice = :deviceId")
+    suspend fun lastWrittenBy(deviceId: String): List<LeaveGrantEntity>
+
+    @Upsert
+    suspend fun upsert(grant: LeaveGrantEntity)
 }
 
 @Dao

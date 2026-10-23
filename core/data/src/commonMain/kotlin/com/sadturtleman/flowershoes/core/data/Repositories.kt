@@ -8,6 +8,8 @@ import com.sadturtleman.flowershoes.core.database.UserEntity
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Event
+import com.sadturtleman.flowershoes.core.model.EventType
+import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.MissYou
@@ -29,6 +31,9 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.atTime
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.number
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.todayIn
@@ -132,6 +137,74 @@ class EventRepository(
 
     fun newId(): String = Uuid.random().toString()
 }
+
+/**
+ * 휴가 관리(Figma 3 · 휴가). 받은 휴가는 조용한 종류(PROFILE)로, 쓴 날은 캘린더 휴가 일정으로 남긴다 —
+ * 그래서 캘린더 · 홈 "다음 휴가"에 그대로 보이고, 일정을 지우면 남은 일수가 돌아온다.
+ */
+class LeaveRepository(
+    private val db: AppDatabase,
+    private val writer: SyncWriter,
+    private val identity: Identity,
+    private val clock: Clock = Clock.System,
+) {
+    fun observeGrants(): Flow<List<LeaveGrant>> = db.leaveDao().observeAll().map { list -> list.map { it.toModel() } }
+
+    fun observeUses(): Flow<List<Event>> = db.eventDao().observeLeaveUses().map { list -> list.map { it.toModel() } }
+
+    suspend fun save(grant: LeaveGrant) {
+        writer.write(
+            OpKind.PROFILE, "leave", grant.id,
+            localWrite = { lamport -> db.leaveDao().upsert(stamp(grant, lamport).toEntity()) },
+            payload = { lamport -> OpPayload.LeaveGrantPut(stamp(grant, lamport)) },
+        )
+    }
+
+    suspend fun delete(id: String) {
+        val local = db.leaveDao().get(id) ?: return
+        val at = clock.now().toEpochMilliseconds()
+        writer.write(
+            OpKind.DELETE, "leave", id,
+            localWrite = { lamport -> db.leaveDao().upsert(local.copy(deletedAtMs = at, lamport = lamport, lastWriterDevice = identity.deviceId)) },
+            payload = { lamport -> OpPayload.Delete(DeletableEntity.LEAVE_GRANT, id, lamport, at, identity.deviceId) },
+        )
+    }
+
+    /**
+     * 사용 등록: [from]..[to] 를 캘린더 휴가 일정으로 남긴다. [notify] 면 상대 폰에 "일정을 바꿨어요" 알림이 간다(EVENT),
+     * 아니면 알림 없이 반영한다(PROFILE — 받는 쪽은 종류가 아니라 본문으로 반영한다).
+     */
+    suspend fun use(grant: LeaveGrant, from: LocalDate, to: LocalDate, notify: Boolean) {
+        val event = Event(
+            id = Uuid.random().toString(), type = EventType.VACATION, title = grant.title,
+            start = from.atTime(0, 0), end = to.atTime(23, 59), alarm = false,
+            updatedAt = clock.now(), lamport = 0, lastWriterDevice = identity.deviceId, leaveGrantId = grant.id,
+        )
+        writer.write(
+            if (notify) OpKind.EVENT else OpKind.PROFILE, "event", event.id,
+            localWrite = { lamport -> db.eventDao().upsert(event.copy(lamport = lamport).toEntity()) },
+            payload = { lamport -> OpPayload.EventPut(event.copy(lamport = lamport)) },
+        )
+    }
+
+    private fun stamp(grant: LeaveGrant, lamport: Long) =
+        grant.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = clock.now())
+
+    fun newId(): String = Uuid.random().toString()
+}
+
+/** 카드 제목: "포상휴가 · 사격 만발" → "포상휴가". */
+val LeaveGrant.title: String get() = name.substringBefore(" · ").ifBlank { kind.label }
+
+/** 카드 아래 줄: "정기휴가 · 2026.10.21에 받음" / "포상휴가 · 사격 만발 · 2026.10.02에 받음". */
+val LeaveGrant.subtitle: String
+    get() {
+        val head = if (name.startsWith(kind.label)) name else kind.label
+        return "$head · ${grantedOn.year}.${grantedOn.month.number.toString().padStart(2, '0')}.${grantedOn.day.toString().padStart(2, '0')}에 받음"
+    }
+
+/** 일정이 차지하는 날 수(양 끝 포함). */
+val Event.dayCount: Int get() = start.date.daysUntil(end.date) + 1
 
 /** 편지 · 편지 안 그림. 그림만 보내기도 글 없는 편지 한 통이다. */
 class LetterRepository(

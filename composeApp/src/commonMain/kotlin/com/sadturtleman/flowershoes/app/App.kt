@@ -67,7 +67,7 @@ enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.de
 }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, RESTORE, COMPOSE, COMPOSE_SCHEDULED, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS }
+private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, RESTORE, COMPOSE, COMPOSE_SCHEDULED, DRAW_FOR_LETTER, DRAW_ONLY, SETTINGS, LEAVE }
 
 @Composable
 fun KkotsinApp() {
@@ -153,6 +153,8 @@ private fun MainShell() {
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
     var creating by rememberSaveable { mutableStateOf(false) }
     var settingsStart by remember { mutableStateOf(com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN) }
+    // 휴가 관리를 연 곳(설정 › 군 정보면 닫을 때 그리로).
+    var leaveFromSettings by remember { mutableStateOf(false) }
     // 편지 쓰기 · 편지함 · 그림만 보내기가 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
@@ -185,6 +187,7 @@ private fun MainShell() {
     BackHandler(enabled = overlay != null || letterOpen || tab != Tab.HOME) {
         when {
             overlay == Overlay.DRAW_FOR_LETTER -> overlay = Overlay.COMPOSE
+            overlay == Overlay.LEAVE && leaveFromSettings -> overlay = Overlay.SETTINGS
             overlay != null -> overlay = null
             letterOpen -> letters.onIntent(LetterIntent.Close)
             else -> tab = Tab.HOME
@@ -253,7 +256,20 @@ private fun MainShell() {
                 onRestore = { overlay = Overlay.RESTORE },
                 onBack = { overlay = null; settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN },
                 startAt = settingsStart,
+                photoPicker = { rememberPhotoPicker(it) },
+                onOpenLeave = {
+                    leaveFromSettings = true
+                    settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MILITARY
+                    overlay = Overlay.LEAVE
+                },
             )
+            return
+        }
+        Overlay.LEAVE -> {
+            com.sadturtleman.flowershoes.feature.calendar.LeaveRoute(onBack = {
+                overlay = if (leaveFromSettings) Overlay.SETTINGS else null
+                leaveFromSettings = false
+            })
             return
         }
         null -> Unit
@@ -311,6 +327,7 @@ private fun MainShell() {
                     onOpenCalendar = { tab = Tab.CALENDAR },
                     onOpenSettings = { overlay = Overlay.SETTINGS },
                     onWriteLetter = { overlay = Overlay.COMPOSE },
+                    onOpenLeave = { leaveFromSettings = false; overlay = Overlay.LEAVE },
                 )
                 Tab.CALENDAR -> CalendarRoute(viewModel = calendar)
                 Tab.LETTER -> LetterInboxRoute(

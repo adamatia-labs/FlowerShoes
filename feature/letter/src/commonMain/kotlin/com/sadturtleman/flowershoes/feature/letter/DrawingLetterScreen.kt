@@ -58,7 +58,7 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
     Column(Modifier.fillMaxSize().background(c.bgCanvas)) {
         KkTopBar(
             open.drawingTitle, onLeading = { onIntent(LetterIntent.Close) }, leading = KkTopBarLeading.Close,
-            modifier = Modifier.padding(horizontal = KkSpacing.xl),
+            modifier = Modifier.padding(horizontal = KkSpacing.lg),
             trailingText = if (open.mine) "삭제" else null, onTrailing = { onIntent(LetterIntent.Delete(open.letter.id)) },
         )
         Column(

@@ -55,10 +55,11 @@ fun HomeRoute(
     onOpenSettings: () -> Unit,
     onWriteLetter: () -> Unit = {},
     onEnterCode: () -> Unit = onOpenPairing,
+    onOpenLeave: () -> Unit = onOpenCalendar,
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings, onWriteLetter, onEnterCode)
+    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings, onWriteLetter, onEnterCode, onOpenLeave)
 }
 
 @Composable
@@ -70,6 +71,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit = {},
     onWriteLetter: () -> Unit = {},
     onEnterCode: () -> Unit = onOpenPairing,
+    onOpenLeave: () -> Unit = onOpenCalendar,
 ) {
     val c = KkTheme.colors
     Column(
@@ -84,7 +86,7 @@ fun HomeScreen(
         when {
             state.loading -> Unit
             state.linked -> LinkedHome(state, onIntent, onOpenCalendar)
-            state.role == Role.SOLDIER -> SoldierUnlinked(state, onOpenPairing, onEnterCode, onOpenCalendar)
+            state.role == Role.SOLDIER -> SoldierUnlinked(state, onOpenPairing, onEnterCode, onOpenCalendar, onOpenLeave)
             else -> GomsinUnlinked(onOpenPairing, onWriteLetter, onOpenCalendar)
         }
     }
@@ -263,13 +265,13 @@ private fun CanDoTile(icon: KkIcons, title: String, body: String, modifier: Modi
 // ── 연결 전 · 군인(137:1428) ──
 
 @Composable
-private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnterCode: () -> Unit, onOpenCalendar: () -> Unit) {
+private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnterCode: () -> Unit, onOpenCalendar: () -> Unit, onOpenLeave: () -> Unit) {
     val c = KkTheme.colors
     Dday(state, onOpenCalendar)
     state.soldier?.let { s ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile("다음 진급", s.nextRank ?: "병장", Modifier.weight(1f))
-            if (s.leaveLeft != null) StatTile("남은 휴가", "${s.leaveLeft}일", Modifier.weight(1f))
+            if (s.leaveLeft != null) StatTile("남은 휴가", "${s.leaveLeft}일", Modifier.weight(1f), onClick = onOpenLeave)
             StatTile("복무", "${s.servedDay}일째", Modifier.weight(1f))
         }
     }
@@ -297,14 +299,16 @@ private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnter
 }
 
 @Composable
-private fun StatTile(label: String, value: String, modifier: Modifier) {
+private fun StatTile(label: String, value: String, modifier: Modifier, onClick: (() -> Unit)? = null) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(horizontal = 12.dp, vertical = 14.dp),
+        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+            .then(if (onClick != null) Modifier.clickable(role = A11y.Button, onClick = onClick) else Modifier)
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, style = KkTheme.type.caption, color = c.textSecondary)
+        Text(label, style = KkTheme.type.caption, color = c.textTertiary)
         Text(value, style = KkTheme.type.titleS, color = c.textPrimary, maxLines = 1)
     }
 }

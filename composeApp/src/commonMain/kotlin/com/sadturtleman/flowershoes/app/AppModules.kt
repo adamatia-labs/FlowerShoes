@@ -60,6 +60,7 @@ class CloudBackend(
     val account: AccountTransport? = null,
     val relink: RelinkTransport? = null,
     val notifyPrefs: com.sadturtleman.flowershoes.core.data.NotifyPrefsTransport? = null,
+    val inquiry: com.sadturtleman.flowershoes.core.data.InquiryTransport? = null,
 )
 
 /**
@@ -90,6 +91,7 @@ fun kkotsinModules(
         single { InboxApplier(get(), get()) }
         single { ProfileRepository(get(), get(), get()) }
         single { EventRepository(get(), get(), get(), get()) }
+        single { com.sadturtleman.flowershoes.core.data.LeaveRepository(get(), get(), get(), get()) }
         single { LetterRepository(get(), get(), get(), get()) }
         single { MissYouRepository(get(), get(), get(), get()) }
         single { StatusRepository(get(), get(), get(), get()) }
@@ -101,6 +103,7 @@ fun kkotsinModules(
             single { SyncClient(get(), get(), get(), cloud.mailbox, cloud.blobs, get(), get(), get(), get()) }
             cloud.relink?.let { r -> single { RelinkSession(get(), get(), get(), r, get(), get()) } }
             cloud.notifyPrefs?.let { t -> single { t } }
+            cloud.inquiry?.let { t -> single { t } }
             single {
                 val client = get<SyncClient>()
                 val approver = cloud.rotation?.let { RotationApprover(get(), get(), get(), it, drainInbox = { client.syncOnce() }, get()) }
@@ -131,8 +134,9 @@ fun kkotsinModules(
     },
     module {
         viewModel { OnboardingViewModel(get(), get(), get()) }
-        viewModel { HomeViewModel(get(), get(), get(), get(), get()) }
+        viewModel { HomeViewModel(get(), get(), get(), get(), get(), get()) }
         viewModel { CalendarViewModel(get(), get()) }
+        viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get()) }
         viewModel { MemoryViewModel(get(), get(), get(), get(), get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get()) }

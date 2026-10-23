@@ -78,6 +78,21 @@ data class EventEntity(
     val lamport: Long,
     val lastWriterDevice: String,
     val deletedAtMs: Long?,
+    val leaveGrantId: String? = null,
+)
+
+/** 받은 휴가(휴가 관리). 일정과 같은 LWW · tombstone. */
+@Entity(tableName = "leave_grant")
+data class LeaveGrantEntity(
+    @PrimaryKey val id: String,
+    val kind: String,
+    val name: String,
+    val days: Int,
+    val grantedOn: String,
+    val updatedAtMs: Long,
+    val lamport: Long,
+    val lastWriterDevice: String,
+    val deletedAtMs: Long?,
 )
 
 /** 편지. [blocksJson] 은 LetterBlock 목록(kotlinx-serialization JSON). */

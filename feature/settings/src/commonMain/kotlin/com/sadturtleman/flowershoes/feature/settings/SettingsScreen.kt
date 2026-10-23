@@ -113,6 +113,9 @@ interface PlatformActions {
     /** 앱 버전(설정 › 정보). */
     val appVersion: String get() = "1.0.0"
 
+    /** OS 이름 · 버전(문의하기 › 기기 정보). */
+    val osVersion: String get() = ""
+
     /** 알림 미리보기 숨기기: iOS 알림 확장이 상태 문구를 풀지 않게 App Group 에 표시한다. */
     fun setHidePreview(hide: Boolean) = Unit
 
@@ -125,7 +128,7 @@ enum class DeviceAuth { Passed, Failed, NoLockScreen }
 object NoPlatformActions : PlatformActions
 
 /** 설정 안의 화면들. 첫 화면은 [MAIN]. */
-enum class SettingsPage { MAIN, CONNECTION, MILITARY, THEME, NOTIFY, WIDGETS, BACKUP, RECOVERY, ACCOUNT, DELETE_ACCOUNT, UNLINK, TERMS, LICENSES }
+enum class SettingsPage { MAIN, CONNECTION, MILITARY, THEME, NOTIFY, WIDGETS, BACKUP, RECOVERY, ACCOUNT, DELETE_ACCOUNT, UNLINK, TERMS, LICENSES, INQUIRY, INQUIRY_HISTORY }
 
 /** 백업 저장 한도(설정 › 백업의 사용량 막대). 사진은 줄여서 올려 이 안에 머문다. */
 private const val BACKUP_QUOTA_BYTES = 2L * 1024 * 1024 * 1024
@@ -138,8 +141,11 @@ fun SettingsRoute(
     onRestore: () -> Unit = {},
     onBack: () -> Unit,
     startAt: SettingsPage = SettingsPage.MAIN,
+    onOpenLeave: () -> Unit = {},
+    photoPicker: (@Composable (onPicked: (ByteArray) -> Unit) -> ((fromCamera: Boolean) -> Unit))? = null,
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
+    val inquiries = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.InquiryTransport>()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val stack = remember { mutableStateListOf(startAt) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -152,7 +158,7 @@ fun SettingsRoute(
         when (stack.last()) {
             SettingsPage.MAIN -> MainPage(state, platform, open, back, onOpenPairing, onHandOver, viewModel)
             SettingsPage.CONNECTION -> ConnectionPage(state, back, onOpenPairing, open)
-            SettingsPage.MILITARY -> MilitaryPage(state, viewModel, back)
+            SettingsPage.MILITARY -> MilitaryPage(state, viewModel, back, onOpenLeave)
             SettingsPage.THEME -> ThemePage(state, viewModel, back)
             SettingsPage.NOTIFY -> NotifyPage(state, platform, viewModel, back)
             SettingsPage.WIDGETS -> WidgetsPage(platform, back)
@@ -163,6 +169,16 @@ fun SettingsRoute(
             SettingsPage.UNLINK -> UnlinkPage(state, platform, viewModel, back) { onBack() }
             SettingsPage.TERMS -> TermsPage(back)
             SettingsPage.LICENSES -> LicensesPage(back)
+            SettingsPage.INQUIRY -> InquiryPage(
+                inquiries, platform, photoPicker,
+                onHistory = { open(SettingsPage.INQUIRY_HISTORY) },
+                onBack = back,
+                onSent = { message, sent ->
+                    viewModel.notice(message)
+                    if (sent) stack[stack.lastIndex] = SettingsPage.INQUIRY_HISTORY
+                },
+            )
+            SettingsPage.INQUIRY_HISTORY -> InquiryHistoryPage(inquiries, back)
         }
         notice?.let { KkToast(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg)) }
     }
@@ -175,7 +191,7 @@ fun SettingsRoute(
 private fun Page(title: String, onBack: () -> Unit, bottom: (@Composable ColumnScope.() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     val c = KkTheme.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
-        KkTopBar(title, onLeading = onBack, modifier = Modifier.padding(horizontal = KkSpacing.xl))
+        KkTopBar(title, onLeading = onBack)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.lg, bottom = KkSpacing.xxxl),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.xl),
@@ -308,6 +324,8 @@ private fun MainPage(
             }
         }
         Group("정보") {
+            KkListRow("문의하기", onClick = { open(SettingsPage.INQUIRY) })
+            Divider()
             KkListRow("이용약관 · 개인정보처리방침", onClick = { open(SettingsPage.TERMS) })
             Divider()
             KkListRow("오픈소스 라이선스", onClick = { open(SettingsPage.LICENSES) })
@@ -359,7 +377,7 @@ private fun ConnectionPage(state: SettingsState, onBack: () -> Unit, onOpenPairi
 
 /** 군 정보(Figma 7 · 군 정보): 역할 · 군종 · 입대일 · 전역일, 전역일 직접 고치기. */
 @Composable
-private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
+private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit, onOpenLeave: () -> Unit) {
     val c = KkTheme.colors
     var sheet by remember { mutableStateOf<String?>(null) }
     val s = state.service
@@ -389,6 +407,8 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
                 SwitchRow("전역일 직접 고치기", t.isOverridden) { on -> if (on) sheet = "discharge" else viewModel.overrideDischarge(null) }
             }
         }
+        // 휴가 관리(Figma 3 · 휴가): 홈 "남은 휴가" 칸 말고도 연결 뒤에 들어갈 곳.
+        Group("휴가") { KkListRow("휴가 관리", onClick = onOpenLeave) }
     }
     when (sheet) {
         "branch" -> KkModalSheet({ sheet = null }) {

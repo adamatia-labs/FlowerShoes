@@ -93,6 +93,13 @@ class InboxApplier(
                     db.eventDao().upsert(p.event.toEntity())
                 }
             }
+            is OpPayload.LeaveGrantPut -> {
+                val local = db.leaveDao().get(p.grant.id)
+                val incoming = Versioned(p.grant.lamport, p.grant.lastWriterDevice, p.grant.deletedAt != null)
+                if (Lww.incomingWins(local?.let { Versioned(it.lamport, it.lastWriterDevice, it.deletedAtMs != null) }, incoming)) {
+                    db.leaveDao().upsert(p.grant.toEntity())
+                }
+            }
             is OpPayload.LetterPut -> {
                 if (db.letterDao().get(p.letter.id) == null) {
                     db.letterDao().upsert(p.letter.toEntity(lamport = 0))
@@ -159,6 +166,14 @@ class InboxApplier(
                     Versioned(p.lamport, p.writerDevice, deleted = true),
                 )
                 if (wins) db.eventDao().upsert(local.copy(deletedAtMs = p.atMs, lamport = p.lamport, lastWriterDevice = p.writerDevice))
+            }
+            DeletableEntity.LEAVE_GRANT -> {
+                val local = db.leaveDao().get(p.id) ?: return
+                val wins = Lww.incomingWins(
+                    Versioned(local.lamport, local.lastWriterDevice, local.deletedAtMs != null),
+                    Versioned(p.lamport, p.writerDevice, deleted = true),
+                )
+                if (wins) db.leaveDao().upsert(local.copy(deletedAtMs = p.atMs, lamport = p.lamport, lastWriterDevice = p.writerDevice))
             }
             DeletableEntity.LETTER -> {
                 val local = db.letterDao().get(p.id) ?: return

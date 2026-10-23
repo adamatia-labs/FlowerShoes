@@ -239,7 +239,7 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
     val ink = if (paper == Paper.NIGHT) c.textInverse else c.textPrimary
     Column(Modifier.fillMaxSize().background(c.bgCanvas)) {
         KkTopBar(
-            "편지", onLeading = { onIntent(LetterIntent.Close) }, modifier = Modifier.padding(horizontal = KkSpacing.xl),
+            "편지", onLeading = { onIntent(LetterIntent.Close) },
             trailingText = if (open.mine) "삭제" else null, onTrailing = { onIntent(LetterIntent.Delete(open.letter.id)) },
         )
         Column(

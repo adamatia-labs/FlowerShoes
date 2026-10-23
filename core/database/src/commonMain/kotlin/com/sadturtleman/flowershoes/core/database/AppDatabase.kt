@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.core.database
 
+import androidx.room.AutoMigration
 import androidx.room.ConstructedBy
 import androidx.room.Database
 import androidx.room.RoomDatabase
@@ -20,10 +21,12 @@ import kotlinx.coroutines.IO
         StatusEntity::class, MissYouEntity::class, EventEntity::class, LetterEntity::class,
         DrawingEntity::class, ReceiptEntity::class, AttachmentEntity::class, MemoryEntity::class,
         SyncOpEntity::class, StreamCounterEntity::class, RecvCursorEntity::class, RecvPendingEntity::class,
-        PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class,
+        PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class, LeaveGrantEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    // 2: 휴가 관리(leave_grant 표 · event.leaveGrantId).
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -34,6 +37,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun statusDao(): StatusDao
     abstract fun missYouDao(): MissYouDao
     abstract fun eventDao(): EventDao
+    abstract fun leaveDao(): LeaveDao
     abstract fun letterDao(): LetterDao
     abstract fun drawingDao(): DrawingDao
     abstract fun receiptDao(): ReceiptDao

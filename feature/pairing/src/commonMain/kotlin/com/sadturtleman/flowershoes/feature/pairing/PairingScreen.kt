@@ -211,7 +211,7 @@ private fun Frame(
 ) {
     val c = KkTheme.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
-        KkTopBar(title, onLeading = onClose, leading = leading, modifier = Modifier.padding(horizontal = KkSpacing.xl))
+        KkTopBar(title, onLeading = onClose, leading = leading)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
