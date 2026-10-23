@@ -132,7 +132,8 @@ fun LetterInboxScreen(state: LetterState, onIntent: (LetterIntent) -> Unit, onCr
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("편지함", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.weight(1f))
             Text(
-                "+ 만들기", style = KkTheme.type.labelM, color = c.textBrand,
+                // Figma: 편지가 있으면 "+ 만들기", 빈 편지함은 "+ 편지 쓰기".
+                if (state.inbox.isEmpty()) "+ 편지 쓰기" else "+ 만들기", style = KkTheme.type.labelM, color = c.textBrand,
                 modifier = Modifier.clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onCreate)
                     .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
             )

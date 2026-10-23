@@ -103,7 +103,7 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
         when {
             state.empty -> KkEmptyState(
                 title = "등록된 일정이 없어요",
-                description = "휴가·외박·면회를 등록하면 다음 만남까지 D-day를 알려 드려요",
+                description = "", // Figma 빈 캘린더: 제목 + 버튼만
                 icon = KkIcons.Calendar,
                 action = "일정 추가",
                 onAction = { onIntent(CalendarIntent.NewEvent(state.selected)) },

@@ -210,6 +210,7 @@ private fun MainShell() {
         Overlay.DRAW_FOR_LETTER -> {
             DrawingEditorRoute(
                 photoPicker = { rememberPhotoPicker(it) },
+                saveImage = imageSaver,
                 onSaved = {
                     letters.onIntent(LetterIntent.AddDrawing(it))
                     overlay = Overlay.COMPOSE

@@ -772,7 +772,7 @@ fun KkEmptyState(
             KkIcon(icon, tint = c.textBrand, size = 32.dp)
         }
         Text(title, style = KkTheme.type.titleS, color = c.textPrimary, textAlign = TextAlign.Center)
-        Text(description, style = KkTheme.type.bodyS, color = c.textSecondary, textAlign = TextAlign.Center)
+        if (description.isNotEmpty()) Text(description, style = KkTheme.type.bodyS, color = c.textSecondary, textAlign = TextAlign.Center)
         if (action != null) KkButton(action, onAction, Modifier.widthIn(min = 120.dp), size = KkButtonSize.M)
     }
 }

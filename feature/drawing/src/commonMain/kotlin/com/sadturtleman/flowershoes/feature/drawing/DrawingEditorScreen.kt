@@ -121,7 +121,7 @@ fun DrawingEditorRoute(
     LaunchedEffect(notice) { if (notice != null) { kotlinx.coroutines.delay(2_500); notice = null } }
     val launchPicker = photoPicker?.invoke { viewModel.onIntent(DrawingIntent.SetPhoto(it)) }
     Box(Modifier.fillMaxSize()) {
-        if (state.stage == EditorStage.SEND) DrawingSendScreen(state, viewModel::onIntent, canSave = saveImage != null)
+        if (state.stage == EditorStage.SEND) DrawingSendScreen(state, viewModel::onIntent, canSave = saveImage != null, forLetter = forLetter)
         else DrawingEditorScreen(state, viewModel::onIntent, { viewModel.onIntent(DrawingIntent.Reset); onClose() }, forLetter, launchPicker)
         notice?.let {
             com.sadturtleman.flowershoes.core.designsystem.KkToast(
@@ -161,8 +161,9 @@ fun DrawingEditorScreen(
             ) {
                 KkTopBar(
                     if (forLetter) "그림 그리기" else "그림 보내기", onLeading = close, leading = KkTopBarLeading.Close,
-                    trailingButton = if (forLetter) "완료" else "다음", trailingEnabled = state.canUndo && !state.saving,
-                    onTrailing = { onIntent(if (forLetter) DrawingIntent.Done else DrawingIntent.Next) },
+                    // Figma 4-1: 다음 → 보내기 단계(편지에 넣을 때는 "편지에 넣을까요?").
+                    trailingButton = "다음", trailingEnabled = state.canUndo && !state.saving,
+                    onTrailing = { onIntent(DrawingIntent.Next) },
                     modifier = Modifier.alpha(chrome),
                 )
                 Box(Modifier.alpha(chrome * if (state.canUndo) 0.5f else 1f)) {
@@ -585,7 +586,8 @@ private fun MenuBar(selected: EditorMenu, onSelect: (EditorMenu) -> Unit) {
 
 /** 그림만 보내기 › 보내기(Figma 그림 그리기 / 보내기). */
 @Composable
-fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit, canSave: Boolean = false) {
+/** 보내기 단계(Figma 그림 그리기 / 보내기). [forLetter] 면 "편지에 넣을까요?"(넣기 → 편지에 붙임), 아니면 연인에게 바로 보내기. */
+fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit, canSave: Boolean = false, forLetter: Boolean = false) {
     val c = KkTheme.colors
     var scheduling by remember { mutableStateOf(false) }
     var writing by remember { mutableStateOf(state.caption.isNotEmpty()) }
@@ -595,13 +597,13 @@ fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
             .verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
     ) {
-        Text("${state.partnerName}에게 보내기", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.padding(top = KkSpacing.sm))
+        Text(if (forLetter) "편지에 넣을까요?" else "${state.partnerName}에게 보내기", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.padding(top = KkSpacing.sm))
         val shape = RoundedCornerShape(KkRadius.xl)
         Box(
             Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(Color.White).padding(KkSpacing.xxl),
             contentAlignment = Alignment.Center,
         ) { DrawingView(state.preview) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, Alignment.CenterHorizontally)) {
+        if (!forLetter) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, Alignment.CenterHorizontally)) {
             KkStatusChip("위젯에 띄우기", selected = state.showOnWidget, onClick = { onIntent(DrawingIntent.SetWidget(!state.showOnWidget)) }, dot = if (state.showOnWidget) Color.White else c.statusWarning)
             val at = state.revealAt
             KkStatusChip(
@@ -610,10 +612,10 @@ fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
             )
         }
         OptionRow(Modifier.clickable(role = Role.Switch) { onIntent(DrawingIntent.SetReplay(!state.replayEnabled)) }) {
-            Text("그리는 과정도 함께 보내기", style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
+            Text(if (forLetter) "그리는 과정도 함께 넣기" else "그리는 과정도 함께 보내기", style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
             KkSwitch(state.replayEnabled)
         }
-        if (writing) {
+        if (forLetter) Unit else if (writing) {
             KkInput(state.caption, { onIntent(DrawingIntent.SetCaption(it)) }, label = "함께 보낼 글", placeholder = "예) 오늘 당직 힘내", helper = "${state.caption.length} / 40")
         } else {
             OptionRow(Modifier.clickable(role = Role.Button) { writing = true }) {
@@ -623,7 +625,9 @@ fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = KkSpacing.xxxl), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
             RoundAction(KkIcons.Close, "취소", big = false, modifier = Modifier.offset(y = 14.dp)) { onIntent(DrawingIntent.BackToEdit) }
-            RoundAction(KkIcons.Send, if (state.saving) "보내는 중" else "보내기", big = true) { if (!state.saving) onIntent(DrawingIntent.Send) }
+            RoundAction(KkIcons.Send, when { state.saving -> if (forLetter) "넣는 중" else "보내는 중"; forLetter -> "넣기"; else -> "보내기" }, big = true) {
+                if (!state.saving) onIntent(if (forLetter) DrawingIntent.Done else DrawingIntent.Send)
+            }
             RoundAction(KkIcons.Download, "저장", big = false, enabled = canSave, modifier = Modifier.offset(y = 14.dp)) { onIntent(DrawingIntent.Export) }
         }
     }
