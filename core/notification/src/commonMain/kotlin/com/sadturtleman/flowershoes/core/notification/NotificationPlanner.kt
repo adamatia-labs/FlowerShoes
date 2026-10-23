@@ -32,7 +32,7 @@ data class LocalNotification(
  *
  * - 예약 편지 공개: 받는 폰이 visibleAt 에 알린다(서버 예약이 없다).
  * - 일정 전날 20:00(알림을 켠 일정만).
- * - 기념일: 전역일 · 입대 100일 단위 · 커플 기념일(매년).
+ * - 기념일: 전역일 · 입대 100일 단위 · 사귄 날 100일 단위 · 매년.
  *
  * iOS 는 앱당 로컬 알림 64개가 한도다. 가까운 [budget](기본 50)개만 예약하고 나머지는 앱 실행 · 백그라운드 새로고침 때
  * 다시 채운다. 14개는 여유분.
@@ -46,6 +46,8 @@ class NotificationPlanner(private val budget: Int = 50) {
         events: List<Event>,
         timeline: ServiceTimeline?,
         anniversary: LocalDate?,
+        anniversaryHundreds: Boolean = true,
+        anniversaryYears: Boolean = true,
     ): List<LocalNotification> {
         val out = mutableListOf<LocalNotification>()
 
@@ -92,7 +94,19 @@ class NotificationPlanner(private val budget: Int = 50) {
             }
         }
 
-        anniversary?.let { a ->
+        anniversary?.takeIf { anniversaryHundreds }?.let { a ->
+            // 사귄 날을 1일로 센 100일 단위(100 · 200 · …). 다음 것 몇 개만.
+            val days = a.daysUntil(today) + 1
+            var n = ((days / 100) + 1) * 100
+            repeat(3) {
+                dayAt9(a.plus(DatePeriod(days = n - 1)))?.takeIf { it > now }?.let { at ->
+                    out += LocalNotification("anniv-d$n", at, "우리 ${n}일", "오늘은 함께한 지 ${n}일째예요", "kkotsin://home")
+                }
+                n += 100
+            }
+        }
+
+        anniversary?.takeIf { anniversaryYears }?.let { a ->
             for (year in today.year..today.year + 1) {
                 val date = runCatching { LocalDate(year, a.month, a.day) }.getOrNull() ?: continue
                 val years = year - a.year
@@ -116,6 +130,7 @@ class NotificationPlanner(private val budget: Int = 50) {
         EventType.VISIT -> "면회"
         EventType.TRAINING -> "훈련"
         EventType.DUTY -> "당직"
+        EventType.OTHER -> "기타"
     }
 
     private companion object {

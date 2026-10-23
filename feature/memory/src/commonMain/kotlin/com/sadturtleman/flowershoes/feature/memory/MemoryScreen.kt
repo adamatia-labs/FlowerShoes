@@ -141,7 +141,6 @@ fun MemoryScreen(
     ) {
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("추억", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.weight(1f))
-            state.stats.daysTogether?.let { Text("D+$it", style = KkTheme.type.labelM, color = c.textBrand) }
         }
         KkSegmentedControl(MemoryFilter.entries.map { it.label }, state.filter.ordinal, { onIntent(MemoryIntent.Filter(MemoryFilter.entries[it])) })
         Summary(state.stats)

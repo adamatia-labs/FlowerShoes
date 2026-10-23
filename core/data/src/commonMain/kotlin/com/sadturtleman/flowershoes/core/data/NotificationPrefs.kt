@@ -13,6 +13,9 @@ data class NotificationPrefs(
     val status: Boolean = true,
     val eventEve: Boolean = true,
     val anniversary: Boolean = true,
+    /** 설정 › 기념일 › 기념일 알림: 사귄 날부터 100일 단위 · 1년 단위. */
+    val anniversary100: Boolean = true,
+    val anniversaryYear: Boolean = true,
     /** 서울 기준 분. 시작 == 끝이면 조용한 시간 없음. */
     val quietStart: Int = 23 * 60,
     val quietEnd: Int = 7 * 60,

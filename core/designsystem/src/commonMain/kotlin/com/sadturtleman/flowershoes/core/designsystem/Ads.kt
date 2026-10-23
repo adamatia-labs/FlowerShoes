@@ -1,0 +1,68 @@
+package com.sadturtleman.flowershoes.core.designsystem
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+
+/** 네이티브 광고 한 칸의 내용(Figma 광고 지면: 썸네일 · 제목 · 설명 · "광고"). */
+data class KkAdContent(val title: String, val body: String, val image: ImageBitmap? = null, val onClick: () -> Unit = {})
+
+/** 광고 지면(Figma 9 · 광고 지면 요약). 꽃신 평생이면 모두 숨긴다. */
+enum class KkAdSlot { CALENDAR, LEAVE, SETTINGS }
+
+/**
+ * 광고 공급자. 광고 SDK 를 붙이면 앱이 이 값을 바꿔 넣는다 — 그 전(그리고 꽃신 평생)에는 null 이라 자리가 비어 있다.
+ */
+val LocalAds = staticCompositionLocalOf<(KkAdSlot) -> KkAdContent?> { { null } }
+
+/** 지면 한 칸. 줄 광고가 없으면 아무것도 그리지 않는다. */
+@Composable
+fun KkAd(slot: KkAdSlot, modifier: Modifier = Modifier) {
+    val ad = LocalAds.current(slot) ?: return
+    KkNativeAd(ad, modifier)
+}
+
+/** 네이티브 배너(흰 카드 · 반경 12 · 44 썸네일 · 오른쪽 "광고" 테두리 배지). */
+@Composable
+fun KkNativeAd(ad: KkAdContent, modifier: Modifier = Modifier) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.lg)
+    Row(
+        modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+            .clickable(role = Role.Button, onClick = ad.onClick).padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)) {
+            ad.image?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop) }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(ad.title, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(ad.body, style = KkTheme.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(
+            "광고", style = KkTheme.type.caption, color = c.textTertiary,
+            modifier = Modifier.border(1.dp, c.borderDefault, RoundedCornerShape(KkRadius.sm)).padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+}

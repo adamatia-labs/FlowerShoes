@@ -31,13 +31,20 @@ import kotlinx.datetime.plus
 /** 편집 중인 일정. 날짜 단위로 고른다(시간은 휴가 · 외박이 대부분 하루 단위라 기본 종일). */
 data class EventDraft(
     val id: String?,
-    val type: EventType = EventType.VACATION,
+    val type: EventType = EventType.VISIT,
     val title: String = "",
     val start: LocalDate,
     val end: LocalDate,
     val alarm: Boolean = true,
+    /** 하루 종일이면 00:00 – 23:59 로 저장하고 시간 칸을 숨긴다. */
+    val allDay: Boolean = false,
+    val startTime: LocalTime = LocalTime(9, 0),
+    val endTime: LocalTime = LocalTime(18, 0),
+    val memo: String = "",
 ) {
-    val valid: Boolean get() = end >= start
+    val startAt: LocalDateTime get() = LocalDateTime(start, if (allDay) LocalTime(0, 0) else startTime)
+    val endAt: LocalDateTime get() = LocalDateTime(end, if (allDay) LocalTime(23, 59) else endTime)
+    val valid: Boolean get() = endAt >= startAt
 }
 
 data class CalendarState(
@@ -133,7 +140,8 @@ class CalendarViewModel(
             is CalendarIntent.NewEvent -> ui.update { it.copy(draft = EventDraft(null, start = intent.on, end = intent.on)) }
             is CalendarIntent.Edit -> ui.update {
                 val e = intent.event
-                it.copy(draft = EventDraft(e.id, e.type, e.title, e.start.date, e.end.date, e.alarm))
+                val allDay = e.start.time == LocalTime(0, 0) && e.end.time.hour == 23 && e.end.time.minute == 59
+                it.copy(draft = EventDraft(e.id, e.type, e.title, e.start.date, e.end.date, e.alarm, allDay, e.start.time, e.end.time, e.memo))
             }
             is CalendarIntent.ChangeDraft -> ui.update { it.copy(draft = intent.draft) }
             CalendarIntent.SaveDraft -> save()
@@ -151,17 +159,16 @@ class CalendarViewModel(
         if (!d.valid) return
         ui.update { it.copy(draft = null) }
         viewModelScope.launch {
+            // 고칠 때는 기존 행(휴가 연결 · 만남 사진 · LWW 값)을 그대로 두고 칸만 바꾼다.
+            val old = d.id?.let { events.get(it) }
+            val base = old ?: Event(
+                id = events.newId(), type = d.type, title = "", start = d.startAt, end = d.endAt, alarm = d.alarm,
+                updatedAt = clock.now(), lamport = 0, lastWriterDevice = "",
+            )
             events.save(
-                Event(
-                    id = d.id ?: events.newId(),
-                    type = d.type,
-                    title = d.title.trim(),
-                    start = LocalDateTime(d.start, LocalTime(0, 0)),
-                    end = LocalDateTime(d.end, LocalTime(23, 59)),
-                    alarm = d.alarm,
-                    updatedAt = clock.now(),
-                    lamport = 0,
-                    lastWriterDevice = "",
+                base.copy(
+                    type = d.type, title = d.title.trim(), start = d.startAt, end = d.endAt, alarm = d.alarm,
+                    memo = d.memo.trim(), updatedAt = clock.now(),
                 ),
             )
         }

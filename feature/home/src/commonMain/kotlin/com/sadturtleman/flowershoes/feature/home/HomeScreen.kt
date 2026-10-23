@@ -109,7 +109,6 @@ private fun Header(state: HomeState, onOpenSettings: () -> Unit) {
             Text("홈", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (couple != null) state.daysTogether?.let { Text("D+$it", style = KkTheme.type.labelM, color = c.textBrand) }
             Box(
                 Modifier.size(44.dp).clip(CircleShape).clickable(role = A11y.Button, onClick = onOpenSettings).semantics { contentDescription = "설정" },
                 contentAlignment = Alignment.Center,
@@ -207,7 +206,7 @@ private fun ScheduledMessage(row: ScheduledRow) {
 @Composable
 private fun GomsinUnlinked(onOpenPairing: () -> Unit, onWriteLetter: () -> Unit, onOpenCalendar: () -> Unit) {
     val c = KkTheme.colors
-    InviteCard("자대에서 폰을 받으면 초대 코드로 연결해요.") {
+    InviteCard {
         KkButton("초대 코드 보내기", onOpenPairing, Modifier.fillMaxWidth(), size = KkButtonSize.M)
     }
     Text("연결 전에 할 수 있어요", style = KkTheme.type.titleM, color = c.textPrimary)
@@ -231,7 +230,7 @@ private fun GomsinUnlinked(onOpenPairing: () -> Unit, onWriteLetter: () -> Unit,
 }
 
 @Composable
-private fun InviteCard(body: String, buttons: @Composable () -> Unit) {
+private fun InviteCard(buttons: @Composable () -> Unit) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
@@ -243,7 +242,6 @@ private fun InviteCard(body: String, buttons: @Composable () -> Unit) {
             KkIcon(KkIcons.Heart, tint = c.textPrimary)
         }
         Text("연인과 연결할까요?", style = KkTheme.type.titleM, color = c.textPrimary, textAlign = TextAlign.Center)
-        Text(body, style = KkTheme.type.bodyS, color = c.textSecondary, textAlign = TextAlign.Center)
         buttons()
     }
 }
@@ -275,7 +273,7 @@ private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnter
             StatTile("복무", "${s.servedDay}일째", Modifier.weight(1f))
         }
     }
-    InviteCard("받은 초대 코드를 입력하거나 내 코드를 보내요.") {
+    InviteCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
             KkButton("내 코드 보내기", onOpenPairing, Modifier.weight(1f), style = KkButtonStyle.Secondary, size = KkButtonSize.M)
             KkButton("코드 입력", onEnterCode, Modifier.weight(1f), size = KkButtonSize.M)

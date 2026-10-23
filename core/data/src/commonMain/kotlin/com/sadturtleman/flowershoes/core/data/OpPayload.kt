@@ -46,7 +46,7 @@ sealed interface OpPayload {
 
     /** 연결 직후 서로의 역할 · 닉네임을 알린다(7-1-1 정보 맞추기에 필요). */
     @Serializable @SerialName("user")
-    data class UserPut(val userId: String, val role: String, val nickname: String, val lamport: Long) : OpPayload
+    data class UserPut(val userId: String, val role: String, val nickname: String, val lamport: Long, val deviceName: String = "") : OpPayload
 
     @Serializable @SerialName("anniversary")
     data class AnniversaryPut(val date: String?, val lamport: Long) : OpPayload

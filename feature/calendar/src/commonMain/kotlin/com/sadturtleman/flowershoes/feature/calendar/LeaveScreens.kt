@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.feature.calendar
 
+import com.sadturtleman.flowershoes.core.designsystem.KkAdSlot
+import com.sadturtleman.flowershoes.core.designsystem.KkAd
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -149,7 +151,11 @@ private fun LeaveListScreen(state: LeaveState, onBack: () -> Unit, onSort: (Leav
                         modifier = Modifier.fillMaxWidth().padding(vertical = KkSpacing.xl),
                     )
                 }
-                state.sorted.forEach { card -> GrantCard(card) { onOpen(card.grant.id) } }
+                state.sorted.forEachIndexed { i, card ->
+                    GrantCard(card) { onOpen(card.grant.id) }
+                    // 광고 지면(Figma 9): 받은 휴가 카드 3번째 다음 배너 1개.
+                    if (i == 2) KkAd(KkAdSlot.LEAVE)
+                }
             }
         }
         val shape = CircleShape

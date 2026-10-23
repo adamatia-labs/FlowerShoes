@@ -87,7 +87,8 @@ internal fun InquiryPage(
 ) {
     val c = KkTheme.colors
     val scope = rememberCoroutineScope()
-    var type by remember { mutableStateOf(INQUIRY_TYPES.first()) }
+    // Figma 최종 정리: 유형 고르기 없이 내용만 — 서버 규칙의 유형 값은 "기타"로 보낸다.
+    val type = INQUIRY_TYPES.last()
     var body by remember { mutableStateOf("") }
     var email by remember { mutableStateOf(transport?.accountEmail().orEmpty()) }
     var withDevice by remember { mutableStateOf(true) }
@@ -105,12 +106,6 @@ internal fun InquiryPage(
         ) {
             if (transport == null) {
                 Text("이 빌드에는 서버 설정이 없어 문의를 보낼 수 없어요.", style = KkTheme.type.bodyS, color = c.statusDanger)
-            }
-            Text("문의 유형", style = KkTheme.type.labelM, color = c.textSecondary)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                INQUIRY_TYPES.forEach { t ->
-                    KkStatusChip(t, selected = type == t, onClick = { type = t }, dot = if (type == t) Color.White else c.statusWarning)
-                }
             }
             Text("내용", style = KkTheme.type.labelM, color = c.textSecondary)
             TextArea(body, { body = it.take(MAX_BODY) }, placeholder = "어떤 일이 있었는지 적어 주세요. 언제 · 어느 화면에서인지 알려 주시면 더 빨리 도와드릴 수 있어요.")

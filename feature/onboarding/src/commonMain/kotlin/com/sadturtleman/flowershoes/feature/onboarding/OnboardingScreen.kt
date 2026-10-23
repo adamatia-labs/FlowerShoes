@@ -153,7 +153,6 @@ fun OnboardingScreen(
                     OnboardingStep.CONNECT -> {
                         KkStepIndicator(step = 4, total = 4)
                         Text("연인과 연결해요", style = KkTheme.type.display, color = c.textPrimary)
-                        Text("초대 코드를 보내면 둘의 D-day와 상태가 함께 보여요.", style = KkTheme.type.bodyL, color = c.textSecondary)
                         connect { onIntent(OnboardingIntent.StartPairing) }
                     }
                 }
@@ -198,7 +197,6 @@ private fun LoginContent() {
     KkLogoMark()
     Text("꽃신", style = KkTheme.type.display, color = c.textBrand)
     Text("곰신과 군인, 둘만의 전역 달력", style = KkTheme.type.titleM, color = c.textPrimary, textAlign = TextAlign.Center)
-    Text("편지 · 그림 · D-day를 함께 나눠요", style = KkTheme.type.bodyM, color = c.textSecondary, textAlign = TextAlign.Center)
 }
 
 // ── 온보딩 0-1 · 약관 동의 ──
@@ -265,7 +263,6 @@ private fun RoleContent(state: OnboardingState, onIntent: (OnboardingIntent) -> 
     }
     KkStepIndicator(step = 1, total = 4)
     Text("어느 쪽이신가요?", style = KkTheme.type.display, color = c.textPrimary)
-    Text("역할에 맞춰 화면을 준비할게요.", style = KkTheme.type.bodyL, color = c.textSecondary)
     RoleCard("곰신이에요", "군대 간 연인을 기다리고 있어요", KkIcons.Heart, c.bgSurface, c.heart, state.role == Role.GOMSIN) {
         onIntent(OnboardingIntent.SelectRole(Role.GOMSIN))
     }
@@ -307,26 +304,6 @@ private fun ThemeContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
     val c = KkTheme.colors
     KkStepIndicator(step = 2, total = 4)
     Text("앱 색을 골라 주세요", style = KkTheme.type.titleL, color = c.textPrimary)
-    Text("내 폰에만 적용돼요. 연인의 화면은 그대로예요.", style = KkTheme.type.bodyM, color = c.textSecondary)
-    // 미리보기: 지금 고른 테마로 그린 실제 컴포넌트(칩 · 분류 탭 · 버튼).
-    val shape = RoundedCornerShape(KkRadius.xl)
-    Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("미리보기", style = KkTheme.type.caption, color = c.textTertiary)
-            val days = state.preview?.daysLeft(state.today)
-            Text(
-                if (days != null) "전역까지 D-$days" else "전역까지 D-547",
-                style = KkTheme.type.labelS, color = c.textBrand,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bgBrandSubtle).padding(horizontal = 10.dp, vertical = 4.dp),
-            )
-        }
-        var seg by remember { mutableStateOf(0) }
-        KkSegmentedControl(listOf("전체", "편지", "그림"), seg, { seg = it })
-        KkPrimaryButton("편지 쓰기", onClick = {})
-    }
     val recommended = state.role?.let { ThemeAccent.defaultFor(it) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ThemeAccent.entries.chunked(2).forEach { row ->
@@ -357,13 +334,10 @@ private fun ServiceContent(state: OnboardingState, openSheet: (ServiceSheet) -> 
     val mine = state.role == Role.SOLDIER
     KkStepIndicator(step = 3, total = 4)
     Text(if (mine) "언제 입대했나요?" else "연인은 언제 입대했나요?", style = KkTheme.type.display, color = c.textPrimary)
-    Text("입대일만 알려 주면 전역일을 바로 계산해요.", style = KkTheme.type.bodyL, color = c.textSecondary)
     KkInput(
         value = "${state.branch.koreanName} · ${state.branch.months(state.today)}개월",
         onValueChange = {},
         label = "군종",
-        helper = Branch.entries.filter { it != state.branch && it != Branch.SOCIAL_SERVICE }
-            .joinToString(" · ") { "${it.koreanName.removeSuffix("대")} ${it.months(state.today)}개월" },
         onClick = { openSheet(ServiceSheet.BRANCH) },
     )
     KkInput(
@@ -371,7 +345,6 @@ private fun ServiceContent(state: OnboardingState, openSheet: (ServiceSheet) -> 
         onValueChange = {},
         label = "입대일",
         placeholder = "입대일을 골라 주세요",
-        helper = "훈련소 입소일 기준",
         onClick = { openSheet(ServiceSheet.DATE) },
     )
     Text("미리보기", style = KkTheme.type.labelM, color = c.textTertiary)

@@ -47,6 +47,10 @@ data class SettingsState(
     val role: Role? = null,
     val myName: String = "나",
     val partnerName: String = "연인",
+    /** 연인 폰 기종(연결 정보). 상대가 아직 올리지 않았으면 null. */
+    val partnerDevice: String? = null,
+    /** 이벤트 · 혜택 알림 동의(약관 동의의 선택 항목). */
+    val marketing: Boolean = false,
     val linked: Boolean = false,
     val linkedSince: LocalDate? = null,
     val anniversary: LocalDate? = null,
@@ -84,7 +88,7 @@ class SettingsViewModel(
         combine(settings.state, settings.displayMode, settings.accountProvider) { d, mode, provider -> Triple(d, mode, provider) },
         profile.observeTimelines(),
         people,
-        combine(settings.notifyPrefs, settings.autoBackup, settings.cellularBackup, settings.recoveryCodeSeen) { n, a, c, s -> listOf(n, a, c, s) },
+        combine(settings.notifyPrefs, settings.autoBackup, settings.cellularBackup, settings.recoveryCodeSeen, settings.marketingConsent) { n, a, c, s, m -> listOf(n, a, c, s, m) },
         backupInfo,
     ) { (d, mode, provider), timelines, (couple, users), flags, b ->
         val me = identity.userId
@@ -98,6 +102,8 @@ class SettingsViewModel(
             role = d.role,
             myName = users.firstOrNull { it.id == me }?.nickname?.takeIf { it.isNotBlank() } ?: "나",
             partnerName = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.nickname?.takeIf { it.isNotBlank() } ?: "연인",
+            partnerDevice = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.deviceName?.takeIf { it.isNotBlank() },
+            marketing = flags[4] as Boolean,
             linked = partnerId != null,
             linkedSince = since,
             anniversary = anniversary,
@@ -157,6 +163,18 @@ class SettingsViewModel(
             runCatching { notifyTransport?.upload(prefs) }
         }
     }
+
+    /** 알림 받기(설정 › 앱): Figma 최종 정리는 켜기/끄기 하나 — 받을 종류를 한꺼번에 바꾼다. */
+    fun setAllNotify(on: Boolean, platform: PlatformActions) {
+        val n = state.value.notify
+        setNotify(n.copy(letters = on, missYou = on, status = on, eventEve = on, anniversary = on), platform)
+    }
+
+    fun setAnniversaryAlerts(hundreds: Boolean, years: Boolean, platform: PlatformActions) {
+        setNotify(state.value.notify.copy(anniversary100 = hundreds, anniversaryYear = years), platform)
+    }
+
+    fun setMarketing(on: Boolean) = viewModelScope.launch { settings.setMarketingConsent(on) }
 
     fun setAutoBackup(on: Boolean) = viewModelScope.launch { settings.setAutoBackup(on) }
 

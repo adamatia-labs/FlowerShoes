@@ -73,12 +73,18 @@ data class ComposeDraft(
     val photos: List<String> = emptyList(),
     /** 글꼴 id(편지 쓰기 › 글꼴). */
     val font: String = "sans",
+    /** 글 속 그림 · 사진 순서("d:id" · "p:id"). k 번째가 글의 k 번째 자리 글자([OBJ]). */
+    val objects: List<String> = emptyList(),
+    /** 본문 커서(그림 · 사진을 넣을 자리). */
+    @kotlinx.serialization.Transient val cursor: Int = 0,
+    /** 바깥(그림 · 사진 · 스티커 넣기, 임시저장 불러오기)에서 글을 바꿀 때마다 오른다 — 입력 칸이 이때만 따라 맞춘다. */
+    @kotlinx.serialization.Transient val rev: Int = 0,
     @kotlinx.serialization.Transient val sending: Boolean = false,
 ) {
-    val canSend: Boolean get() = !sending && (text.isNotBlank() || drawings.isNotEmpty() || photos.isNotEmpty())
+    val canSend: Boolean get() = !sending && (plainText.isNotBlank() || drawings.isNotEmpty() || photos.isNotEmpty())
     val canAddDrawing: Boolean get() = drawings.size < Letter.MAX_DRAWINGS
     val canAddPhoto: Boolean get() = photos.size < Letter.MAX_PHOTOS
-    val isEmpty: Boolean get() = title.isBlank() && text.isBlank() && drawings.isEmpty() && photos.isEmpty()
+    val isEmpty: Boolean get() = title.isBlank() && plainText.isBlank() && drawings.isEmpty() && photos.isEmpty()
 
     companion object {
         const val MAX_CHARS = 1000
@@ -129,7 +135,10 @@ data class LetterState(
 sealed interface LetterIntent {
     data class Filter(val filter: LetterFilter) : LetterIntent
     data class EditTitle(val title: String) : LetterIntent
-    data class EditText(val text: String) : LetterIntent
+    data class EditText(val text: String, val cursor: Int = text.length, val external: Boolean = false) : LetterIntent
+
+    /** 글 속 k 번째 그림 · 사진 빼기. */
+    data class RemoveObject(val index: Int) : LetterIntent
     data class ChoosePaper(val paper: Paper) : LetterIntent
     data class AddDrawing(val meta: DrawingMeta) : LetterIntent
     data class RemoveDrawing(val id: String) : LetterIntent
@@ -195,7 +204,7 @@ class LetterViewModel(
                 title = l.title?.takeIf { it.isNotBlank() } ?: firstLine.ifBlank { "그림 ${l.drawingCount}장" },
                 drawingOnly = !l.hasText && l.drawingCount > 0,
                 unread = !mine && l.id !in read,
-                meta = "${l.visibleAt.toLocalDateTime(SEOUL).short()} · " + if (mine) "$my → $partner" else partner,
+                meta = "${l.visibleAt.toLocalDateTime(SEOUL).short()} · " + if (mine) my else partner,
                 thumb = th[l.id],
             )
         }
@@ -217,7 +226,7 @@ class LetterViewModel(
         viewModelScope.launch {
             val saved = settings.letterDraft.first() ?: return@launch
             val draft = runCatching { json.decodeFromString(ComposeDraft.serializer(), saved) }.getOrNull() ?: return@launch
-            ui.update { it.copy(draft = draft) }
+            ui.update { it.copy(draft = draft.normalized().copy(rev = it.draft.rev + 1)) }
             draft.drawings.forEach { loadDraftThumb(it) }
             draft.photos.forEach { id -> attachments.read(id)?.let { bytes -> ui.update { s -> s.copy(draftPhotos = s.draftPhotos + (id to bytes)) } } }
         }
@@ -227,26 +236,31 @@ class LetterViewModel(
         when (intent) {
             is LetterIntent.Filter -> ui.update { it.copy(filter = intent.filter) }
             is LetterIntent.EditTitle -> ui.update { it.copy(draft = it.draft.copy(title = intent.title.take(40))) }
-            is LetterIntent.EditText -> ui.update { it.copy(draft = it.draft.copy(text = intent.text.take(ComposeDraft.MAX_CHARS))) }
+            is LetterIntent.EditText -> ui.update {
+                val d = it.draft.editText(intent.text, intent.cursor)
+                it.copy(draft = if (intent.external) d.copy(rev = d.rev + 1) else d)
+            }
+            is LetterIntent.RemoveObject -> ui.update { it.copy(draft = it.draft.removeObjectAt(intent.index).let { d -> d.copy(rev = d.rev + 1) }) }
             is LetterIntent.ChoosePaper -> ui.update { it.copy(draft = it.draft.copy(paper = intent.paper.id)) }
             is LetterIntent.AddDrawing -> {
                 ui.update {
                     if (!it.draft.canAddDrawing) it
-                    else it.copy(draft = it.draft.copy(drawings = it.draft.drawings + intent.meta.copy(orderInLetter = it.draft.drawings.size)))
+                    // 그림은 커서 자리에 한 글자로 들어간다(Figma "그림 · 사진 = 글자").
+                    else it.copy(draft = it.draft.copy(drawings = it.draft.drawings + intent.meta.copy(orderInLetter = it.draft.drawings.size)).insertObject(drawingKey(intent.meta.id)))
                 }
                 loadDraftThumb(intent.meta)
             }
             is LetterIntent.AddPhoto -> viewModelScope.launch {
                 if (!ui.value.draft.canAddPhoto) return@launch
                 val id = attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, intent.jpeg)
-                ui.update { it.copy(draft = it.draft.copy(photos = it.draft.photos + id), draftPhotos = it.draftPhotos + (id to intent.jpeg)) }
+                ui.update { it.copy(draft = it.draft.copy(photos = it.draft.photos + id).insertObject(photoKey(id)), draftPhotos = it.draftPhotos + (id to intent.jpeg)) }
             }
             is LetterIntent.RemovePhoto -> ui.update {
-                it.copy(draft = it.draft.copy(photos = it.draft.photos - intent.attachmentId), draftPhotos = it.draftPhotos - intent.attachmentId)
+                it.copy(draft = it.draft.removeObjectAt(it.draft.objects.indexOf(photoKey(intent.attachmentId))), draftPhotos = it.draftPhotos - intent.attachmentId)
             }
             is LetterIntent.ChooseFont -> ui.update { it.copy(draft = it.draft.copy(font = intent.font)) }
             is LetterIntent.RemoveDrawing -> ui.update {
-                it.copy(draft = it.draft.copy(drawings = it.draft.drawings.filterNot { d -> d.id == intent.id }.mapIndexed { i, d -> d.copy(orderInLetter = i) }))
+                it.copy(draft = it.draft.removeObjectAt(it.draft.objects.indexOf(drawingKey(intent.id))))
             }
             is LetterIntent.Schedule -> ui.update { it.copy(draft = it.draft.copy(revealAt = intent.at)) }
             LetterIntent.Send -> send()
@@ -299,12 +313,8 @@ class LetterViewModel(
         if (!d.canSend) return
         ui.update { it.copy(draft = d.copy(sending = true)) }
         viewModelScope.launch {
-            // 글 · 그림 · 사진의 순서: 글 다음에 그림, 사진을 차례로(편지 쓰기 화면에서 보이는 순서 그대로).
-            val blocks = buildList {
-                if (d.text.isNotBlank()) add(LetterBlock.Text(d.text.trim()))
-                d.drawings.forEach { add(LetterBlock.DrawingRef(it.id)) }
-                d.photos.forEach { add(LetterBlock.Photo(it)) }
-            }
+            // 글 · 그림 · 사진의 순서: 편지 쓰기 화면의 글 속 자리 그대로.
+            val blocks = d.toBlocks()
             val visibleAt = d.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
             val font = d.font.takeIf { it != com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id }
             letters.send(letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font), d.drawings)
@@ -325,7 +335,7 @@ class LetterViewModel(
             val photos = letter.blocks.filterIsInstance<LetterBlock.Photo>().mapNotNull { b -> attachments.read(b.attachmentId)?.let { b.attachmentId to it } }.toMap()
             val (my, partner) = names.first()
             val at = letter.visibleAt.toLocalDateTime(SEOUL)
-            val meta = (if (mine) "$my → $partner" else "$partner → $my") + " · ${at.short()} (${weekday(at.date)})"
+            val meta = (if (mine) my else partner) + " · ${at.short()} (${weekday(at.date)})"
             val drawingOnly = !letter.hasText && letter.drawingCount == 1
             ui.update {
                 it.copy(

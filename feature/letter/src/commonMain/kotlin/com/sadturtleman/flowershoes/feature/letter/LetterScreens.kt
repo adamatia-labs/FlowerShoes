@@ -1,5 +1,20 @@
 package com.sadturtleman.flowershoes.feature.letter
 
+import androidx.compose.ui.text.style.TextGeometricTransform
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.layout.ContentScale
@@ -132,8 +147,7 @@ fun LetterInboxScreen(state: LetterState, onIntent: (LetterIntent) -> Unit, onCr
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("편지함", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.weight(1f))
             Text(
-                // Figma: 편지가 있으면 "+ 만들기", 빈 편지함은 "+ 편지 쓰기".
-                if (state.inbox.isEmpty()) "+ 편지 쓰기" else "+ 만들기", style = KkTheme.type.labelM, color = c.textBrand,
+                "+ 편지 쓰기", style = KkTheme.type.labelM, color = c.textBrand,
                 modifier = Modifier.clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onCreate)
                     .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
             )
@@ -187,15 +201,11 @@ private fun InboxItem(card: LetterCard, modifier: Modifier, onClick: () -> Unit)
                 else -> LetterLines(c.textMilitary)
             }
         }
+        // Figma 최종 정리: 종류 알약 없이 제목 · "10.21 · 지수". 안 읽은 편지만 제목 앞 점.
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (drawing) "그림" else "편지", style = KkTheme.type.labelS, color = if (drawing) c.textBrand else c.textMilitary,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(if (drawing) c.bgBrandSubtle else c.bgSurface)
-                    .padding(horizontal = KkSpacing.xs, vertical = KkSpacing.xxs),
-            )
             if (card.unread) Box(Modifier.size(6.dp).clip(CircleShape).background(c.heart))
+            Text(card.title, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(card.title, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(card.meta, style = KkTheme.type.caption, color = c.textTertiary, maxLines = 1)
     }
 }
@@ -205,37 +215,6 @@ private fun InboxItem(card: LetterCard, modifier: Modifier, onClick: () -> Unit)
 private fun LetterLines(color: Color) {
     Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
         listOf(110, 96, 104, 70).forEach { w -> Box(Modifier.width(w.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(color)) }
-    }
-}
-
-// ── 만들기 시트 ───────────────────────────────────────────────────────────
-
-/** 만들기 시트(Figma 4 · 만들기 시트): 그림만 보내기 · 편지 쓰기 · 예약 메시지. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LetterCreateSheet(onDismiss: () -> Unit, onDrawOnly: () -> Unit, onCompose: () -> Unit, onScheduled: () -> Unit) {
-    val c = KkTheme.colors
-    KkModalSheet(onDismiss) {
-        KkSheetHeader("무엇을 보낼까요?")
-        CreateOption(KkIcons.Heart, c.textBrand, c.bgBrandSubtle, "그림만 보내기", "손으로 그려 보내요. 글 없는 편지로 가고, 위젯에도 떠요") { onDismiss(); onDrawOnly() }
-        CreateOption(KkIcons.Mail, c.textMilitary, c.bgMilitarySubtle, "편지 쓰기", "글을 쓰고, 그림도 3장까지 넣을 수 있어요") { onDismiss(); onCompose() }
-        CreateOption(KkIcons.Clock, c.textSecondary, c.bgSubtle, "예약 메시지", "폰 사용 시간에 맞춰 도착해요") { onDismiss(); onScheduled() }
-    }
-}
-
-@Composable
-private fun CreateOption(icon: KkIcons, tint: Color, bg: Color, title: String, description: String, onClick: () -> Unit) {
-    val c = KkTheme.colors
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(bg).clickable(role = Role.Button, onClick = onClick).padding(KkSpacing.lg),
-        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        KkIcon(icon, tint = tint)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-            Text(title, style = KkTheme.type.titleS, color = c.textPrimary)
-            Text(description, style = KkTheme.type.bodyS, color = c.textSecondary)
-        }
     }
 }
 
@@ -353,23 +332,11 @@ fun LetterComposeRoute(
                     KkStatusChip(state.partnerName, selected = false, onClick = {}, dot = c.statusWarning)
                 }
                 PaperPicker(paper) { viewModel.onIntent(LetterIntent.ChoosePaper(it)) }
-                PaperCard(d, paper, viewModel::onIntent)
-                AttachedDrawings(
-                    d, state.draftThumbs, state.draftPhotos, onAddDrawing,
-                    onRemove = { viewModel.onIntent(LetterIntent.RemoveDrawing(it)) },
-                    onRemovePhoto = { viewModel.onIntent(LetterIntent.RemovePhoto(it)) },
+                PaperCard(d, paper, state.draftThumbs, state.draftPhotos, viewModel::onIntent)
+                ComposeTools(
+                    d, canPhoto = pickPhoto != null,
+                    onDrawing = onAddDrawing, onPhoto = { photoSource = true }, onSticker = { stickers = true }, onFont = { fonts = true },
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                        KkStatusChip("그림", selected = false, onClick = onAddDrawing, dot = c.statusWarning, enabled = d.canAddDrawing)
-                        if (pickPhoto != null) {
-                            KkStatusChip("사진", selected = false, onClick = { photoSource = true }, dot = c.statusWarning, enabled = d.canAddPhoto)
-                        }
-                        KkStatusChip("스티커", selected = false, onClick = { stickers = true }, dot = c.statusWarning)
-                        KkStatusChip("글꼴", selected = false, onClick = { fonts = true }, dot = c.statusWarning)
-                    }
-                    Text("${d.text.length} / ${ComposeDraft.MAX_CHARS}", style = KkTheme.type.caption, color = c.textTertiary, textAlign = TextAlign.End)
-                }
                 d.revealAt?.let { at ->
                     Text(
                         "${at.month.ordinal + 1}월 ${at.day}일 ${at.time.hhmm()}에 도착해요 · 그 전에는 상대 화면 어디에도 보이지 않아요",
@@ -405,7 +372,7 @@ fun LetterComposeRoute(
     }
     if (photoSource && pickPhoto != null) {
         KkModalSheet({ photoSource = false }) {
-            KkSheetHeader("사진", "편지 아래에 붙여요 · 최대 ${Letter.MAX_PHOTOS}장")
+            KkSheetHeader("사진", "커서 자리에 글자처럼 들어가요 · 최대 ${Letter.MAX_PHOTOS}장")
             KkSheetOption("사진첩에서 고르기", false, { photoSource = false; pickPhoto(false) })
             KkSheetOption("카메라로 찍기", false, { photoSource = false; pickPhoto(true) })
         }
@@ -432,9 +399,10 @@ fun LetterComposeRoute(
     }
     if (stickers) {
         KkModalSheet({ stickers = false }) {
-            KkSheetHeader("스티커", "글 끝에 붙여요")
+            KkSheetHeader("스티커", "커서 자리에 붙여요")
             StickerGrid { glyph ->
-                viewModel.onIntent(LetterIntent.EditText(d.text + glyph))
+                val at = d.cursor.coerceIn(0, d.text.length)
+                viewModel.onIntent(LetterIntent.EditText(d.text.substring(0, at) + glyph + d.text.substring(at), at + glyph.length, external = true))
                 stickers = false
             }
         }
@@ -473,14 +441,19 @@ private fun PaperPicker(selected: Paper, onPick: (Paper) -> Unit) {
     }
 }
 
-/** 편지지(Paper): 제목 + 32pt 줄 간격 본문. 줄은 편지지 색에 맞춘 괘선. */
+/** 편지지(Paper): 제목 + 본문. 본문 속 그림 · 사진은 글자처럼 커서 자리에 들어간다(Figma 최종 정리 › 편지 쓰기). */
 @Composable
-private fun PaperCard(d: ComposeDraft, paper: Paper, onIntent: (LetterIntent) -> Unit) {
+private fun PaperCard(
+    d: ComposeDraft,
+    paper: Paper,
+    thumbs: Map<String, DrawingDocument>,
+    photos: Map<String, ByteArray>,
+    onIntent: (LetterIntent) -> Unit,
+) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     val ink = if (paper == Paper.NIGHT) c.textInverse else c.textPrimary
     val hint = if (paper == Paper.NIGHT) c.textInverse.copy(alpha = 0.5f) else c.textTertiary
-    val rule = paper.rule(c)
     Column(
         Modifier.fillMaxWidth().heightIn(min = 341.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(paper.background(c)).padding(KkSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
@@ -497,79 +470,139 @@ private fun PaperCard(d: ComposeDraft, paper: Paper, onIntent: (LetterIntent) ->
             },
         )
         val font = KkLetterFont.of(d.font)
-        val body = KkTheme.type.bodyM.copy(fontFamily = font.family(), fontSize = font.size(16f), lineHeight = 32.sp, letterSpacing = 0.sp, color = ink)
-        BasicTextField(
-            value = d.text,
-            onValueChange = { onIntent(LetterIntent.EditText(it)) },
-            textStyle = body,
-            cursorBrush = SolidColor(c.bgBrand),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 256.dp)
-                .drawBehind {
-                    val step = 32.dp.toPx()
-                    var y = step
-                    while (y <= size.height) {
-                        if (paper == Paper.GRID) drawLine(rule, Offset(0f, y), Offset(size.width, y), 1f)
-                        else drawLine(rule, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
-                        y += step
-                    }
-                    if (paper == Paper.GRID) {
-                        var x = step
-                        while (x <= size.width) { drawLine(rule, Offset(x, 0f), Offset(x, size.height), 1f); x += step }
+        // 글 속 그림이 줄 높이를 키우도록 줄 간격은 글꼴 기본값(고정 줄 높이는 큰 글자를 겹치게 한다).
+        val body = KkTheme.type.bodyM.copy(fontFamily = font.family(), fontSize = font.size(16f), lineHeight = TextUnit.Unspecified, letterSpacing = 0.sp, color = ink)
+        var field by remember { mutableStateOf(TextFieldValue(d.text, TextRange(d.cursor.coerceIn(0, d.text.length)))) }
+        // 그림 · 사진을 넣었거나 임시저장을 불러온 경우처럼 바깥에서 글이 바뀌면 맞춘다.
+        // 직접 치는 글은 이 칸이 원본이다 — 화면에 늦게 도착한 옛 상태로 되돌리면 글자가 빠진다.
+        LaunchedEffect(d.rev) {
+            if (field.text != d.text) field = TextFieldValue(d.text, TextRange(d.cursor.coerceIn(0, d.text.length)))
+        }
+        var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+        var selectedObj by remember { mutableStateOf<Int?>(null) }
+        val objectStyle = remember(d.objects) { inlineObjectTransformation(d.objects) }
+        Box(Modifier.fillMaxWidth()) {
+            BasicTextField(
+                value = field,
+                onValueChange = { v ->
+                    field = v
+                    selectedObj = null
+                    onIntent(LetterIntent.EditText(v.text, v.selection.end))
+                },
+                textStyle = body,
+                cursorBrush = SolidColor(c.bgBrand),
+                visualTransformation = objectStyle,
+                onTextLayout = { layout = it },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 256.dp).semantics { contentDescription = "편지 내용" },
+                decorationBox = { inner ->
+                    Box { if (d.text.isEmpty()) Text("마음을 적어 보세요", style = body.copy(color = hint)); inner() }
+                },
+            )
+            // 글 속 자리(OBJ) 위에 그림 · 사진을 그린다. 누르면 고른 테두리 + 빼기.
+            val density = LocalDensity.current
+            val l = layout
+            if (l != null && l.layoutInput.text.length == d.text.length) {
+                var k = -1
+                d.text.forEachIndexed { i, ch ->
+                    if (ch != OBJ) return@forEachIndexed
+                    val index = ++k
+                    val key = d.objects.getOrNull(index) ?: return@forEachIndexed
+                    val drawing = key.startsWith("d:")
+                    // 자리 글자가 실제로 차지한 칸: 앞뒤 커서 위치(자간 포함) × 그 줄 높이.
+                    val line = l.getLineForOffset(i)
+                    val left = l.getHorizontalPosition(i, usePrimaryDirection = true)
+                    val right = if (i + 1 < d.text.length && l.getLineForOffset(i + 1) == line) l.getBoundingBox(i + 1).left
+                    else l.getLineRight(line)
+                    val r = androidx.compose.ui.geometry.Rect(left, l.getLineTop(line), right, l.getLineBottom(line))
+                    val pad = with(density) { (if (drawing) 4.dp else 2.dp).toPx() }
+                    Box(
+                        Modifier
+                            .offset { IntOffset((r.left + pad).toInt(), (r.top + pad).toInt()) }
+                            .size(with(density) { (r.width - pad * 2).coerceAtLeast(1f).toDp() }, with(density) { (r.height - pad * 2).coerceAtLeast(1f).toDp() })
+                            .clickable(role = Role.Button) { selectedObj = if (selectedObj == index) null else index }
+                            .semantics { contentDescription = if (drawing) "글 속 그림" else "글 속 사진" },
+                    ) {
+                        InlineObject(key, thumbs, photos, Modifier.fillMaxSize())
+                        if (selectedObj == index) {
+                            Box(Modifier.fillMaxSize().border(1.5.dp, c.borderBrand))
+                            listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomStart, Alignment.BottomEnd).forEach { a ->
+                                Box(Modifier.align(a).size(8.dp).background(Color.White).border(1.5.dp, c.borderBrand))
+                            }
+                            RemoveBadge { selectedObj = null; onIntent(LetterIntent.RemoveObject(index)) }
+                        }
                     }
                 }
-                .semantics { contentDescription = "편지 내용" },
-            decorationBox = { inner ->
-                Box { if (d.text.isEmpty()) Text("마음을 적어 보세요", style = body.copy(color = hint)); inner() }
-            },
-        )
+            }
+        }
     }
 }
 
-/** 붙인 그림(72 썸네일) + 그림 그리기 칸 + "그림 1 / 3". 썸네일의 ×로 뺀다. */
+/** 글 속 그림 · 사진 한 칸. */
 @Composable
-private fun AttachedDrawings(
-    d: ComposeDraft,
-    thumbs: Map<String, DrawingDocument>,
-    photos: Map<String, ByteArray>,
-    onAdd: () -> Unit,
-    onRemove: (String) -> Unit,
-    onRemovePhoto: (String) -> Unit,
-) {
+private fun InlineObject(key: String, thumbs: Map<String, DrawingDocument>, photos: Map<String, ByteArray>, modifier: Modifier) {
     val c = KkTheme.colors
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-        d.drawings.forEach { meta ->
-            val shape = RoundedCornerShape(KkRadius.md)
-            Box(Modifier.size(72.dp)) {
-                Box(
-                    Modifier.fillMaxSize().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(4.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    thumbs[meta.id]?.let { DrawingView(it) } ?: KkIcon(KkIcons.Pen, tint = c.textTertiary)
-                }
-                RemoveBadge { onRemove(meta.id) }
-            }
+    if (key.startsWith("d:")) {
+        Box(modifier.clip(RoundedCornerShape(KkRadius.sm)).background(Color.White).padding(4.dp), contentAlignment = Alignment.Center) {
+            thumbs[key.removePrefix("d:")]?.let { DrawingView(it) } ?: KkIcon(KkIcons.Pen, tint = c.textTertiary)
         }
-        if (d.canAddDrawing) {
-            Box(
-                Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
-                    .clickable(role = Role.Button, onClick = onAdd).semantics { contentDescription = "그림 그리기" },
-                contentAlignment = Alignment.Center,
-            ) { KkIcon(KkIcons.Pen, tint = c.textPrimary) }
+    } else {
+        val bytes = photos[key.removePrefix("p:")]
+        val bitmap = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
+        Box(modifier.clip(RoundedCornerShape(KkRadius.sm)).background(c.bgSubtle), contentAlignment = Alignment.Center) {
+            if (bitmap != null) Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            else KkIcon(KkIcons.Photo, tint = c.textSecondary, size = 18.dp)
         }
-        d.photos.forEach { id ->
-            val bitmap = remember(photos[id]) { photos[id]?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
-            Box(Modifier.size(72.dp)) {
-                Box(Modifier.fillMaxSize().clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)) {
-                    if (bitmap != null) Image(bitmap, contentDescription = "붙인 사진", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                }
-                RemoveBadge { onRemovePhoto(id) }
-            }
-        }
-        Text(
-            "그림 ${d.drawings.size} / 3" + if (d.photos.isNotEmpty()) " · 사진 ${d.photos.size} / ${Letter.MAX_PHOTOS}" else "",
-            style = KkTheme.type.caption, color = c.textTertiary,
-        )
     }
+}
+
+/**
+ * 글 속 자리 글자의 모양: 그림은 큰 칸, 사진은 작은 칸. 투명 전각 공백을 옆으로 늘려 자리만 잡는다 —
+ * 글자 수 · 커서 위치는 그대로(1:1).
+ */
+private fun inlineObjectTransformation(objects: List<String>) = VisualTransformation { text ->
+    val b = AnnotatedString.Builder()
+    var k = 0
+    text.text.forEach { ch ->
+        if (ch == OBJ) {
+            val drawing = objects.getOrNull(k++)?.startsWith("d:") == true
+            b.withStyle(
+                if (drawing) SpanStyle(color = Color.Transparent, fontSize = 112.sp, textGeometricTransform = TextGeometricTransform(scaleX = DRAWING_WIDEN))
+                else SpanStyle(color = Color.Transparent, fontSize = 26.sp, textGeometricTransform = TextGeometricTransform(scaleX = PHOTO_WIDEN)),
+            ) { append(IDEOGRAPHIC_SPACE) }
+        } else {
+            b.append(ch)
+        }
+    }
+    TransformedText(b.toAnnotatedString(), OffsetMapping.Identity)
+}
+
+private const val IDEOGRAPHIC_SPACE = '　'
+/** 자리 글자를 옆으로 늘려 칸 비율을 맞춘다(그림 ≈ 4:3, 사진 ≈ 4:3). */
+private const val DRAWING_WIDEN = 1.75f
+private const val PHOTO_WIDEN = 1.5f
+
+/** 도구(Figma 편지 쓰기): 그림 · 사진 · 스티커 · 글꼴 아이콘 + 글자 수. */
+@Composable
+private fun ComposeTools(d: ComposeDraft, canPhoto: Boolean, onDrawing: () -> Unit, onPhoto: () -> Unit, onSticker: () -> Unit, onFont: () -> Unit) {
+    val c = KkTheme.colors
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        ToolButton("그림", d.canAddDrawing, onDrawing) { KkIcon(KkIcons.Pen, tint = c.textPrimary) }
+        if (canPhoto) ToolButton("사진", d.canAddPhoto, onPhoto) { KkIcon(KkIcons.Photo, tint = c.textPrimary) }
+        ToolButton("스티커", true, onSticker) { KkIcon(KkIcons.Sticker, tint = c.textPrimary) }
+        ToolButton("글꼴", true, onFont) { Text("T", style = KkTheme.type.titleM, color = c.textPrimary) }
+        Spacer(Modifier.weight(1f))
+        Text("${d.text.length} / ${ComposeDraft.MAX_CHARS}", style = KkTheme.type.caption, color = c.textTertiary)
+    }
+}
+
+@Composable
+private fun ToolButton(label: String, enabled: Boolean, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.sm))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label }.alpha(if (enabled) 1f else 0.35f),
+        contentAlignment = Alignment.Center,
+    ) { content() }
 }
 
 @Composable

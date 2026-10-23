@@ -87,15 +87,19 @@ private fun ddayStyle(label: String, value: String): Pair<Color, Color> = when {
 }
 
 /**
- * 서랍 탭(Figma 순서): 하트 · 꽃 · 표정 · 일상 · 글자 · D-day · 군 생활(평생) · 봄 소풍(1,100원).
- * D-day 는 그림 화면이 지금 숫자로 채운다.
+ * 서랍 탭(Figma 최종 정리 › 그림 / 스티커): 하트·꽃 · 군대 · 글자 · D-day.
+ * 하트·꽃 = 무료 그림 팩 전부, 군대 = 군 생활 팩(꽃신 평생). D-day 는 그림 화면이 지금 숫자로 채운다.
  */
 val STICKER_TABS: List<StickerTab> = buildList {
-    IMAGE_PACKS.filter { it.price == null }.forEach { add(StickerTab(it.label, it.items.map(ImageSticker::id))) }
+    add(StickerTab("하트·꽃", IMAGE_PACKS.filter { it.price == null }.flatMap { p -> p.items.map(ImageSticker::id) }))
+    IMAGE_PACKS.firstOrNull { it.key == "military" }?.let { add(StickerTab("군대", it.items.map(ImageSticker::id), it.price)) }
     add(StickerTab("글자", TEXT_STYLES.keys.map(StickerIds::text)))
     add(StickerTab("D-day", emptyList(), dday = true))
-    IMAGE_PACKS.filter { it.price != null }.forEach { add(StickerTab(it.label, it.items.map(ImageSticker::id), it.price)) }
 }
+
+/** 서랍 위 잠긴 팩 띠(Figma: "봄 소풍 스티커 · 잠김  ▶ 광고 보고 쓰기"). */
+val FEATURED_LOCKED_PACK: StickerTab? =
+    IMAGE_PACKS.firstOrNull { it.key == "spring" }?.let { StickerTab(it.label, it.items.map(ImageSticker::id), it.price) }
 
 /** 스티커의 사람이 읽는 이름(스크린리더). */
 fun stickerLabel(id: String): String = when {

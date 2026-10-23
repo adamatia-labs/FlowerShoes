@@ -39,12 +39,12 @@ fun ServiceEntity.toModel() = Service(
 
 fun Event.toEntity() = EventEntity(
     id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(), leaveGrantId,
-    photoIds.takeIf { it.isNotEmpty() }?.joinToString(","),
+    photoIds.takeIf { it.isNotEmpty() }?.joinToString(","), memo.ifBlank { null },
 )
 fun EventEntity.toModel() = Event(
     id, EventType.valueOf(type), title, LocalDateTime.parse(start), LocalDateTime.parse(end), alarm,
     updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(), leaveGrantId,
-    photoIds?.split(',')?.filter { it.isNotBlank() }.orEmpty(),
+    photoIds?.split(',')?.filter { it.isNotBlank() }.orEmpty(), memo.orEmpty(),
 )
 
 fun LeaveGrant.toEntity() = LeaveGrantEntity(

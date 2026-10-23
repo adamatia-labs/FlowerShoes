@@ -53,6 +53,8 @@ class NotificationSync(
                 events = if (p.eventEve) upcoming else emptyList(),
                 timeline = if (p.anniversary) timelines.firstOrNull()?.second else null,
                 anniversary = if (p.anniversary) couple?.anniversary?.let(LocalDate::parse) else null,
+                anniversaryHundreds = p.anniversary100,
+                anniversaryYears = p.anniversaryYear,
             )
         }
             .distinctUntilChanged()
