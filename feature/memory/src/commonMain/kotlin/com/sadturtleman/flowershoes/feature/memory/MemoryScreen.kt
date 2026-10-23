@@ -238,7 +238,8 @@ private fun DrawingDetailScreen(
     val c = KkTheme.colors
     val replay = rememberReplayState(detail.doc, autoPlay = false)
     BackHandler(onBack = onBack)
-    Column(Modifier.fillMaxSize().background(c.bgCanvas)) {
+    // 읽는 화면은 탭 바 없이 전체(Figma) — 아래 버튼이 제스처 바에 걸리지 않게.
+    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
         KkTopBar(
             detail.dateTitle, onLeading = onBack, modifier = Modifier.padding(horizontal = KkSpacing.xl),
             trailingText = if (onShare != null) "공유" else null, onTrailing = { onShare?.invoke() },

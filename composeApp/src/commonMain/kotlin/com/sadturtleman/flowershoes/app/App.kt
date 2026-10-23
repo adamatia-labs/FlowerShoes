@@ -162,6 +162,8 @@ private fun MainShell() {
     val imageShare = rememberImageShare()
     val c = KkTheme.colors
     val letterOpen = letters.state.collectAsState().value.open != null
+    val memory = koinViewModel<com.sadturtleman.flowershoes.feature.memory.MemoryViewModel>()
+    val memoryDetail = memory.state.collectAsState().value.detail != null
 
     // 알림 · 위젯에서 들어온 딥링크
     val link by DeepLinks.next.collectAsState()
@@ -307,7 +309,7 @@ private fun MainShell() {
     // 복원 뒤 다시 시작했을 때 한 번: "거의 다 됐어요"(복원 · 지수 폰 확인 대기). 둘러보기를 누르면 배너만 남는다.
     var waitingSeen by rememberSaveable { mutableStateOf(false) }
     if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner && !waitingSeen) {
-        com.sadturtleman.flowershoes.feature.settings.RestoreWaitingScreen(partnerName = "연인", onBrowse = { waitingSeen = true })
+        com.sadturtleman.flowershoes.feature.settings.RestoreWaitingScreen(partnerName = settingsState.partnerName, onBrowse = { waitingSeen = true })
         return
     }
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
@@ -354,10 +356,13 @@ private fun MainShell() {
                     },
                     saveImage = imageSaver,
                     shareImage = imageShare,
+                    viewModel = memory,
                 )
             }
         }
-        BottomBar(tab, onSelect = { tab = it })
+        // 받은 편지 · 그림 · 추억 그림 상세는 탭 바 없이 전체 화면(Figma).
+        val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
+        if (!reading) BottomBar(tab, onSelect = { tab = it })
     }
     if (creating) {
         com.sadturtleman.flowershoes.feature.letter.LetterCreateSheet(

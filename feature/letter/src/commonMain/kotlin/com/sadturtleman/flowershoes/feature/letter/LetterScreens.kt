@@ -237,7 +237,8 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
     val c = KkTheme.colors
     val paper = Paper.of(open.letter.paper)
     val ink = if (paper == Paper.NIGHT) c.textInverse else c.textPrimary
-    Column(Modifier.fillMaxSize().background(c.bgCanvas)) {
+    // 읽는 화면은 탭 바 없이 전체(Figma) — 아래 버튼이 제스처 바에 걸리지 않게.
+    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
         KkTopBar(
             "편지", onLeading = { onIntent(LetterIntent.Close) },
             trailingText = if (open.mine) "삭제" else null, onTrailing = { onIntent(LetterIntent.Delete(open.letter.id)) },

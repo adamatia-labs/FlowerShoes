@@ -392,7 +392,7 @@ fun RestoreWaitingScreen(partnerName: String, onBrowse: () -> Unit) {
             Box(Modifier.size(64.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
                 KkIcon(KkIcons.Clock, tint = c.textPrimary)
             }
-            Header("거의 다 됐어요", "${partnerName} 폰이 새 폰을 확인하면 바로 이어져요. ${partnerName}가 따로 할 일은 없어요.")
+            Header("거의 다 됐어요", "${partnerName} 폰이 새 폰을 확인하면 바로 이어져요. ${partnerName.withSubject()} 따로 할 일은 없어요.")
             InfoCard(spacing = 14.dp) {
                 listOf(
                     Triple("백업 복원", "완료", c.statusSuccess to c.textSecondary),

@@ -55,7 +55,8 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
     val ref = open.letter.blocks.filterIsInstance<LetterBlock.DrawingRef>().first()
     val doc = open.drawings[ref.drawingId]
     val replay = doc?.let { rememberReplayState(it, autoPlay = ref.drawingId in open.firstView) }
-    Column(Modifier.fillMaxSize().background(c.bgCanvas)) {
+    // 읽는 화면은 탭 바 없이 전체(Figma) — 아래 버튼이 제스처 바에 걸리지 않게.
+    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
         KkTopBar(
             open.drawingTitle, onLeading = { onIntent(LetterIntent.Close) }, leading = KkTopBarLeading.Close,
             modifier = Modifier.padding(horizontal = KkSpacing.lg),
