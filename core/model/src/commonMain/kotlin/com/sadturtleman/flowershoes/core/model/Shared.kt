@@ -46,7 +46,7 @@ data class MissYou(
 )
 
 @Serializable
-enum class EventType { VACATION, OVERNIGHT, VISIT, TRAINING, DUTY }
+enum class EventType { VACATION, OVERNIGHT, VISIT, TRAINING, DUTY, OTHER }
 
 /**
  * 일정. 둘 다 고치는 공유 데이터라 행 단위 LWW(lamport, lastWriterDevice)로 맞춘다.
@@ -68,6 +68,8 @@ data class Event(
     val leaveGrantId: String? = null,
     /** 만남 사진(추억 › 만남 카드, 최대 3). 첨부 id — 본문은 편지 사진처럼 blob 으로 간다. */
     val photoIds: List<String> = emptyList(),
+    /** 메모(일정 추가 › 메모). */
+    val memo: String = "",
 )
 
 /** 받은 휴가 종류(휴가 › 추가). */

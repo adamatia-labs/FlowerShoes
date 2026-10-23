@@ -150,7 +150,7 @@ class MemoryViewModel(
     ) { s, (ls, hearts), es, (n, timeline), thumbs ->
         val (my, partner, since) = n
         val drawingEntries = ls.filter { it.drawingCount > 0 && !it.hasText }.map { l ->
-            MemoryEntry.Drawing(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: "그림 한 장", if (l.authorId == me) "$my → $partner" else "$partner → $my", thumbs[l.id], hearts[l.id] ?: 0)
+            MemoryEntry.Drawing(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: "그림 한 장", if (l.authorId == me) my else partner, thumbs[l.id], hearts[l.id] ?: 0)
         }
         val letterEntries = ls.filter { it.hasText }.map { l ->
             val text = l.blocks.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text }.replace('\n', ' ')
@@ -293,6 +293,7 @@ internal fun EventType.label() = when (this) {
     EventType.VISIT -> "면회"
     EventType.TRAINING -> "훈련"
     EventType.DUTY -> "당직"
+    EventType.OTHER -> "기타"
 }
 
 /** "1박 2일" · 같은 날 시간이 있으면 "3시간". 종일 하루면 없음. */

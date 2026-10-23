@@ -23,10 +23,10 @@ import kotlinx.coroutines.IO
         SyncOpEntity::class, StreamCounterEntity::class, RecvCursorEntity::class, RecvPendingEntity::class,
         PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class, LeaveGrantEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
-    // 2: 휴가 관리(leave_grant 표 · event.leaveGrantId). 3: 편지 글꼴(letter.font). 4: 만남 사진(event.photoIds).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
+    // 2: 휴가 관리(leave_grant 표 · event.leaveGrantId). 3: 편지 글꼴(letter.font). 4: 만남 사진(event.photoIds). 5: 일정 메모(event.memo) · 폰 기종(user.deviceName).
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {

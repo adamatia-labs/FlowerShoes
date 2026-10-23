@@ -159,4 +159,5 @@ fun com.sadturtleman.flowershoes.core.model.EventType.koreanLabel(): String = wh
     com.sadturtleman.flowershoes.core.model.EventType.VISIT -> "면회"
     com.sadturtleman.flowershoes.core.model.EventType.TRAINING -> "훈련"
     com.sadturtleman.flowershoes.core.model.EventType.DUTY -> "당직"
+    com.sadturtleman.flowershoes.core.model.EventType.OTHER -> "기타"
 }

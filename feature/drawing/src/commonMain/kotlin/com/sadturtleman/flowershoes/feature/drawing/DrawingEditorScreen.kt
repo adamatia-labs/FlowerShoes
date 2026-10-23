@@ -65,6 +65,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.data.DrawingMeta
+import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
 import com.sadturtleman.flowershoes.core.designsystem.KkDialog
 import com.sadturtleman.flowershoes.core.designsystem.KkDialogHost
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
@@ -160,7 +162,8 @@ fun DrawingEditorScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 KkTopBar(
-                    if (forLetter) "그림 그리기" else "그림 보내기", onLeading = close, leading = KkTopBarLeading.Close,
+                    // Figma 최종 정리: 제목은 "그림 보내기"(편지에 넣을 때도).
+                    "그림 보내기", onLeading = close, leading = KkTopBarLeading.Close,
                     // Figma 4-1: 다음 → 보내기 단계(편지에 넣을 때는 "편지에 넣을까요?").
                     trailingButton = "다음", trailingEnabled = state.canUndo && !state.saving,
                     onTrailing = { onIntent(DrawingIntent.Next) },
@@ -176,11 +179,7 @@ fun DrawingEditorScreen(
                 Row(Modifier.fillMaxWidth().alpha(chrome), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
                     ToolButton(KkIcons.Undo, "되돌리기", selected = false, enabled = state.canUndo) { onIntent(DrawingIntent.Undo) }
                     ToolButton(KkIcons.Redo, "다시 하기", selected = false, enabled = state.canRedo) { onIntent(DrawingIntent.Redo) }
-                    Spacer(Modifier.weight(1f))
-                    KkStatusChip(
-                        if (state.stabilize) "손떨림 보정 켜짐" else "손떨림 보정 꺼짐", selected = state.stabilize,
-                        onClick = { onIntent(DrawingIntent.ToggleStabilize) }, dot = if (state.stabilize) Color.White else c.textTertiary,
-                    )
+                    // Figma 최종 정리: 되돌리기 · 다시 하기만(손떨림 보정은 늘 켜 둔다).
                 }
             }
             ToolPanel(
@@ -294,7 +293,6 @@ private fun DrawingCanvas(
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
             ) {
                 Text("손가락으로 바로 그려 보세요", style = KkTheme.type.titleS, color = c.textPrimary)
-                Text("그림이 어렵다면 사진이나 스티커로 시작해도 돼요", style = KkTheme.type.bodyS, color = c.textSecondary, textAlign = TextAlign.Center)
                 Row(Modifier.padding(top = KkSpacing.xs), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                     HintChip(KkIcons.Photo, "사진") { onOpenMenu(EditorMenu.PHOTO) }
                     HintChip(KkIcons.Sticker, "스티커") { onOpenMenu(EditorMenu.STICKER) }
@@ -445,26 +443,26 @@ private fun BrightnessPopup(base: Long, current: Long, modifier: Modifier, onPic
 }
 
 /**
- * 스티커(Figma 그림 / 스티커): 회색 띠 안 탭 칩(하트 · 꽃 · 표정 · 일상 · 글자 · D-day · 군 생활 · 평생 · 봄 소풍 · 1,100원)
- * + 56 칸 서랍(가로로 넘김). 잠긴 팩은 흐리게 미리보기만 — 누르면 안내.
+ * 스티커(Figma 최종 정리 › 그림 / 스티커): 잠긴 팩 띠("봄 소풍 스티커 · 잠김 ▶ 광고 보고 쓰기")
+ * + 분류 탭(하트·꽃 · 군대 · 글자 · D-day) + 56 칸 서랍(가로로 넘김). 잠긴 팩은 흐리게 — 누르면 안내.
  */
 @Composable
 private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
     val c = KkTheme.colors
     var lockedInfo by remember { mutableStateOf<com.sadturtleman.flowershoes.core.drawingui.StickerTab?>(null) }
+    var adInfo by remember { mutableStateOf(false) }
     val tab = STICKER_TABS[state.stickerTab.coerceIn(STICKER_TABS.indices)]
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
-            .horizontalScroll(rememberScrollState()).padding(KkSpacing.xxs),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        STICKER_TABS.forEachIndexed { i, t ->
-            KkStatusChip(
-                t.chip, selected = i == state.stickerTab, onClick = { onIntent(DrawingIntent.SetStickerTab(i)) },
-                dot = if (i == state.stickerTab) Color.White else c.statusWarning,
-            )
+    com.sadturtleman.flowershoes.core.drawingui.FEATURED_LOCKED_PACK?.let { pack ->
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(c.bgBrandSubtle)
+                .padding(start = KkSpacing.lg, end = KkSpacing.sm, top = KkSpacing.sm, bottom = KkSpacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("${pack.label} 스티커 · 잠김", style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
+            KkButton("▶ 광고 보고 쓰기", { adInfo = true }, size = KkButtonSize.M)
         }
     }
+    KkSegmentedControl(STICKER_TABS.map { it.label }, state.stickerTab, { onIntent(DrawingIntent.SetStickerTab(it)) })
     val items = if (tab.dday) state.ddayStickers else tab.ids
     if (items.isEmpty()) {
         Text("복무 정보를 넣으면 D-day 스티커가 생겨요", style = KkTheme.type.bodyS, color = c.textTertiary, modifier = Modifier.padding(vertical = KkSpacing.lg))
@@ -488,7 +486,13 @@ private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) ->
             }
         }
     }
-    Text(if (tab.locked) "${tab.chip} — 잠긴 스티커예요" else "캔버스를 누르면 그 자리에 붙어요", style = KkTheme.type.caption, color = c.textTertiary)
+    if (adInfo) {
+        KkModalSheet({ adInfo = false }) {
+            // 보상형 광고(오늘 하루 열기)는 광고 SDK 연결과 함께 열린다 — 그 전에는 안내만.
+            KkSheetHeader("광고 보고 쓰기", "광고를 보면 오늘 하루 이 스티커를 쓸 수 있어요. 광고는 앱 출시와 함께 열려요.")
+            KkPrimaryButton("확인", { adInfo = false }, Modifier.fillMaxWidth())
+        }
+    }
     lockedInfo?.let { t ->
         KkModalSheet({ lockedInfo = null }) {
             KkSheetHeader(

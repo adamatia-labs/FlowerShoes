@@ -125,7 +125,7 @@ class InboxApplier(
             is OpPayload.UserPut -> {
                 val local = db.userDao().get(p.userId)
                 if (local == null || p.lamport >= local.nicknameLamport) {
-                    db.userDao().upsert(UserEntity(p.userId, p.role, p.nickname, p.lamport))
+                    db.userDao().upsert(UserEntity(p.userId, p.role, p.nickname, p.lamport, p.deviceName.ifBlank { local?.deviceName }))
                 }
             }
             is OpPayload.AnniversaryPut -> {

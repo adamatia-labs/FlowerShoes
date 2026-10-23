@@ -24,6 +24,8 @@ data class UserEntity(
     val role: String,
     val nickname: String,
     val nicknameLamport: Long,
+    /** 이 사람 폰 기종(설정 › 연결 정보 "지수 폰"). */
+    val deviceName: String? = null,
 )
 
 @Entity(tableName = "device", indices = [Index("userId")])
@@ -81,6 +83,7 @@ data class EventEntity(
     val leaveGrantId: String? = null,
     /** 만남 사진 첨부 id 들(쉼표로 이음). */
     val photoIds: String? = null,
+    val memo: String? = null,
 )
 
 /** 받은 휴가(휴가 관리). 일정과 같은 LWW · tombstone. */

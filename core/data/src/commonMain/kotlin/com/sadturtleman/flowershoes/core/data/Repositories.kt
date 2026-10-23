@@ -74,12 +74,21 @@ class ProfileRepository(
         db.serviceDao().observeAll().map { list -> list.map { it.toModel() }.map { it to calculator.timeline(it) } }
 
     /** 내 역할 · 이름. 연결돼 있으면 상대 폰에도 간다(이름은 "민준 ♥ 지수" · 편지 · 알림에 쓰인다). */
-    suspend fun saveMe(role: Role, nickname: String) {
+    suspend fun saveMe(role: Role, nickname: String, deviceName: String? = null) {
+        val device = deviceName ?: db.userDao().get(identity.userId)?.deviceName.orEmpty()
         writer.write(
             OpKind.PROFILE, "user", identity.userId,
-            localWrite = { lamport -> db.userDao().upsert(UserEntity(identity.userId, role.name, nickname, lamport)) },
-            payload = { lamport -> OpPayload.UserPut(identity.userId, role.name, nickname, lamport) },
+            localWrite = { lamport -> db.userDao().upsert(UserEntity(identity.userId, role.name, nickname, lamport, device.ifBlank { null })) },
+            payload = { lamport -> OpPayload.UserPut(identity.userId, role.name, nickname, lamport, device) },
         )
+    }
+
+    /** 이 폰 기종을 내 정보에 싣는다(바뀌었을 때만). 연인의 설정 › 연결 정보에 "민준 폰 Galaxy S25"로 보인다. */
+    suspend fun publishDevice(deviceName: String) {
+        if (deviceName.isBlank()) return
+        val me = db.userDao().get(identity.userId) ?: return
+        if (me.deviceName == deviceName) return
+        saveMe(Role.valueOf(me.role), me.nickname, deviceName)
     }
 
     suspend fun saveService(service: Service) {

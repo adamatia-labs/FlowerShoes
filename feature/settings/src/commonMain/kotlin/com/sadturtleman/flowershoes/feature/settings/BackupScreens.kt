@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
@@ -238,16 +239,13 @@ fun RestoreRoute(
                 RestoreUi.Unavailable -> Header("백업에서 복원하기", "이 플랫폼에서는 아직 백업을 쓸 수 없어요.")
                 is RestoreUi.Found -> FoundContent(s.preview, platform.keySyncName)
                 is RestoreUi.Code -> {
-                    Header(
-                        "복구 코드를 입력해 주세요",
-                        "다른 기종으로 바꿨거나 키체인 동기화가 꺼져 있으면 열쇠가 넘어오지 않아요. 백업을 켤 때 적어 둔 24자리 코드를 입력해 주세요.",
-                    )
+                    // Figma 최종 정리: 제목 + 칸만(설명 · 도움말 없음).
+                    Header("복구 코드를 입력해 주세요")
                     KkInput(
                         value = s.input,
                         onValueChange = viewModel::editCode,
                         label = "복구 코드",
                         placeholder = "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX",
-                        helper = "대문자와 숫자 24자리 · 하이픈은 없어도 돼요",
                         error = s.error,
                     )
                 }
@@ -269,8 +267,10 @@ fun RestoreRoute(
         ) {
             when (val s = ui) {
                 is RestoreUi.Found -> {
+                    // Figma: 복원하기 · 복구 코드로 복원하기(보조) · 복원 안 하기.
                     KkPrimaryButton("복원하기", viewModel::restore, enabled = s.preview.keySource != KeySource.NONE)
-                    KkButton("복구 코드로 복원하기", viewModel::useRecoveryCode, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+                    KkSecondaryButton("복구 코드로 복원하기", viewModel::useRecoveryCode)
+                    KkButton("복원 안 하기", onStartFresh, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
                 }
                 is RestoreUi.Code -> {
                     KkPrimaryButton("복원하기", viewModel::restore, enabled = s.input.isNotBlank(), loading = s.busy)
@@ -289,9 +289,9 @@ fun RestoreRoute(
 }
 
 @Composable
-private fun Header(title: String, body: String) {
+private fun Header(title: String, body: String? = null) {
     Text(title, style = KkTheme.type.titleL, color = KkTheme.colors.textPrimary)
-    Text(body, style = KkTheme.type.bodyL, color = KkTheme.colors.textSecondary)
+    body?.let { Text(it, style = KkTheme.type.bodyL, color = KkTheme.colors.textSecondary) }
 }
 
 /** 흰 카드(반경 12, Elevation/Low, 여백 20). */
@@ -309,10 +309,7 @@ private fun InfoCard(spacing: androidx.compose.ui.unit.Dp = 10.dp, content: @Com
 private fun FoundContent(preview: BackupPreview, keySyncName: String) {
     val c = KkTheme.colors
     val sum = preview.summary
-    Header(
-        if (!sum?.myName.isNullOrBlank()) "다시 오셨네요, ${sum?.myName}님" else "다시 오셨네요",
-        "이 계정의 백업을 찾았어요. 복원하면 ${sum?.partnerName?.takeIf { it.isNotBlank() } ?: "연인"}과 바로 다시 이어져요.",
-    )
+    Header(if (!sum?.myName.isNullOrBlank()) "다시 오셨네요, ${sum?.myName}님" else "다시 오셨네요")
     InfoCard {
         Text("마지막 백업", style = KkTheme.type.caption, color = c.textTertiary)
         Text(backupTime(preview.createdAtMs), style = KkTheme.type.titleS, color = c.textPrimary)
@@ -320,33 +317,25 @@ private fun FoundContent(preview: BackupPreview, keySyncName: String) {
             sum?.let { "편지 ${it.letters} · 그림 ${it.drawings} · 사진 ${it.photos} · ${bytesLabel(it.bytes)}" } ?: "열쇠를 찾으면 담긴 내용을 볼 수 있어요",
             style = KkTheme.type.bodyS, color = c.textSecondary,
         )
-        val found = preview.keySource != KeySource.NONE
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgBrandSubtle).padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(if (found) c.statusSuccess else c.statusDanger))
-            Text(
-                when (preview.keySource) {
-                    KeySource.THIS_DEVICE -> "이 폰에 백업 열쇠가 있어요"
-                    KeySource.PLATFORM_SYNC -> "${keySyncName}에서 백업 열쇠를 찾았어요"
-                    KeySource.NONE -> "백업 열쇠를 찾지 못했어요 · 복구 코드가 필요해요"
-                },
-                style = KkTheme.type.bodyS, color = c.textPrimary, modifier = Modifier.weight(1f),
-            )
-        }
     }
 }
 
 @Composable
 private fun RestoringContent(s: RestoreUi.Restoring) {
     val c = KkTheme.colors
-    Header("백업을 복원하는 중이에요", "앱을 닫지 말고 와이파이에 연결해 두세요.")
+    Header("백업을 복원하는 중이에요")
+    val started = remember { kotlin.time.Clock.System.now().toEpochMilliseconds() }
     InfoCard(spacing = 14.dp) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("${(s.fraction * 100).toInt()}%", style = KkTheme.type.titleM, color = c.textBrand)
-            Text(if (s.stage == RestoreStage.RELINK) "곧 다시 시작해요" else "받는 중", style = KkTheme.type.caption, color = c.textTertiary)
+            // Figma: "약 2분 남음" — 지금까지 걸린 시간으로 어림한다.
+            val pct = (s.fraction * 100).toInt()
+            val elapsed = kotlin.time.Clock.System.now().toEpochMilliseconds() - started
+            val remain = if (pct in 1..99) elapsed * (100 - pct) / pct / 60_000 else null
+            Text(
+                when { s.stage == RestoreStage.RELINK -> "곧 다시 시작해요"; remain == null -> "받는 중"; else -> "약 ${maxOf(1, remain)}분 남음" },
+                style = KkTheme.type.caption, color = c.textTertiary,
+            )
         }
         Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgSubtle)) {
             Box(Modifier.fillMaxWidth(s.fraction.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(c.bgBrand))
@@ -392,7 +381,7 @@ fun RestoreWaitingScreen(partnerName: String, onBrowse: () -> Unit) {
             Box(Modifier.size(64.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
                 KkIcon(KkIcons.Clock, tint = c.textPrimary)
             }
-            Header("거의 다 됐어요", "${partnerName} 폰이 새 폰을 확인하면 바로 이어져요. ${partnerName.withSubject()} 따로 할 일은 없어요.")
+            Header("거의 다 됐어요")
             InfoCard(spacing = 14.dp) {
                 listOf(
                     Triple("백업 복원", "완료", c.statusSuccess to c.textSecondary),

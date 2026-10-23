@@ -233,7 +233,7 @@ fun ReplayCanvas(doc: DrawingDocument, state: ReplayState, modifier: Modifier = 
 }
 
 /**
- * 편지 안 그림: 리플레이 캔버스 + 끝난 뒤 "▶ 과정 · 6초" 칩. [autoPlay] 면 바로 재생한다(받은 그림을 처음 열 때).
+ * 편지 안 그림: 리플레이 캔버스 + 끝난 뒤 "▶" 칩. [autoPlay] 면 바로 재생한다(받은 그림을 처음 열 때).
  */
 @Composable
 fun ReplayPlayer(
@@ -248,7 +248,7 @@ fun ReplayPlayer(
         ReplayCanvas(doc, state, onFinished = onFinished)
         if (!state.playing) {
             Text(
-                "▶ 과정 · ${(state.durationMs + 999) / 1000}초",
+                "▶",
                 style = KkTheme.type.labelS,
                 color = c.textInverse,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(KkSpacing.sm)
