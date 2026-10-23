@@ -2,6 +2,7 @@
 
 package com.sadturtleman.flowershoes.feature.memory
 
+import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.layout.ContentScale
@@ -103,7 +104,7 @@ fun MemoryRoute(
     }
     LaunchedEffect(notice) { if (notice != null) { delay(2_500); notice = null } }
     Box(Modifier.fillMaxSize()) {
-        val detail = state.detail
+        KkPageFlip(state.detail, pageKey = { it?.let { d -> "d:${d.drawingId}" } ?: "list" }, isForward = { _, to -> to != null }) { detail ->
         if (detail != null) {
             DrawingDetailScreen(
                 detail,
@@ -114,6 +115,7 @@ fun MemoryRoute(
             )
         } else {
             MemoryScreen(state, viewModel::onIntent, onOpenLetter, onRecordMeeting, meetPhotos)
+        }
         }
         removing?.let { (eventId, id) ->
             KkModalSheet({ removing = null }) {

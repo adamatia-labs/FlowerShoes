@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.app
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +37,7 @@ import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.DeviceState
 import com.sadturtleman.flowershoes.core.data.IdentityHolder
 import com.sadturtleman.flowershoes.core.data.today
+import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
@@ -118,7 +121,8 @@ private fun OnboardingFlow() {
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
     // 복원 · 연결 화면에서 뒤로 가면 온보딩으로(복원을 원하지 않으면 약관부터 새로 시작).
     BackHandler(enabled = overlay != null) { overlay = null }
-    when (overlay) {
+    KkPageFlip(overlay, pageKey = { it ?: "onboarding" }, isForward = ::overlayForward) { shown ->
+    when (shown) {
         null -> OnboardingRoute(
             // 온보딩 완료는 DeviceSettings.onboarded 로 바뀌어 셸이 알아서 바뀐다.
             onFinished = {},
@@ -142,7 +146,8 @@ private fun OnboardingFlow() {
                 platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
             )
         }
-        else -> ComingSoon(overlay!!.title(), onBack = { overlay = null })
+        else -> ComingSoon(shown!!.title(), onBack = { overlay = null })
+    }
     }
 }
 
@@ -202,7 +207,8 @@ private fun MainShell() {
         }
     }
 
-    when (overlay) {
+    KkPageFlip(overlay, pageKey = { it ?: "main" }, isForward = ::overlayForward) { shown ->
+    when (shown) {
         Overlay.COMPOSE -> {
             LetterComposeRoute(
                 onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
@@ -210,7 +216,6 @@ private fun MainShell() {
                 photoPicker = { rememberPhotoPicker(it) },
                 viewModel = letters,
             )
-            return
         }
         Overlay.DRAW_FOR_LETTER -> {
             DrawingEditorRoute(
@@ -222,23 +227,18 @@ private fun MainShell() {
                 },
                 onClose = { overlay = Overlay.COMPOSE },
             )
-            return
         }
         Overlay.PAIRING -> {
             PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
-            return
         }
         Overlay.HAND_OVER -> {
             PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, handOver = true)
-            return
         }
         Overlay.RECEIVE -> {
             PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, mode = com.sadturtleman.flowershoes.feature.pairing.PairingMode.RECEIVE)
-            return
         }
         Overlay.RESTORE -> {
             RestoreRoute(onBack = { overlay = null })
-            return
         }
         Overlay.SETTINGS -> {
             SettingsRoute(
@@ -255,107 +255,122 @@ private fun MainShell() {
                     overlay = Overlay.LEAVE
                 },
             )
-            return
         }
         Overlay.LEAVE -> {
             com.sadturtleman.flowershoes.feature.calendar.LeaveRoute(onBack = {
                 overlay = if (leaveFromSettings) Overlay.SETTINGS else null
                 leaveFromSettings = false
             })
-            return
         }
-        null -> Unit
-    }
-    val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
-    val restoreState = scheduler?.restoreState?.collectAsState()?.value
-    val settingsVm = koinViewModel<com.sadturtleman.flowershoes.feature.settings.SettingsViewModel>()
-    val settingsState by settingsVm.state.collectAsState()
-    // 상대가 연결을 해제했다(Figma 6 · 연결 해제 / 상대 폰): 사본을 어떻게 할지 고를 때까지 다른 화면을 막는다.
-    if (scheduler?.partnerUnlinked?.collectAsState()?.value == true) {
-        com.sadturtleman.flowershoes.feature.settings.PartnerUnlinkedScreen(settingsState.partnerName) { after ->
-            settingsVm.afterPartnerUnlinked(after)
-            scheduler.partnerUnlinkHandled()
+        null -> {
+        val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
+        val restoreState = scheduler?.restoreState?.collectAsState()?.value
+        val settingsVm = koinViewModel<com.sadturtleman.flowershoes.feature.settings.SettingsViewModel>()
+        val settingsState by settingsVm.state.collectAsState()
+        // 상대가 연결을 해제했다(Figma 6 · 연결 해제 / 상대 폰): 사본을 어떻게 할지 고를 때까지 다른 화면을 막는다.
+        if (scheduler?.partnerUnlinked?.collectAsState()?.value == true) {
+            com.sadturtleman.flowershoes.feature.settings.PartnerUnlinkedScreen(settingsState.partnerName) { after ->
+                settingsVm.afterPartnerUnlinked(after)
+                scheduler.partnerUnlinkHandled()
+            }
+            return@KkPageFlip
         }
-        return
-    }
-    // 상대가 새 폰으로 바꿨다(Figma 6 · 기기 교체 · 상대 폰 알림): 자동 확인 뒤 한 번.
-    val rotation = scheduler?.approvedRotations?.collectAsState()?.value?.firstOrNull()
-    if (rotation != null) {
-        val at = kotlin.time.Instant.fromEpochMilliseconds(rotation.createdAtMs)
-        com.sadturtleman.flowershoes.feature.settings.PartnerDeviceChangedScreen(
-            partnerName = settingsState.partnerName,
-            deviceName = rotation.deviceName,
-            at = com.sadturtleman.flowershoes.feature.settings.relativeTime(at.toEpochMilliseconds()),
-            providerLabel = rotation.provider.takeIf { it.isNotBlank() }?.let(settingsVm::providerLabel),
-            onAcknowledge = { scheduler.rotationSeen(rotation.id) },
-            onUnknown = {
-                scheduler.rotationSeen(rotation.id)
-                settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.UNLINK
-                overlay = Overlay.SETTINGS
-            },
-        )
-        return
-    }
-    // 복원 뒤 다시 시작했을 때 한 번: "거의 다 됐어요"(복원 · 지수 폰 확인 대기). 둘러보기를 누르면 배너만 남는다.
-    var waitingSeen by rememberSaveable { mutableStateOf(false) }
-    if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner && !waitingSeen) {
-        com.sadturtleman.flowershoes.feature.settings.RestoreWaitingScreen(partnerName = settingsState.partnerName, onBrowse = { waitingSeen = true })
-        return
-    }
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
-        if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner) {
-            // 복원 뒤 기기 교체(7-3-A): 상대 폰이 동기화하면 자동으로 확인된다.
-            Text(
-                "연인 폰에서 새 폰을 확인하는 중이에요. 그동안 보낸 것은 확인이 끝나면 전달돼요.",
-                style = KkTheme.type.bodyS,
-                color = c.textSecondary,
-                modifier = Modifier.fillMaxWidth().background(c.bgSurface).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.sm),
+        // 상대가 새 폰으로 바꿨다(Figma 6 · 기기 교체 · 상대 폰 알림): 자동 확인 뒤 한 번.
+        val rotation = scheduler?.approvedRotations?.collectAsState()?.value?.firstOrNull()
+        if (rotation != null) {
+            val at = kotlin.time.Instant.fromEpochMilliseconds(rotation.createdAtMs)
+            com.sadturtleman.flowershoes.feature.settings.PartnerDeviceChangedScreen(
+                partnerName = settingsState.partnerName,
+                deviceName = rotation.deviceName,
+                at = com.sadturtleman.flowershoes.feature.settings.relativeTime(at.toEpochMilliseconds()),
+                providerLabel = rotation.provider.takeIf { it.isNotBlank() }?.let(settingsVm::providerLabel),
+                onAcknowledge = { scheduler.rotationSeen(rotation.id) },
+                onUnknown = {
+                    scheduler.rotationSeen(rotation.id)
+                    settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.UNLINK
+                    overlay = Overlay.SETTINGS
+                },
             )
+            return@KkPageFlip
         }
-        Box(Modifier.weight(1f)) {
-            when (tab) {
-                Tab.HOME -> HomeRoute(
-                    onOpenPairing = { overlay = Overlay.PAIRING },
-                    onOpenCalendar = { tab = Tab.CALENDAR },
-                    onOpenSettings = { overlay = Overlay.SETTINGS },
-                    onWriteLetter = { overlay = Overlay.COMPOSE },
-                    onOpenLeave = { leaveFromSettings = false; overlay = Overlay.LEAVE },
-                )
-                Tab.CALENDAR -> CalendarRoute(viewModel = calendar)
-                Tab.LETTER -> LetterInboxRoute(
-                    // Figma 최종 정리: 만들기 시트 없이 바로 편지 쓰기(그림은 편지 안에서).
-                    onCreate = { overlay = Overlay.COMPOSE },
-                    onReply = {
-                        letters.onIntent(LetterIntent.Close)
-                        overlay = Overlay.COMPOSE
-                    },
-                    onReplyDrawing = {
-                        letters.onIntent(LetterIntent.Close)
-                        overlay = Overlay.COMPOSE
-                    },
-                    viewModel = letters,
-                )
-                Tab.MEMORY -> MemoryRoute(
-                    onOpenLetter = {
-                        letters.onIntent(LetterIntent.Open(it))
-                        tab = Tab.LETTER
-                    },
-                    // 만남은 캘린더 일정(휴가 · 외박 · 면회)으로 남긴다.
-                    onRecordMeeting = {
-                        calendar.onIntent(com.sadturtleman.flowershoes.feature.calendar.CalendarIntent.NewEvent(kotlin.time.Clock.System.today()))
-                        tab = Tab.CALENDAR
-                    },
-                    saveImage = imageSaver,
-                    shareImage = imageShare,
-                    photoPicker = { rememberPhotoPicker(it) },
-                    viewModel = memory,
+        // 복원 뒤 다시 시작했을 때 한 번: "거의 다 됐어요"(복원 · 지수 폰 확인 대기). 둘러보기를 누르면 배너만 남는다.
+        var waitingSeen by rememberSaveable { mutableStateOf(false) }
+        if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner && !waitingSeen) {
+            com.sadturtleman.flowershoes.feature.settings.RestoreWaitingScreen(partnerName = settingsState.partnerName, onBrowse = { waitingSeen = true })
+            return@KkPageFlip
+        }
+        Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+            if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner) {
+                // 복원 뒤 기기 교체(7-3-A): 상대 폰이 동기화하면 자동으로 확인된다.
+                Text(
+                    "연인 폰에서 새 폰을 확인하는 중이에요. 그동안 보낸 것은 확인이 끝나면 전달돼요.",
+                    style = KkTheme.type.bodyS,
+                    color = c.textSecondary,
+                    modifier = Modifier.fillMaxWidth().background(c.bgSurface).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.sm),
                 )
             }
+            Box(Modifier.weight(1f)) {
+                Crossfade(tab, animationSpec = tween(TAB_FADE_MS), label = "tab") { t ->
+                when (t) {
+                    Tab.HOME -> HomeRoute(
+                        onOpenPairing = { overlay = Overlay.PAIRING },
+                        onOpenCalendar = { tab = Tab.CALENDAR },
+                        onOpenSettings = { overlay = Overlay.SETTINGS },
+                        onWriteLetter = { overlay = Overlay.COMPOSE },
+                        onOpenLeave = { leaveFromSettings = false; overlay = Overlay.LEAVE },
+                    )
+                    Tab.CALENDAR -> CalendarRoute(viewModel = calendar)
+                    Tab.LETTER -> LetterInboxRoute(
+                        // Figma 최종 정리: 만들기 시트 없이 바로 편지 쓰기(그림은 편지 안에서).
+                        onCreate = { overlay = Overlay.COMPOSE },
+                        onReply = {
+                            letters.onIntent(LetterIntent.Close)
+                            overlay = Overlay.COMPOSE
+                        },
+                        onReplyDrawing = {
+                            letters.onIntent(LetterIntent.Close)
+                            overlay = Overlay.COMPOSE
+                        },
+                        viewModel = letters,
+                    )
+                    Tab.MEMORY -> MemoryRoute(
+                        onOpenLetter = {
+                            letters.onIntent(LetterIntent.Open(it))
+                            tab = Tab.LETTER
+                        },
+                        // 만남은 캘린더 일정(휴가 · 외박 · 면회)으로 남긴다.
+                        onRecordMeeting = {
+                            calendar.onIntent(com.sadturtleman.flowershoes.feature.calendar.CalendarIntent.NewEvent(kotlin.time.Clock.System.today()))
+                            tab = Tab.CALENDAR
+                        },
+                        saveImage = imageSaver,
+                        shareImage = imageShare,
+                        photoPicker = { rememberPhotoPicker(it) },
+                        viewModel = memory,
+                    )
+                }
+                }
+            }
+            // 받은 편지 · 그림 · 추억 그림 상세는 탭 바 없이 전체 화면(Figma).
+            val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
+            if (!reading) BottomBar(tab, onSelect = { tab = it })
         }
-        // 받은 편지 · 그림 · 추억 그림 상세는 탭 바 없이 전체 화면(Figma).
-        val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
-        if (!reading) BottomBar(tab, onSelect = { tab = it })
+        }
     }
+    }
+}
+
+/** 탭 사이는 짧은 페이드(자주 오가는 곳이라 책장 넘김은 무겁다). */
+private const val TAB_FADE_MS = 180
+
+/** 덮어 띄운 화면의 넘김 방향: 닫거나 연 곳으로 돌아가면 뒤로, 나머지는 앞으로. */
+private fun overlayForward(from: Overlay?, to: Overlay?): Boolean = when {
+    to == null -> false
+    from == null -> true
+    from == Overlay.DRAW_FOR_LETTER && to == Overlay.COMPOSE -> false
+    from == Overlay.LEAVE && to == Overlay.SETTINGS -> false
+    from == Overlay.RECEIVE && to == Overlay.RESTORE -> false
+    else -> true
 }
 
 /** 하단 탭 바(Figma Tab Bar): 홈 · 캘린더 · 편지 · 추억. */
