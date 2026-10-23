@@ -52,6 +52,7 @@ glance = "1.1.1"
 blockstore = "16.4.0"
 playServicesAds = "24.4.0"
 ump = "3.2.0"
+revenuecat = "10.29.0"
 # 소셜 로그인(Android)
 kakaoSdk = "2.24.0"
 # 기기 생체 · 암호 인증(연결 해제 · 복구 코드 · 넘겨주기 전)
@@ -141,6 +142,7 @@ androidx-credentials = { group = "androidx.credentials", name = "credentials", v
 androidx-credentials-play = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleId" }
 play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }
+revenuecat = { group = "com.revenuecat.purchases", name = "purchases", version.ref = "revenuecat" }
 ump = { group = "com.google.android.ump", name = "user-messaging-platform", version.ref = "ump" }
 play-services-blockstore = { group = "com.google.android.gms", name = "play-services-auth-blockstore", version.ref = "blockstore" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }

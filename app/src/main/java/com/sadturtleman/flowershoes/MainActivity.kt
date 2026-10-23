@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -29,6 +31,8 @@ class MainActivity : FragmentActivity() {
 
     /** 프레임 드랍 집계기. 화면 이름과 스크롤 구간을 컴포지션이 알려 주므로 트리에도 꽂는다. */
     private val jankReporter: JankReporter by inject()
+
+    private val lifetime: com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore by inject()
 
     /**
      * JankStats 는 DecorView 가 생긴 뒤에만 만들 수 있어 [onCreate] 에서 바로 만들지 않는다.
@@ -73,13 +77,17 @@ class MainActivity : FragmentActivity() {
 
         // 광고: 동의(필요한 지역만) 뒤 AdMob 을 켠다. 지면은 캘린더 · 휴가 · 설정의 배너 1개씩(Figma 9).
         AdConsent.gather(this)
+        // 꽃신 평생 결제 시트는 이 화면 위에 뜬다.
+        lifetime.activity = java.lang.ref.WeakReference(this)
 
         enableEdgeToEdge()
         setContent {
+            val lifetimeOwned by lifetime.owned.collectAsState()
             CompositionLocalProvider(
                 LocalTtiRecorder provides ttiRecorder,
                 LocalJankReporter provides jankReporter,
-                LocalAdBanner provides { slot, modifier -> AdmobBanner(slot, modifier) },
+                // 꽃신 평생이면 광고를 모두 숨긴다(Figma 9).
+                LocalAdBanner provides if (lifetimeOwned) null else { slot, modifier -> AdmobBanner(slot, modifier) },
             ) {
                 KkotsinApp()
             }
