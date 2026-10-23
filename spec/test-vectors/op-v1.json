@@ -1,0 +1,10 @@
+{
+  "description": "Op 봉투 v1. header = OpHeader.toBytes(), ct = nonce‖ciphertext‖tag, sig = Ed25519(BLAKE2b-512(P(ctx)‖P(header)‖P(ct)))",
+  "signPub": "CFeR2R87nQTRk0Xdqz259BzU4VbpRSaKu/35hjfzw4Q=",
+  "coupleKey": "O5OLeVHYtUsDMglYt7nY4JjZw0Ju1FA+dbWErfDxI2U=",
+  "epoch": 2,
+  "header": "AAAAC29wLXZlY3Rvci0xAAAADGRldi1hOndpZGdldAAAAAAAAAAHAAAAAg==",
+  "ct": "Xbm9CYBkrszIW3nA4d9wmpsTvoLF2T2LdJiTAqpLbAbee+gsa9l8XBf7x42agoYNUVu1Lkqg7Q==",
+  "sig": "dVipX3QAY6/AJT10dBAcvKHXDGyHFuj7OEYVPOkbXx/zln5GLwWtQQMq5jUZ5hulCkBs6TVKonSu/w5fkLd6Bg==",
+  "plaintext": "{\"t\":\"missyou\"}"
+}

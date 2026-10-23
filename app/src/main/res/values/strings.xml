@@ -1,3 +1,7 @@
 <resources>
-    <string name="app_name">FlowerShoes</string>
+    <string name="app_name">꽃신</string>
+    <string name="widget_dday_desc">전역까지 남은 날</string>
+    <string name="widget_missyou_desc">누르면 바로 보고싶어를 보내요</string>
+    <string name="widget_next_desc">다음 만남까지 남은 날</string>
+    <string name="widget_drawing_desc">받은 그림</string>
 </resources>

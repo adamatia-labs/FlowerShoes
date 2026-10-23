@@ -1,0 +1,124 @@
+# iOS 빌드 확인(macOS 러너). Windows 개발 환경에서는 iOS 타깃을 컴파일할 수 없어서 여기서 확인한다.
+#   1) Kotlin iOS 타깃 테스트(암호 · 동기화 · 그림 엔진 …)
+#   2) ComposeApp.framework 링크
+#   3) XcodeGen → 앱 · NSE · 위젯 빌드(서명 없이, 시뮬레이터)
+#   4) Swift 테스트(spec/test-vectors 를 Swift 로 검증)
+name: iOS
+
+on:
+  push:
+    branches: [develop, main, 'feature/**']
+    paths-ignore: ['docs/**', '**/*.md']
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      # Compose Multiplatform 1.11 은 iOS 26 SDK 심볼(UIViewLayoutRegion 등)을 링크한다 — 기본 Xcode 16 으로는 링크되지 않는다.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Kotlin/Native 캐시
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Kotlin iOS 테스트
+        run: ./gradlew iosSimulatorArm64Test --continue --stacktrace
+
+      - name: ComposeApp 프레임워크 링크
+        run: ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
+      - name: Xcode 프로젝트 생성
+        working-directory: iosApp
+        run: |
+          brew install xcodegen
+          cp Config.xcconfig.example Config.xcconfig
+          xcodegen
+
+      - name: 앱 빌드(시뮬레이터, 서명 없음)
+        working-directory: iosApp
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Kkotsin.xcodeproj -scheme Kkotsin \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log | grep -E "error:|warning: .*deprecated|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
+
+      - name: Swift 테스트(테스트 벡터)
+        working-directory: iosApp
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Kkotsin.xcodeproj -scheme Kkotsin \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodetest.log | grep -E "error:|Test Case|\*\* TEST" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" xcodetest.log
+
+      - name: 시뮬레이터 실행 확인(설치 → 실행 → 20초 뒤 살아 있는지 · 스크린샷)
+        working-directory: iosApp
+        run: |
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          echo "app: $APP"
+          xcrun simctl boot 'iPhone 16' || true
+          xcrun simctl bootstatus 'iPhone 16' -b
+          xcrun simctl install booted "$APP"
+          # 앱의 stdout/stderr(Kotlin 예외 포함)를 파일로. 앱 수명은 simctl 과 묶이지 않는다.
+          xcrun simctl launch --terminate-running-process --stdout="$PWD/app-stdout.log" --stderr="$PWD/app-stderr.log" booted com.sadturtleman.kkotsin
+          sleep 20
+          xcrun simctl io booted screenshot launch.png
+          xcrun simctl spawn booted log show --last 2m --style compact --predicate 'process == "Kkotsin"' > app-system.log 2>&1 || true
+          ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i kkotsin && cp "$(ls -t ~/Library/Logs/DiagnosticReports/*Kkotsin* | head -1)" crash.ips || true
+          if xcrun simctl spawn booted launchctl list | grep -q 'com.sadturtleman.kkotsin'; then
+            echo '앱이 20초 뒤에도 실행 중'
+          else
+            echo '앱이 종료됐다'
+            echo '— stderr:'; tail -80 app-stderr.log || true
+            echo '— stdout:'; tail -40 app-stdout.log || true
+            echo '— system (오류):'; grep -iE 'error|fault|exception|terminat|crash|abort' app-system.log | tail -60 || true
+            exit 1
+          fi
+
+      - name: 스크린샷 올리기
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-launch
+          path: |
+            iosApp/launch.png
+            iosApp/app-*.log
+            iosApp/crash.ips
+          if-no-files-found: ignore
+
+      - name: 로그 올리기
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-logs
+          path: |
+            iosApp/*.log
+            **/build/reports/tests/
+          retention-days: 7

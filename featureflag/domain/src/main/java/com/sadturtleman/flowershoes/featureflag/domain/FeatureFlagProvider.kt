@@ -9,7 +9,7 @@ import kotlinx.coroutines.CoroutineDispatcher
  * 같은 인스턴스를 생성자 주입으로 받는다.
  *
  * ```kotlin
- * class GetHomeContentUseCase @Inject constructor(
+ * class GetHomeContentUseCase(
  *     private val featureFlags: FeatureFlagProvider,
  * ) {
  *     suspend operator fun invoke() = repository.getHomeContent(

@@ -1,0 +1,247 @@
+rules_version = '2';
+
+// 꽃신 Firestore 보안 규칙(설계 7-2).
+// 서버에는 암호문과 최소 메타데이터만 있다. 규칙의 목적은 "커플 두 사람 · 활성 기기만" 읽고 쓰게 하는 것이다.
+// 기기 활성화 · 폐기 · 커플 생성처럼 여러 문서를 함께 바꾸는 일은 Cloud Functions(관리자 권한)가 한다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 익명 로그인은 콘솔에서 끄지만, 혹시 켜져도 막는다.
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function coupleDoc(c) {
+      return get(/databases/$(database)/documents/couples/$(c)).data;
+    }
+
+    function isMember(c) {
+      return signedIn() && request.auth.uid in coupleDoc(c).members;
+    }
+
+    // members = { uid: 지금 그 사람의 기기 id }
+    function myDevice(c) {
+      return coupleDoc(c).members[request.auth.uid];
+    }
+
+    function deviceDoc(c, d) {
+      return get(/databases/$(database)/documents/couples/$(c)/devices/$(d)).data;
+    }
+
+    function isActiveMember(c) {
+      return isMember(c) && deviceDoc(c, myDevice(c)).active == true;
+    }
+
+    function notExpired(doc) {
+      return doc.expireAt > request.time;
+    }
+
+    // ── 첫 연결: 초대 코드 + 커밋 → 공개 → SAS ─────────────────────────────
+    match /pairings/{code} {
+      // 공개키는 아직 없다. 초대한 사람 uid 와 만료 시각만.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'expireAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.expireAt is timestamp
+        && request.resource.data.expireAt < request.time + duration.value(25, 'h');
+      // 문서 id(코드)를 알아야 읽는다. 목록 조회는 막는다.
+      allow get: if signedIn() && notExpired(resource.data);
+      allow list: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+
+      function pairing() {
+        return get(/databases/$(database)/documents/pairings/$(code)).data;
+      }
+      function step(name) {
+        return get(/databases/$(database)/documents/pairings/$(code)/steps/$(name)).data;
+      }
+      function hasStep(name) {
+        return exists(/databases/$(database)/documents/pairings/$(code)/steps/$(name));
+      }
+
+      // 단계 순서와 작성자를 규칙으로 고정한다. 각 단계는 한 번만 쓴다.
+      //   join(커밋, 초대받는 사람) → inviter(공개키, 초대한 사람) → reveal(공개, join 을 쓴 사람)
+      //   → confirm-inviter / confirm-joiner(두 화면의 SAS 가 같다고 각자 누름)
+      match /steps/{name} {
+        allow get: if signedIn() && notExpired(pairing());
+        allow list: if signedIn() && notExpired(pairing())
+          && (pairing().uid == request.auth.uid || (hasStep('join') && step('join').uid == request.auth.uid));
+        allow update, delete: if false;
+        allow create: if signedIn() && notExpired(pairing()) && (
+          (name == 'join'
+            && request.resource.data.keys().hasOnly(['uid', 'commit'])
+            && request.resource.data.uid == request.auth.uid
+            && request.auth.uid != pairing().uid
+            && request.resource.data.commit is string
+            && request.resource.data.commit.size() <= 128)
+          || (name == 'inviter'
+            && hasStep('join')
+            && pairing().uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['deviceId', 'signPub', 'boxPub']))
+          || (name == 'reveal'
+            && hasStep('inviter')
+            && step('join').uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['deviceId', 'signPub', 'boxPub', 'nonce']))
+          || (name == 'confirm-inviter'
+            && hasStep('reveal')
+            && pairing().uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['wrappedKey', 'sas']))
+          || (name == 'confirm-joiner'
+            && hasStep('reveal')
+            && step('join').uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['sas']))
+        );
+      }
+    }
+
+    // ── 커플 ──────────────────────────────────────────────────────────────
+    match /couples/{c} {
+      allow get: if isMember(c);
+      allow list, create, update, delete: if false; // 생성 · 해제는 함수가 한다.
+
+      match /devices/{deviceId} {
+        allow get, list: if isMember(c);
+        // 새 기기는 대기(pending) 로만 등록한다. active 로 바꾸는 것은 상대의 서명된 승인을 확인한 함수뿐이다.
+        allow create: if isMember(c)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.state == 'pending'
+          && request.resource.data.active == false
+          && request.resource.data.keys().hasOnly(['uid', 'signPub', 'boxPub', 'state', 'active', 'createdAt']);
+        allow update, delete: if false;
+      }
+
+      // 우편함: 상대 기기 앞으로 온 Op. 내용은 암호문, 평문은 kind · from · 시각 · 크기뿐.
+      match /inbox/{deviceId}/ops/{opId} {
+        allow create: if isActiveMember(c)
+          && deviceId != myDevice(c)
+          && request.resource.data.from == myDevice(c)
+          && request.resource.data.keys().hasOnly(['kind', 'from', 'createdAt', 'expireAt', 'size', 'ct', 'sig', 'header', 'resend'])
+          && request.resource.data.ct is string
+          && request.resource.data.ct.size() <= 90000; // 64KB 암호문의 base64
+        // 읽기 · 삭제는 그 기기에 묶인 사람만. 대기 중인 새 기기도 같은 uid 라 옛 기기 우편함을 읽을 수 있다.
+        allow get, list, delete: if isMember(c) && myDevice(c) == deviceId;
+        allow update: if false;
+      }
+
+      // 작은 첨부(그림 문서)의 암호문. 무작위 키로 암호화돼 있고 키는 Op 본문(커플 키 암호문)에 있다. 받으면 지운다.
+      match /blobs/{blobId} {
+        allow create: if isActiveMember(c)
+          && request.resource.data.keys().hasOnly(['data', 'expireAt'])
+          && request.resource.data.data is string
+          && request.resource.data.data.size() <= 900000;
+        allow get, delete: if isMember(c);
+        allow list, update: if false;
+      }
+
+      // 커서 알림(제어 메시지). 최신 값 하나로 덮어쓴다.
+      match /control/{deviceId} {
+        allow get, list: if isMember(c);
+        allow create, update: if isActiveMember(c)
+          && deviceId == myDevice(c)
+          && request.resource.data.keys().hasOnly(['payload', 'sig', 'at'])
+          && request.resource.data.payload.size() <= 8000;
+        allow delete: if false;
+      }
+
+      // 커플 키 봉투: 받는 기기의 boxPub 으로 봉인한 키.
+      match /keys/{deviceId} {
+        allow get: if isMember(c) && myDevice(c) == deviceId;
+        allow create, update: if isActiveMember(c) && deviceId != myDevice(c);
+        allow delete: if false;
+      }
+
+      // 기기 교체 요청(7-3-A). 대기 기기가 만들고, 상대 활성 기기가 승인을 단다.
+      match /rotations/{rotationId} {
+        allow get, list: if isMember(c);
+        allow create: if isMember(c)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'newDeviceId', 'oldDeviceId', 'epoch', 'wrappedKey', 'mac', 'sig', 'createdAt', 'deviceName', 'provider']);
+        allow update, delete: if false;
+
+        match /approval/{approvalId} {
+          allow get: if isMember(c);
+          allow create: if isActiveMember(c)
+            && get(/databases/$(database)/documents/couples/$(c)/rotations/$(rotationId)).data.uid != request.auth.uid
+            && request.resource.data.keys().hasOnly(['approverDeviceId', 'cutoff', 'sig', 'at']);
+          allow update, delete: if false;
+        }
+      }
+    }
+
+    // ── 상대 폰 넘겨주기(7-3-B): 지수가 코드를 만들고 민준이 입력 ────────────────
+    match /relinks/{code} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && isActiveMember(request.resource.data.coupleId)
+        && request.resource.data.keys().hasOnly(['uid', 'coupleId', 'expireAt']);
+      allow get: if signedIn() && notExpired(resource.data);
+      allow list, update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+
+      match /steps/{name} {
+        function relink() {
+          return get(/databases/$(database)/documents/relinks/$(code)).data;
+        }
+        allow get: if signedIn() && notExpired(relink());
+        allow update, delete: if false;
+        allow create: if signedIn() && notExpired(relink()) && (
+          (name == 'join' && request.resource.data.uid == request.auth.uid && request.resource.data.keys().hasOnly(['uid', 'commit']))
+          || (name == 'inviter' && relink().uid == request.auth.uid)
+          || (name == 'reveal'
+            && get(/databases/$(database)/documents/relinks/$(code)/steps/join).data.uid == request.auth.uid)
+          // 지수: [맞아요, 넘겨줄게요] — 새 커플 키 봉투 · cutoff · 기기 서명. 함수가 서명을 확인하고 활성화한다.
+          || (name == 'confirm-inviter'
+            && relink().uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['wrappedKey', 'sas', 'cutoff', 'sig', 'newDeviceId', 'epoch']))
+          || (name == 'confirm-joiner'
+            && get(/databases/$(database)/documents/relinks/$(code)/steps/join).data.uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['sas']))
+        );
+      }
+    }
+
+    // ── 사용자 설정(조용한 시간 · 묶음). 서버 알림 정책이 읽는다 ─────────────────
+    match /users/{uid} {
+      allow get, update, create: if signedIn() && request.auth.uid == uid;
+      allow delete, list: if false;
+      match /notifyPrefs/{doc} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.quietStart is int && request.resource.data.quietEnd is int
+          && request.resource.data.quietStart >= 0 && request.resource.data.quietStart < 1440
+          && request.resource.data.quietEnd >= 0 && request.resource.data.quietEnd < 1440;
+        allow delete: if false;
+      }
+      // 문의(설정 › 문의하기). 회사가 읽는 평문 — 암호화하지 않는다. 답변(answer · answeredAt · title)은 관리자 SDK 만 쓴다.
+      match /inquiries/{id} {
+        allow get, list: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['type', 'body', 'email', 'device', 'shots', 'status', 'createdAt'])
+          && request.resource.data.type in ['오류 신고', '연결 · 백업', '계정 · 탈퇴', '제안', '기타']
+          && request.resource.data.body is string && request.resource.data.body.size() > 0 && request.resource.data.body.size() <= 1000
+          && request.resource.data.email is string && request.resource.data.email.size() <= 200
+          && request.resource.data.shots is int && request.resource.data.shots >= 0 && request.resource.data.shots <= 3
+          && request.resource.data.status == 'pending'
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+        // 스크린샷(최대 3장). Storage 대신 문서에 base64 JPEG — 한 장 700KB 이하.
+        match /shots/{n} {
+          allow get: if signedIn() && request.auth.uid == uid;
+          allow create: if signedIn() && request.auth.uid == uid && n in ['0', '1', '2']
+            && request.resource.data.keys().hasOnly(['data'])
+            && request.resource.data.data is string && request.resource.data.data.size() <= 950000;
+          allow update, delete, list: if false;
+        }
+      }
+    }
+
+    // 서버만 쓰는 것들(알림 횟수 · 처리한 위젯 opId 등)
+    match /notifyState/{uid} {
+      allow read, write: if false;
+    }
+    match /widgetOps/{opId} {
+      allow read, write: if false;
+    }
+  }
+}

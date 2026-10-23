@@ -1,0 +1,158 @@
+# XcodeGen 프로젝트 정의. macOS 에서: `brew install xcodegen && cd iosApp && xcodegen` → Kkotsin.xcodeproj
+#
+# 타깃
+#   Kkotsin              앱. Compose Multiplatform 셸(ComposeApp.framework)을 띄운다.
+#   KkotsinNotification  Notification Service Extension. Kotlin · Firebase 없이 swift-sodium 만(메모리 24MB 한도).
+#   KkotsinWidgets       WidgetKit + App Intent(보고싶어). Firebase 없이 sendFromWidget 엔드포인트로 보낸다.
+#   KkotsinTests         spec/test-vectors 를 Swift 로 검증.
+#
+# 공유: App Group(group.com.sadturtleman.kkotsin) — 위젯 스냅샷 · 받은 Op 대기열 · 위젯 사본.
+#       Keychain access group — 기기 키 · 커플 키(ThisDeviceOnly).
+name: Kkotsin
+options:
+  bundleIdPrefix: com.sadturtleman
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  Sodium:
+    url: https://github.com/jedisct1/swift-sodium
+    from: 0.9.1
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 11.0.0
+  # zstd 저장소의 Package.swift(C 모듈 libzstd). 그림 문서 · 백업 압축.
+  Zstd:
+    url: https://github.com/facebook/zstd
+    from: 1.5.6
+  # 소셜 로그인(앱 타깃만)
+  KakaoSDK:
+    url: https://github.com/kakao/kakao-ios-sdk
+    from: 2.22.0
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 8.0.0
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""   # 팀 id 를 넣는다
+    # Kotlin 프레임워크는 arm64 시뮬레이터만 만든다(Apple Silicon). Intel 시뮬레이터는 빌드하지 않는다.
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+    SWIFT_VERSION: "5.10"
+targets:
+  Kkotsin:
+    type: application
+    platform: iOS
+    # 로그인 키(Config.xcconfig, 커밋하지 않음 — Config.xcconfig.example 참고)
+    configFiles:
+      Debug: Config.xcconfig
+      Release: Config.xcconfig
+    sources: [App, Shared]
+    scheme:
+      testTargets: [KkotsinTests]
+    preBuildScripts:
+      - name: Build ComposeApp framework
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sadturtleman.kkotsin
+        # 앱 아이콘: 꽃신 로고(꽃). App/Assets.xcassets 의 1024 한 장으로 모든 크기를 만든다.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: "$(inherited) -framework ComposeApp"
+    entitlements:
+      path: App/Kkotsin.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.sadturtleman.kkotsin]
+        keychain-access-groups: ["$(AppIdentifierPrefix)com.sadturtleman.kkotsin.shared"]
+        aps-environment: development
+        com.apple.developer.applesignin: [Default]
+    dependencies:
+      - target: KkotsinNotification
+      - target: KkotsinWidgets
+      - package: Sodium
+      - package: Zstd
+        product: libzstd
+      - package: KakaoSDK
+        product: KakaoSDKUser
+      - package: GoogleSignIn
+      # GitLive firebase-kotlin-sdk 가 링크하는 Firebase iOS SDK(앱 타깃만 — NSE · 위젯에는 넣지 않는다)
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseAuth
+      - package: Firebase
+        product: FirebaseStorage
+      - package: Firebase
+        product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseMessaging
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: 꽃신
+        # 그림 보내기: 카메라로 찍어 배경으로 · 완성 그림을 사진첩에 저장
+        NSCameraUsageDescription: 그림 배경으로 쓸 사진을 찍어요.
+        NSPhotoLibraryAddUsageDescription: 그린 그림을 사진첩에 저장해요.
+        # Compose Multiplatform: 120Hz 화면에서 프레임 제한을 풀어야 한다(없으면 시작 시 검사에서 멈춘다).
+        CADisableMinimumFrameDurationOnPhone: true
+        # 실행 화면이 없으면 iOS 가 구형 호환(레터박스) 모드로 띄운다 — 전체 화면을 쓰려면 필요.
+        UILaunchScreen:
+          UIColorName: ""
+        # 키는 Config.xcconfig(커밋하지 않음)에서: KAKAO_NATIVE_APP_KEY, GOOGLE_CLIENT_ID, GOOGLE_REVERSED_CLIENT_ID
+        KakaoNativeAppKey: $(KAKAO_NATIVE_APP_KEY)
+        GIDClientID: $(GOOGLE_CLIENT_ID)
+        LSApplicationQueriesSchemes: [kakaokompassauth, kakaolink]
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [kkotsin]
+          - CFBundleURLSchemes: ["kakao$(KAKAO_NATIVE_APP_KEY)"]
+          - CFBundleURLSchemes: ["$(GOOGLE_REVERSED_CLIENT_ID)"]
+        UIBackgroundModes: [remote-notification, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.sadturtleman.kkotsin.refresh]
+  KkotsinNotification:
+    type: app-extension
+    platform: iOS
+    sources: [NotificationService, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sadturtleman.kkotsin.notification
+    entitlements:
+      path: NotificationService/KkotsinNotification.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.sadturtleman.kkotsin]
+        keychain-access-groups: ["$(AppIdentifierPrefix)com.sadturtleman.kkotsin.shared"]
+    dependencies:
+      - package: Sodium
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+  KkotsinWidgets:
+    type: app-extension
+    platform: iOS
+    sources: [Widgets, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sadturtleman.kkotsin.widgets
+    entitlements:
+      path: Widgets/KkotsinWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.sadturtleman.kkotsin]
+        keychain-access-groups: ["$(AppIdentifierPrefix)com.sadturtleman.kkotsin.shared"]
+    dependencies:
+      - package: Sodium
+    info:
+      path: Widgets/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  KkotsinTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests, Shared]
+    dependencies:
+      - package: Sodium

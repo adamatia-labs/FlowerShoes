@@ -10,8 +10,6 @@ import android.os.PowerManager
 import com.sadturtleman.flowershoes.common.util.device.MemoryInfo
 import com.sadturtleman.flowershoes.common.util.device.NetworkType
 import com.sadturtleman.flowershoes.common.util.device.ThermalStatus
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
 
 /**
  * 순간의 기기 사정을 읽는 곳. 이벤트 한 건에 붙일 값들이라 역시 캐시하지 않는다.
@@ -20,8 +18,8 @@ import javax.inject.Inject
  * 네트워크 조회는 권한이 없으면 던진다. 계측이 앱을 죽이는 일은 없어야 하므로
  * 못 읽은 값은 "모른다" 로 떨어뜨린다 — 0 이나 false 로 슬쩍 채우지 않는다.
  */
-internal class DeviceStateReader @Inject constructor(
-    @ApplicationContext private val context: Context,
+internal class DeviceStateReader constructor(
+    private val context: Context,
 ) {
 
     fun memoryInfo(): MemoryInfo {

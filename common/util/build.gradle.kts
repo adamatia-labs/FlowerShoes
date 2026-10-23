@@ -2,8 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.ksp)
 }
 
 android {
@@ -36,15 +34,13 @@ kotlin {
 }
 
 dependencies {
+    // DI(Koin). 공유 앱과 같은 그래프에 들어간다.
+    implementation(libs.koin.android)
     // 설치 ID 를 남겨 두는 곳. 계약(DataStorage)만 쓰고 저장 엔진은 그 모듈이 가둔다.
     implementation(project(":common:datastore"))
 
     // 세션 1회 수집은 PackageManager · StatFs 를 타므로 IO 로 보낸다.
     implementation(project(":common:di"))
-
-    // Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
 
     // Coroutines. 설치 ID 를 한 번만 만들도록 묶는 Mutex 와 디스패처 전환에 쓴다.
     implementation(libs.kotlinx.coroutines.core)

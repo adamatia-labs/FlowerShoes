@@ -2,8 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.ksp)
 }
 
 android {
@@ -36,13 +34,11 @@ kotlin {
 }
 
 dependencies {
-    // Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
+    // DI(Koin). 공유 앱과 같은 그래프에 들어간다.
+    api(libs.koin.android)
 
     // 한정자가 붙는 대상이 CoroutineDispatcher 라 계약에 드러난다.
     api(libs.kotlinx.coroutines.android)
 
     // 주입받는 쪽이 한정자를 참조해야 하므로 밖으로 내보낸다.
-    api(libs.javax.inject)
 }

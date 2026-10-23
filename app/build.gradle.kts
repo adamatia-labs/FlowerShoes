@@ -1,12 +1,14 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlinx.serialization)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.ksp)
 }
+
+// Firebase 설정(google-services.json, 커밋하지 않음)이 있을 때만. 없으면 혼자 모드로 빌드된다.
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
 
 android {
     namespace = "com.sadturtleman.flowershoes"
@@ -22,6 +24,18 @@ android {
         versionName = libs.versions.versionName.get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 소셜 로그인 키(local.properties). 비어 있으면 그 제공자는 "설정 전"으로 안내한다.
+        val props = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }
+        val kakaoKey = props.getProperty("KAKAO_NATIVE_APP_KEY", "")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoKey\"")
+        // 디버그 빌드에서만 의미가 있다(Application 이 BuildConfig.DEBUG 와 함께 본다).
+        buildConfigField("boolean", "DEV_EMAIL_LOGIN", props.getProperty("DEV_EMAIL_LOGIN", "false"))
+        buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"${props.getProperty("FIREBASE_EMULATOR_HOST", "")}\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${props.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"")
+        manifestPlaceholders["kakaoScheme"] = if (kakaoKey.isBlank()) "kakaonotconfigured" else "kakao$kakaoKey"
     }
 
     buildTypes {
@@ -75,26 +89,40 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":common:presentation"))
-    implementation(project(":common:domain"))
-    implementation(project(":common:data"))
-    implementation(project(":common:network"))
-    implementation(project(":common:entity"))
-    implementation(project(":common:di"))
-    implementation(project(":common:navigation"))
+    // 꽃신 공유 앱 셸(Compose Multiplatform · Koin). 화면은 전부 여기서 온다.
+    implementation(project(":composeApp"))
+    implementation(libs.koin.android)
+    // 홈 화면 위젯. 위젯은 :core:widget-bridge 가 쓴 스냅샷만 읽는다.
+    implementation(project(":core:widget-bridge"))
+    implementation(project(":core:notification"))
+    implementation(project(":core:backup"))
+    implementation(project(":core:media"))
+    // 푸시(초인종). google-services.json 이 있는 빌드에서만 실제로 동작한다.
+    implementation(project(":core:firebase"))
+    implementation(project.dependencies.platform(libs.firebase.bom))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.firebase:firebase-auth")
+    implementation(project(":core:drawing-engine"))
+    implementation(project(":core:designsystem"))
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.glance.material3)
 
-    // 기기 정보. 빌드 변형만은 이 모듈이 BuildConfig 에서 읽어 꽂아 준다(DeviceInfoAppModule).
+    implementation(project(":common:di"))
+    implementation(project(":common:datastore"))
+
+    // 기기 정보. 빌드 변형만은 이 모듈이 BuildConfig 에서 읽어 꽂아 준다(TelemetryModules).
     implementation(project(":common:util"))
 
     // 화면 진입 시간 계측. Application 이 init · destroy 를 잡는다.
-    // domain 은 계약(TtiRecorder · PrintTtiShooter), data 는 Hilt 바인딩,
-    // presentation 은 라우팅 테이블이 화면을 감싸는 TtiPage 때문에 필요하다.
+    // domain 은 계약(TtiRecorder · PrintTtiShooter), data 는 Koin 조립,
+    // presentation 은 화면을 감싸는 TtiPage 때문에 필요하다.
     implementation(project(":tti:domain"))
     implementation(project(":tti:data"))
     implementation(project(":tti:presentation"))
 
     // 비즈니스 이벤트 로깅. TTI 와 마찬가지로 Application 이 init · destroy 를 잡는다.
-    // domain 은 계약(BizLogger · BizEvent), data 는 Hilt 조립과 전송 구현이다.
+    // domain 은 계약(BizLogger · BizEvent), data 는 Koin 조립과 전송 구현이다.
     implementation(project(":logging:domain"))
     implementation(project(":logging:data"))
 
@@ -102,31 +130,15 @@ dependencies {
     implementation(project(":featureflag:domain"))
     implementation(project(":featureflag:data"))
 
-    // 프레임 드랍 계측. Activity 가 JankStats 를 달고, 라우팅 테이블이 화면 이름을 등록한다.
+    // 프레임 드랍 계측. Activity 가 JankStats 를 단다.
     implementation(project(":jank:domain"))
     implementation(project(":jank:presentation"))
     implementation(project(":jank:data"))
 
-    implementation(project(":home:presentation"))
-    implementation(project(":home:navigation"))
-    implementation(project(":home:domain"))
-    implementation(project(":home:data"))
-    implementation(project(":home:entity"))
-
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.credentials)
     // 앱이 앞/뒤로 오갈 때를 TTI 기록기의 init · destroy 신호로 쓴다.
     implementation(libs.androidx.lifecycle.process)
-
-    // Navigation 3. 백스택 · 라우팅 테이블이 이 모듈에 있다.
-    implementation(libs.androidx.navigation3.runtime)
-    implementation(libs.androidx.navigation3.ui)
-    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    // GenericNavKey 백스택 직렬화용
-    implementation(libs.kotlinx.serialization.json)
-
-    // Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

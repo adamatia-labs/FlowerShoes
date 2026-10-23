@@ -1,10 +1,8 @@
 package com.sadturtleman.flowershoes.common.util.device.reader
 
 import com.sadturtleman.flowershoes.common.datastore.DataStorage
-import com.sadturtleman.flowershoes.common.datastore.DevicePreferences
 import com.sadturtleman.flowershoes.common.datastore.PreferenceKey
 import java.util.UUID
-import javax.inject.Inject
 
 /**
  * 설치 ID 를 만들어 두고 다시 꺼내 주는 곳.
@@ -18,8 +16,8 @@ import javax.inject.Inject
  * 쪼개면 앱 시작 직후처럼 여러 코루틴이 동시에 부르는 순간에 서로 다른 UUID 를 만들어
  * 뒤에 쓴 쪽이 이긴다. 그러면 같은 설치가 두 사람으로 세어진다.
  */
-internal class InstallationIdStore @Inject constructor(
-    @DevicePreferences private val storage: DataStorage,
+internal class InstallationIdStore constructor(
+    private val storage: DataStorage,
 ) {
 
     suspend fun installationId(): String {

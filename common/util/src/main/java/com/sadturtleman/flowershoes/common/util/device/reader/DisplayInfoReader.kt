@@ -8,8 +8,6 @@ import android.view.Display
 import android.view.WindowManager
 import com.sadturtleman.flowershoes.common.util.device.Orientation
 import com.sadturtleman.flowershoes.common.util.device.WindowSize
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
 
 /**
  * 화면과 설정을 읽는 곳. 구성이 바뀌면 값이 달라지므로 아무것도 캐시하지 않는다.
@@ -19,8 +17,8 @@ import javax.inject.Inject
  * 애플리케이션 컨텍스트의 것은 디스플레이 크기다. 그래서 창을 정확히 재야 하는 자리에서는
  * Activity 를 넘겨 달라고 계약에 적어 두었다.
  */
-internal class DisplayInfoReader @Inject constructor(
-    @ApplicationContext private val appContext: Context,
+internal class DisplayInfoReader constructor(
+    private val appContext: Context,
 ) {
 
     /**

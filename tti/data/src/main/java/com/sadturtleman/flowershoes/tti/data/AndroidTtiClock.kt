@@ -2,7 +2,6 @@ package com.sadturtleman.flowershoes.tti.data
 
 import android.os.SystemClock
 import com.sadturtleman.flowershoes.tti.domain.TtiClock
-import javax.inject.Inject
 
 /**
  * 안드로이드 시계.
@@ -12,7 +11,7 @@ import javax.inject.Inject
  * (기기가 잠들어도 계속 흐르므로, 백그라운드로 내려간 화면의 구간은 길게 잡힌다.
  *  그런 기록은 대개 완성되지 않은 채 오래돼 정리된다)
  */
-internal class AndroidTtiClock @Inject constructor() : TtiClock {
+internal class AndroidTtiClock constructor() : TtiClock {
 
     override fun elapsedMillis(): Long = SystemClock.elapsedRealtime()
 

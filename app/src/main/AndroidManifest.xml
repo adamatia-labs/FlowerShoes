@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".FlowerShoesApplication"
         android:allowBackup="true"
@@ -14,6 +16,17 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FlowerShoes">
+        <!-- 그림 / 사진 › 카메라로 찍기: 찍은 원본을 앱 캐시에 받는다. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,11 +50,82 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:host="app"
-                    android:scheme="flowershoes" />
+                <data android:scheme="kkotsin" />
             </intent-filter>
         </activity>
+        <!-- 서버가 보낸 화면 알림(FCM)의 아이콘 · 색 -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_heart_white" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/kk_rose" />
+
+        <!-- 카카오 로그인(카카오톡 → 앱으로 돌아오기) -->
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:host="oauth" android:scheme="${kakaoScheme}" />
+            </intent-filter>
+        </activity>
+
+        <!-- 푸시: 우편함에 새 Op 이 왔다는 초인종. 받으면 동기화를 돌린다 -->
+        <service
+            android:name=".push.KkotsinMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- 로컬 알림(예약 편지 공개 · 일정 전날 · 기념일) -->
+        <receiver android:name=".notification.LocalNotificationReceiver" android:exported="false" />
+
+        <!-- 홈 화면 위젯(설계 8장) -->
+        <receiver
+            android:name=".widget.DdayWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_dday" />
+        </receiver>
+        <receiver
+            android:name=".widget.MissYouWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_missyou" />
+        </receiver>
+        <receiver
+            android:name=".widget.NextMeetingWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_next" />
+        </receiver>
+        <receiver
+            android:name=".widget.DrawingWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_drawing" />
+        </receiver>
     </application>
 
 </manifest>

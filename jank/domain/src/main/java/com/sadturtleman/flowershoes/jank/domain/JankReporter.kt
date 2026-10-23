@@ -1,7 +1,5 @@
 package com.sadturtleman.flowershoes.jank.domain
 
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * JankStats 가 프레임마다 부르는 콜백을 받아 통계로 묶어 [JankReport] 로 넘긴다.
@@ -14,8 +12,7 @@ import javax.inject.Singleton
  * 모든 함수는 메인 스레드에서 불린다(JankStats 콜백이 그 위에서 돈다). 그래서 잠금이 없다 —
  * 잠금을 걸면 그 대기가 다시 프레임을 놓치게 만든다.
  */
-@Singleton
-class JankReporter @Inject constructor(
+class JankReporter constructor(
     private val report: JankReport,
 ) {
 

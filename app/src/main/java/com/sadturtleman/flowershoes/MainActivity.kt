@@ -2,55 +2,30 @@ package com.sadturtleman.flowershoes
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.metrics.performance.JankStats
-import com.sadturtleman.flowershoes.common.domain.helper.MessageHelper
-import com.sadturtleman.flowershoes.common.navigation.NavigationHelper
-import com.sadturtleman.flowershoes.common.presentation.helper.LocalMessageHelper
-import com.sadturtleman.flowershoes.common.presentation.helper.LocalNavigationHelper
+import com.sadturtleman.flowershoes.app.DeepLinks
+import com.sadturtleman.flowershoes.app.KkotsinApp
 import com.sadturtleman.flowershoes.jank.domain.JankReporter
 import com.sadturtleman.flowershoes.jank.presentation.LocalJankReporter
 import com.sadturtleman.flowershoes.jank.presentation.toJankFrame
-import com.sadturtleman.flowershoes.logging.domain.BizLogger
-import com.sadturtleman.flowershoes.navigation.LocalBizLogger
 import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
 import com.sadturtleman.flowershoes.tti.presentation.LocalTtiRecorder
-import com.sadturtleman.flowershoes.deeplink.resolveNewIntentRoute
-import com.sadturtleman.flowershoes.deeplink.resolveStartStack
-import com.sadturtleman.flowershoes.navigation.RootComposable
-import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
+import org.koin.android.ext.android.inject
 
-@AndroidEntryPoint
-class MainActivity : ComponentActivity() {
-
-    /**
-     * @Singleton 으로 제공되는 단일 인스턴스. Composable 트리에는 [LocalNavigationHelper] 로,
-     * ViewModel / UseCase 에는 생성자 주입으로 같은 인스턴스가 전달된다.
-     */
-    @Inject
-    lateinit var navigationHelper: NavigationHelper
-
-    /** 메시지도 같은 단일 인스턴스를 Composable 트리와 ViewModel 양쪽이 공유한다. */
-    @Inject
-    lateinit var messageHelper: MessageHelper
+/** FragmentActivity: 기기 인증(BiometricPrompt)이 필요로 한다. ComponentActivity 의 하위 클래스다. */
+class MainActivity : FragmentActivity() {
 
     /** TTI 기록기. 화면 계측은 전부 컴포지션에서 일어나므로 트리에 꽂아 준다. */
-    @Inject
-    lateinit var ttiRecorder: TtiRecorder
-
-    /** 비즈니스 이벤트 기록기. 화면 진입은 백스택을 쥔 컴포지션에서 남기므로 트리에 꽂아 준다. */
-    @Inject
-    lateinit var bizLogger: BizLogger
+    private val ttiRecorder: TtiRecorder by inject()
 
     /** 프레임 드랍 집계기. 화면 이름과 스크롤 구간을 컴포지션이 알려 주므로 트리에도 꽂는다. */
-    @Inject
-    lateinit var jankReporter: JankReporter
+    private val jankReporter: JankReporter by inject()
 
     /**
      * JankStats 는 DecorView 가 생긴 뒤에만 만들 수 있어 [onCreate] 에서 바로 만들지 않는다.
@@ -83,33 +58,31 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        // deep-link 진입 시 Intent.data 에서 시작 백스택을 구성한다.
-        val startStack = resolveStartStack(intent?.data)
+        // 예약 편지 · 일정 전날 알림을 띄우려면 Android 13+ 에서 권한이 필요하다.
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 0)
+        }
+
+        // 알림 · 위젯에서 들어온 딥링크(kkotsin://letter/{id} 등)는 셸이 받아 그 화면을 연다.
+        intent?.data?.let { DeepLinks.open(it.toString()) }
 
         enableEdgeToEdge()
         setContent {
             CompositionLocalProvider(
-                LocalNavigationHelper provides navigationHelper,
-                LocalMessageHelper provides messageHelper,
                 LocalTtiRecorder provides ttiRecorder,
-                LocalBizLogger provides bizLogger,
                 LocalJankReporter provides jankReporter,
             ) {
-                RootComposable(startStack = startStack)
+                KkotsinApp()
             }
         }
     }
 
-    /**
-     * launchMode 가 singleTop 이므로, 앱 실행 중 들어오는 새 deep-link 는 여기로 온다.
-     * URI 를 NavRoute 로 변환만 하고 실제 dispatch 는 NavigationHelper 통합 플로우가 담당한다.
-     */
+    /** launchMode 가 singleTop 이라 앱 실행 중 들어오는 딥링크는 여기로 온다. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-
-        val uri = intent.data ?: return
-        val route = resolveNewIntentRoute(uri) ?: return
-        navigationHelper.navigateByRoute(route)
+        intent.data?.let { DeepLinks.open(it.toString()) }
     }
 }

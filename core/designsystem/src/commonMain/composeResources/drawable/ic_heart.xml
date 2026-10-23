@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 🧩 Components 에서 받은 SVG(heart.svg)를 변환했다. 직접 고치지 말고 다시 변환한다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M12 20C12 20 5 15.5 3 11C2.66848 9.80653 2.82464 8.53024 3.43414 7.4519C4.04363 6.37357 5.05653 5.58152 6.25 5.25C7.44347 4.91848 8.71976 5.07464 9.7981 5.68414C10.8764 6.29363 11.6685 7.30653 12 8.5C12.3315 7.30653 13.1236 6.29363 14.2019 5.68414C15.2802 5.07464 16.5565 4.91848 17.75 5.25C18.9435 5.58152 19.9564 6.37357 20.5659 7.4519C21.1754 8.53024 21.3315 9.80653 21 11C19 15.5 12 20 12 20Z" android:strokeColor="#FF15171A" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

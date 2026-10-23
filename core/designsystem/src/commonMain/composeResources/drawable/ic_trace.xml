@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 🧩 Components 에서 받은 SVG(trace.svg)를 변환했다. 직접 고치지 말고 다시 변환한다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M4 18C4.12821 17.6581 4.2692 17.3308 4.42189 17.0182M20 18C19.8718 17.6581 19.7308 17.3308 19.5781 17.0182M6.25712 14.4191C6.7757 13.9014 7.34043 13.4669 7.9365 13.1154M10.9372 12.0716C11.6427 11.9761 12.3573 11.9761 13.0628 12.0716M16.0635 13.1154C16.6596 13.4669 17.2243 13.9014 17.7429 14.4191" android:strokeColor="#FF15171A" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M15 8C15 9.65685 13.6569 11 12 11C10.3431 11 9 9.65685 9 8C9 6.34315 10.3431 5 12 5C13.6569 5 15 6.34315 15 8Z" android:strokeColor="#FF15171A" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

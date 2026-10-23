@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 🧩 Components 에서 받은 SVG(logo_mark.svg)를 변환했다. 직접 고치지 말고 다시 변환한다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="70.4dp" android:height="70.4dp"
+    android:viewportWidth="70.4" android:viewportHeight="70.4">
+    <path android:pathData="M35.2 70.4C54.6404 70.4 70.4 54.6404 70.4 35.2C70.4 15.7596 54.6404 0 35.2 0C15.7596 0 0 15.7596 0 35.2C0 54.6404 15.7596 70.4 35.2 70.4Z" android:fillColor="#FFFFE0E7" />
+    <path android:pathData="M35.2 31.2C40.0601 31.2 44 27.2601 44 22.4C44 17.5399 40.0601 13.6 35.2 13.6C30.3399 13.6 26.4 17.5399 26.4 22.4C26.4 27.2601 30.3399 31.2 35.2 31.2Z" android:fillColor="#FFEE4672" />
+    <path android:pathData="M47.36 40C52.2201 40 56.16 36.0601 56.16 31.2C56.16 26.3399 52.2201 22.4 47.36 22.4C42.4999 22.4 38.56 26.3399 38.56 31.2C38.56 36.0601 42.4999 40 47.36 40Z" android:fillColor="#FFEE4672" />
+    <path android:pathData="M42.72 54.4C47.5801 54.4 51.52 50.4601 51.52 45.6C51.52 40.7399 47.5801 36.8 42.72 36.8C37.8599 36.8 33.92 40.7399 33.92 45.6C33.92 50.4601 37.8599 54.4 42.72 54.4Z" android:fillColor="#FFEE4672" />
+    <path android:pathData="M27.68 54.4C32.5401 54.4 36.48 50.4601 36.48 45.6C36.48 40.7399 32.5401 36.8 27.68 36.8C22.8199 36.8 18.88 40.7399 18.88 45.6C18.88 50.4601 22.8199 54.4 27.68 54.4Z" android:fillColor="#FFEE4672" />
+    <path android:pathData="M23.04 40C27.9001 40 31.84 36.0601 31.84 31.2C31.84 26.3399 27.9001 22.4 23.04 22.4C18.1799 22.4 14.24 26.3399 14.24 31.2C14.24 36.0601 18.1799 40 23.04 40Z" android:fillColor="#FFEE4672" />
+    <path android:pathData="M35.2 41.6C38.7346 41.6 41.6 38.7346 41.6 35.2C41.6 31.6654 38.7346 28.8 35.2 28.8C31.6654 28.8 28.8 31.6654 28.8 35.2C28.8 38.7346 31.6654 41.6 35.2 41.6Z" android:fillColor="#FFF2A93B" />
+    <path android:pathData="M19.2 59.2C27.2 56.8 43.2 56.8 51.2 59.2" android:strokeColor="#FF5A6B2A" android:strokeWidth="4" android:strokeLineCap="round" />
+</vector>

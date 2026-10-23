@@ -19,21 +19,48 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // 카카오 로그인 SDK
+        maven("https://devrepo.kakao.com/nexus/content/groups/public/")
     }
 }
 
 rootProject.name = "FlowerShoes"
 include(":app")
+// 공유 앱 셸(Compose Multiplatform). :app 과 iosApp 이 이것을 띄운다.
+include(":composeApp")
+
+// KMP 공용 코어. commonMain 에 순수 코틀린으로 두고 Android(jvm) · iOS 가 함께 쓴다.
+include(":core:model")
+include(":core:military")
+include(":core:sync")
+include(":core:drawing-engine")
+include(":core:compression")
+include(":core:crypto")
+include(":core:database")
+include(":core:data")
+include(":core:designsystem")
+include(":core:auth")
+include(":core:drawing-ui")
+include(":core:firebase")
+include(":core:widget-bridge")
+include(":core:notification")
+include(":core:backup")
+include(":core:media")
+
+// 화면 단위 기능. core 만 의존하고 서로는 모른다.
+include(":feature:onboarding")
+include(":feature:home")
+include(":feature:calendar")
+include(":feature:letter")
+include(":feature:drawing")
+include(":feature:memory")
+include(":feature:pairing")
+include(":feature:settings")
 
 // 공통 레이어. 모든 feature 가 참조한다.
-include(":common:presentation")
-include(":common:domain")
-include(":common:data")
-include(":common:network")
 include(":common:entity")
 include(":common:datastore")
 include(":common:di")
-include(":common:navigation")
 
 // 기기 · OS · 화면 · 리소스 · 네트워크 정보 수집. 계측 모듈들이 함께 쓴다.
 // 안드로이드 모듈이다 — Build · PackageManager · ConnectivityManager 를 읽는 것이 일이라
@@ -68,9 +95,3 @@ include(":jank:domain")
 include(":jank:presentation")
 include(":jank:data")
 
-// 네비게이션 호스트. 각 feature 의 화면을 라우팅 테이블 한 곳에 모은다.
-include(":home:navigation")
-include(":home:presentation")
-include(":home:domain")
-include(":home:data")
-include(":home:entity")

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 🧩 Components 에서 받은 SVG(chevron_down.svg)를 변환했다. 직접 고치지 말고 다시 변환한다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="9.2dp" android:height="5.2dp"
+    android:viewportWidth="9.2" android:viewportHeight="5.2">
+    <path android:pathData="M0.6 0.6L4.6 4.6L8.6 0.6" android:strokeColor="#FF5A5F69" android:strokeWidth="1.2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

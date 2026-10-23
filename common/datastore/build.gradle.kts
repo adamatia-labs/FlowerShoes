@@ -2,8 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.hilt.android)
-    alias(libs.plugins.ksp)
 }
 
 android {
@@ -36,12 +34,10 @@ kotlin {
 }
 
 dependencies {
+    // DI(Koin). 공유 앱과 같은 그래프에 들어간다.
+    implementation(libs.koin.android)
     // 디스패처 한정자 · 바인딩
     implementation(project(":common:di"))
-
-    // Hilt
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
