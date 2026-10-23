@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.app
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.window.ComposeUIViewController
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.sadturtleman.flowershoes.core.database.buildKkotsin
@@ -20,10 +21,12 @@ private var started = false
 /**
  * [signInUi]: Swift 의 제공자 화면(카카오 SDK · Sign in with Apple · Google Sign-In). Firebase 가 없으면 쓰지 않는다.
  * [ads]: Swift 의 AdMob 배너. 없으면 광고 지면이 비어 있다.
+ * [purchases]: Swift 의 RevenueCat 결제(꽃신 평생). 없으면 "앱 출시와 함께" 안내만.
  */
 fun MainViewController(
     signInUi: com.sadturtleman.flowershoes.core.firebase.SocialSignInUi? = null,
     ads: IosAdBanners? = null,
+    purchases: IosPurchases? = null,
 ): UIViewController {
     if (!started) {
         val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)
@@ -59,13 +62,19 @@ fun MainViewController(
                     single<com.sadturtleman.flowershoes.feature.settings.PlatformActions> { com.sadturtleman.flowershoes.app.ios.IosPlatformActions() }
                     // 위젯 스냅샷은 App Group 에(위젯 확장이 읽는다).
                     single { com.sadturtleman.flowershoes.core.widget.SnapshotStore(group / "widget/snapshot.json") }
+                    if (purchases != null) {
+                        single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { IosLifetimeStore(purchases, get()) }
+                    }
                 },
             )
         }
         started = true
     }
     return ComposeUIViewController {
-        if (ads == null) {
+        val lifetime = org.koin.mp.KoinPlatform.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
+        val owned = lifetime?.owned?.collectAsState()?.value ?: false
+        // 꽃신 평생이면 광고를 모두 숨긴다(Figma 9).
+        if (ads == null || owned) {
             KkotsinApp()
         } else {
             androidx.compose.runtime.CompositionLocalProvider(
@@ -84,6 +93,8 @@ fun onForeground() {
     kotlinx.coroutines.MainScope().launch {
         koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncClient>()?.let { com.sadturtleman.flowershoes.app.ios.mergeNseQueue(it) }
         koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()?.requestNow()
+        // 꽃신 평생 이용권(계정 맞추기 · 다시 읽기).
+        runCatching { koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.refresh() }
         com.sadturtleman.flowershoes.app.ios.writeLinkConfig(
             koin.get<com.sadturtleman.flowershoes.core.database.AppDatabase>(),
             koin.get<com.sadturtleman.flowershoes.core.data.Identity>(),

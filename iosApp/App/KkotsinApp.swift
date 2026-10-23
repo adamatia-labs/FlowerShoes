@@ -9,6 +9,7 @@ struct KkotsinApp: App {
     @Environment(\.scenePhase) private var phase
     private let signIn = SocialSignIn()
     private let ads = AdBanners()
+    private let purchases = LifetimePurchases()
 
     init() {
         // 그림 문서 · 백업의 zstd. Android(zstd-jni)와 같은 프레임 형식.
@@ -21,7 +22,7 @@ struct KkotsinApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ComposeView(signIn: signIn, ads: ads).ignoresSafeArea()
+            ComposeView(signIn: signIn, ads: ads, purchases: purchases).ignoresSafeArea()
                 .onOpenURL { url in
                     // 카카오톡 · Google 로그인에서 돌아온 것이면 그쪽이, 아니면 앱 딥링크(kkotsin://)
                     if !signIn.handle(url: url) { DeepLinks.shared.open(uri: url.absoluteString) }
@@ -41,7 +42,10 @@ struct KkotsinApp: App {
 struct ComposeView: UIViewControllerRepresentable {
     let signIn: SocialSignIn
     let ads: AdBanners
-    func makeUIViewController(context: Context) -> UIViewController { MainViewControllerKt.MainViewController(signInUi: signIn, ads: ads) }
+    let purchases: LifetimePurchases
+    func makeUIViewController(context: Context) -> UIViewController {
+        MainViewControllerKt.MainViewController(signInUi: signIn, ads: ads, purchases: purchases)
+    }
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 

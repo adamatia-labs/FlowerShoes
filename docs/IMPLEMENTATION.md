@@ -236,3 +236,5 @@ Figma 와 다르게 한 것(이유):
 - 꽃신 평생 결제(Android, RevenueCat purchases 10.29.0): 지금 Offering 의 lifetime 패키지를 산다. 활성 entitlement 가 있으면 이용 중 →
   광고 전부 숨김 · 설정 "이용 중". RevenueCat 사용자 id = 꽃신 계정 id(logIn). 키는 local.properties REVENUECAT_API_KEY(기본 테스트 스토어 키).
   테스트 스토어로 구매 → 광고 숨김까지 에뮬레이터에서 확인. iOS 결제 · 연인에게 광고 없이(연결된 동안)는 아직.
+- 꽃신 평생 결제(iOS, RevenueCat purchases-ios-spm 5.x): Swift LifetimePurchases(IosPurchases) → Kotlin IosLifetimeStore(LifetimeStore).
+  Android 와 같은 규칙(lifetime 패키지 · 활성 entitlement · 계정 id logIn), 이용 중이면 광고 숨김. 키는 Config.xcconfig REVENUECAT_API_KEY(비면 테스트 키).

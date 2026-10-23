@@ -38,6 +38,10 @@ packages:
   GoogleUMP:
     url: https://github.com/googleads/swift-package-manager-google-user-messaging-platform
     from: 3.0.0
+  # 꽃신 평생 결제(앱 타깃만)
+  RevenueCat:
+    url: https://github.com/RevenueCat/purchases-ios-spm.git
+    from: 5.0.0
 settings:
   base:
     DEVELOPMENT_TEAM: ""   # 팀 id 를 넣는다
@@ -86,6 +90,7 @@ targets:
       - package: GoogleMobileAds
       - package: GoogleUMP
         product: GoogleUserMessagingPlatform
+      - package: RevenueCat
       # GitLive firebase-kotlin-sdk 가 링크하는 Firebase iOS SDK(앱 타깃만 — NSE · 위젯에는 넣지 않는다)
       - package: Firebase
         product: FirebaseCore
@@ -122,6 +127,8 @@ targets:
         UIBackgroundModes: [remote-notification, fetch]
         # AdMob 앱 ID(꽃신 iOS) + Google 이 권하는 SKAdNetwork 식별자(광고 성과 측정).
         GADApplicationIdentifier: ca-app-pub-9179621242550991~5857677275
+        # RevenueCat 공개 SDK 키(Config.xcconfig 의 REVENUECAT_API_KEY, 비면 테스트 스토어 키)
+        RevenueCatAPIKey: $(REVENUECAT_API_KEY)
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
           - SKAdNetworkIdentifier: 4fzdc2evr5.skadnetwork
