@@ -35,6 +35,8 @@ android {
         buildConfigField("boolean", "DEV_EMAIL_LOGIN", props.getProperty("DEV_EMAIL_LOGIN", "false"))
         buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"${props.getProperty("FIREBASE_EMULATOR_HOST", "")}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${props.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"")
+        // 꽃신 평생 결제(RevenueCat 공개 SDK 키 — 앱에 실려 나가는 값이다). 기본은 테스트 스토어 키, 실제 키는 local.properties 로.
+        buildConfigField("String", "REVENUECAT_API_KEY", "\"${props.getProperty("REVENUECAT_API_KEY", "test_chjLRvvSdzZezYKFbIWfRxJMRjg")}\"")
         manifestPlaceholders["kakaoScheme"] = if (kakaoKey.isBlank()) "kakaonotconfigured" else "kakao$kakaoKey"
     }
 
@@ -112,6 +114,8 @@ dependencies {
     // 광고(Figma 9 · 광고 지면): AdMob 배너 + 동의(UMP).
     implementation(libs.play.services.ads)
     implementation(libs.ump)
+    // 꽃신 평생(한 번 결제)
+    implementation(libs.revenuecat)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.glance.material3)

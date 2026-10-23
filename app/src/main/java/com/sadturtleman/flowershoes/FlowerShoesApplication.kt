@@ -81,10 +81,21 @@ class FlowerShoesApplication :
                 ),
             )
             modules(telemetryModules(this@FlowerShoesApplication))
+            // 꽃신 평생 결제(RevenueCat). 결제 시트는 MainActivity 가 화면을 넘겨 준다.
+            modules(org.koin.dsl.module {
+                single {
+                    com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore(
+                        this@FlowerShoesApplication, BuildConfig.REVENUECAT_API_KEY, get<IdentityHolder>(), BuildConfig.DEBUG,
+                    )
+                }
+                single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>() }
+            })
         }
         appScope.launch {
             // 신원(로컬 id)을 먼저 읽어 둔다 — Repository 가 쓴다.
             get<IdentityHolder>().update(get<DeviceSettings>().ensureIdentity())
+            // 꽃신 평생 이용권: 계정을 맞추고 읽어 둔다(광고 숨김).
+            get<com.sadturtleman.flowershoes.core.data.LifetimeStore>().refresh()
             // 기기 키는 연결 · 기기 교체에 필요하다. 처음 실행이면 만들어 Keystore 보관함에 둔다.
             val vault = get<KeyVault>()
             Sodium.init()

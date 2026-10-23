@@ -233,3 +233,6 @@ Figma 와 다르게 한 것(이유):
 - AdMob 배너(iOS): 앱 ID ca-app-pub-9179621242550991~5857677275(Info.plist GADApplicationIdentifier + SKAdNetworkItems),
   배너 단위 ca-app-pub-9179621242550991/4592697065(Release) · 테스트 단위(Debug). Swift AdBanners(GoogleMobileAds 12 · UMP 3, SPM)가
   동의 → SDK 시작 → BannerView 를 만들고, Kotlin IosAdBanner 가 UIKitView 로 지면에 놓는다(MainViewController(ads:)).
+- 꽃신 평생 결제(Android, RevenueCat purchases 10.29.0): 지금 Offering 의 lifetime 패키지를 산다. 활성 entitlement 가 있으면 이용 중 →
+  광고 전부 숨김 · 설정 "이용 중". RevenueCat 사용자 id = 꽃신 계정 id(logIn). 키는 local.properties REVENUECAT_API_KEY(기본 테스트 스토어 키).
+  테스트 스토어로 구매 → 광고 숨김까지 에뮬레이터에서 확인. iOS 결제 · 연인에게 광고 없이(연결된 동안)는 아직.

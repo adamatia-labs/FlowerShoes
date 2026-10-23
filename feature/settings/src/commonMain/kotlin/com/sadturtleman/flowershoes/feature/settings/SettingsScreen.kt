@@ -312,8 +312,10 @@ private fun MainPage(
                 }
             }
             // 꽃신 평생(Figma): 프로필 바로 아래 옅은 색 한 줄.
+            val lifetime = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
+            val owned by (lifetime?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
             Box(Modifier.fillMaxWidth().clip(shape).background(c.bgSubtle)) {
-                KkListRow("꽃신 평생", value = "광고 없이 · $LIFETIME_PRICE", onClick = { open(SettingsPage.LIFETIME) })
+                KkListRow("꽃신 평생", value = if (owned) "이용 중" else "광고 없이 · $LIFETIME_PRICE", onClick = { open(SettingsPage.LIFETIME) })
             }
         }
         Group("우리") {
@@ -388,14 +390,41 @@ private val LIFETIME_BENEFITS = listOf(
     "백업 5GB · 마지막 사용 후 10년 보관",
 )
 
-/** 꽃신 평생(Figma 최종 정리 › 설정 · 꽃신 평생): 한 번 결제. 결제는 스토어 결제 연결과 함께 열린다. */
+/**
+ * 꽃신 평생(Figma 최종 정리 › 설정 · 꽃신 평생): 한 번 결제(Android: RevenueCat).
+ * 결제가 없는 빌드(iOS 아직)에서는 "앱 출시와 함께" 안내만.
+ */
 @Composable
 private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
     val c = KkTheme.colors
-    val soon = { viewModel.notice("결제는 앱 출시와 함께 열려요") }
+    val scope = rememberCoroutineScope()
+    val store = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
+    val owned by (store?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
+    var storePrice by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    LaunchedEffect(store) { storePrice = store?.price() }
+    fun run(action: suspend (com.sadturtleman.flowershoes.core.data.LifetimeStore) -> com.sadturtleman.flowershoes.core.data.PurchaseOutcome) {
+        if (store == null) { viewModel.notice("결제는 앱 출시와 함께 열려요"); return }
+        if (busy) return
+        busy = true
+        scope.launch {
+            when (val r = action(store)) {
+                com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Purchased -> viewModel.notice("꽃신 평생이 열렸어요. 고마워요!")
+                com.sadturtleman.flowershoes.core.data.PurchaseOutcome.NothingToRestore -> viewModel.notice("이 계정으로 산 기록이 없어요")
+                com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Cancelled -> Unit
+                is com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Failed -> viewModel.notice(r.message)
+            }
+            busy = false
+        }
+    }
+    val price = storePrice ?: LIFETIME_PRICE
     Page("", onBack, leading = KkTopBarLeading.Close, bottom = {
-        KkPrimaryButton("${LIFETIME_PRICE}에 평생 이용하기", soon, Modifier.fillMaxWidth())
-        KkSecondaryButton("구매 복원", soon)
+        if (owned) {
+            KkPrimaryButton("꽃신 평생 이용 중이에요", {}, Modifier.fillMaxWidth(), enabled = false)
+        } else {
+            KkPrimaryButton("${price}에 평생 이용하기", { run { it.buy() } }, Modifier.fillMaxWidth(), loading = busy)
+            KkSecondaryButton("구매 복원", { run { it.restore() } }, enabled = !busy)
+        }
     }) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("꽃신 평생", style = KkTheme.type.titleL, color = c.textPrimary)
@@ -412,7 +441,7 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
                     LIFETIME_LIST_PRICE, style = KkTheme.type.bodyM.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough),
                     color = c.textTertiary, modifier = Modifier.padding(bottom = 6.dp),
                 )
-                Text(LIFETIME_PRICE, style = KkTheme.type.display, color = c.textPrimary)
+                Text(price, style = KkTheme.type.display, color = c.textPrimary)
             }
         }
         Column(
