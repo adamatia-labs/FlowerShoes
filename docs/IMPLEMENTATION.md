@@ -268,8 +268,8 @@ Figma 와 다르게 한 것(이유):
 | RevenueCat 웹훅 | 함수 `revenuecatWebhook`(Authorization = REVENUECAT_WEBHOOK_AUTH, REST 로 다시 읽어 `entitlements/{uid}` lifetime · book · backupPlus) | 함수 단위(21) · 규칙(entitlements · mail 은 서버만, 15) |
 | 삭제 예고 이메일 | `backupRetention` 이 예고 때 `mail` 문서를 쓴다(Firebase "Trigger Email" 확장이 보낸다) | 함수 단위 |
 | 추억 책 PDF | 그래픽 레이어 비트맵이 HARDWARE 라 PdfDocument 가 못 그리던 문제를 고쳤다(복사). 디버그 빌드에만 "개발용 · 결제 없이 PDF 만들기" | **에뮬레이터에서 두 PDF 생성 · 쪽 이미지 확인**(4쪽, 576pt / 593pt) |
-| iOS | 추억 책 PDF(UIKit PDF 컨텍스트) · 결제 다리(memory_book · backup_plus, Swift `Purchases.swift`) · 파일 공유 | **Windows 라 빌드 못 함** — macOS CI(.github/workflows/ios.yml)에서 확인 |
-| iOS 위젯 | 받은 그림 · 다음 만남 위젯을 더했다(전에는 D-day · 보고싶어 둘뿐). 그림 위젯은 프레임 · "▶" · 누르면 편지. **위젯 스냅샷 발행기가 iOS 에서 시작되지 않던 것**을 고쳤다(onForeground 에서 한 번), 그림 PNG 는 App Group(widget/drawing-*.png)로 복사, Swift 가 넣은 `setWidgetReloader` 로 WidgetCenter 새로고침 | macOS CI |
+| iOS | 추억 책 PDF(UIKit PDF 컨텍스트) · 결제 다리(memory_book · backup_plus, Swift `Purchases.swift`) · 파일 공유 | macOS CI 통과(run 40073697956: iOS 테스트 · 프레임워크 링크 · 앱/NSE/위젯 빌드 · Swift 테스트 · 시뮬레이터 실행) |
+| iOS 위젯 | 받은 그림 · 다음 만남 위젯을 더했다(전에는 D-day · 보고싶어 둘뿐). 그림 위젯은 프레임 · "▶" · 누르면 편지. **위젯 스냅샷 발행기가 iOS 에서 시작되지 않던 것**을 고쳤다(onForeground 에서 한 번), 그림 PNG 는 App Group(widget/drawing-*.png)로 복사, Swift 가 넣은 `setWidgetReloader` 로 WidgetCenter 새로고침 | macOS CI 통과(위젯 확장 빌드) |
 | Figma 맞춤 | 코드에 먼저 들어간 것을 ✅ 최종 화면에 반영: 편지지 10장(평생 표시) · 그림 / 펜(크레용 · 수채 · 기본/파스텔/네온) · 설정 · 백업(640MB / 1GB · 백업 용량 추가 줄) · 설정 · 위젯 안내(그림 위젯 프레임). 글꼴 시트는 Figma 쪽에 맞춰 코드를 고쳤다(크기 칩 · "보고 싶은 밤" + 이름 · 평생 알약 · 라디오). 💰 "▶ 과정 · 6초" → "▶", 🗂 최종 정리 4 · 4-1 · 7 다시 복제 | Figma 스크린샷 · 에뮬레이터 |
 
 남은 것(다음 순서):
@@ -277,4 +277,4 @@ Figma 와 다르게 한 것(이유):
 1. **RevenueCat 대시보드**: Offering · entitlement `memory_book` · `backup_plus`(비소모성) 상품을 만들고, Webhook(Authorization 값)을 함수 `revenuecatWebhook` 으로. 함수 파라미터 REVENUECAT_WEBHOOK_AUTH · REVENUECAT_SECRET_KEY.
 2. **함수 배포 순서**: 웹훅이 entitlements 를 채운 뒤 `backupRetention` 을 켠다(전에는 평생 사용자도 1년 규칙).
 3. **Trigger Email 확장** 설치(mail 컬렉션) — 없으면 이메일 예고는 쌓이기만 한다.
-4. **iOS 빌드 확인**(macOS CI) — 이번 Swift · iosMain 변경(결제 다리 · PDF · 위젯 둘 · 스냅샷 발행기)은 Windows 에서 컴파일하지 못했다. 브랜치를 올리면 CI 가 빌드 · 실행한다.
+4. **iOS 실기기 확인** — CI(시뮬레이터)는 통과. 결제 · PDF · 위젯은 실기기에서 눌러 봐야 한다(결제는 샌드박스 계정).
