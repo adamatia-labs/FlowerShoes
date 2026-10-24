@@ -8,7 +8,6 @@ import com.sadturtleman.flowershoes.core.auth.AuthGateway
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.auth.SignInResult
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
-import com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.military.ServiceRulesTable
@@ -30,8 +29,8 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
 /**
- * 온보딩 순서(Figma ✅ 최종 화면 · 1 온보딩): 로그인 → 약관 동의 → 역할 → 테마 → 입대일 → 연결.
- * 단계 표시(4칸)는 역할부터. 백업이 있는 계정은 로그인 뒤 바로 복원으로 간다.
+ * 온보딩 순서(Figma ✅ 최종 화면 · 1 온보딩): 로그인 → 약관 동의 → 역할 → 테마 → 입대일(군인만) → 연결.
+ * 단계 표시는 역할부터(곰신 3칸 · 군인 4칸). 백업이 있는 계정은 로그인 뒤 바로 복원으로 간다.
  */
 enum class OnboardingStep { LOGIN, TERMS, ROLE, THEME, SERVICE, CONNECT }
 
@@ -60,6 +59,19 @@ data class OnboardingState(
     /** 입대일을 고르면 바로 보여 주는 전역일 미리보기. */
     val preview: ServiceTimeline?
         get() = enlistDate?.let { ServiceCalculator().timeline(Service("preview", branch, it, ServiceRulesTable.BUNDLED.version)) }
+
+    val totalSteps: Int get() = if (role == Role.GOMSIN) 3 else 4
+
+    fun nextStep(): OnboardingStep = when {
+        step == OnboardingStep.THEME && role == Role.GOMSIN -> OnboardingStep.CONNECT
+        else -> OnboardingStep.entries[minOf(step.ordinal + 1, OnboardingStep.entries.lastIndex)]
+    }
+
+    fun previousStep(): OnboardingStep = when {
+        step.ordinal <= OnboardingStep.TERMS.ordinal -> step
+        step == OnboardingStep.CONNECT && role == Role.GOMSIN -> OnboardingStep.THEME
+        else -> OnboardingStep.entries[step.ordinal - 1]
+    }
 
     val allAgreed: Boolean get() = agreed.containsAll(Agreement.entries)
 
@@ -130,7 +142,7 @@ class OnboardingViewModel(
             is OnboardingIntent.Read -> _state.update { it.copy(reading = intent.doc) }
             is OnboardingIntent.SelectRole -> _state.update {
                 // 역할을 바꾸면 테마 기본값도 따라간다(곰신 로즈 · 군인 올리브, 화면에 "추천").
-                it.copy(role = intent.role, theme = ThemeAccent.defaultFor(intent.role))
+                it.copy(role = intent.role, theme = ThemeAccent.defaultFor(intent.role), enlistDate = if (intent.role == Role.SOLDIER) it.enlistDate else null)
             }
             is OnboardingIntent.SelectTheme -> {
                 _state.update { it.copy(theme = intent.theme) }
@@ -144,7 +156,7 @@ class OnboardingViewModel(
                 when {
                     s.reading != null -> s.copy(reading = null)
                     s.step.ordinal <= OnboardingStep.TERMS.ordinal -> s
-                    else -> s.copy(step = OnboardingStep.entries[s.step.ordinal - 1])
+                    else -> s.copy(step = s.previousStep())
                 }
             }
             OnboardingIntent.FinishSolo -> finish(OnboardingEvent.Finished)
@@ -188,7 +200,7 @@ class OnboardingViewModel(
                 OnboardingStep.THEME -> settings.setTheme(checkNotNull(s.theme))
                 else -> Unit
             }
-            _state.update { it.copy(step = OnboardingStep.entries[minOf(s.step.ordinal + 1, OnboardingStep.entries.lastIndex)]) }
+            _state.update { it.copy(step = s.nextStep()) }
         }
     }
 
@@ -197,12 +209,12 @@ class OnboardingViewModel(
         viewModelScope.launch {
             val role = s.role ?: Role.GOMSIN
             profile.saveMe(role, nickname = "")
-            s.enlistDate?.let { date ->
-                // 곰신이 입력한 값은 아직 모르는 상대(군인)의 정보다. 연결할 때 군인이 입력한 값이 우선한다(7-1-1).
-                val owner = if (role == Role.SOLDIER) profile.myUserId() else PENDING_SOLDIER
-                profile.saveService(Service(owner, s.branch, date, ServiceRulesTable.BUNDLED.version))
+            s.enlistDate?.takeIf { role == Role.SOLDIER }?.let { date ->
+                profile.saveService(Service(profile.myUserId(), s.branch, date, ServiceRulesTable.BUNDLED.version))
             }
-            settings.setOnboarded()
+            // 연결은 확인 코드(SAS) 비교까지 온보딩 안에서 마친다.
+            // 여기서 먼저 완료 처리하면 셸이 교체되어 OpenPairing 화면이 사라진다.
+            if (event == OnboardingEvent.Finished) settings.setOnboarded()
             _events.send(event)
         }
     }

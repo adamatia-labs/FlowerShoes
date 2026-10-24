@@ -9,7 +9,11 @@ import Security
 /// 본 DB 는 App Group 에 두지 않는다 — 앱이 잠금을 잡은 채 백그라운드로 가면 0xdead10cc 로 강제 종료된다.
 enum SharedStore {
     static let appGroup = "group.com.sadturtleman.kkotsin"
-    static let keychainGroup = "com.sadturtleman.kkotsin.shared"
+    static var keychainGroup: String? {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "KkotsinKeychainAccessGroup") as? String,
+              group.hasSuffix(".com.sadturtleman.kkotsin.shared") else { return nil }
+        return group
+    }
 
     static var container: URL {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)!
@@ -72,12 +76,12 @@ enum SharedStore {
     // MARK: Keychain
 
     static func secret(_ account: String) -> [UInt8]? {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: keychainGroup,
             kSecReturnData as String: true,
         ]
+        if let keychainGroup { query[kSecAttrAccessGroup as String] = keychainGroup }
         var out: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
         return [UInt8](data)
@@ -85,11 +89,11 @@ enum SharedStore {
 
     /// 기기 키 · 커플 키는 이 기기에만(ThisDeviceOnly) 둔다.
     static func setSecret(_ account: String, _ bytes: [UInt8]) {
-        let base: [String: Any] = [
+        var base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: keychainGroup,
         ]
+        if let keychainGroup { base[kSecAttrAccessGroup as String] = keychainGroup }
         SecItemDelete(base as CFDictionary)
         var add = base
         add[kSecValueData as String] = Data(bytes)

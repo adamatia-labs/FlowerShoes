@@ -453,7 +453,10 @@ private fun BrushChip(label: String, on: Boolean, lifetimeLocked: Boolean, onCli
     val c = KkTheme.colors
     Row(
         Modifier.height(40.dp).clip(CircleShape).background(if (on) c.bgBrand else c.bgSubtle)
-            .clickable(role = Role.RadioButton, onClick = onClick).semantics { selected = on }
+            .clickable(role = Role.RadioButton, onClick = onClick).semantics {
+                selected = on
+                contentDescription = label + if (lifetimeLocked) ", 꽃신 평생, 잠김" else ""
+            }
             .padding(horizontal = KkSpacing.md),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {

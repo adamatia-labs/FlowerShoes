@@ -93,6 +93,49 @@ class EndToEndTest {
         jisu.sync.syncOnce()
     }
 
+    private suspend fun widgetItem(seq: Long): MailItem {
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "dev-a:widget", seq, 1)
+        val payload = com.sadturtleman.flowershoes.core.data.OpPayload.MissYouPut(
+            com.sadturtleman.flowershoes.core.model.MissYou(id, "jisu", kotlin.time.Clock.System.now()),
+        )
+        val envelope = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(
+            header, Plain(seq, com.sadturtleman.flowershoes.core.data.OpCodec.encode(payload)).encode(),
+            jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!,
+        )
+        return MailItem(id, "missyou", "dev-a", header.toBytes(), envelope.ciphertext, envelope.signature)
+    }
+
+    @Test
+    fun `오프라인 위젯 사본은 순서가 뒤바뀌고 앱이 다시 읽어도 한 번씩 전송된다`() = runTest {
+        link()
+        val couple = jisu.db.coupleDao().get()!!.id
+        val first = widgetItem(1)
+        val second = widgetItem(2)
+        assertTrue(jisu.sync.importWidgetOp(couple, second))
+        assertTrue(jisu.sync.importWidgetOp(couple, second))
+        roundTrip()
+        assertTrue(jisu.sync.importWidgetOp(couple, first))
+        roundTrip()
+        assertTrue(jisu.sync.importWidgetOp(couple, first)) // ACK 뒤 재시작해도 다시 쌓이지 않는다.
+        roundTrip()
+        assertEquals(2, jisu.db.missYouDao().all().size)
+        assertEquals(2, minjun.db.missYouDao().all().size)
+        assertEquals(2L, minjun.db.syncDao().cursor("dev-a:widget"))
+        assertTrue(jisu.db.syncDao().log("dev-a:widget").isEmpty())
+    }
+
+    @Test
+    fun `다른 연결과 변조된 위젯 사본은 전송 로그에 들어가지 않는다`() = runTest {
+        link()
+        val item = widgetItem(1)
+        assertEquals(false, jisu.sync.importWidgetOp("other-couple", item))
+        val bad = MailItem(item.opId, item.kind, item.from, item.header, item.ciphertext + byteArrayOf(1), item.signature)
+        assertTrue(runCatching { jisu.sync.importWidgetOp(jisu.db.coupleDao().get()!!.id, bad) }.isFailure)
+        assertTrue(jisu.db.missYouDao().all().isEmpty())
+        assertTrue(jisu.db.syncDao().log("dev-a:widget").isEmpty())
+    }
+
     @Test
     fun `연결하면 양쪽이 같은 커플 키를 갖는다`() = runTest {
         link()

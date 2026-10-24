@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -151,7 +152,7 @@ fun OnboardingScreen(
                     OnboardingStep.THEME -> ThemeContent(state, onIntent)
                     OnboardingStep.SERVICE -> ServiceContent(state) { sheet = it }
                     OnboardingStep.CONNECT -> {
-                        KkStepIndicator(step = 4, total = 4)
+                        KkStepIndicator(step = state.totalSteps, total = state.totalSteps)
                         Text("연인과 연결해요", style = KkTheme.type.display, color = c.textPrimary)
                         connect { onIntent(OnboardingIntent.StartPairing) }
                     }
@@ -212,7 +213,7 @@ private fun TermsContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
             .kkElevation(KkElevation.Low, shape)
             .clip(shape)
             .background(c.bgSurface)
-            .clickable(role = A11y.Checkbox) { onIntent(OnboardingIntent.ToggleAll) }
+            .toggleable(value = state.allAgreed, role = A11y.Checkbox) { onIntent(OnboardingIntent.ToggleAll) }
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -226,7 +227,7 @@ private fun TermsContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
                 Modifier
                     .fillMaxWidth()
                     .height(52.dp)
-                    .clickable(role = A11y.Checkbox) { onIntent(OnboardingIntent.ToggleAgreement(item)) }
+                    .toggleable(value = item in state.agreed, role = A11y.Checkbox) { onIntent(OnboardingIntent.ToggleAgreement(item)) }
                     .padding(start = 16.dp, end = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -237,7 +238,7 @@ private fun TermsContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
                     Modifier.size(44.dp).then(if (item.doc != null) Modifier.clickable(role = A11y.Button) { onIntent(OnboardingIntent.Read(item.doc)) } else Modifier),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (item.doc != null) KkIcon(KkIcons.ChevronRight, tint = c.textSecondary)
+                    if (item.doc != null) KkIcon(KkIcons.ChevronRight, tint = c.textSecondary, contentDescription = "${item.doc.title} 보기")
                 }
             }
         }
@@ -261,7 +262,7 @@ private fun RoleContent(state: OnboardingState, onIntent: (OnboardingIntent) -> 
             Text("곰신이 꽃신 되는 날까지", style = KkTheme.type.caption, color = c.textSecondary)
         }
     }
-    KkStepIndicator(step = 1, total = 4)
+    KkStepIndicator(step = 1, total = state.totalSteps)
     Text("어느 쪽이신가요?", style = KkTheme.type.display, color = c.textPrimary)
     RoleCard("곰신이에요", "군대 간 연인을 기다리고 있어요", KkIcons.Heart, c.bgSurface, c.heart, state.role == Role.GOMSIN) {
         onIntent(OnboardingIntent.SelectRole(Role.GOMSIN))
@@ -302,7 +303,7 @@ private fun RoleCard(title: String, body: String, icon: KkIcons, iconBg: Color, 
 @Composable
 private fun ThemeContent(state: OnboardingState, onIntent: (OnboardingIntent) -> Unit) {
     val c = KkTheme.colors
-    KkStepIndicator(step = 2, total = 4)
+    KkStepIndicator(step = 2, total = state.totalSteps)
     Text("앱 색을 골라 주세요", style = KkTheme.type.titleL, color = c.textPrimary)
     val recommended = state.role?.let { ThemeAccent.defaultFor(it) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

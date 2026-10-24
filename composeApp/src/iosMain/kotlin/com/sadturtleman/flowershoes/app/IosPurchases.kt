@@ -45,6 +45,7 @@ interface IosPurchases {
     /** 따로 파는 한 번 결제 상품: Offering [offering] 의 첫 패키지. */
     fun productPrice(offering: String, done: PurchasePriceCallback)
     fun buyProduct(offering: String, entitlement: String, done: PurchaseOutcomeCallback)
+    fun restoreProduct(entitlement: String, done: PurchaseOutcomeCallback)
 }
 
 /** 따로 파는 상품 하나(추억 책 PDF · 백업 용량 추가). Android RevenueCatLifetimeStore.Product 와 같은 Offering · entitlement id. */
@@ -64,7 +65,8 @@ internal class IosProduct(
 
     override suspend fun buy(): PurchaseOutcome = outcomeOf { purchases.buyProduct(offering, entitlement, it) }.also { if (it == PurchaseOutcome.Purchased) _owned.value = true }
 
-    override suspend fun restore(): PurchaseOutcome = outcomeOf { purchases.restore(it) }.let { if (it == PurchaseOutcome.Purchased && !_owned.value) PurchaseOutcome.NothingToRestore else it }
+    override suspend fun restore(): PurchaseOutcome = outcomeOf { purchases.restoreProduct(entitlement, it) }
+        .also { if (it == PurchaseOutcome.Purchased) _owned.value = true }
 }
 
 private suspend fun outcomeOf(call: (PurchaseOutcomeCallback) -> Unit): PurchaseOutcome = suspendCancellableCoroutine { c ->

@@ -135,6 +135,19 @@ final class LifetimePurchases: NSObject, IosPurchases, PurchasesDelegate {
         }
     }
 
+    func restoreProduct(entitlement: String, done: PurchaseOutcomeCallback) {
+        Task {
+            let outcome: (Int32, String?)
+            do {
+                let info = try await RevenueCat.Purchases.shared.restorePurchases()
+                outcome = info.entitlements.active[entitlement] != nil ? (0, nil) : (2, nil)
+            } catch {
+                outcome = Self.failure(error)
+            }
+            await MainActor.run { done.result(code: outcome.0, message: outcome.1) }
+        }
+    }
+
     private static func failure(_ error: Error) -> (Int32, String?) {
         switch (error as? RevenueCat.ErrorCode) ?? .unknownError {
         case .purchaseCancelledError: return (1, nil)

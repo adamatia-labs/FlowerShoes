@@ -10,6 +10,7 @@ import dev.gitlive.firebase.auth.auth
 import dev.gitlive.firebase.firestore.FirebaseFirestore
 import dev.gitlive.firebase.firestore.Timestamp
 import dev.gitlive.firebase.firestore.firestore
+import dev.gitlive.firebase.storage.storage
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -113,17 +114,31 @@ class FirestoreTransport(
     private fun blob(coupleId: String, id: String) = db.collection("couples").document(coupleId).collection("blobs").document(id)
 
     override suspend fun put(coupleId: String, blobId: String, bytes: ByteArray) {
-        blob(coupleId, blobId).set(BlobDoc(bytes.b64(), clock.after(32.days)))
+        // 규칙의 문자열 900,000자 제한에는 Base64의 4/3 팽창도 포함된다.
+        val inline = bytes.size <= 675_000
+        if (!inline) putStorageBytes(storageBlob(coupleId, blobId), bytes)
+        blob(coupleId, blobId).set(BlobDoc(if (inline) bytes.b64() else STORAGE_BLOB, clock.after(32.days)))
     }
 
     override suspend fun get(coupleId: String, blobId: String): ByteArray? {
         val snap = blob(coupleId, blobId).get()
-        return if (snap.exists) snap.data(BlobDoc.serializer()).data.unb64() else null
+        if (!snap.exists) return null
+        val data = snap.data(BlobDoc.serializer()).data
+        return if (data == STORAGE_BLOB) getStorageBytes(storageBlob(coupleId, blobId)) else data.unb64()
     }
 
     override suspend fun delete(coupleId: String, blobId: String) {
-        blob(coupleId, blobId).delete()
+        val ref = blob(coupleId, blobId)
+        val snap = ref.get()
+        if (snap.exists && snap.data(BlobDoc.serializer()).data == STORAGE_BLOB) {
+            storageBlob(coupleId, blobId).delete()
+        }
+        ref.delete()
     }
+
+    private fun storageBlob(coupleId: String, blobId: String) = Firebase.storage.reference.child("couples/$coupleId/blobs/$blobId")
+
+    private companion object { const val STORAGE_BLOB = "storage:v1" }
 
     // ── PairingTransport ──
 

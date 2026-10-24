@@ -112,14 +112,40 @@ class IosNotificationScheduler : NotificationScheduler {
 
 /** 위젯 전송(App Intent)이 읽는 연결 정보. WidgetSender.swift 의 LinkConfig 와 같은 필드. */
 @Serializable
-data class LinkConfig(val coupleId: String, val userId: String, val deviceId: String, val partnerDeviceId: String, val epoch: Int)
+data class LinkConfig(val coupleId: String, val userId: String, val deviceId: String, val partnerDeviceId: String, val epoch: Int, val sendEndpoint: String? = null)
+
+internal var widgetSendEndpoint: String? = null
 
 /** 연결 · 기기 교체 · 키 교체 뒤에 부른다. */
-suspend fun writeLinkConfig(db: AppDatabase, identity: Identity, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) {
-    val couple = db.coupleDao().get() ?: return
-    val partner = db.deviceDao().activeFor(couple.partnerUserId) ?: return
-    val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch)
-    fs.write(root / "link.json") { writeUtf8(Json.encodeToString(LinkConfig.serializer(), config)) }
+suspend fun writeLinkConfig(db: AppDatabase, identity: Identity, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM, vault: com.sadturtleman.flowershoes.core.data.sync.KeyVault? = null) {
+    val couple = db.coupleDao().get()
+    val partner = couple?.let { db.deviceDao().activeFor(it.partnerUserId) }
+    if (couple == null || partner == null) {
+        fs.delete(root / "link.json", mustExist = false)
+        return
+    }
+    (vault as? com.sadturtleman.flowershoes.core.data.sync.IosKeyVault)?.putPartnerSignPub(partner.signPub)
+    val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch, widgetSendEndpoint)
+    val temporary = root / "link.json.tmp"
+    fs.write(temporary) { writeUtf8(Json.encodeToString(LinkConfig.serializer(), config)) }
+    fs.atomicMove(temporary, root / "link.json")
+}
+
+@Serializable
+private data class WidgetOutgoing(val coupleId: String, val fromDeviceId: String, val opId: String, val kind: String, val header: String, val ct: String, val sig: String)
+
+/** App Intent의 암호문 사본을 동기화 로그로 옮긴 뒤에만 삭제한다. */
+suspend fun mergeWidgetQueue(sync: SyncClient, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) {
+    val dir = root / "widget-outbox"
+    if (!fs.exists(dir)) return
+    val json = Json { ignoreUnknownKeys = true }
+    fs.list(dir).filter { it.name.endsWith(".json") }.forEach { file ->
+        val imported = runCatching {
+            val q = json.decodeFromString(WidgetOutgoing.serializer(), fs.read(file) { readUtf8() })
+            sync.importWidgetOp(q.coupleId, MailItem(q.opId, q.kind, q.fromDeviceId, Base64.decode(q.header), Base64.decode(q.ct), Base64.decode(q.sig)))
+        }.getOrDefault(false)
+        if (imported) fs.delete(file)
+    }
 }
 
 /** NSE 가 App Group 에 남긴 받은 Op(NotificationService.swift 의 queued JSON). */

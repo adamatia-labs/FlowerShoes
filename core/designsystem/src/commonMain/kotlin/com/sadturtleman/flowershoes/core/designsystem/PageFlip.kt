@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -24,11 +26,12 @@ private const val FLIP_MS = 420
 
 private class FlipState<T>(var last: T) {
     var from: T? = null
-    var hasFrom = false
+    // 동작 줄이기로 애니메이션이 한 프레임 안에 끝나도 이전 장을 반드시 치운다.
+    var hasFrom by mutableStateOf(false)
     var forward = true
     var generation = 0
     /** 장이 바뀐 첫 프레임: 애니메이션이 0 으로 돌아가기 전까지 넘김 시작 자세로 그린다. */
-    var pending = false
+    var pending by mutableStateOf(false)
 }
 
 /**

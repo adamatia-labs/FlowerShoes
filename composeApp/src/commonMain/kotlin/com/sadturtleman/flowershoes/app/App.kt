@@ -18,6 +18,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -119,6 +121,8 @@ fun KkotsinApp() {
 @Composable
 private fun OnboardingFlow() {
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
+    val settings = koinInject<DeviceSettings>()
+    val scope = rememberCoroutineScope()
     // 복원 · 연결 화면에서 뒤로 가면 온보딩으로(복원을 원하지 않으면 약관부터 새로 시작).
     BackHandler(enabled = overlay != null) { overlay = null }
     KkPageFlip(overlay, pageKey = { it ?: "onboarding" }, isForward = ::overlayForward) { shown ->
@@ -130,7 +134,7 @@ private fun OnboardingFlow() {
             onOpenPairing = { overlay = Overlay.PAIRING },
             connect = { onAdvance -> InviteConnect(onAdvance) },
         )
-        Overlay.PAIRING -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
+        Overlay.PAIRING -> PairingRoute(onDone = { scope.launch { settings.setOnboarded() } }, onBack = { overlay = null })
         Overlay.RECEIVE -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = Overlay.RESTORE }, mode = com.sadturtleman.flowershoes.feature.pairing.PairingMode.RECEIVE)
         Overlay.RESTORE -> {
             val onboarding = koinViewModel<com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel>()
@@ -184,7 +188,16 @@ private fun MainShell() {
     LaunchedEffect(link) {
         when (val l = link) {
             null -> return@LaunchedEffect
-            DeepLink.Home -> tab = Tab.HOME
+            DeepLink.Home -> {
+                overlay = null
+                letters.onIntent(LetterIntent.Close)
+                tab = Tab.HOME
+            }
+            DeepLink.Inbox -> {
+                overlay = null
+                letters.onIntent(LetterIntent.Close)
+                tab = Tab.LETTER
+            }
             is DeepLink.Letter -> {
                 overlay = null
                 tab = Tab.LETTER

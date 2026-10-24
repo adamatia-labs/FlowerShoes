@@ -857,10 +857,12 @@ private fun RecoveryPage(platform: PlatformActions, viewModel: SettingsViewModel
     val clipboard = LocalClipboardManager.current
     var code by remember { mutableStateOf<String?>(null) }
     var denied by remember { mutableStateOf(false) }
+    var loaded by remember { mutableStateOf(false) }
     var confirmNew by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (platform.authenticate("복구 코드를 보려면 본인 확인이 필요해요") == DeviceAuth.Failed) denied = true
         else code = viewModel.recoveryCode()
+        loaded = true
     }
     Page("복구 코드", onBack, bottom = {
         KkButton("새 코드 만들기", { confirmNew = true }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost, enabled = code != null)
@@ -875,6 +877,7 @@ private fun RecoveryPage(platform: PlatformActions, viewModel: SettingsViewModel
             val shown = code
             when {
                 denied -> Text("본인 확인을 하지 못했어요", style = KkTheme.type.bodyM, color = c.textSecondary)
+                shown == null && loaded -> Text("복구 코드를 불러오지 못했어요. 백업 설정을 확인해 주세요", style = KkTheme.type.bodyM, color = c.textSecondary)
                 shown == null -> Text("불러오는 중…", style = KkTheme.type.bodyM, color = c.textTertiary)
                 else -> shown.filter { it.isLetterOrDigit() }.chunked(4).chunked(3).forEach { line ->
                     Text(

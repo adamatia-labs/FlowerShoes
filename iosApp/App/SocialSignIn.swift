@@ -23,8 +23,8 @@ final class SocialSignIn: NSObject, SocialSignInUi {
 
     /// 카카오톡 · Google 에서 앱으로 돌아오는 URL. 처리했으면 true.
     @MainActor func handle(url: URL) -> Bool {
-        if AuthApi.isKakaoTalkLoginUrl(url) { return AuthController.handleOpenUrl(url: url) }
-        return GIDSignIn.sharedInstance.handle(url)
+        if kakaoConfigured && AuthApi.isKakaoTalkLoginUrl(url) { return AuthController.handleOpenUrl(url: url) }
+        return googleConfigured && GIDSignIn.sharedInstance.handle(url)
     }
 
     // MARK: 카카오

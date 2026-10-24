@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -133,11 +136,11 @@ private fun Dday(state: HomeState, onOpenCalendar: () -> Unit) {
 private fun LinkedHome(state: HomeState, onIntent: (HomeIntent) -> Unit, onOpenCalendar: () -> Unit) {
     val c = KkTheme.colors
     Dday(state, onOpenCalendar)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
         state.partner?.let { StatusTile(it, Modifier.weight(1f)) }
         val shape = RoundedCornerShape(KkRadius.xl)
         Box(
-            Modifier.weight(1f).height(170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+            Modifier.weight(1f).fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
             contentAlignment = Alignment.Center,
         ) {
             KkMissYouButton(state.sentMissYouToday, onClick = { onIntent(HomeIntent.SendMissYou) })
@@ -155,8 +158,8 @@ private fun StatusTile(p: PartnerStatus, modifier: Modifier) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.xl)
     Column(
-        modifier.height(170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
-        verticalArrangement = Arrangement.SpaceBetween,
+        modifier.fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+        verticalArrangement = Arrangement.spacedBy(KkSpacing.md, Alignment.CenterVertically),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(32.dp).clip(CircleShape).background(c.bgMilitarySubtle), contentAlignment = Alignment.Center) {
