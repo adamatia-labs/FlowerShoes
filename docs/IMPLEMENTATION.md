@@ -274,7 +274,7 @@ Figma 와 다르게 한 것(이유):
 
 남은 것(다음 순서):
 
-1. **RevenueCat 대시보드**: Offering · entitlement `memory_book` · `backup_plus`(비소모성) 상품을 만들고, Webhook(Authorization 값)을 함수 `revenuecatWebhook` 으로. 함수 파라미터 REVENUECAT_WEBHOOK_AUTH · REVENUECAT_SECRET_KEY.
+1. **콘솔 설정**: 순서 · 값 · 확인 방법은 [SETUP_CONSOLE.md](SETUP_CONSOLE.md) (스토어 상품 → RevenueCat → 비밀 값(Secret Manager) → 웹훅 확인 → 메일 확장 → 백업 보관 함수).
 2. **함수 배포 순서**: 웹훅이 entitlements 를 채운 뒤 `backupRetention` 을 켠다(전에는 평생 사용자도 1년 규칙).
 3. **Trigger Email 확장** 설치(mail 컬렉션) — 없으면 이메일 예고는 쌓이기만 한다.
 4. **iOS 실기기 확인** — CI(시뮬레이터)는 통과. 결제 · PDF · 위젯은 실기기에서 눌러 봐야 한다(결제는 샌드박스 계정).

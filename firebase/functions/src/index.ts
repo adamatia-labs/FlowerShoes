@@ -17,7 +17,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
-import { defineString } from 'firebase-functions/params';
+import { defineSecret, defineString } from 'firebase-functions/params';
 import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
@@ -38,9 +38,9 @@ const APPLE_TEAM_ID = defineString('APPLE_TEAM_ID', { default: '' });
 const APPLE_KEY_ID = defineString('APPLE_KEY_ID', { default: '' });
 const APPLE_CLIENT_ID = defineString('APPLE_CLIENT_ID', { default: '' });
 const APPLE_PRIVATE_KEY = defineString('APPLE_PRIVATE_KEY', { default: '' });
-// RevenueCat: 웹훅 Authorization 헤더 값 · REST 비밀 키(sk_). 비어 있으면 웹훅은 아무것도 하지 않는다.
-const REVENUECAT_WEBHOOK_AUTH = defineString('REVENUECAT_WEBHOOK_AUTH', { default: '' });
-const REVENUECAT_SECRET_KEY = defineString('REVENUECAT_SECRET_KEY', { default: '' });
+// RevenueCat: 웹훅 Authorization 헤더 값 · REST 비밀 키(sk_). Secret Manager 에 둔다(firebase functions:secrets:set).
+const REVENUECAT_WEBHOOK_AUTH = defineSecret('REVENUECAT_WEBHOOK_AUTH');
+const REVENUECAT_SECRET_KEY = defineSecret('REVENUECAT_SECRET_KEY');
 const appleConfig = (): AppleConfig => ({
   teamId: APPLE_TEAM_ID.value(), keyId: APPLE_KEY_ID.value(), clientId: APPLE_CLIENT_ID.value(), privateKey: APPLE_PRIVATE_KEY.value(),
 });
@@ -488,7 +488,7 @@ export const backupRetention = onSchedule({ schedule: 'every day 04:00', region:
  * RevenueCat 웹훅(대시보드 › Integrations › Webhooks, Authorization 헤더 = REVENUECAT_WEBHOOK_AUTH).
  * 알림이 온 사용자의 이용권을 REST API 로 다시 읽어 entitlements/{uid} 에 쓴다 — backupRetention 이 평생 10년을 여기서 본다.
  */
-export const revenuecatWebhook = onRequest({ region: REGION }, async (req, res) => {
+export const revenuecatWebhook = onRequest({ region: REGION, secrets: [REVENUECAT_WEBHOOK_AUTH, REVENUECAT_SECRET_KEY] }, async (req, res) => {
   const auth = REVENUECAT_WEBHOOK_AUTH.value();
   if (!auth || req.get('authorization') !== auth) {
     res.status(401).send('unauthorized');
