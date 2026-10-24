@@ -88,6 +88,8 @@ fun kkotsinModules(
 
         single { SyncWriter(get(), get(), get()) }
         single { AttachmentStore(get(), attachmentsRoot) }
+        single { com.sadturtleman.flowershoes.core.data.RecordExporter(get(), get(), get()) }
+        single { com.sadturtleman.flowershoes.core.data.SharedPerks(getOrNull(), getOrNull(), get()) }
         single { InboxApplier(get(), get()) }
         single { ProfileRepository(get(), get(), get()) }
         single { EventRepository(get(), get(), get(), get()) }
@@ -146,7 +148,7 @@ fun kkotsinModules(
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
-        viewModel { MemoryViewModel(get(), get(), get(), get(), get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get()) }
+        viewModel { MemoryViewModel(get(), get(), get(), get(), clock = get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
         viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull(), getOrNull()) }
         viewModel { BackupViewModel(getOrNull(), get()) }

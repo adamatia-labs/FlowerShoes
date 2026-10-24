@@ -88,10 +88,84 @@ struct MissYouWidget: Widget {
     }
 }
 
+/// 받은 그림(Android DrawingWidget 과 같다): 완성 PNG + "▶", 누르면 그 편지를 열고 리플레이. 프레임은 설정 › 위젯(꽃신 평생).
+struct DrawingWidgetView: View {
+    let entry: SnapshotEntry
+
+    private var frame: (background: Color, inset: EdgeInsets) {
+        switch entry.snapshot?.widgetFrame {
+        case "BLOSSOM": return (Color(red: 1, green: 0xE0 / 255, blue: 0xE7 / 255), EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+        case "KRAFT": return (Color(red: 0xE9 / 255, green: 0xDC / 255, blue: 0xC4 / 255), EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+        case "POLAROID": return (.white, EdgeInsets(top: 8, leading: 8, bottom: 26, trailing: 8))
+        case "NIGHT": return (Color(red: 0x1B / 255, green: 0x22 / 255, blue: 0x35 / 255), EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+        default: return (Color(.systemBackground), EdgeInsets())
+        }
+    }
+
+    var body: some View {
+        let image = entry.snapshot?.drawingPngPath.flatMap { UIImage(contentsOfFile: $0) }
+        ZStack(alignment: .bottomTrailing) {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius: 12))
+                Text("▶").font(.caption2).foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Capsule().fill(Color.black.opacity(0.6)))
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("받은 그림").font(.caption).foregroundStyle(.secondary)
+                    Text("연인이 그림을 보내면 여기에 보여요").font(.caption).foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .padding(frame.inset)
+        .widgetURL(entry.snapshot?.drawingLetterId.flatMap { URL(string: "kkotsin://letter/\($0)") })
+        .containerBackground(frame.background, for: .widget)
+    }
+}
+
+struct DrawingWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "drawing", provider: SnapshotProvider()) { DrawingWidgetView(entry: $0) }
+            .configurationDisplayName("받은 그림")
+            .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+/// 다음 만남(Android NextMeetingWidget 과 같다): 가장 가까운 면회 · 외박 · 휴가 일정까지 D-n.
+struct NextMeetingWidgetView: View {
+    let entry: SnapshotEntry
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("다음 만남").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            if let d = entry.snapshot?.nextEventDays, let title = entry.snapshot?.nextEventTitle {
+                Text(d == 0 ? "오늘" : "D-\(d)").font(.system(size: 34, weight: .bold))
+                Text(title).font(.caption).lineLimit(1)
+            } else {
+                Text("일정을 넣으면 여기에 보여요").font(.footnote)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .widgetURL(URL(string: "kkotsin://calendar"))
+        .containerBackground(.background, for: .widget)
+    }
+}
+
+struct NextMeetingWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "nextmeet", provider: SnapshotProvider()) { NextMeetingWidgetView(entry: $0) }
+            .configurationDisplayName("다음 만남")
+            .supportedFamilies([.systemSmall])
+    }
+}
+
 @main
 struct KkotsinWidgetBundle: WidgetBundle {
     var body: some Widget {
         DdayWidget()
         MissYouWidget()
+        DrawingWidget()
+        NextMeetingWidget()
     }
 }

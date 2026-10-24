@@ -4,6 +4,7 @@ package com.sadturtleman.flowershoes.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asSkiaBitmap
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
@@ -131,4 +132,46 @@ internal actual fun rememberImageSaver(): suspend (ByteArray) -> Boolean = remem
         UIImageWriteToSavedPhotosAlbum(image, null, null, null)
         true
     }
+}
+
+@Composable
+internal actual fun rememberFileShare(): (List<Pair<String, ByteArray>>) -> Unit = remember {
+    { files ->
+        val urls = files.map { (name, bytes) ->
+            val path = platform.Foundation.NSTemporaryDirectory() + name
+            val data = bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }
+            data.writeToFile(path, atomically = true)
+            platform.Foundation.NSURL.fileURLWithPath(path)
+        }
+        val controller = platform.UIKit.UIActivityViewController(activityItems = urls, applicationActivities = null)
+        topController()?.presentViewController(controller, animated = true, completion = null)
+    }
+}
+
+/**
+ * 추억 책 PDF(UIKit PDF 컨텍스트). 쪽은 JPEG 로 모아 두었다가 마무리할 때 두 벌(8×8인치 576pt, 인쇄용은 재단 3mm 더해 593pt)로 그린다.
+ * Android 와 같은 파일 이름 · 같은 쪽 크기.
+ */
+internal actual fun newBookPdf(): com.sadturtleman.flowershoes.feature.memory.BookPdf? = object : com.sadturtleman.flowershoes.feature.memory.BookPdf {
+    private val pages = mutableListOf<ByteArray>()
+
+    override fun add(page: androidx.compose.ui.graphics.ImageBitmap) {
+        val jpeg = org.jetbrains.skia.Image.makeFromBitmap(page.asSkiaBitmap()).encodeToData(org.jetbrains.skia.EncodedImageFormat.JPEG, 92)?.bytes ?: return
+        pages += jpeg
+    }
+
+    private fun render(size: Double): ByteArray {
+        val data = platform.Foundation.NSMutableData()
+        platform.UIKit.UIGraphicsBeginPDFContextToData(data, CGRectMake(0.0, 0.0, size, size), null)
+        pages.forEach { bytes ->
+            platform.UIKit.UIGraphicsBeginPDFPage()
+            val image = UIImage(data = bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) })
+            image.drawInRect(CGRectMake(0.0, 0.0, size, size))
+        }
+        platform.UIKit.UIGraphicsEndPDFContext()
+        return data.toByteArray()
+    }
+
+    override suspend fun finish(): List<Pair<String, ByteArray>> =
+        listOf("우리의_책_화면용.pdf" to render(576.0), "우리의_책_인쇄용_8x8_재단3mm.pdf" to render(593.0))
 }

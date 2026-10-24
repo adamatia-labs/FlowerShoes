@@ -6,7 +6,9 @@ import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.Color
 import com.sadturtleman.flowershoes.core.designsystem.KkSecondaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadio
 import com.sadturtleman.flowershoes.core.designsystem.KkTopBarLeading
@@ -139,12 +141,18 @@ object NoPlatformActions : PlatformActions
 
 /** 설정 안의 화면들. 첫 화면은 [MAIN]. */
 enum class SettingsPage {
-    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, WIDGETS, BACKUP, RECOVERY,
+    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, WIDGETS, BACKUP, EXPORT, RECOVERY,
     ACCOUNT, SIGN_IN_METHODS, DELETE_ACCOUNT, UNLINK, TERMS, LICENSES, INQUIRY, INQUIRY_HISTORY,
 }
 
 /** 백업 저장 한도(설정 › 백업의 사용량 막대). 사진은 줄여서 올려 이 안에 머문다. */
-private const val BACKUP_QUOTA_BYTES = 2L * 1024 * 1024 * 1024
+/** 백업 용량(수익 모델 확정): 무료 1GB · 꽃신 평생 5GB. */
+private const val GB = 1024L * 1024 * 1024
+private const val FREE_BACKUP_GB = 1
+private const val LIFETIME_BACKUP_GB = 5
+/** 백업 용량 추가(한 번 결제 3,300원). */
+private const val PLUS_BACKUP_GB = 5
+private const val PLUS_PRICE = "3,300원"
 
 @Composable
 fun SettingsRoute(
@@ -156,6 +164,8 @@ fun SettingsRoute(
     startAt: SettingsPage = SettingsPage.MAIN,
     onOpenLeave: () -> Unit = {},
     photoPicker: (@Composable (onPicked: (ByteArray) -> Unit) -> ((fromCamera: Boolean) -> Unit))? = null,
+    /** 파일 공유 시트(내 기록 내보내기 ZIP). */
+    shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)? = null,
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val inquiries = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.InquiryTransport>()
@@ -180,6 +190,7 @@ fun SettingsRoute(
             SettingsPage.DISPLAY_MODE -> DisplayModePage(state, viewModel, back)
             SettingsPage.WIDGETS -> WidgetsPage(state, platform, back)
             SettingsPage.BACKUP -> BackupPage(state, platform, viewModel, back, open)
+            SettingsPage.EXPORT -> ExportPage(shareFiles, back) { notice = it }
             SettingsPage.RECOVERY -> RecoveryPage(platform, viewModel, back)
             SettingsPage.ACCOUNT -> AccountPage(state, platform, viewModel, back, open)
             SettingsPage.SIGN_IN_METHODS -> SignInMethodsPage(state, viewModel, back)
@@ -319,7 +330,14 @@ private fun MainPage(
             val lifetime = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
             val owned by (lifetime?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
             Box(Modifier.fillMaxWidth().clip(shape).background(c.bgSubtle)) {
-                KkListRow("꽃신 평생", value = if (owned) "이용 중" else "광고 없이 · $LIFETIME_PRICE", onClick = { open(SettingsPage.LIFETIME) })
+                val shared by (org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
+                    ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
+                val value = when {
+                    owned -> "이용 중"
+                    shared -> "${state.partnerName.withAnd()} 함께 이용 중"
+                    else -> "광고 없이 · $LIFETIME_PRICE"
+                }
+                KkListRow("꽃신 평생", value = value, onClick = { open(SettingsPage.LIFETIME) })
             }
         }
         Group("우리") {
@@ -341,6 +359,8 @@ private fun MainPage(
         }
         Group("데이터") {
             KkListRow("백업", value = state.backup.lastAtMs?.let(::relativeTime) ?: "아직 없음", onClick = { open(SettingsPage.BACKUP) })
+            Divider()
+            KkListRow("내 기록 내보내기", onClick = { open(SettingsPage.EXPORT) })
             Divider()
             KkListRow("복구 코드", onClick = { open(SettingsPage.RECOVERY) })
         }
@@ -388,9 +408,8 @@ private fun handOver(scope: kotlinx.coroutines.CoroutineScope, platform: Platfor
 
 private val LIFETIME_BENEFITS = listOf(
     "광고 전부 제거",
-    "편지지 · 펜 · 색 전체, 군 생활 스티커 팩",
-    "위젯 꾸미기 · 앱 아이콘 변경",
-    "편지 한 통 그림 5장 · 예약 편지 30통",
+    "글꼴 · 편지지 · 펜 · 색 전체",
+    "위젯 꾸미기",
     "백업 5GB · 마지막 사용 후 10년 보관",
 )
 
@@ -452,7 +471,7 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
             Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
         ) {
-            (LIFETIME_BENEFITS + "${if (state.linked) state.partnerName else "연인"}도 광고 없이 함께 (연결된 동안)").forEach { b ->
+            (LIFETIME_BENEFITS + "${if (state.linked) state.partnerName else "연인"}도 광고 없이 · 꾸미기 함께 (연결된 동안)").forEach { b ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(5.dp).clip(CircleShape).background(c.bgBrand))
                     Text(b, style = KkTheme.type.bodyM, color = c.textPrimary)
@@ -716,8 +735,66 @@ private fun WidgetsPage(state: SettingsState, platform: PlatformActions, onBack:
             }
         }
         message?.let { Text(it, style = KkTheme.type.bodyS, color = c.textTertiary) }
+        WidgetFramePicker()
     }
 }
+
+/** 받은 그림 위젯 프레임(꽃신 평생 · 위젯 꾸미기). 기본은 누구나, 나머지는 이용권이 있으면. */
+@Composable
+private fun WidgetFramePicker() {
+    val c = KkTheme.colors
+    val koin = org.koin.compose.getKoin()
+    val settings = koin.getOrNull<com.sadturtleman.flowershoes.core.data.DeviceSettings>() ?: return
+    val lifetimeOn by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
+        ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
+    val frame by settings.widgetFrame.collectAsStateWithLifecycle("BASIC")
+    val scope = rememberCoroutineScope()
+    var locked by remember { mutableStateOf(false) }
+    Text("그림 위젯 프레임", style = KkTheme.type.titleM, color = c.textPrimary)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+        WIDGET_FRAMES.forEach { (id, label, color) ->
+            val on = frame == id
+            val free = id == "BASIC"
+            Column(
+                Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.RadioButton) {
+                    if (free || lifetimeOn) scope.launch { settings.setWidgetFrame(id) } else locked = true
+                },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                val shape = RoundedCornerShape(KkRadius.md)
+                Box(
+                    Modifier.fillMaxWidth().aspectRatio(1f).clip(shape).background(color ?: c.bgSurface)
+                        .border(if (on) 2.dp else 1.dp, if (on) c.borderBrand else c.borderDefault, shape)
+                        .padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = if (id == "POLAROID") 14.dp else 6.dp),
+                ) {
+                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).background(c.bgSubtle))
+                    if (!free) {
+                        Text(
+                            "평생", style = KkTheme.type.labelS, color = c.textOnBrand,
+                            modifier = Modifier.align(Alignment.TopEnd).clip(RoundedCornerShape(KkRadius.full))
+                                .background(if (lifetimeOn) c.bgBrand else c.textTertiary).padding(horizontal = 5.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+                Text(label, style = KkTheme.type.caption, color = if (on) c.textBrand else c.textTertiary, maxLines = 1)
+            }
+        }
+    }
+    if (locked) {
+        KkModalSheet({ locked = false }) {
+            KkSheetHeader("위젯 프레임", "꽃신 평생 꾸미기예요. 설정 › 꽃신 평생에서 열 수 있어요")
+            KkPrimaryButton("확인", { locked = false }, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+private val WIDGET_FRAMES: List<Triple<String, String, Color?>> = listOf(
+    Triple("BASIC", "기본", null),
+    Triple("BLOSSOM", "벚꽃", Color(0xFFFFE0E7)),
+    Triple("KRAFT", "크라프트", Color(0xFFE9DCC4)),
+    Triple("POLAROID", "폴라로이드", Color(0xFFFFFFFF)),
+    Triple("NIGHT", "밤하늘", Color(0xFF1B2235)),
+)
 
 // ── 백업 ─────────────────────────────────────────────────────────────────
 
@@ -738,11 +815,16 @@ private fun BackupPage(state: SettingsState, platform: PlatformActions, viewMode
         ) {
             Text("마지막 백업", style = KkTheme.type.caption, color = c.textTertiary)
             Text(b.lastAtMs?.let(::relativeTime) ?: "아직 없어요", style = KkTheme.type.titleM, color = c.textPrimary)
-            val fraction = (b.bytes.toFloat() / BACKUP_QUOTA_BYTES).coerceIn(0f, 1f)
+            val lifetime = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
+            val owned by (lifetime?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
+            val plus = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BackupPlusStore>()
+            val plusOwned by (plus?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
+            val quotaGb = (if (owned) LIFETIME_BACKUP_GB else FREE_BACKUP_GB) + if (plusOwned) PLUS_BACKUP_GB else 0
+            val fraction = (b.bytes.toFloat() / (quotaGb * GB)).coerceIn(0f, 1f)
             Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.bgSubtle)) {
                 Box(Modifier.fillMaxHeight().fillMaxWidth(if (b.bytes > 0) fraction.coerceAtLeast(0.02f) else 0f).clip(RoundedCornerShape(3.dp)).background(c.bgBrand))
             }
-            Text("${bytesLabel(b.bytes)} / 2GB", style = KkTheme.type.caption, color = c.textSecondary)
+            Text("${bytesLabel(b.bytes)} / ${quotaGb}GB", style = KkTheme.type.caption, color = c.textSecondary)
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgMilitarySubtle).padding(horizontal = KkSpacing.md, vertical = KkSpacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
@@ -757,6 +839,8 @@ private fun BackupPage(state: SettingsState, platform: PlatformActions, viewMode
             SwitchRow("셀룰러로 사진 백업", state.cellularBackup) { viewModel.setCellularBackup(it) }
             Divider()
             KkListRow(if (b.busy) "백업하는 중…" else "지금 백업하기", enabled = !b.busy, onClick = { viewModel.backupNow() })
+            Divider()
+            BackupPlusRow(viewModel)
             Divider()
             KkListRow("복구 코드", value = if (state.codeSeen) "확인함" else "확인 안 함", onClick = { open(SettingsPage.RECOVERY) })
         }
@@ -1080,7 +1164,7 @@ private val ART_LICENSES = listOf(
     License("Noto Emoji", "Apache 2.0", "https://github.com/googlefonts/noto-emoji"),
     License("Twemoji", "CC BY 4.0", "https://github.com/jdecked/twemoji"),
     License("Lucide Icons", "ISC", "https://lucide.dev/license"),
-    License("Noto Sans KR · 나눔손글씨 펜 · 나눔명조 · Jua", "OFL 1.1", "https://openfontlicense.org"),
+    License("Noto Sans KR · 고운돋움 · 고운바탕 · 개구 · 하이멜로디 · 감자꽃 · 싱글데이 · 연성 · 주아 · 동글 · 나눔손글씨 붓 · 나눔손글씨 펜 · 나눔명조", "OFL 1.1(Google Fonts, 글자 일부만 담음)", "https://openfontlicense.org"),
 )
 
 private val LIBRARY_LICENSES = listOf(
@@ -1113,4 +1197,73 @@ private fun LicensesPage(onBack: () -> Unit) {
             KkPrimaryButton("확인", { open = null }, Modifier.fillMaxWidth())
         }
     }
+}
+
+// ── 내 기록 내보내기 ─────────────────────────────────────────────────────
+
+/**
+ * 내 기록 내보내기(Figma 설정 · 내 기록 내보내기, 무료): 담기는 것 · ZIP 크기 + [내보내기].
+ * 꾸밈 없는 원본(편지 글 · 그림 · 사진 · 일정 · 만남)을 폰 안에서 묶어 공유 시트로 넘긴다.
+ */
+@Composable
+private fun ExportPage(shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?, onBack: () -> Unit, onNotice: (String) -> Unit) {
+    val c = KkTheme.colors
+    val exporter = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.RecordExporter>()
+    var preview by remember { mutableStateOf<com.sadturtleman.flowershoes.core.data.RecordExporter.Preview?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(exporter) { preview = exporter?.let { runCatching { it.preview() }.getOrNull() } }
+    Page("내 기록 내보내기", onBack, bottom = {
+        KkPrimaryButton("내보내기", {
+            if (exporter == null || shareFiles == null) { onNotice("이 빌드에서는 아직 내보낼 수 없어요"); return@KkPrimaryButton }
+            busy = true
+            scope.launch {
+                val zip = runCatching { exporter.zip() }.getOrNull()
+                busy = false
+                if (zip == null) onNotice("내보내지 못했어요") else shareFiles(listOf("꽃신_내_기록.zip" to zip))
+            }
+        }, Modifier.fillMaxWidth(), loading = busy, enabled = preview != null)
+    }) {
+        val p = preview
+        Group(null) {
+            KkListRow("편지", value = p?.let { "${it.letters}통 · 텍스트" } ?: "…", trailing = KkRowTrailing.None)
+            Divider()
+            KkListRow("그림 · 사진", value = p?.let { "${it.drawings + it.photos}장 · 원본 파일" } ?: "…", trailing = KkRowTrailing.None)
+            Divider()
+            KkListRow("일정 · 만남", value = p?.let { "${it.events}개 · 날짜 · 메모" } ?: "…", trailing = KkRowTrailing.None)
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+            Text("ZIP 파일", style = KkTheme.type.caption, color = c.textTertiary, modifier = Modifier.weight(1f))
+            Text(p?.let { "약 ${bytesLabel(it.bytes)}" } ?: "", style = KkTheme.type.caption, color = c.textSecondary)
+        }
+    }
+}
+
+/** 백업 용량 추가(+5GB · 한 번 결제). 산 뒤에는 "추가됨". 결제가 없는 빌드에서는 안내만. */
+@Composable
+private fun BackupPlusRow(viewModel: SettingsViewModel) {
+    val store = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BackupPlusStore>()
+    val owned by (store?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
+    var price by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(store) { price = store?.price() }
+    KkListRow(
+        "백업 용량 추가 · +${PLUS_BACKUP_GB}GB",
+        value = if (owned) "추가됨" else price ?: PLUS_PRICE,
+        enabled = !owned && !busy,
+        trailing = if (owned) KkRowTrailing.None else KkRowTrailing.Chevron,
+        onClick = {
+            if (store == null) { viewModel.notice("결제는 앱 출시와 함께 열려요"); return@KkListRow }
+            busy = true
+            scope.launch {
+                when (val r = store.buy()) {
+                    com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Purchased -> viewModel.notice("백업 용량이 ${PLUS_BACKUP_GB}GB 늘었어요")
+                    is com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Failed -> viewModel.notice(r.message)
+                    else -> Unit
+                }
+                busy = false
+            }
+        },
+    )
 }

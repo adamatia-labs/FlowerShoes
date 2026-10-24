@@ -24,6 +24,8 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { decide, DEFAULT_PREFS, inDigestWindow, INLINE_MAX_BASE64, NotifyPrefs, NotifyState, quietEndUtcMinute } from './policy';
 import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from './sig';
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
+import { DAY_MS, FREE_KEEP_DAYS, retentionAction, WARN_DAYS, warnMessage } from './retention';
+import { entitlementsFrom, usersOf } from './revenuecat';
 
 initializeApp();
 const db = getFirestore();
@@ -36,6 +38,9 @@ const APPLE_TEAM_ID = defineString('APPLE_TEAM_ID', { default: '' });
 const APPLE_KEY_ID = defineString('APPLE_KEY_ID', { default: '' });
 const APPLE_CLIENT_ID = defineString('APPLE_CLIENT_ID', { default: '' });
 const APPLE_PRIVATE_KEY = defineString('APPLE_PRIVATE_KEY', { default: '' });
+// RevenueCat: 웹훅 Authorization 헤더 값 · REST 비밀 키(sk_). 비어 있으면 웹훅은 아무것도 하지 않는다.
+const REVENUECAT_WEBHOOK_AUTH = defineString('REVENUECAT_WEBHOOK_AUTH', { default: '' });
+const REVENUECAT_SECRET_KEY = defineString('REVENUECAT_SECRET_KEY', { default: '' });
 const appleConfig = (): AppleConfig => ({
   teamId: APPLE_TEAM_ID.value(), keyId: APPLE_KEY_ID.value(), clientId: APPLE_CLIENT_ID.value(), privateKey: APPLE_PRIVATE_KEY.value(),
 });
@@ -445,3 +450,60 @@ export const appleStoreToken = onCall({ region: REGION }, async (req) => {
   return { stored: true };
 });
 
+
+/**
+ * 백업 보관 기간(약관 제10조의2): 매일 새벽, 마지막 사용(users/{uid}.lastSeenAt) 이 오래된 사람에게 30일 · 7일 전 예고를 보내고
+ * 기한이 지나면 backups/{uid}/ 를 지운다. 꽃신 평생(entitlements/{uid}.lifetime, RevenueCat 웹훅이 쓴다)은 10년.
+ * 기기 안의 기록은 지우지 않는다. 이메일 예고는 메일 발송을 붙이면서 함께 보낸다.
+ */
+export const backupRetention = onSchedule({ schedule: 'every day 04:00', region: REGION, timeZone: 'Asia/Seoul' }, async () => {
+  const now = Date.now();
+  const cutoff = Timestamp.fromMillis(now - (FREE_KEEP_DAYS - Math.max(...WARN_DAYS)) * DAY_MS);
+  const users = await db.collection('users').where('lastSeenAt', '<=', cutoff).get();
+  for (const user of users.docs) {
+    const uid = user.id;
+    if (user.get('backupDeletedAt')) continue;
+    const lastSeen = (user.get('lastSeenAt') as Timestamp).toMillis();
+    const ent = await db.doc(`entitlements/${uid}`).get();
+    const lifetime = ent.get('lifetime') === true;
+    // 예고 기록은 같은 lastSeenAt 동안만 유효하다(앱을 쓰면 새로 센다).
+    const warnedFor = user.get('retentionWarnedFor') as number | undefined;
+    const warned = warnedFor === lastSeen ? ((user.get('retentionWarned') as number[] | undefined) ?? []) : [];
+    const action = retentionAction(lastSeen, lifetime, now, warned);
+    if (action.type === 'warn') {
+      const msg = warnMessage(action.daysLeft);
+      await push(uid, { visible: msg, data: { kind: 'backupExpiry', daysLeft: String(action.daysLeft) } });
+      // 이메일: 로그인 제공자가 이메일을 준 경우만. "Trigger Email" 확장이 mail 문서를 보낸다(확장이 없으면 쌓이기만 한다).
+      const email = await getAuth().getUser(uid).then((u) => u.email).catch(() => undefined);
+      if (email) await db.collection('mail').add({ to: email, message: { subject: msg.title, text: msg.body } });
+      await user.ref.set({ retentionWarnedFor: lastSeen, retentionWarned: [...warned, action.daysLeft] }, { merge: true });
+    } else if (action.type === 'delete') {
+      await getStorage().bucket().deleteFiles({ prefix: `backups/${uid}/` }).catch(() => undefined);
+      await user.ref.set({ backupDeletedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+  }
+});
+
+/**
+ * RevenueCat 웹훅(대시보드 › Integrations › Webhooks, Authorization 헤더 = REVENUECAT_WEBHOOK_AUTH).
+ * 알림이 온 사용자의 이용권을 REST API 로 다시 읽어 entitlements/{uid} 에 쓴다 — backupRetention 이 평생 10년을 여기서 본다.
+ */
+export const revenuecatWebhook = onRequest({ region: REGION }, async (req, res) => {
+  const auth = REVENUECAT_WEBHOOK_AUTH.value();
+  if (!auth || req.get('authorization') !== auth) {
+    res.status(401).send('unauthorized');
+    return;
+  }
+  const key = REVENUECAT_SECRET_KEY.value();
+  if (!key) {
+    res.status(200).send('no key');
+    return;
+  }
+  for (const uid of usersOf(req.body)) {
+    const r = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(uid)}`, { headers: { Authorization: `Bearer ${key}` } });
+    if (!r.ok) continue;
+    const ent = entitlementsFrom(await r.json(), new Date());
+    await db.doc(`entitlements/${uid}`).set({ ...ent, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+  res.status(200).send('ok');
+});

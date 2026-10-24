@@ -30,8 +30,12 @@ enum SharedStore {
         var missYouFromPartnerToday: Int
         var linked: Bool
         var drawingDocPath: String?
+        var drawingPngPath: String?
         var drawingShape: String?
         var drawingLetterId: String?
+        var drawingId: String?
+        /// 받은 그림 위젯 프레임(BASIC · BLOSSOM · KRAFT · POLAROID · NIGHT, 꽃신 평생).
+        var widgetFrame: String?
         var updatedAtMs: Int64
     }
 

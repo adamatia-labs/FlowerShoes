@@ -2,6 +2,7 @@ import SwiftUI
 import ComposeApp
 import FirebaseCore
 import libzstd
+import WidgetKit
 
 /// iOS 진입점. 화면은 전부 Compose Multiplatform 셸(:composeApp 의 MainViewController)이 그린다.
 @main
@@ -14,6 +15,8 @@ struct KkotsinApp: App {
     init() {
         // 그림 문서 · 백업의 zstd. Android(zstd-jni)와 같은 프레임 형식.
         Zstd.shared.codec = SwiftZstd()
+        // 위젯 스냅샷이 바뀌면 위젯을 새로 그린다(Kotlin 에서는 WidgetCenter 를 부를 수 없다).
+        MainViewControllerKt.setWidgetReloader { WidgetCenter.shared.reloadAllTimelines() }
         // GoogleService-Info.plist 가 들어간 빌드에서만 Firebase 를 켠다. 없으면 혼자 모드.
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             FirebaseApp.configure()

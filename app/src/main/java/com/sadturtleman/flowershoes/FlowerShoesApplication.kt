@@ -89,6 +89,9 @@ class FlowerShoesApplication :
                     )
                 }
                 single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>() }
+                if (BuildConfig.DEBUG) single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
+                single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book }
+                single<com.sadturtleman.flowershoes.core.data.BackupPlusStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().backupPlus }
             })
         }
         appScope.launch {

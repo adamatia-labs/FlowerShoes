@@ -22,12 +22,15 @@ import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 // 엔티티(저장 모양) ↔ 도메인 모델. 시각은 epoch ms, 날짜는 ISO 문자열.
 
 private val letterJson = Json { ignoreUnknownKeys = true }
 private val blocksSerializer = ListSerializer(LetterBlock.serializer())
+private val notesSerializer = MapSerializer(String.serializer(), com.sadturtleman.flowershoes.core.model.MeetNote.serializer())
 
 internal fun Instant.ms(): Long = toEpochMilliseconds()
 internal fun Long.instant(): Instant = Instant.fromEpochMilliseconds(this)
@@ -40,11 +43,13 @@ fun ServiceEntity.toModel() = Service(
 fun Event.toEntity() = EventEntity(
     id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(), leaveGrantId,
     photoIds.takeIf { it.isNotEmpty() }?.joinToString(","), memo.ifBlank { null },
+    meetNotes.takeIf { it.isNotEmpty() }?.let { letterJson.encodeToString(notesSerializer, it) },
 )
 fun EventEntity.toModel() = Event(
     id, EventType.valueOf(type), title, LocalDateTime.parse(start), LocalDateTime.parse(end), alarm,
     updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(), leaveGrantId,
     photoIds?.split(',')?.filter { it.isNotBlank() }.orEmpty(), memo.orEmpty(),
+    meetNotes?.let { runCatching { letterJson.decodeFromString(notesSerializer, it) }.getOrNull() }.orEmpty(),
 )
 
 fun LeaveGrant.toEntity() = LeaveGrantEntity(

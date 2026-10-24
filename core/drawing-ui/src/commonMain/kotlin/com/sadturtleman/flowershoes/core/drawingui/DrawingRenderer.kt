@@ -72,8 +72,8 @@ fun DrawScope.drawDocument(doc: DrawingDocument, showGuides: Boolean = false, ph
     drawContext.canvas.saveLayer(androidx.compose.ui.geometry.Rect(Offset.Zero, size), androidx.compose.ui.graphics.Paint())
     doc.elements.forEach { e ->
         when (e) {
-            is Stroke -> drawPoints(e.points, e.points.size - 1, e.color, e.brush.width * sx, sx, e.tool == Tool.HIGHLIGHTER)
-            is EraserStroke -> drawPoints(e.points, e.points.size - 1, 0xFF000000, e.brush.width * sx, sx, false, BlendMode.Clear)
+            is Stroke -> drawPoints(e.points, e.points.size - 1, e.color, e.brush.width * sx, sx, e.tool)
+            is EraserStroke -> drawPoints(e.points, e.points.size - 1, 0xFF000000, e.brush.width * sx, sx, Tool.PEN, BlendMode.Clear)
             else -> Unit
         }
     }
@@ -86,12 +86,12 @@ internal fun DrawScope.drawPoints(
     color: Long,
     widthPx: Float,
     scale: Float,
-    highlighter: Boolean,
+    tool: Tool,
     blend: BlendMode = BlendMode.SrcOver,
     segments: IntArray? = null,
 ) {
     if (through < 0 || p.size == 0) return
-    val c = Color(color.toInt()).let { if (highlighter) it.copy(alpha = 0.35f) else it }
+    val c = Color(color.toInt()).let { if (tool == Tool.HIGHLIGHTER) it.copy(alpha = 0.35f) else it }
     val ranges = segments?.toList()?.chunked(2)?.map { it[0]..it[1] } ?: listOf(0..p.size - 1)
     ranges.forEach { range ->
         val end = minOf(range.last, through)
@@ -104,8 +104,29 @@ internal fun DrawScope.drawPoints(
             moveTo(p.xs[range.first] * scale, p.ys[range.first] * scale)
             for (i in range.first + 1..end) lineTo(p.xs[i] * scale, p.ys[i] * scale)
         }
-        drawPath(path, c, style = DrawStroke(widthPx, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = blend)
+        when (tool) {
+            Tool.CRAYON -> drawCrayon(path, c, widthPx, blend)
+            Tool.WATERCOLOR -> drawWatercolor(path, c, widthPx, blend)
+            else -> drawPath(path, c, style = DrawStroke(widthPx, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = blend)
+        }
     }
+}
+
+/** 크레용: 옅은 바탕 한 겹 + 잘게 끊긴 결 두 겹(조금 어긋나게) — 종이 결에 걸린 왁스처럼 보인다. */
+private fun DrawScope.drawCrayon(path: Path, c: Color, w: Float, blend: BlendMode) {
+    drawPath(path, c.copy(alpha = c.alpha * 0.45f), style = DrawStroke(w * 0.9f, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = blend)
+    val grain = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(w * 0.16f, w * 0.07f, w * 0.05f, w * 0.09f))
+    drawPath(path, c.copy(alpha = c.alpha * 0.85f), style = DrawStroke(w, cap = StrokeCap.Butt, join = StrokeJoin.Round, pathEffect = grain), blendMode = blend)
+    val fine = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(w * 0.08f, w * 0.11f), w * 0.05f)
+    translate(w * 0.1f, -w * 0.12f) {
+        drawPath(path, c.copy(alpha = c.alpha * 0.6f), style = DrawStroke(w * 0.55f, cap = StrokeCap.Butt, join = StrokeJoin.Round, pathEffect = fine), blendMode = blend)
+    }
+}
+
+/** 수채 붓: 넓고 옅은 번짐 + 안쪽의 조금 진한 겹. 겹칠수록 진해진다. */
+private fun DrawScope.drawWatercolor(path: Path, c: Color, w: Float, blend: BlendMode) {
+    drawPath(path, c.copy(alpha = c.alpha * 0.22f), style = DrawStroke(w * 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = blend)
+    drawPath(path, c.copy(alpha = c.alpha * 0.3f), style = DrawStroke(w * 1.1f, cap = StrokeCap.Round, join = StrokeJoin.Round), blendMode = blend)
 }
 
 /**
@@ -207,7 +228,7 @@ fun ReplayCanvas(doc: DrawingDocument, state: ReplayState, modifier: Modifier = 
         frame.photos.forEach { (p, alpha) -> photos[p.attachmentId]?.let { drawPhoto(it, p.dim, alpha) } }
         frame.strokes.forEach { sp ->
             val s = sp.stroke
-            drawPoints(s.points, sp.drawnThrough, s.color, s.brush.width * sx, sx, s.tool == Tool.HIGHLIGHTER, segments = s.replaySegments)
+            drawPoints(s.points, sp.drawnThrough, s.color, s.brush.width * sx, sx, s.tool, segments = s.replaySegments)
             sp.penTip?.let { (x, y) ->
                 val from = sp.drawnThrough
                 val alive = s.replaySegments?.toList()?.chunked(2)?.any { from >= it[0] && from < it[1] } ?: true

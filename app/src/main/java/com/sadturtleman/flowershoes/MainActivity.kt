@@ -34,6 +34,8 @@ class MainActivity : FragmentActivity() {
 
     private val lifetime: com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore by inject()
 
+    private val perks: com.sadturtleman.flowershoes.core.data.SharedPerks by inject()
+
     /**
      * JankStats 는 DecorView 가 생긴 뒤에만 만들 수 있어 [onCreate] 에서 바로 만들지 않는다.
      * 아래 lifecycle 관찰자가 처음 [onResume] 때 한 번 만들고, 그 뒤로는 껐다 켠다.
@@ -82,7 +84,8 @@ class MainActivity : FragmentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            val lifetimeOwned by lifetime.owned.collectAsState()
+            // 내가 샀거나 연결된 상대가 산 꽃신 평생(연결된 동안 함께).
+            val lifetimeOwned by perks.lifetimeOn.collectAsState(initial = false)
             CompositionLocalProvider(
                 LocalTtiRecorder provides ttiRecorder,
                 LocalJankReporter provides jankReporter,

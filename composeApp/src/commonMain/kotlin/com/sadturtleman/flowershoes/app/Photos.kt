@@ -19,3 +19,10 @@ internal expect fun rememberImageSaver(): suspend (png: ByteArray) -> Boolean
 /** 완성 PNG 를 공유 시트로(추억 › 그림 상세 › 공유). */
 @Composable
 internal expect fun rememberImageShare(): (png: ByteArray) -> Unit
+
+/** 파일 여러 개를 공유 시트로(추억 책 PDF · 내 기록 내보내기 ZIP). (파일 이름, 바이트). */
+@Composable
+internal expect fun rememberFileShare(): (files: List<Pair<String, ByteArray>>) -> Unit
+
+/** 추억 책 PDF 작성기(쪽마다 비트맵). 아직 못 만드는 플랫폼은 null. */
+internal expect fun newBookPdf(): com.sadturtleman.flowershoes.feature.memory.BookPdf?
