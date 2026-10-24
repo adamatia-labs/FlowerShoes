@@ -9,6 +9,9 @@ final class LifetimePurchases: NSObject, IosPurchases, PurchasesDelegate {
     /// 공개 SDK 키(앱에 실려 나가는 값). 실제 키는 Config.xcconfig 의 REVENUECAT_API_KEY 로 — 비어 있으면 테스트 스토어 키.
     private static let testKey = "test_chjLRvvSdzZezYKFbIWfRxJMRjg"
     private var listener: LifetimeOwnedCallback?
+    private var entitlementListeners: [EntitlementsCallback] = []
+    /// 따로 파는 상품의 entitlement — 꽃신 평생 판정에서 뺀다(Android 와 같다).
+    private static let separate: Set<String> = ["memory_book", "backup_plus"]
 
     override init() {
         super.init()
@@ -21,14 +24,60 @@ final class LifetimePurchases: NSObject, IosPurchases, PurchasesDelegate {
         RevenueCat.Purchases.shared.delegate = self
     }
 
-    private static func owned(_ info: CustomerInfo) -> Bool { !info.entitlements.active.isEmpty }
+    private static func owned(_ info: CustomerInfo) -> Bool { info.entitlements.active.keys.contains { !separate.contains($0) } }
 
     func purchases(_ purchases: RevenueCat.Purchases, receivedUpdated customerInfo: CustomerInfo) {
         let owned = Self.owned(customerInfo)
-        DispatchQueue.main.async { self.listener?.changed(owned: owned) }
+        let active = Array(customerInfo.entitlements.active.keys)
+        DispatchQueue.main.async {
+            self.listener?.changed(owned: owned)
+            self.entitlementListeners.forEach { $0.changed(active: active) }
+        }
     }
 
     func observe(listener: LifetimeOwnedCallback) { self.listener = listener }
+
+    func observeEntitlements(listener: EntitlementsCallback) {
+        entitlementListeners.append(listener)
+        Task {
+            if let info = try? await RevenueCat.Purchases.shared.customerInfo() {
+                let active = Array(info.entitlements.active.keys)
+                await MainActor.run { listener.changed(active: active) }
+            }
+        }
+    }
+
+    private func productPackage(_ offering: String) async -> Package? {
+        try? await RevenueCat.Purchases.shared.offerings().all[offering]?.availablePackages.first
+    }
+
+    func productPrice(offering: String, done: PurchasePriceCallback) {
+        Task {
+            let price = await productPackage(offering)?.storeProduct.localizedPriceString
+            await MainActor.run { done.result(price: price) }
+        }
+    }
+
+    func buyProduct(offering: String, entitlement: String, done: PurchaseOutcomeCallback) {
+        Task {
+            let outcome: (Int32, String?)
+            if let package = await productPackage(offering) {
+                do {
+                    let result = try await RevenueCat.Purchases.shared.purchase(package: package)
+                    if result.userCancelled {
+                        outcome = (1, nil)
+                    } else {
+                        outcome = result.customerInfo.entitlements.active[entitlement] != nil ? (0, nil) : (3, "결제는 됐지만 확인하지 못했어요. 구매 복원을 눌러 주세요")
+                    }
+                } catch {
+                    outcome = Self.failure(error)
+                }
+            } else {
+                outcome = (3, "상품 정보를 불러오지 못했어요")
+            }
+            await MainActor.run { done.result(code: outcome.0, message: outcome.1) }
+        }
+    }
 
     func refresh(userId: String?, done: LifetimeOwnedCallback) {
         Task {

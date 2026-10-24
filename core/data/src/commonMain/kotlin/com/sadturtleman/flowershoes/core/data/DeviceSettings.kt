@@ -93,6 +93,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setDisplayMode(mode: String) = store.edit { it[DISPLAY_MODE] = mode }
 
+    /** 받은 그림 위젯 프레임(설정 › 위젯, 기본 말고는 꽃신 평생): BASIC · BLOSSOM · KRAFT · POLAROID · NIGHT. */
+    val widgetFrame: Flow<String> = store.data.map { it[WIDGET_FRAME] ?: "BASIC" }
+
+    suspend fun setWidgetFrame(frame: String) = store.edit { it[WIDGET_FRAME] = frame }
+
     /** 설정 › 백업: 자동 백업 · 셀룰러에서도 백업(끄면 Wi-Fi 에서만) · 복구 코드를 확인했는지. */
     val autoBackup: Flow<Boolean> = store.data.map { (it[AUTO_BACKUP] ?: 1) == 1 }
     val cellularBackup: Flow<Boolean> = store.data.map { (it[CELLULAR_BACKUP] ?: 0) == 1 }
@@ -151,6 +156,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val NOTIFY_PREFS = stringPreferencesKey("notify_prefs")
         val AUTO_BACKUP = intPreferencesKey("auto_backup")
         val DISPLAY_MODE = stringPreferencesKey("display_mode")
+        val WIDGET_FRAME = stringPreferencesKey("widget_frame")
         val CELLULAR_BACKUP = intPreferencesKey("cellular_backup")
         val CODE_SEEN = intPreferencesKey("recovery_code_seen")
     }

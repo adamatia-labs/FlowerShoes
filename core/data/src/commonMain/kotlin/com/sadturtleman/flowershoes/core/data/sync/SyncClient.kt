@@ -265,7 +265,7 @@ class SyncClient(
     suspend fun writeSnapshot(coversThrough: Long) {
         val couple = db.coupleDao().get()
         val items = buildList<OpPayload> {
-            db.userDao().get(identity.userId)?.let { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty())) }
+            db.userDao().get(identity.userId)?.let { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
             db.serviceDao().get(identity.userId)?.let { add(OpPayload.ServicePut(it.toModel())) }
             db.serviceDao().get(com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER)?.let { add(OpPayload.ServicePut(it.toModel())) }
             couple?.anniversary?.let { add(OpPayload.AnniversaryPut(it, couple.anniversaryLamport)) }
@@ -293,7 +293,7 @@ class SyncClient(
         val stream = myStream.wire
         val couple = db.coupleDao().get()
         val items = buildList<OpPayload> {
-            db.userDao().all().forEach { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty())) }
+            db.userDao().all().forEach { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
             db.serviceDao().all().forEach { add(OpPayload.ServicePut(it.toModel())) }
             couple?.anniversary?.let { add(OpPayload.AnniversaryPut(it, couple.anniversaryLamport)) }
             db.eventDao().all().forEach { add(OpPayload.EventPut(it.toModel())) }

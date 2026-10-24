@@ -158,5 +158,9 @@ test('넘겨주기 확인은 코드를 만든 활성 멤버(지수)만 쓴다', 
 test('Apple refresh token 보관함은 본인도 읽고 쓸 수 없다(함수만)', async () => {
   await assertFails(getDoc(doc(as('jisu'), 'appleTokens/jisu')));
   await assertFails(setDoc(doc(as('jisu'), 'appleTokens/jisu'), { refreshToken: 'x' }));
+  // 이용권(RevenueCat 웹훅이 쓴다) · 메일 대기열은 서버만.
+  await assertFails(getDoc(doc(as('jisu'), 'entitlements/jisu')));
+  await assertFails(setDoc(doc(as('jisu'), 'entitlements/jisu'), { lifetime: true }));
+  await assertFails(setDoc(doc(as('jisu'), 'mail/x'), { to: 'a@b.c' }));
 });
 

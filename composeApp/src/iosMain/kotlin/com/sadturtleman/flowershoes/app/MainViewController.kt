@@ -15,6 +15,14 @@ import platform.UIKit.UIViewController
 import kotlinx.coroutines.launch
 
 private var started = false
+private var widgetsStarted = false
+
+/** Swift(KkotsinApp)가 넣는 위젯 새로고침(WidgetCenter.reloadAllTimelines — Kotlin 에서는 부를 수 없다). */
+private var widgetReloader: (() -> Unit)? = null
+
+fun setWidgetReloader(reload: () -> Unit) {
+    widgetReloader = reload
+}
 
 /** iosApp(SwiftUI)이 부르는 진입점. Koin 은 한 번만 시작한다. */
 @OptIn(ExperimentalForeignApi::class)
@@ -62,8 +70,20 @@ fun MainViewController(
                     single<com.sadturtleman.flowershoes.feature.settings.PlatformActions> { com.sadturtleman.flowershoes.app.ios.IosPlatformActions() }
                     // 위젯 스냅샷은 App Group 에(위젯 확장이 읽는다).
                     single { com.sadturtleman.flowershoes.core.widget.SnapshotStore(group / "widget/snapshot.json") }
+                    single {
+                        com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher(
+                            get(), get(), get(), get(), get(), get(), get(), get(),
+                            (requireNotNull(support?.path) + "/db/attachments").toPath(), get(),
+                        )
+                    }
                     if (purchases != null) {
                         single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { IosLifetimeStore(purchases, get()) }
+                        single<com.sadturtleman.flowershoes.core.data.BookStore> {
+                            object : com.sadturtleman.flowershoes.core.data.BookStore, com.sadturtleman.flowershoes.core.data.OneTimeProduct by IosProduct(purchases, "memory_book", "memory_book") {}
+                        }
+                        single<com.sadturtleman.flowershoes.core.data.BackupPlusStore> {
+                            object : com.sadturtleman.flowershoes.core.data.BackupPlusStore, com.sadturtleman.flowershoes.core.data.OneTimeProduct by IosProduct(purchases, "backup_plus", "backup_plus") {}
+                        }
                     }
                 },
             )
@@ -71,8 +91,9 @@ fun MainViewController(
         started = true
     }
     return ComposeUIViewController {
-        val lifetime = org.koin.mp.KoinPlatform.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
-        val owned = lifetime?.owned?.collectAsState()?.value ?: false
+        val perks = org.koin.mp.KoinPlatform.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()
+        // 내가 샀거나 연결된 상대가 산 꽃신 평생(연결된 동안 함께).
+        val owned = perks?.lifetimeOn?.collectAsState(initial = false)?.value ?: false
         // 꽃신 평생이면 광고를 모두 숨긴다(Figma 9).
         if (ads == null || owned) {
             KkotsinApp()
@@ -95,6 +116,15 @@ fun onForeground() {
         koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()?.requestNow()
         // 꽃신 평생 이용권(계정 맞추기 · 다시 읽기).
         runCatching { koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.refresh() }
+        // 위젯 스냅샷 발행기(한 번): DB 가 바뀌면 App Group 의 스냅샷을 다시 쓰고 위젯을 새로 그린다.
+        if (!widgetsStarted) {
+            widgetsStarted = true
+            val store = koin.get<com.sadturtleman.flowershoes.core.widget.SnapshotStore>()
+            koin.get<com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher>().start(kotlinx.coroutines.MainScope()) {
+                com.sadturtleman.flowershoes.app.ios.mirrorWidgetDrawing(store)
+                widgetReloader?.invoke()
+            }
+        }
         com.sadturtleman.flowershoes.app.ios.writeLinkConfig(
             koin.get<com.sadturtleman.flowershoes.core.database.AppDatabase>(),
             koin.get<com.sadturtleman.flowershoes.core.data.Identity>(),

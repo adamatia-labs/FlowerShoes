@@ -74,13 +74,27 @@ class ProfileRepository(
         db.serviceDao().observeAll().map { list -> list.map { it.toModel() }.map { it to calculator.timeline(it) } }
 
     /** 내 역할 · 이름. 연결돼 있으면 상대 폰에도 간다(이름은 "민준 ♥ 지수" · 편지 · 알림에 쓰인다). */
-    suspend fun saveMe(role: Role, nickname: String, deviceName: String? = null) {
-        val device = deviceName ?: db.userDao().get(identity.userId)?.deviceName.orEmpty()
+    suspend fun saveMe(role: Role, nickname: String, deviceName: String? = null, perks: Set<String>? = null) {
+        val local = db.userDao().get(identity.userId)
+        val device = deviceName ?: local?.deviceName.orEmpty()
+        val bought = perks?.sorted() ?: local?.perks?.split(',')?.filter { it.isNotBlank() }.orEmpty()
         writer.write(
             OpKind.PROFILE, "user", identity.userId,
-            localWrite = { lamport -> db.userDao().upsert(UserEntity(identity.userId, role.name, nickname, lamport, device.ifBlank { null })) },
-            payload = { lamport -> OpPayload.UserPut(identity.userId, role.name, nickname, lamport, device) },
+            localWrite = { lamport -> db.userDao().upsert(UserEntity(identity.userId, role.name, nickname, lamport, device.ifBlank { null }, bought.joinToString(",").ifBlank { null })) },
+            payload = { lamport -> OpPayload.UserPut(identity.userId, role.name, nickname, lamport, device, bought) },
         )
+    }
+
+    /** 산 것(꽃신 평생 · 추억 책)을 내 정보에 싣는다(바뀌었을 때만) — 연결된 상대도 광고 없이 · 꾸미기 · 책을 함께 쓴다. */
+    suspend fun publishPerks(perks: Set<String>) {
+        val me = db.userDao().get(identity.userId) ?: return
+        if (me.perks?.split(',')?.filter { it.isNotBlank() }?.toSet().orEmpty() == perks) return
+        saveMe(Role.valueOf(me.role), me.nickname, perks = perks)
+    }
+
+    /** 연결된 상대가 산 것. 연결 전 · 해제 뒤에는 빈 집합. */
+    fun observePartnerPerks(): Flow<Set<String>> = kotlinx.coroutines.flow.combine(observePartnerId(), observeUsers()) { partner, users ->
+        partner?.let { id -> users.firstOrNull { it.id == id }?.perks?.split(',')?.filter { it.isNotBlank() }?.toSet() }.orEmpty()
     }
 
     /** 이 폰 기종을 내 정보에 싣는다(바뀌었을 때만). 연인의 설정 › 연결 정보에 "민준 폰 Galaxy S25"로 보인다. */

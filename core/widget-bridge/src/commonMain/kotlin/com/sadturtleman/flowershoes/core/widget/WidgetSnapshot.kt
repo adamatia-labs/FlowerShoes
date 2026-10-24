@@ -52,6 +52,8 @@ data class WidgetSnapshot(
     val drawingLetterId: String? = null,
     /** 떠 있는 그림 id(위젯에 떠 있던 시간을 센다). */
     val drawingId: String? = null,
+    /** 받은 그림 위젯 프레임(BASIC · BLOSSOM · KRAFT · POLAROID · NIGHT). 없으면 기본. */
+    val widgetFrame: String? = null,
     val updatedAtMs: Long,
 )
 
@@ -112,6 +114,7 @@ class WidgetSnapshotPublisher(
                     val latestAt = latest?.let { it.receivedAtMs ?: it.sentAtMs } ?: 0L
                     if (latestAt > at) latest else pin
                 },
+                settings.widgetFrame,
             ) { values ->
                 val device = values[0] as com.sadturtleman.flowershoes.core.data.DeviceState
                 @Suppress("UNCHECKED_CAST")
@@ -137,6 +140,7 @@ class WidgetSnapshotPublisher(
                     drawingShape = drawing?.shape,
                     drawingLetterId = drawing?.letterId,
                     drawingId = drawing?.id,
+                    widgetFrame = values[6] as String,
                     updatedAtMs = 0,
                 )
             }

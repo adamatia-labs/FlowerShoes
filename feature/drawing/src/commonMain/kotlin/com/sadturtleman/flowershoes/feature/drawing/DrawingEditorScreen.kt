@@ -379,14 +379,28 @@ private fun ToolPanel(
     }
 }
 
+/**
+ * 펜(Figma 그림 / 펜): 도구(펜 · 형광펜 · 크레용 · 수채 · 지우개) + 굵기 3단계, 색 묶음(기본 · 파스텔 · 네온) + 색.
+ * 크레용 · 수채 · 파스텔 · 네온은 꽃신 평생 — 이용권이 없으면 눌렀을 때 안내만(그리던 그림은 그대로).
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PenPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit, onLongPressColor: (Long) -> Unit) {
     val c = KkTheme.colors
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-        ToolButton(KkIcons.Pen, "펜", state.tool == EditorTool.PEN) { onIntent(DrawingIntent.SetTool(EditorTool.PEN)) }
-        ToolButton(KkIcons.Highlighter, "형광펜", state.tool == EditorTool.HIGHLIGHTER) { onIntent(DrawingIntent.SetTool(EditorTool.HIGHLIGHTER)) }
-        ToolButton(KkIcons.Eraser, "지우개", state.tool == EditorTool.ERASER) { onIntent(DrawingIntent.SetTool(EditorTool.ERASER)) }
+    val lifetimeOn by (org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
+        ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
+    var locked by remember { mutableStateOf<String?>(null) }
+    var palette by remember { mutableStateOf(PenPalette.entries.firstOrNull { p -> p.colors.any { state.color in shadesOf(it) } } ?: PenPalette.BASIC) }
+    fun tool(t: EditorTool, label: String, lifetime: Boolean) = if (lifetime && !lifetimeOn) locked = label else onIntent(DrawingIntent.SetTool(t))
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ToolButton(KkIcons.Pen, "펜", state.tool == EditorTool.PEN) { tool(EditorTool.PEN, "펜", false) }
+        ToolButton(KkIcons.Highlighter, "형광펜", state.tool == EditorTool.HIGHLIGHTER) { tool(EditorTool.HIGHLIGHTER, "형광펜", false) }
+        BrushChip("크레용", state.tool == EditorTool.CRAYON, !lifetimeOn) { tool(EditorTool.CRAYON, "크레용", true) }
+        BrushChip("수채", state.tool == EditorTool.WATERCOLOR, !lifetimeOn) { tool(EditorTool.WATERCOLOR, "수채 붓", true) }
+        ToolButton(KkIcons.Eraser, "지우개", state.tool == EditorTool.ERASER) { tool(EditorTool.ERASER, "지우개", false) }
         Box(Modifier.width(1.dp).height(32.dp).background(c.borderDefault))
         BrushSize.entries.forEach { b ->
             val on = state.brush == b
@@ -402,20 +416,49 @@ private fun PenPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Uni
             }
         }
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        PEN_COLORS.forEachIndexed { i, argb ->
+    Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+        PenPalette.entries.forEach { p ->
+            BrushChip(p.label, palette == p, p.lifetime && !lifetimeOn) {
+                if (p.lifetime && !lifetimeOn) locked = "${p.label} 색" else palette = p
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
+        palette.colors.forEachIndexed { i, argb ->
             val on = state.tool != EditorTool.ERASER && state.color in shadesOf(argb)
+            val name = if (palette == PenPalette.BASIC) PEN_COLOR_NAMES[i] else "${palette.label} ${i + 1}"
             Box(
                 Modifier.size(44.dp).clip(CircleShape)
                     .then(if (on) Modifier.border(2.dp, c.borderBrand, CircleShape) else Modifier)
                     .combinedClickable(role = Role.RadioButton, onLongClick = { onLongPressColor(argb) }) { onIntent(DrawingIntent.SetColor(argb)) }
-                    .semantics { contentDescription = "${PEN_COLOR_NAMES[i]}, 길게 누르면 밝기"; selected = on },
+                    .semantics { contentDescription = "$name, 길게 누르면 밝기"; selected = on },
                 contentAlignment = Alignment.Center,
             ) {
                 val inner = if (on) Color(state.color.toInt()) else Color(argb.toInt())
                 Box(Modifier.size(if (on) 34.dp else 36.dp).clip(CircleShape).background(inner).border(1.dp, if (argb == 0xFFFFFFFF) c.borderDefault else Color.Transparent, CircleShape))
             }
         }
+    }
+    locked?.let { what ->
+        KkModalSheet({ locked = null }) {
+            KkSheetHeader(what, "꽃신 평생 꾸미기예요. 설정 › 꽃신 평생에서 열 수 있어요")
+            KkPrimaryButton("확인", { locked = null }, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+/** 글자 도구 칩(크레용 · 수채 · 색 묶음). 꽃신 평생인데 이용권이 없으면 "평생" 표시. */
+@Composable
+private fun BrushChip(label: String, on: Boolean, lifetimeLocked: Boolean, onClick: () -> Unit) {
+    val c = KkTheme.colors
+    Row(
+        Modifier.height(40.dp).clip(CircleShape).background(if (on) c.bgBrand else c.bgSubtle)
+            .clickable(role = Role.RadioButton, onClick = onClick).semantics { selected = on }
+            .padding(horizontal = KkSpacing.md),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(label, style = KkTheme.type.labelM, color = if (on) c.textOnBrand else c.textPrimary)
+        if (lifetimeLocked) Text("평생", style = KkTheme.type.labelS, color = c.textTertiary)
     }
 }
 
@@ -443,26 +486,17 @@ private fun BrightnessPopup(base: Long, current: Long, modifier: Modifier, onPic
 }
 
 /**
- * 스티커(Figma 최종 정리 › 그림 / 스티커): 잠긴 팩 띠("봄 소풍 스티커 · 잠김 ▶ 광고 보고 쓰기")
- * + 분류 탭(하트·꽃 · 군대 · 글자 · D-day) + 56 칸 서랍(가로로 넘김). 잠긴 팩은 흐리게 — 누르면 안내.
+ * 스티커(Figma 그림 / 스티커): 가로로 넘기는 분류 칩(하트 · 꽃 · 표정 · 일상 · 글자 · D-day · 군 생활 · 계절 · 기념일)
+ * + 56 칸 서랍(가로로 넘김). 스티커는 모두 무료라 잠긴 팩 · 광고 띠가 없다.
  */
 @Composable
 private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
     val c = KkTheme.colors
-    var lockedInfo by remember { mutableStateOf<com.sadturtleman.flowershoes.core.drawingui.StickerTab?>(null) }
-    var adInfo by remember { mutableStateOf(false) }
-    val tab = STICKER_TABS[state.stickerTab.coerceIn(STICKER_TABS.indices)]
-    com.sadturtleman.flowershoes.core.drawingui.FEATURED_LOCKED_PACK?.let { pack ->
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(c.bgBrandSubtle)
-                .padding(start = KkSpacing.lg, end = KkSpacing.sm, top = KkSpacing.sm, bottom = KkSpacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("${pack.label} 스티커 · 잠김", style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
-            KkButton("▶ 광고 보고 쓰기", { adInfo = true }, size = KkButtonSize.M)
-        }
+    val current = state.stickerTab.coerceIn(STICKER_TABS.indices)
+    val tab = STICKER_TABS[current]
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+        STICKER_TABS.forEachIndexed { i, t -> StickerChip(t.label, i == current) { onIntent(DrawingIntent.SetStickerTab(i)) } }
     }
-    KkSegmentedControl(STICKER_TABS.map { it.label }, state.stickerTab, { onIntent(DrawingIntent.SetStickerTab(it)) })
     val items = if (tab.dday) state.ddayStickers else tab.ids
     if (items.isEmpty()) {
         Text("복무 정보를 넣으면 D-day 스티커가 생겨요", style = KkTheme.type.bodyS, color = c.textTertiary, modifier = Modifier.padding(vertical = KkSpacing.lg))
@@ -474,34 +508,34 @@ private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) ->
             Box(
                 Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
                     .then(if (on) Modifier.border(2.dp, c.borderBrand, RoundedCornerShape(KkRadius.md)) else Modifier)
-                    .clickable(role = Role.RadioButton) { if (tab.locked) lockedInfo = tab else onIntent(DrawingIntent.SetSticker(id)) }
+                    .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetSticker(id)) }
                     .semantics {
-                        contentDescription = "스티커 ${com.sadturtleman.flowershoes.core.drawingui.stickerLabel(id)}" + if (tab.locked) ", 잠김" else ""
+                        contentDescription = "스티커 ${com.sadturtleman.flowershoes.core.drawingui.stickerLabel(id)}"
                         selected = on
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                StickerPreview(id, Modifier.size(48.dp).alpha(if (tab.locked) 0.4f else 1f))
-                if (tab.locked) Text("🔒", fontSize = 12.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp))
+                StickerPreview(id, Modifier.size(48.dp))
             }
         }
     }
-    if (adInfo) {
-        KkModalSheet({ adInfo = false }) {
-            // 보상형 광고(오늘 하루 열기)는 광고 SDK 연결과 함께 열린다 — 그 전에는 안내만.
-            KkSheetHeader("광고 보고 쓰기", "광고를 보면 오늘 하루 이 스티커를 쓸 수 있어요. 광고는 앱 출시와 함께 열려요.")
-            KkPrimaryButton("확인", { adInfo = false }, Modifier.fillMaxWidth())
-        }
-    }
-    lockedInfo?.let { t ->
-        KkModalSheet({ lockedInfo = null }) {
-            KkSheetHeader(
-                t.label + " 스티커",
-                if (t.price == "평생") "꽃신 평생(한 번 결제)에 들어 있는 팩이에요. 결제는 앱 출시와 함께 열려요."
-                else "${t.price} 스티커 팩이에요. 결제는 앱 출시와 함께 열려요.",
-            )
-            KkPrimaryButton("확인", { lockedInfo = null }, Modifier.fillMaxWidth())
-        }
+}
+
+/** 분류 칩(Figma Sticker Tabs): 알약 + 앞 점. 고른 칩은 brand 바탕 · 흰 점. */
+@Composable
+private fun StickerChip(label: String, on: Boolean, onClick: () -> Unit) {
+    val c = KkTheme.colors
+    Row(
+        Modifier.clip(CircleShape).background(if (on) c.bgBrand else c.bgSurface)
+            .then(if (on) Modifier else Modifier.border(1.dp, c.borderDefault, CircleShape))
+            .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { selected = on }
+            .padding(horizontal = KkSpacing.md, vertical = KkSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(if (on) c.textOnBrand else c.statusWarning))
+        Text(label, style = KkTheme.type.labelM, color = if (on) c.textOnBrand else c.textPrimary)
     }
 }
 

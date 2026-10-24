@@ -46,7 +46,8 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
 
-enum class EditorTool { PEN, HIGHLIGHTER, ERASER, STICKER }
+/** 그림 도구. 크레용 · 수채 붓은 꽃신 평생. */
+enum class EditorTool { PEN, HIGHLIGHTER, CRAYON, WATERCOLOR, ERASER, STICKER }
 
 /** 아래 메뉴바(Editor Menu Bar): 펜 · 스티커 · 사진 · 틀. 위 패널 내용만 바뀐다. */
 enum class EditorMenu(val label: String) { PEN("펜"), STICKER("스티커"), PHOTO("사진"), TEMPLATE("틀") }
@@ -60,6 +61,20 @@ val PEN_COLORS: List<Long> = listOf(
 )
 
 val PEN_COLOR_NAMES: List<String> = listOf("검정", "장미", "분홍", "노랑", "올리브", "하늘", "보라", "흰색")
+
+/** 펜 색 묶음(화면 기능명세 2-10): 기본은 무료, 파스텔 12 · 네온 6 은 꽃신 평생. */
+enum class PenPalette(val label: String, val colors: List<Long>, val lifetime: Boolean) {
+    BASIC("기본", PEN_COLORS, false),
+    PASTEL(
+        "파스텔",
+        listOf(
+            0xFFFFB3C1, 0xFFFFC8A2, 0xFFFFE29A, 0xFFFFF3B0, 0xFFCDEAC0, 0xFFB5EAD7,
+            0xFFA8DADC, 0xFFBDE0FE, 0xFFCDB4DB, 0xFFE2C2FF, 0xFFF1E3D3, 0xFFD6CCC2,
+        ),
+        true,
+    ),
+    NEON("네온", listOf(0xFFFF2E88, 0xFFFF6B00, 0xFFF5FF00, 0xFF39FF14, 0xFF00E5FF, 0xFFB026FF), true),
+}
 
 /** 밝기 고르기: 같은 색의 밝은 쪽 3 · 원래 색 · 어두운 쪽 3. */
 fun shadesOf(argb: Long): List<Long> {
@@ -351,7 +366,7 @@ class DrawingEditorViewModel(
             when (it.tool) {
                 EditorTool.ERASER -> it.copy(liveEraser = EraserStroke("live", strokeStart, it.brush, points))
                 else -> it.copy(
-                    live = Stroke("live", strokeStart, if (it.tool == EditorTool.HIGHLIGHTER) Tool.HIGHLIGHTER else Tool.PEN, it.color, it.brush, points),
+                    live = Stroke("live", strokeStart, it.tool.strokeTool(), it.color, it.brush, points),
                 )
             }
         }
@@ -398,4 +413,11 @@ class DrawingEditorViewModel(
         }.toMap()
 
     private fun newId() = Uuid.random().toString()
+}
+
+private fun EditorTool.strokeTool(): Tool = when (this) {
+    EditorTool.HIGHLIGHTER -> Tool.HIGHLIGHTER
+    EditorTool.CRAYON -> Tool.CRAYON
+    EditorTool.WATERCOLOR -> Tool.WATERCOLOR
+    else -> Tool.PEN
 }

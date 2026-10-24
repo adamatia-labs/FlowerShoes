@@ -143,3 +143,23 @@ suspend fun mergeNseQueue(sync: SyncClient, root: Path = appGroupRoot(), fs: Fil
         fs.delete(file)
     }
 }
+
+/**
+ * 받은 그림 PNG 는 앱의 Application Support 에 있어 위젯 확장이 못 읽는다 — App Group(widget/drawing.png)로 복사하고
+ * 스냅샷의 경로를 그쪽으로 바꾼다. 같은 그림이면 다시 복사하지 않는다.
+ */
+fun mirrorWidgetDrawing(store: com.sadturtleman.flowershoes.core.widget.SnapshotStore, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) {
+    val snap = store.read() ?: return
+    val src = snap.drawingPngPath?.toPath() ?: return
+    if (src.toString().startsWith(root.toString())) return
+    val dir = root / "widget"
+    val dst = dir / "drawing-${snap.drawingId ?: "latest"}.png"
+    runCatching {
+        fs.createDirectories(dir)
+        if (!fs.exists(dst)) {
+            fs.list(dir).filter { it.name.startsWith("drawing-") && it != dst }.forEach { fs.delete(it) }
+            fs.copy(src, dst)
+        }
+        store.write(snap.copy(drawingPngPath = dst.toString()))
+    }
+}

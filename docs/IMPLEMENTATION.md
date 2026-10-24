@@ -238,3 +238,43 @@ Figma 와 다르게 한 것(이유):
   테스트 스토어로 구매 → 광고 숨김까지 에뮬레이터에서 확인. iOS 결제 · 연인에게 광고 없이(연결된 동안)는 아직.
 - 꽃신 평생 결제(iOS, RevenueCat purchases-ios-spm 5.x): Swift LifetimePurchases(IosPurchases) → Kotlin IosLifetimeStore(LifetimeStore).
   Android 와 같은 규칙(lifetime 패키지 · 활성 entitlement · 계정 id logIn), 이용 중이면 광고 숨김. 키는 Config.xcconfig REVENUECAT_API_KEY(비면 테스트 키).
+
+## 설계 · Figma 확정분 반영(2026-10-24)
+
+설계안 v7 이후 확정한 것(수익 모델 · 추억 책 · 스티커 · 앱 아이콘 · 약관 1.1)을 코드에 맞췄다. 두 에뮬레이터(kkotsin-dev)로 확인.
+
+| 항목 | 확정 내용 | 구현 | 확인 |
+|---|---|---|---|
+| 스티커 | 전부 무료(팔지 않음) | 계절 · 기념일 6팩(96장, Fluent 256→192px) 추가 → 그림 스티커 204 + 글자 12 + D-day. 잠금 · "광고 보고 쓰기" 띠 삭제, 서랍은 가로로 넘기는 칩(Figma 그림 / 스티커) | 에뮬레이터 |
+| 앱 아이콘 | 시안 E · 꽃 군번줄 | 적응형(벡터 전경 · 그라데이션 바탕 · 단색), 예전 mipmap webp, iOS AppIcon 1024 | 에뮬레이터 스플래시 |
+| 꽃신 평생 | 광고 제거 · 글꼴 · 편지지 · 펜 · 색 · 위젯 꾸미기 · 백업 5GB(10년) · 연결된 상대도 함께 | 혜택 다섯 줄, 백업 용량 무료 1GB / 평생 5GB. **연결된 상대와 함께**: 내 정보(UserPut)에 산 것(perks)을 싣고 `SharedPerks` 가 나 + 상대를 합친다 → 광고 숨김 · 평생 편지지 열림 · 설정 "연인과 함께 이용 중" | 두 폰(곰신이 산 평생 → 군인 폰 광고 없음 · 편지지 열림) |
+| 편지 첨부 | 그림 · 사진 합쳐 최대 10장, 누구나 같음 · 예약 편지 개수 제한 없음 | `Letter.MAX_ATTACHMENTS = 10` | 컴파일 · 단위 |
+| 편지지 | 무료 5 + 평생 5(원고지 · 크라프트 · 군사우편 · 줄노트 · 수채 하늘) | 가로로 넘기는 10장, 평생 표시. 이용권 없으면 안내 시트 → 설정 › 꽃신 평생(쓰던 편지는 임시저장). 받는 사람은 이용권 없이 그대로 보인다 | 에뮬레이터 |
+| 추억 탭 | 우리의 책 표지 카드 + 월별 장 → 한 달(달력 · 편지 세 형태 · 만남) → 만남 상세 · 만남 남기기, 책으로 보기 | `feature:memory` 새로 씀. 그림 상세 화면 삭제(편지는 받은 편지로 연다). 안쪽 화면은 탭 바 없이 | 에뮬레이터 |
+| 만남 한 줄 메모 | 각자 한 줄(40자) | `Event.meetNotes`(사용자 id → `MeetNote(text, at)`), 줄마다 늦게 쓴 쪽이 남는다 — 일정 LWW 와 따로 합친다(`mergeMeetNotes`, InboxApplier). DB v6 | 단위(RecordExportTest) |
+| 추억 책 PDF | 앱 안 책은 무료, 디자인된 PDF(화면용 + 인쇄용) 5,900원, 둘 중 한 명이 사면 둘 다 | 시안 B(군사우편) 쪽 렌더러(`BookPageView`: 표지 · 요약 · 한 달 왼쪽(달력 · 사진) · 오른쪽(편지 세 통)) — 앱 미리보기와 PDF 가 같은 그림. PDF 는 쪽마다 화면 밖에서 1800px 로 그려 Android `PdfDocument` 두 벌(8×8인치, 인쇄용은 재단 3mm). 결제는 RevenueCat Offering · entitlement `memory_book`(`BookStore`) | 미리보기 · 쪽 넘김 에뮬레이터. **PDF 생성은 결제 뒤라 미확인** |
+| 내 기록 내보내기 | 무료 원본 ZIP | `RecordExporter`(편지.txt · 일정 · 만남.txt · 그림 PNG · 사진 JPG, UTF-8 이름 STORED ZIP) → 공유 시트. 설정 › 데이터 | 단위(ZipInputStream) + 에뮬레이터에서 만든 ZIP 확인 |
+| 약관 1.1 | 유료 서비스 · 청약철회 · 백업 보관 기간 · 수집 항목 | `TermsDoc`(제5조 · 제8조의2 · 제8조의3 · 제9조 · 제10조 · 제10조의2, 개인정보 표 2줄) | 컴파일 |
+| 백업 보관 기간 | 무료 1년 · 평생 10년, 30일 · 7일 전 예고 | 함수 `backupRetention`(매일 04:00, `retention.ts` 순수 함수 테스트 3), 앱은 토큰 등록 때 `users/{uid}.lastSeenAt` | 함수 단위 19 |
+
+이어서 채운 것(같은 날):
+
+| 항목 | 구현 | 확인 |
+|---|---|---|
+| 글꼴 11종 | 무료 4(기본 · 고운돋움 · 고운바탕 · 개구) + 평생 7(하이멜로디 · 감자꽃 · 싱글데이 · 연성 · 주아 · 동글 · 나눔손글씨 붓). Google Fonts(OFL) 원본을 한글 11,172자 · 영문 · 기호만 남기고 힌팅을 빼 앱에 묶었다(10개 38MB). 글자 크기 작게 · 보통 · 크게는 글꼴 id 에 "@S" · "@L" 로 싣는다(스키마 변경 없음, 옛 앱은 기본 글꼴). 예전 글꼴(나눔 펜 · 명조)은 받은 편지를 위해 남기고 목록에서 뺐다 | 에뮬레이터(글꼴 시트 · 주아 적용) |
+| 크레용 · 수채 붓 · 파스텔 12 · 네온 6 | `Tool.CRAYON` · `WATERCOLOR`(TLV 뒤에 더함 — 옛 앱은 펜으로), 렌더러 두 붓, 펜 칸의 도구 칩 · 색 묶음, 평생 잠금 | 에뮬레이터(그려 봄) · drawing-engine 단위 |
+| 위젯 프레임 | 받은 그림 위젯 기본 · 벚꽃 · 크라프트 · 폴라로이드 · 밤하늘(기본 말고 평생). 이 기기 설정 → 스냅샷 `widgetFrame` → Glance. "▶ 과정" → "▶"(설계: 과정 글자 삭제) | 설정 화면 에뮬레이터, 위젯은 컴파일 |
+| 백업 용량 추가 | `BackupPlusStore`(Offering · entitlement `backup_plus`), 백업 화면 줄 · 용량(1GB 또는 5GB + 5GB) | 컴파일(결제는 누르지 않음) |
+| RevenueCat 웹훅 | 함수 `revenuecatWebhook`(Authorization = REVENUECAT_WEBHOOK_AUTH, REST 로 다시 읽어 `entitlements/{uid}` lifetime · book · backupPlus) | 함수 단위(21) · 규칙(entitlements · mail 은 서버만, 15) |
+| 삭제 예고 이메일 | `backupRetention` 이 예고 때 `mail` 문서를 쓴다(Firebase "Trigger Email" 확장이 보낸다) | 함수 단위 |
+| 추억 책 PDF | 그래픽 레이어 비트맵이 HARDWARE 라 PdfDocument 가 못 그리던 문제를 고쳤다(복사). 디버그 빌드에만 "개발용 · 결제 없이 PDF 만들기" | **에뮬레이터에서 두 PDF 생성 · 쪽 이미지 확인**(4쪽, 576pt / 593pt) |
+| iOS | 추억 책 PDF(UIKit PDF 컨텍스트) · 결제 다리(memory_book · backup_plus, Swift `Purchases.swift`) · 파일 공유 | macOS CI 통과(run 40073697956: iOS 테스트 · 프레임워크 링크 · 앱/NSE/위젯 빌드 · Swift 테스트 · 시뮬레이터 실행) |
+| iOS 위젯 | 받은 그림 · 다음 만남 위젯을 더했다(전에는 D-day · 보고싶어 둘뿐). 그림 위젯은 프레임 · "▶" · 누르면 편지. **위젯 스냅샷 발행기가 iOS 에서 시작되지 않던 것**을 고쳤다(onForeground 에서 한 번), 그림 PNG 는 App Group(widget/drawing-*.png)로 복사, Swift 가 넣은 `setWidgetReloader` 로 WidgetCenter 새로고침 | macOS CI 통과(위젯 확장 빌드) |
+| Figma 맞춤 | 코드에 먼저 들어간 것을 ✅ 최종 화면에 반영: 편지지 10장(평생 표시) · 그림 / 펜(크레용 · 수채 · 기본/파스텔/네온) · 설정 · 백업(640MB / 1GB · 백업 용량 추가 줄) · 설정 · 위젯 안내(그림 위젯 프레임). 글꼴 시트는 Figma 쪽에 맞춰 코드를 고쳤다(크기 칩 · "보고 싶은 밤" + 이름 · 평생 알약 · 라디오). 💰 "▶ 과정 · 6초" → "▶", 🗂 최종 정리 4 · 4-1 · 7 다시 복제 | Figma 스크린샷 · 에뮬레이터 |
+
+남은 것(다음 순서):
+
+1. **콘솔 설정**: 순서 · 값 · 확인 방법은 [SETUP_CONSOLE.md](SETUP_CONSOLE.md) (스토어 상품 → RevenueCat → 비밀 값(Secret Manager) → 웹훅 확인 → 메일 확장 → 백업 보관 함수).
+2. **함수 배포 순서**: 웹훅이 entitlements 를 채운 뒤 `backupRetention` 을 켠다(전에는 평생 사용자도 1년 규칙).
+3. **Trigger Email 확장** 설치(mail 컬렉션) — 없으면 이메일 예고는 쌓이기만 한다.
+4. **iOS 실기기 확인** — CI(시뮬레이터)는 통과. 결제 · PDF · 위젯은 실기기에서 눌러 봐야 한다(결제는 샌드박스 계정).

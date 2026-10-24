@@ -26,6 +26,8 @@ data class UserEntity(
     val nicknameLamport: Long,
     /** 이 사람 폰 기종(설정 › 연결 정보 "지수 폰"). */
     val deviceName: String? = null,
+    /** 이 사람이 산 것(쉼표: lifetime · book). 연결된 상대도 함께 쓴다(수익 모델 확정). */
+    val perks: String? = null,
 )
 
 @Entity(tableName = "device", indices = [Index("userId")])
@@ -84,6 +86,8 @@ data class EventEntity(
     /** 만남 사진 첨부 id 들(쉼표로 이음). */
     val photoIds: String? = null,
     val memo: String? = null,
+    /** 만남 한 줄 메모(JSON 객체: 사용자 id → 메모). */
+    val meetNotes: String? = null,
 )
 
 /** 받은 휴가(휴가 관리). 일정과 같은 LWW · tombstone. */

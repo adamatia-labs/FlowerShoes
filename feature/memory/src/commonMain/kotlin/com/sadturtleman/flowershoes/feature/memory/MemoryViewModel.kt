@@ -3,7 +3,6 @@ package com.sadturtleman.flowershoes.feature.memory
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.AttachmentStore
-import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
@@ -11,22 +10,21 @@ import com.sadturtleman.flowershoes.core.data.SEOUL
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.drawing.DrawingCodec
 import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
-import com.sadturtleman.flowershoes.core.drawing.DrawingRasterizer
-import com.sadturtleman.flowershoes.core.drawing.PhotoBackground
+import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.military.koreanName
+import com.sadturtleman.flowershoes.core.model.AttachmentKind
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.LetterBlock
+import com.sadturtleman.flowershoes.core.model.MeetNote
 import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,96 +36,171 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
-/** 추억 분류(Segment): 전체 · 그림 · 편지 · 만남. */
-enum class MemoryFilter(val label: String) { ALL("전체"), DRAWING("그림"), LETTER("편지"), MEET("만남") }
+/** 한 달(책의 한 장). */
+data class YearMonth(val year: Int, val month: Int) : Comparable<YearMonth> {
+    override fun compareTo(other: YearMonth): Int = compareValuesBy(this, other, YearMonth::year, YearMonth::month)
+    fun next(): YearMonth = if (month == 12) YearMonth(year + 1, 1) else YearMonth(year, month + 1)
+    val first: LocalDate get() = LocalDate(year, month, 1)
+    val length: Int get() = first.plus(DatePeriod(months = 1)).minus(DatePeriod(days = 1)).day
 
-/** 타임라인 한 칸. 레일 점 색: 그림 · 만남 = 로즈, 편지 · 기념일 = 올리브. */
-sealed interface MemoryEntry {
-    val date: LocalDate
-
-    /** 그림(글 없는 편지, 또는 그림이 든 편지의 첫 그림). */
-    data class Drawing(override val date: LocalDate, val letterId: String, val title: String, val meta: String, val thumb: DrawingDocument?, val hearts: Int = 0) : MemoryEntry
-    data class Letter(override val date: LocalDate, val letterId: String, val title: String, val preview: String, val hearts: Int = 0) : MemoryEntry
-
-    /** 지난 휴가 · 외박 · 면회(캘린더에 적은 것). [photos] 는 만남 사진 첨부 id(최대 3). */
-    data class Meet(override val date: LocalDate, val label: String, val title: String, val eventId: String = "", val photos: List<String> = emptyList()) : MemoryEntry
-
-    /** 입대 N일 · 진급 · 만난 지 N일. */
-    data class Anniversary(override val date: LocalDate, val title: String) : MemoryEntry
+    companion object {
+        fun of(d: LocalDate) = YearMonth(d.year, d.month.ordinal + 1)
+    }
 }
 
-data class MemoryStats(val daysTogether: Int?, val drawings: Int, val letters: Int, val meets: Int)
+/** 장 표지 썸네일: 만남 사진이 있으면 사진, 없으면 그 달 첫 그림. */
+sealed interface ChapterCover {
+    data class Photo(val attachmentId: String) : ChapterCover
+    data class Drawing(val letterId: String) : ChapterCover
+}
 
-/** 그림 상세(추억 / 그림 상세). */
-data class DrawingDetail(
-    val letterId: String,
-    val drawingId: String,
-    val doc: DrawingDocument,
-    val mine: Boolean,
-    /** "10월 21일 (수)". */
-    val dateTitle: String,
-    val title: String,
-    /** "연인이 나에게 · 18:40 도착". */
+/** 월별 장 목록 한 줄(Figma 추억 › Chapter). */
+data class Chapter(
+    val ym: YearMonth,
+    /** 몇 번째 장(1부터). */
+    val number: Int,
+    val letters: Int,
+    val drawings: Int,
+    val meets: Int,
+    val cover: ChapterCover?,
+    /** 이번 달 = 쓰는 중. */
+    val writing: Boolean,
+    /** 입대한 달. */
+    val enlisted: Boolean,
+)
+
+/** 표지 카드(우리의 책): 몇 번째 장을 쓰는 중인지 · 전체 몇 달인지. */
+data class BookProgress(val current: Int, val total: Int?, val done: Boolean)
+
+/** 한 달 달력의 일정 막대(면회 · 외박 · 휴가 · 진급). 날짜는 그 달 안으로 자른다. */
+data class MonthBar(val from: Int, val to: Int, val label: String, val kind: BarKind)
+
+enum class BarKind { VISIT, OVERNIGHT, VACATION, RANK }
+
+/** 편지 세 형태: 그림만 · 글 사이 그림 · 글만(추억 책도 셋을 그대로 담는다). */
+enum class LetterKind { DRAWING_ONLY, INLINE, TEXT }
+
+data class MonthLetter(
+    val id: String,
+    val date: LocalDate,
+    /** "10.19 · 민준". */
     val meta: String,
-    val reply: Reply?,
-) {
-    /** 이 그림 다음에 상대가 보낸 편지(답장). */
-    data class Reply(val initial: String, val who: String, val text: String)
+    val author: String,
+    val mine: Boolean,
+    val kind: LetterKind,
+    /** 본문 글(그림 자리는 빼고). */
+    val text: String,
+    /** 글 사이 그림: 첫 그림 · 사진 앞 글과 뒤 글. */
+    val before: String,
+    val after: String,
+    /** 첫 그림 문서(그림만 · 글 사이 그림). */
+    val thumb: DrawingDocument?,
+    /** 그림이 없고 사진만 있으면 첫 사진. */
+    val photoId: String?,
+)
+
+/** 만남 카드 · 만남 상세. */
+data class MeetCard(
+    val eventId: String,
+    val date: LocalDate,
+    /** 면회 · 외박 · 휴가(종류 태그). 첫 면회는 제목이 "첫 면회". */
+    val tag: String,
+    val kind: EventType,
+    val title: String,
+    /** "10.14 (화) 13:00 – 16:00" · "10.19 – 10.23 · 4박 5일". */
+    val time: String,
+    val photos: List<String>,
+    /** (이름, 메모) — 나 먼저. */
+    val notes: List<Pair<String, String>>,
+    val myNote: String,
+)
+
+data class MonthDetail(
+    val ym: YearMonth,
+    val number: Int,
+    val letterDays: Set<Int>,
+    val drawingDays: Set<Int>,
+    val bars: List<MonthBar>,
+    val letters: List<MonthLetter>,
+    val meets: List<MeetCard>,
+    val drawings: Int,
+)
+
+/** 추억 책 전체 요약(표지 · 요약 쪽). */
+data class BookSummary(
+    val my: String,
+    val partner: String,
+    val from: LocalDate?,
+    val to: LocalDate?,
+    val days: Int?,
+    val letters: Int,
+    val myLetters: Int,
+    val partnerLetters: Int,
+    val drawings: Int,
+    val meets: Int,
+    val visits: Int,
+    val overnights: Int,
+    val vacations: Int,
+    /** 가장 많이 주고받은 달 · 통 수. */
+    val busiest: Pair<YearMonth, Int>?,
+    /** 지나온 길: (날짜, 이름). */
+    val milestones: List<Pair<LocalDate, String>>,
+)
+
+/** 추억 탭 안에서 덮어 여는 화면(뒤로 가기는 하나씩 닫는다). */
+sealed interface MemoryPage {
+    data class Month(val ym: YearMonth) : MemoryPage
+    data class Meet(val eventId: String) : MemoryPage
+    /** 만남 남기기("오늘 어땠어요?"). */
+    data class Note(val eventId: String) : MemoryPage
+    data object Book : MemoryPage
 }
 
 data class MemoryState(
-    val filter: MemoryFilter = MemoryFilter.ALL,
-    val stats: MemoryStats = MemoryStats(null, 0, 0, 0),
-    val entries: List<MemoryEntry> = emptyList(),
     val loading: Boolean = true,
-    val detail: DrawingDetail? = null,
+    val progress: BookProgress? = null,
+    val chapters: List<Chapter> = emptyList(),
+    val months: Map<YearMonth, MonthDetail> = emptyMap(),
+    val summary: BookSummary? = null,
+    val stack: List<MemoryPage> = emptyList(),
 ) {
-    val visible: List<MemoryEntry>
-        get() = when (filter) {
-            MemoryFilter.ALL -> entries
-            MemoryFilter.DRAWING -> entries.filterIsInstance<MemoryEntry.Drawing>()
-            MemoryFilter.LETTER -> entries.filterIsInstance<MemoryEntry.Letter>()
-            MemoryFilter.MEET -> entries.filter { it is MemoryEntry.Meet || it is MemoryEntry.Anniversary }
-        }
-    val empty: Boolean get() = !loading && entries.none { it !is MemoryEntry.Anniversary }
+    val empty: Boolean get() = !loading && chapters.none { it.letters + it.meets > 0 }
+    val top: MemoryPage? get() = stack.lastOrNull()
+
+    fun meet(eventId: String): MeetCard? = months.values.firstNotNullOfOrNull { m -> m.meets.firstOrNull { it.eventId == eventId } }
 }
 
 sealed interface MemoryIntent {
-    data class Filter(val filter: MemoryFilter) : MemoryIntent
-    data class OpenDrawing(val letterId: String) : MemoryIntent
-    data object CloseDrawing : MemoryIntent
-    data object PinToWidget : MemoryIntent
-    data object Export : MemoryIntent
-    /** 만남 카드에 사진을 붙인다(줄인 JPEG). 일정에 실려 상대 폰에도 간다. */
+    data class Open(val page: MemoryPage) : MemoryIntent
+    data object Back : MemoryIntent
+    /** 만남 한 줄 메모(각자 자기 줄). 빈 글이면 지운다. */
+    data class SaveNote(val eventId: String, val text: String) : MemoryIntent
+    /** 만남에 사진을 붙인다(줄인 JPEG). 일정에 실려 상대 폰에도 간다. */
     data class AddMeetPhoto(val eventId: String, val jpeg: ByteArray) : MemoryIntent
     data class RemoveMeetPhoto(val eventId: String, val attachmentId: String) : MemoryIntent
 }
 
 /**
- * 추억: 편지 · 그림 · 지난 만남 · 기념일을 시간 거꾸로. 예약 편지는 공개 전이라 여기에도 없다(편지함과 같은 쿼리).
+ * 추억 = 달마다 한 장씩 쌓이는 우리의 책(Figma 5 · 추억, 화면 기능명세 2-7).
+ * 표지 카드 + 월별 장 → 한 달(달력 · 편지 · 만남) → 만남 상세 · 만남 남기기, 책으로 보기(펼침 미리보기 + PDF).
+ * 예약 편지는 공개 전이라 여기에도 없다(편지함과 같은 쿼리).
  */
 class MemoryViewModel(
     private val letters: LetterRepository,
     private val events: EventRepository,
     profile: ProfileRepository,
     private val attachments: AttachmentStore,
-    private val settings: DeviceSettings,
-    private val rasterizer: DrawingRasterizer? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
 
     private val me = profile.myUserId()
     private val today = clock.today()
-    private val ui = MutableStateFlow(MemoryState())
+    private val stack = MutableStateFlow<List<MemoryPage>>(emptyList())
     private val docs = MutableStateFlow<Map<String, DrawingDocument?>>(emptyMap())
 
-    /** 만남 사진 원본(첨부 id → JPEG). 화면이 썸네일로 쓴다. */
+    /** 만남 · 편지 사진 원본(첨부 id → JPEG). 화면이 썸네일로 쓴다. */
     private val _photos = MutableStateFlow<Map<String, ByteArray?>>(emptyMap())
     val photos: StateFlow<Map<String, ByteArray?>> = _photos
-
-    /** 그림 상세 › 저장 · 공유에 쓸 완성 PNG. */
-    private val _exports = MutableSharedFlow<ByteArray>(extraBufferCapacity = 1)
-    val exports: SharedFlow<ByteArray> = _exports
 
     private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 2)
     val notices: SharedFlow<String> = _notices
@@ -136,66 +209,25 @@ class MemoryViewModel(
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
         val my = users.firstOrNull { it.id == me }?.nickname?.takeIf { it.isNotBlank() } ?: "나"
         val partner = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.nickname?.takeIf { it.isNotBlank() } ?: "연인"
-        val since = couple?.anniversary?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-            ?: couple?.linkedAtMs?.takeIf { partnerId != null }?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(SEOUL).date }
-        Triple(my, partner, since)
+        my to partner
     }
 
     val state: StateFlow<MemoryState> = combine(
-        ui,
-        combine(letters.observeInbox(), letters.observeHearts()) { l, h -> l to h },
-        events.observeRange(today.minus(DatePeriod(years = 3)), today),
+        stack,
+        letters.observeInbox(),
+        events.observeRange(today.minus(DatePeriod(years = 3)), today.plus(DatePeriod(years = 1))),
         combine(names, profile.observeTimelines()) { n, t -> n to t.firstOrNull()?.second },
         docs,
-    ) { s, (ls, hearts), es, (n, timeline), thumbs ->
-        val (my, partner, since) = n
-        val drawingEntries = ls.filter { it.drawingCount > 0 && !it.hasText }.map { l ->
-            MemoryEntry.Drawing(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: "그림 한 장", if (l.authorId == me) my else partner, thumbs[l.id], hearts[l.id] ?: 0)
-        }
-        val letterEntries = ls.filter { it.hasText }.map { l ->
-            val text = l.blocks.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text }.replace('\n', ' ')
-            MemoryEntry.Letter(l.date(), l.id, l.title?.takeIf { it.isNotBlank() } ?: text.take(24), if (l.title.isNullOrBlank()) text.drop(24).take(60) else text.take(60), hearts[l.id] ?: 0)
-        }
-        val meets = es.filter { it.type in MEETINGS && it.end.date <= today }.sortedBy { it.start }
-        val firstVisit = meets.firstOrNull { it.type == EventType.VISIT }?.id
-        val meetEntries = meets.map { e ->
-            val kind = if (e.id == firstVisit) "첫 면회" else e.type.label()
-            MemoryEntry.Meet(e.start.date, "만남 · $kind", listOfNotNull(e.title.ifBlank { e.type.label() }, e.durationLabel()).joinToString(" · "), e.id, e.photoIds)
-        }
-        val anniversaries = buildList {
-            timeline?.let { t ->
-                listOf(30, 50, 100, 200, 300, 365, 500).forEach { n ->
-                    val d = t.enlistDate.plus(DatePeriod(days = n - 1))
-                    if (d <= today && d <= t.dischargeDate) add(MemoryEntry.Anniversary(d, "입대 ${n}일"))
-                }
-                t.ranks.drop(1).filter { it.from <= today }.forEach { add(MemoryEntry.Anniversary(it.from, "${it.rank.koreanName} 진급")) }
-                if (t.dischargeDate <= today) add(MemoryEntry.Anniversary(t.dischargeDate, "전역"))
-            }
-            since?.let { start ->
-                (1..20).map { it * 100 }.forEach { n ->
-                    val d = start.plus(DatePeriod(days = n - 1))
-                    if (d <= today) add(MemoryEntry.Anniversary(d, "만난 지 ${n}일"))
-                }
-            }
-        }
-        val all = (drawingEntries + letterEntries + meetEntries + anniversaries).sortedByDescending { it.date }
-        s.copy(
-            loading = false,
-            entries = all,
-            stats = MemoryStats(
-                daysTogether = since?.let { it.daysUntil(today) + 1 },
-                drawings = ls.sumOf { it.drawingCount },
-                letters = letterEntries.size,
-                meets = meetEntries.size,
-            ),
-        )
+    ) { pages, ls, es, (n, timeline), thumbs ->
+        build(pages, ls, es, n.first, n.second, timeline, thumbs)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryState())
 
     init {
-        // 만남 사진: 처음 보이는 첨부를 한 번씩 읽어 둔다(상대가 붙인 사진은 받은 뒤에 생긴다 — 없으면 다음에 다시).
+        // 사진: 처음 보이는 첨부를 한 번씩 읽어 둔다(상대가 붙인 사진은 받은 뒤에 생긴다 — 없으면 다음에 다시).
         viewModelScope.launch {
             state.collect { st ->
-                st.entries.filterIsInstance<MemoryEntry.Meet>().flatMap { it.photos }.filter { _photos.value[it] == null }.forEach { id ->
+                val ids = st.months.values.flatMap { m -> m.meets.flatMap { it.photos } + m.letters.mapNotNull { it.photoId } }
+                ids.filter { _photos.value[it] == null }.forEach { id ->
                     attachments.read(id)?.let { bytes -> _photos.update { it + (id to bytes) } }
                 }
             }
@@ -204,8 +236,7 @@ class MemoryViewModel(
         viewModelScope.launch {
             letters.observeInbox().collect { list ->
                 list.filter { it.drawingCount > 0 && it.id !in docs.value }.forEach { l ->
-                    val doc = firstDrawing(l.id)?.second
-                    docs.update { it + (l.id to doc) }
+                    docs.update { it + (l.id to firstDrawing(l.id)) }
                 }
             }
         }
@@ -213,18 +244,22 @@ class MemoryViewModel(
 
     fun onIntent(intent: MemoryIntent) {
         when (intent) {
-            is MemoryIntent.Filter -> ui.update { it.copy(filter = intent.filter) }
-            is MemoryIntent.OpenDrawing -> viewModelScope.launch { openDrawing(intent.letterId) }
-            MemoryIntent.CloseDrawing -> ui.update { it.copy(detail = null) }
-            MemoryIntent.PinToWidget -> viewModelScope.launch {
-                val d = ui.value.detail ?: return@launch
-                settings.pinWidgetDrawing(d.drawingId, clock.now().toEpochMilliseconds())
-                _notices.tryEmit("위젯에 다시 띄웠어요")
+            is MemoryIntent.Open -> stack.update { it + intent.page }
+            MemoryIntent.Back -> stack.update { it.dropLast(1) }
+            is MemoryIntent.SaveNote -> viewModelScope.launch {
+                val e = events.get(intent.eventId) ?: return@launch
+                val text = intent.text.trim().take(MeetNote.MAX_CHARS)
+                // 지운 줄도 시각을 남겨야 상대 폰의 옛 줄이 이기지 않는다(빈 글 = 지움).
+                events.save(e.copy(meetNotes = e.meetNotes + (me to MeetNote(text, clock.now().toEpochMilliseconds()))))
+                stack.update { s -> if (s.lastOrNull() is MemoryPage.Note) s.dropLast(1) else s }
             }
             is MemoryIntent.AddMeetPhoto -> viewModelScope.launch {
                 val e = events.get(intent.eventId) ?: return@launch
-                if (e.photoIds.size >= MAX_MEET_PHOTOS) return@launch
-                val id = attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, intent.jpeg)
+                if (e.photoIds.size >= MAX_MEET_PHOTOS) {
+                    _notices.tryEmit("만남 사진은 둘이 합쳐 ${MAX_MEET_PHOTOS}장까지예요")
+                    return@launch
+                }
+                val id = attachments.put(AttachmentKind.PHOTO, intent.jpeg)
                 _photos.update { it + (id to intent.jpeg) }
                 events.save(e.copy(photoIds = e.photoIds + id))
             }
@@ -232,60 +267,154 @@ class MemoryViewModel(
                 val e = events.get(intent.eventId) ?: return@launch
                 events.save(e.copy(photoIds = e.photoIds - intent.attachmentId))
             }
-            MemoryIntent.Export -> viewModelScope.launch {
-                val d = ui.value.detail ?: return@launch
-                val r = rasterizer ?: return@launch
-                val photos = d.doc.elements.filterIsInstance<PhotoBackground>().mapNotNull { p -> attachments.read(p.attachmentId)?.let { p.attachmentId to it } }.toMap()
-                runCatching { r.png(d.doc, photos) }.getOrNull()?.let { _exports.tryEmit(it) }
-            }
         }
     }
 
-    private suspend fun firstDrawing(letterId: String): Pair<String, DrawingDocument>? {
+    private suspend fun firstDrawing(letterId: String): DrawingDocument? {
         val row = letters.drawingsOf(letterId).minByOrNull { it.orderInLetter } ?: return null
         val bytes = row.docAttachmentId?.let { attachments.read(it) } ?: return null
-        val doc = (runCatching { DrawingCodec.decode(bytes) }.getOrNull() as? DrawingCodec.Result.Ok)?.document ?: return null
-        return row.id to doc
+        return (runCatching { DrawingCodec.decode(bytes) }.getOrNull() as? DrawingCodec.Result.Ok)?.document
     }
 
-    private suspend fun openDrawing(letterId: String) {
-        val all = letters.observeInbox().first()
-        val letter = all.firstOrNull { it.id == letterId } ?: return
-        val (drawingId, doc) = firstDrawing(letterId) ?: return
-        val (my, partner) = names.first().let { it.first to it.second }
-        val mine = letter.authorId == me
-        val at = letter.visibleAt.toLocalDateTime(SEOUL)
-        // 받은 그림이 이 폰 위젯에 떠 있던 시간(1시간 넘을 때만 적는다).
-        val widgetHours = if (mine) 0L else (settings.widgetShownMs { clock.now().toEpochMilliseconds() }.first()[drawingId] ?: 0L) / 3_600_000
-        // 답장: 이 그림 뒤 사흘 안에 상대가 보낸 첫 편지.
-        val reply = all.filter { it.authorId != letter.authorId && it.visibleAt > letter.visibleAt && it.visibleAt.minus(letter.visibleAt).inWholeDays < 3 && it.hasText }
-            .minByOrNull { it.visibleAt }
-            ?.let { r ->
-                val who = if (r.authorId == me) my else partner
-                val t = r.visibleAt.toLocalDateTime(SEOUL)
-                DrawingDetail.Reply(who.take(1), "$who · ${t.time.hhmm()}", r.blocks.filterIsInstance<LetterBlock.Text>().firstOrNull()?.text?.lineSequence()?.first().orEmpty())
+    private fun build(
+        pages: List<MemoryPage>,
+        ls: List<Letter>,
+        es: List<Event>,
+        my: String,
+        partner: String,
+        timeline: ServiceTimeline?,
+        thumbs: Map<String, DrawingDocument?>,
+    ): MemoryState {
+        val meetEvents = es.filter { it.deletedAt == null && it.type in MEETINGS }.sortedBy { it.start }
+        val pastMeets = meetEvents.filter { it.end.date <= today }
+        val firstVisit = pastMeets.firstOrNull { it.type == EventType.VISIT }?.id
+        val nameOf = { id: String -> if (id == me) my else partner }
+
+        // 책의 첫 장: 입대한 달(복무 정보가 없으면 첫 편지 · 만남의 달). 마지막 장: 이번 달(전역했으면 전역한 달).
+        val contentStart = (ls.map { it.date() } + pastMeets.map { it.start.date }).minOrNull()
+        val start = timeline?.enlistDate ?: contentStart
+        if (start == null) return MemoryState(loading = false, stack = pages)
+        val end = timeline?.dischargeDate?.takeIf { it < today } ?: today
+        val firstYm = YearMonth.of(minOf(start, contentStart ?: start))
+        val lastYm = YearMonth.of(end)
+        val months = generateSequence(firstYm) { it.next() }.takeWhile { it <= lastYm }.toList()
+
+        val details = months.mapIndexed { i, ym ->
+            val inMonth = { d: LocalDate -> YearMonth.of(d) == ym }
+            val monthLetters = ls.filter { inMonth(it.date()) }.sortedByDescending { it.visibleAt }.map { l ->
+                val text = l.blocks.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text.trim() }.trim()
+                val attachments = l.drawingCount + l.photoCount
+                val kind = when {
+                    attachments > 0 && text.isBlank() -> LetterKind.DRAWING_ONLY
+                    attachments > 0 -> LetterKind.INLINE
+                    else -> LetterKind.TEXT
+                }
+                val d = l.date()
+                val cut = l.blocks.indexOfFirst { it !is LetterBlock.Text }.takeIf { it >= 0 } ?: l.blocks.size
+                val textOf = { bs: List<LetterBlock> -> bs.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text.trim() }.trim() }
+                MonthLetter(
+                    l.id, d, "${d.month.ordinal + 1}.${d.day} · ${nameOf(l.authorId)}", nameOf(l.authorId), l.authorId == me, kind,
+                    text, textOf(l.blocks.take(cut)), textOf(l.blocks.drop(cut)), thumbs[l.id],
+                    if (l.drawingCount == 0) l.blocks.filterIsInstance<LetterBlock.Photo>().firstOrNull()?.attachmentId else null,
+                )
             }
-        ui.update {
-            it.copy(
-                detail = DrawingDetail(
-                    letterId, drawingId, doc, mine,
-                    dateTitle = "${at.month.ordinal + 1}월 ${at.day}일 (${weekday(at.date)})",
-                    title = letter.title?.takeIf { t -> t.isNotBlank() } ?: "그림 한 장",
-                    meta = (if (mine) "${my.subject()} ${partner}에게" else "${partner.subject()} ${my}에게") + " · ${at.time.hhmm()} 도착" +
-                        (if (widgetHours > 0) " · 위젯에 ${widgetHours}시간 표시됨" else ""),
-                    reply = reply,
-                ),
+            val bars = buildList {
+                meetEvents.forEach { e ->
+                    val from = maxOf(e.start.date, ym.first)
+                    val to = minOf(e.end.date, ym.first.plus(DatePeriod(days = ym.length - 1)))
+                    if (from <= to) add(MonthBar(from.day, to.day, e.type.label() + if (e.end.date > e.start.date) " · ${e.start.date.daysUntil(e.end.date) + 1}일" else "", e.type.bar()))
+                }
+                timeline?.ranks?.drop(1)?.filter { inMonth(it.from) }?.forEach { add(MonthBar(it.from.day, it.from.day, "${it.rank.koreanName} 진급", BarKind.RANK)) }
+            }
+            val meets = pastMeets.filter { inMonth(it.start.date) }.map { e -> meetCard(e, e.id == firstVisit, my, partner) }
+            MonthDetail(
+                ym, i + 1,
+                letterDays = monthLetters.filter { it.kind != LetterKind.DRAWING_ONLY }.map { it.date.day }.toSet(),
+                drawingDays = monthLetters.filter { it.kind != LetterKind.TEXT }.map { it.date.day }.toSet(),
+                bars = bars,
+                letters = monthLetters,
+                meets = meets,
+                drawings = ls.filter { inMonth(it.date()) }.sumOf { it.drawingCount },
             )
         }
+        val chapters = details.map { m ->
+            Chapter(
+                m.ym, m.number, m.letters.size, m.drawings, m.meets.size,
+                cover = m.meets.firstNotNullOfOrNull { it.photos.firstOrNull() }?.let { ChapterCover.Photo(it) }
+                    ?: m.letters.firstOrNull { it.thumb != null }?.let { ChapterCover.Drawing(it.id) },
+                writing = m.ym == YearMonth.of(today) && (timeline == null || timeline.dischargeDate >= today),
+                enlisted = timeline?.let { YearMonth.of(it.enlistDate) == m.ym } == true,
+            )
+        }.reversed()
+        val totalMonths = timeline?.let { t -> generateSequence(YearMonth.of(t.enlistDate)) { it.next() }.takeWhile { it <= YearMonth.of(t.dischargeDate) }.count() }
+        val busiest = details.maxByOrNull { it.letters.size }?.takeIf { it.letters.isNotEmpty() }?.let { it.ym to it.letters.size }
+        val summary = BookSummary(
+            my, partner,
+            from = timeline?.enlistDate ?: start,
+            to = timeline?.dischargeDate,
+            days = timeline?.let { minOf(it.totalDays, it.enlistDate.daysUntil(today) + 1) },
+            letters = ls.size,
+            myLetters = ls.count { it.authorId == me },
+            partnerLetters = ls.count { it.authorId != me },
+            drawings = ls.sumOf { it.drawingCount },
+            meets = pastMeets.size,
+            visits = pastMeets.count { it.type == EventType.VISIT },
+            overnights = pastMeets.count { it.type == EventType.OVERNIGHT },
+            vacations = pastMeets.count { it.type == EventType.VACATION },
+            busiest = busiest,
+            milestones = buildList {
+                timeline?.let { t ->
+                    add(t.enlistDate to "입대")
+                    t.ranks.drop(1).forEach { add(it.from to it.rank.koreanName) }
+                    add(t.dischargeDate to "전역")
+                }
+            },
+        )
+        return MemoryState(
+            loading = false,
+            progress = BookProgress(details.size, totalMonths, done = timeline?.dischargeDate?.let { it < today } == true),
+            chapters = chapters,
+            months = details.associateBy { it.ym },
+            summary = summary,
+            stack = pages,
+        )
+    }
+
+    private fun meetCard(e: Event, firstVisit: Boolean, my: String, partner: String): MeetCard {
+        val d = e.start.date
+        val days = d.daysUntil(e.end.date)
+        val time = when {
+            days > 0 -> "${d.md()} – ${e.end.date.md()} · ${days}박 ${days + 1}일"
+            e.allDay() -> "${d.md()} (${weekday(d)})"
+            else -> "${d.md()} (${weekday(d)}) ${e.start.time.hhmm()} – ${e.end.time.hhmm()}"
+        }
+        val mine = e.meetNotes[me]?.text.orEmpty()
+        val theirs = e.meetNotes.filterKeys { it != me }.values.maxByOrNull { it.at }?.text.orEmpty()
+        return MeetCard(
+            e.id, d, e.type.label(), e.type,
+            e.title.ifBlank { if (firstVisit) "첫 면회" else e.type.label() }, time, e.photoIds,
+            notes = listOfNotNull(mine.takeIf { it.isNotBlank() }?.let { my to it }, theirs.takeIf { it.isNotBlank() }?.let { partner to it }),
+            myNote = mine,
+        )
     }
 
     private companion object {
         val MEETINGS = setOf(EventType.VACATION, EventType.OVERNIGHT, EventType.VISIT)
-        const val MAX_MEET_PHOTOS = 3
+
+        /** 만남 사진(둘이 합쳐, 화면 기능명세 2-7 만남 남기기). */
+        const val MAX_MEET_PHOTOS = 10
     }
 }
 
 private fun Letter.date(): LocalDate = visibleAt.toLocalDateTime(SEOUL).date
+
+private fun Event.allDay() = start.time == LocalTime(0, 0) && end.time.hour == 23
+
+private fun EventType.bar() = when (this) {
+    EventType.VISIT -> BarKind.VISIT
+    EventType.OVERNIGHT -> BarKind.OVERNIGHT
+    else -> BarKind.VACATION
+}
 
 internal fun EventType.label() = when (this) {
     EventType.VACATION -> "휴가"
@@ -296,19 +425,26 @@ internal fun EventType.label() = when (this) {
     EventType.OTHER -> "기타"
 }
 
-/** "1박 2일" · 같은 날 시간이 있으면 "3시간". 종일 하루면 없음. */
-private fun Event.durationLabel(): String? {
-    val nights = start.date.daysUntil(end.date)
-    if (nights > 0) return "${nights}박 ${nights + 1}일"
-    val allDay = start.time == LocalTime(0, 0) && end.time.hour == 23
-    if (allDay) return null
-    val minutes = (end.time.toSecondOfDay() - start.time.toSecondOfDay()) / 60
-    return if (minutes >= 60) "${minutes / 60}시간" else "${minutes}분"
-}
+internal fun LocalDate.md() = "${month.ordinal + 1}.$day"
 
 internal fun LocalTime.hhmm() = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
 
 internal fun weekday(d: LocalDate) = listOf("월", "화", "수", "목", "금", "토", "일")[d.dayOfWeek.ordinal]
+
+/** 장 순서 말("첫 번째" · "세 번째" · "스물한 번째"). */
+internal fun ordinalKo(n: Int): String {
+    val ones = listOf("", "한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉")
+    val word = when {
+        n == 1 -> "첫"
+        n < 10 -> ones[n]
+        n == 10 -> "열"
+        n < 20 -> "열" + ones[n - 10]
+        n == 20 -> "스무"
+        n < 30 -> "스물" + ones[n - 20]
+        else -> "$n"
+    }
+    return "$word 번째"
+}
 
 /** 이름 + 주격 조사("민준이" · "지수가"). "나" 는 "내가". */
 internal fun String.subject(): String {

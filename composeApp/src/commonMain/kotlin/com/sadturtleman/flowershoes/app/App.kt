@@ -163,14 +163,17 @@ private fun MainShell() {
     val letters = koinViewModel<LetterViewModel>()
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
     val imageSaver = rememberImageSaver()
-    val imageShare = rememberImageShare()
     val c = KkTheme.colors
     val letterOpen = letters.state.collectAsState().value.open != null
     val memory = koinViewModel<com.sadturtleman.flowershoes.feature.memory.MemoryViewModel>()
-    val memoryDetail = memory.state.collectAsState().value.detail != null
+    val memoryDetail = memory.state.collectAsState().value.stack.isNotEmpty()
+    val fileShare = rememberFileShare()
+    val bookStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookStore>()
 
     // 이 폰 기종을 내 정보에 싣는다(연인의 설정 › 연결 정보).
     val koin = getKoin()
+    // 산 것(꽃신 평생 · 추억 책)을 내 정보에 실어 연결된 상대도 함께 쓰게 한다.
+    LaunchedEffect(Unit) { koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.publish() }
     LaunchedEffect(Unit) {
         val device = koin.getOrNull<com.sadturtleman.flowershoes.feature.settings.PlatformActions>()?.deviceName.orEmpty()
         runCatching { koin.get<com.sadturtleman.flowershoes.core.data.ProfileRepository>().publishDevice(device) }
@@ -214,6 +217,12 @@ private fun MainShell() {
                 onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
                 onClose = { overlay = null },
                 photoPicker = { rememberPhotoPicker(it) },
+                // 잠긴 편지지 → 설정 › 꽃신 평생(편지는 임시저장이 남아 있다).
+                onOpenLifetime = {
+                    letters.onIntent(LetterIntent.SaveDraft)
+                    settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.LIFETIME
+                    overlay = Overlay.SETTINGS
+                },
                 viewModel = letters,
             )
         }
@@ -249,6 +258,7 @@ private fun MainShell() {
                 onBack = { overlay = null; settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN },
                 startAt = settingsStart,
                 photoPicker = { rememberPhotoPicker(it) },
+                shareFiles = fileShare,
                 onOpenLeave = {
                     leaveFromSettings = true
                     settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MILITARY
@@ -338,20 +348,18 @@ private fun MainShell() {
                             letters.onIntent(LetterIntent.Open(it))
                             tab = Tab.LETTER
                         },
-                        // 만남은 캘린더 일정(휴가 · 외박 · 면회)으로 남긴다.
-                        onRecordMeeting = {
-                            calendar.onIntent(com.sadturtleman.flowershoes.feature.calendar.CalendarIntent.NewEvent(kotlin.time.Clock.System.today()))
-                            tab = Tab.CALENDAR
-                        },
-                        saveImage = imageSaver,
-                        shareImage = imageShare,
+                        onWriteLetter = { overlay = Overlay.COMPOSE },
                         photoPicker = { rememberPhotoPicker(it) },
+                        book = com.sadturtleman.flowershoes.feature.memory.MemoryBookActions(
+                            bookStore, ::newBookPdf, fileShare,
+                            sharedOwned = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.bookOn,
+                        ),
                         viewModel = memory,
                     )
                 }
                 }
             }
-            // 받은 편지 · 그림 · 추억 그림 상세는 탭 바 없이 전체 화면(Figma).
+            // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 만남 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
             val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
             if (!reading) BottomBar(tab, onSelect = { tab = it })
         }

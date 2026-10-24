@@ -1,11 +1,12 @@
 package com.sadturtleman.flowershoes.core.drawingui
 
-// 생성: Figma 🌸 스티커(186:82) 그리드 순서. 그림은 Microsoft Fluent Emoji(MIT)를 Figma 가 쓴 그대로 192px PNG 로.
+// 생성: Figma 🌸 스티커(186:82) 그리드 순서. 그림은 Microsoft Fluent Emoji(MIT)를 Figma 가 쓴 그대로 192px PNG 로
+// (여름 휴가 ~ 100일은 Fluent 원본 256px 을 192px 로 줄여 넣었다).
 
-/** 그림 스티커 팩. [price] 가 있으면 잠긴 팩(꽃신 평생 · 스티커 팩) — 미리보기만. */
+/** 그림 스티커 팩. 모두 무료(Fluent Emoji 는 누구나 받을 수 있는 그림이라 팔지 않는다). */
 internal val IMAGE_PACKS: List<StickerPack> = listOf(
     StickerPack(
-        "heart", "하트 · 꽃", price = null,
+        "heart", "하트 · 꽃",
         items = listOf(
             ImageSticker("img:heart/00", "하트", "stk_heart_23"),
             ImageSticker("img:heart/01", "핑크 하트", "stk_heart_22"),
@@ -34,7 +35,7 @@ internal val IMAGE_PACKS: List<StickerPack> = listOf(
         ),
     ),
     StickerPack(
-        "face", "표정", price = null,
+        "face", "표정",
         items = listOf(
             ImageSticker("img:face/00", "웃음", "stk_face_23"),
             ImageSticker("img:face/01", "활짝", "stk_face_22"),
@@ -63,7 +64,7 @@ internal val IMAGE_PACKS: List<StickerPack> = listOf(
         ),
     ),
     StickerPack(
-        "daily", "일상", price = null,
+        "daily", "일상",
         items = listOf(
             ImageSticker("img:daily/00", "커피", "stk_daily_23"),
             ImageSticker("img:daily/01", "밥", "stk_daily_22"),
@@ -92,7 +93,7 @@ internal val IMAGE_PACKS: List<StickerPack> = listOf(
         ),
     ),
     StickerPack(
-        "military", "군 생활", price = "평생",
+        "military", "군 생활",
         items = listOf(
             ImageSticker("img:military/00", "경례", "stk_military_19"),
             ImageSticker("img:military/01", "철모", "stk_military_18"),
@@ -117,7 +118,7 @@ internal val IMAGE_PACKS: List<StickerPack> = listOf(
         ),
     ),
     StickerPack(
-        "spring", "봄 소풍", price = "1,100원",
+        "spring", "봄 소풍",
         items = listOf(
             ImageSticker("img:spring/00", "벚꽃", "stk_spring_15"),
             ImageSticker("img:spring/01", "도시락", "stk_spring_14"),
@@ -135,6 +136,132 @@ internal val IMAGE_PACKS: List<StickerPack> = listOf(
             ImageSticker("img:spring/13", "샌드위치", "stk_spring_02"),
             ImageSticker("img:spring/14", "해바라기", "stk_spring_01"),
             ImageSticker("img:spring/15", "무지개", "stk_spring_00"),
+        ),
+    ),
+    StickerPack(
+        "summer", "여름 휴가",
+        items = listOf(
+            ImageSticker("img:summer/00", "수박", "stk_summer_00"),
+            ImageSticker("img:summer/01", "파도", "stk_summer_01"),
+            ImageSticker("img:summer/02", "튜브", "stk_summer_02"),
+            ImageSticker("img:summer/03", "선글라스", "stk_summer_03"),
+            ImageSticker("img:summer/04", "아이스크림", "stk_summer_04"),
+            ImageSticker("img:summer/05", "야자수", "stk_summer_05"),
+            ImageSticker("img:summer/06", "조개", "stk_summer_06"),
+            ImageSticker("img:summer/07", "배구공", "stk_summer_07"),
+            ImageSticker("img:summer/08", "풍경", "stk_summer_08"),
+            ImageSticker("img:summer/09", "빙수", "stk_summer_09"),
+            ImageSticker("img:summer/10", "해변", "stk_summer_10"),
+            ImageSticker("img:summer/11", "슬리퍼", "stk_summer_11"),
+            ImageSticker("img:summer/12", "열대 음료", "stk_summer_12"),
+            ImageSticker("img:summer/13", "히비스커스", "stk_summer_13"),
+            ImageSticker("img:summer/14", "해", "stk_summer_14"),
+            ImageSticker("img:summer/15", "물고기", "stk_summer_15"),
+        ),
+    ),
+    StickerPack(
+        "autumn", "가을",
+        items = listOf(
+            ImageSticker("img:autumn/00", "단풍잎", "stk_autumn_00"),
+            ImageSticker("img:autumn/01", "낙엽", "stk_autumn_01"),
+            ImageSticker("img:autumn/02", "밤", "stk_autumn_02"),
+            ImageSticker("img:autumn/03", "군고구마", "stk_autumn_03"),
+            ImageSticker("img:autumn/04", "호박", "stk_autumn_04"),
+            ImageSticker("img:autumn/05", "버섯", "stk_autumn_05"),
+            ImageSticker("img:autumn/06", "사과", "stk_autumn_06"),
+            ImageSticker("img:autumn/07", "경단", "stk_autumn_07"),
+            ImageSticker("img:autumn/08", "보름달", "stk_autumn_08"),
+            ImageSticker("img:autumn/09", "달맞이", "stk_autumn_09"),
+            ImageSticker("img:autumn/10", "커피", "stk_autumn_10"),
+            ImageSticker("img:autumn/11", "목도리", "stk_autumn_11"),
+            ImageSticker("img:autumn/12", "책", "stk_autumn_12"),
+            ImageSticker("img:autumn/13", "나뭇잎 바람", "stk_autumn_13"),
+            ImageSticker("img:autumn/14", "벼", "stk_autumn_14"),
+            ImageSticker("img:autumn/15", "나무", "stk_autumn_15"),
+        ),
+    ),
+    StickerPack(
+        "winter", "겨울",
+        items = listOf(
+            ImageSticker("img:winter/00", "눈송이", "stk_winter_00"),
+            ImageSticker("img:winter/01", "눈사람", "stk_winter_01"),
+            ImageSticker("img:winter/02", "눈 없는 눈사람", "stk_winter_02"),
+            ImageSticker("img:winter/03", "장갑", "stk_winter_03"),
+            ImageSticker("img:winter/04", "목도리", "stk_winter_04"),
+            ImageSticker("img:winter/05", "코트", "stk_winter_05"),
+            ImageSticker("img:winter/06", "귤", "stk_winter_06"),
+            ImageSticker("img:winter/07", "만두", "stk_winter_07"),
+            ImageSticker("img:winter/08", "고구마", "stk_winter_08"),
+            ImageSticker("img:winter/09", "불", "stk_winter_09"),
+            ImageSticker("img:winter/10", "스케이트", "stk_winter_10"),
+            ImageSticker("img:winter/11", "썰매", "stk_winter_11"),
+            ImageSticker("img:winter/12", "눈 구름", "stk_winter_12"),
+            ImageSticker("img:winter/13", "얼음", "stk_winter_13"),
+            ImageSticker("img:winter/14", "설산", "stk_winter_14"),
+            ImageSticker("img:winter/15", "핫초코", "stk_winter_15"),
+        ),
+    ),
+    StickerPack(
+        "xmas", "크리스마스",
+        items = listOf(
+            ImageSticker("img:xmas/00", "트리", "stk_xmas_00"),
+            ImageSticker("img:xmas/01", "선물", "stk_xmas_01"),
+            ImageSticker("img:xmas/02", "산타", "stk_xmas_02"),
+            ImageSticker("img:xmas/03", "빛나는 별", "stk_xmas_03"),
+            ImageSticker("img:xmas/04", "양말", "stk_xmas_04"),
+            ImageSticker("img:xmas/05", "사탕", "stk_xmas_05"),
+            ImageSticker("img:xmas/06", "종", "stk_xmas_06"),
+            ImageSticker("img:xmas/07", "촛불", "stk_xmas_07"),
+            ImageSticker("img:xmas/08", "쿠키", "stk_xmas_08"),
+            ImageSticker("img:xmas/09", "사슴", "stk_xmas_09"),
+            ImageSticker("img:xmas/10", "썰매", "stk_xmas_10"),
+            ImageSticker("img:xmas/11", "눈송이", "stk_xmas_11"),
+            ImageSticker("img:xmas/12", "반짝이", "stk_xmas_12"),
+            ImageSticker("img:xmas/13", "케이크", "stk_xmas_13"),
+            ImageSticker("img:xmas/14", "리본", "stk_xmas_14"),
+            ImageSticker("img:xmas/15", "폭죽", "stk_xmas_15"),
+        ),
+    ),
+    StickerPack(
+        "birthday", "생일",
+        items = listOf(
+            ImageSticker("img:birthday/00", "생일 케이크", "stk_birthday_00"),
+            ImageSticker("img:birthday/01", "컵케이크", "stk_birthday_01"),
+            ImageSticker("img:birthday/02", "초", "stk_birthday_02"),
+            ImageSticker("img:birthday/03", "풍선", "stk_birthday_03"),
+            ImageSticker("img:birthday/04", "폭죽", "stk_birthday_04"),
+            ImageSticker("img:birthday/05", "선물", "stk_birthday_05"),
+            ImageSticker("img:birthday/06", "축하 볼", "stk_birthday_06"),
+            ImageSticker("img:birthday/07", "왕관", "stk_birthday_07"),
+            ImageSticker("img:birthday/08", "신남", "stk_birthday_08"),
+            ImageSticker("img:birthday/09", "리본", "stk_birthday_09"),
+            ImageSticker("img:birthday/10", "케이크 조각", "stk_birthday_10"),
+            ImageSticker("img:birthday/11", "사탕", "stk_birthday_11"),
+            ImageSticker("img:birthday/12", "불꽃", "stk_birthday_12"),
+            ImageSticker("img:birthday/13", "트로피", "stk_birthday_13"),
+            ImageSticker("img:birthday/14", "꽃다발", "stk_birthday_14"),
+            ImageSticker("img:birthday/15", "별", "stk_birthday_15"),
+        ),
+    ),
+    StickerPack(
+        "hundred", "100일",
+        items = listOf(
+            ImageSticker("img:hundred/00", "100점", "stk_hundred_00"),
+            ImageSticker("img:hundred/01", "반지", "stk_hundred_01"),
+            ImageSticker("img:hundred/02", "장미", "stk_hundred_02"),
+            ImageSticker("img:hundred/03", "꽃다발", "stk_hundred_03"),
+            ImageSticker("img:hundred/04", "하트 손", "stk_hundred_04"),
+            ImageSticker("img:hundred/05", "하트 선물", "stk_hundred_05"),
+            ImageSticker("img:hundred/06", "러브레터", "stk_hundred_06"),
+            ImageSticker("img:hundred/07", "초콜릿", "stk_hundred_07"),
+            ImageSticker("img:hundred/08", "액자", "stk_hundred_08"),
+            ImageSticker("img:hundred/09", "열쇠", "stk_hundred_09"),
+            ImageSticker("img:hundred/10", "쿠키", "stk_hundred_10"),
+            ImageSticker("img:hundred/11", "티켓", "stk_hundred_11"),
+            ImageSticker("img:hundred/12", "반짝 하트", "stk_hundred_12"),
+            ImageSticker("img:hundred/13", "케이크", "stk_hundred_13"),
+            ImageSticker("img:hundred/14", "뽀뽀", "stk_hundred_14"),
+            ImageSticker("img:hundred/15", "자물쇠", "stk_hundred_15"),
         ),
     ),
 )

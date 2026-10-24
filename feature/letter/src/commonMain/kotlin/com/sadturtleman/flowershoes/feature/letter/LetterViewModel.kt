@@ -33,12 +33,18 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /** 편지지(Figma Paper Picker). [id] 는 [Letter.paper] 에 그대로 저장한다. */
-enum class Paper(val id: String, val label: String) {
+/** 편지지(화면 기능명세 2-10): 무료 다섯 + 꽃신 평생 다섯([lifetime]). 받는 사람은 이용권 없이도 그대로 보인다. */
+enum class Paper(val id: String, val label: String, val lifetime: Boolean = false) {
     PLAIN("plain", "기본"),
     BLOSSOM("blossom", "벚꽃"),
     OLIVE("olive", "올리브"),
     GRID("grid", "모눈"),
     NIGHT("night", "밤하늘"),
+    MANUSCRIPT("manuscript", "원고지", lifetime = true),
+    KRAFT("kraft", "크라프트", lifetime = true),
+    MAIL("mail", "군사우편", lifetime = true),
+    NOTE("note", "줄노트", lifetime = true),
+    SKY("sky", "수채 하늘", lifetime = true),
     ;
 
     companion object {
@@ -82,8 +88,8 @@ data class ComposeDraft(
     @kotlinx.serialization.Transient val sending: Boolean = false,
 ) {
     val canSend: Boolean get() = !sending && (plainText.isNotBlank() || drawings.isNotEmpty() || photos.isNotEmpty())
-    val canAddDrawing: Boolean get() = drawings.size < Letter.MAX_DRAWINGS
-    val canAddPhoto: Boolean get() = photos.size < Letter.MAX_PHOTOS
+    val canAddDrawing: Boolean get() = drawings.size + photos.size < Letter.MAX_ATTACHMENTS
+    val canAddPhoto: Boolean get() = drawings.size + photos.size < Letter.MAX_ATTACHMENTS
     val isEmpty: Boolean get() = title.isBlank() && plainText.isBlank() && drawings.isEmpty() && photos.isEmpty()
 
     companion object {

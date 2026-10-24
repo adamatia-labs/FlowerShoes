@@ -9,7 +9,11 @@ enum class WidgetShape(val width: Int, val height: Int, val pngWidth: Int, val p
     WIDE(1000, 467, 1456, 680),
 }
 
-enum class Tool { PEN, HIGHLIGHTER }
+/**
+ * 획 도구. 순서가 TLV 값이다 — 뒤에만 더한다(모르는 값은 옛 앱이 펜으로 그린다).
+ * 크레용 · 수채 붓은 꽃신 평생(화면 기능명세 2-10 펜 · 색).
+ */
+enum class Tool { PEN, HIGHLIGHTER, CRAYON, WATERCOLOR }
 
 /** 붓 굵기(논리 단위). */
 enum class BrushSize(val width: Int) { S(6), M(12), L(20) }

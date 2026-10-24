@@ -69,6 +69,27 @@ private fun Card(p: Palette, onClick: androidx.glance.action.Action, content: @C
     ) { content() }
 }
 
+/**
+ * 받은 그림 위젯의 프레임(설정 › 위젯, 꽃신 평생). 기본은 [Card] 와 같다.
+ * 폴라로이드는 흰 바탕 + 아래를 넓게, 나머지는 바탕 색만 바꾼다.
+ */
+@Composable
+private fun FramedCard(p: Palette, frame: String?, onClick: androidx.glance.action.Action, content: @Composable () -> Unit) {
+    val fixed = { c: Long -> ColorProvider(Color(c), Color(c)) }
+    val (bg, pad) = when (frame) {
+        "BLOSSOM" -> fixed(0xFFFFE0E7) to (14.dp to 14.dp)
+        "KRAFT" -> fixed(0xFFE9DCC4) to (14.dp to 14.dp)
+        "POLAROID" -> fixed(0xFFFFFFFF) to (10.dp to 30.dp)
+        "NIGHT" -> fixed(0xFF1B2235) to (14.dp to 14.dp)
+        else -> return Card(p, onClick, content)
+    }
+    Box(
+        GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(bg)
+            .padding(start = pad.first, end = pad.first, top = pad.first, bottom = pad.second).clickable(onClick),
+        contentAlignment = Alignment.TopStart,
+    ) { content() }
+}
+
 // ── 전역 D-day ──────────────────────────────────────────────────────────
 
 class DdayWidget : GlanceAppWidget() {
@@ -192,7 +213,7 @@ class DrawingWidget : GlanceAppWidget() {
                         android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("kkotsin://letter/$it"), context, MainActivity::class.java),
                     )
                 } ?: actionStartActivity<MainActivity>()
-                Card(p, open) {
+                FramedCard(p, s?.widgetFrame, open) {
                     if (bitmap == null) {
                         Column {
                             Text("받은 그림", style = TextStyle(color = p.of { it.textSecondary }, fontSize = 13.sp))
@@ -202,7 +223,7 @@ class DrawingWidget : GlanceAppWidget() {
                     } else {
                         Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
                             Image(ImageProvider(bitmap), contentDescription = "받은 그림", modifier = GlanceModifier.fillMaxSize().cornerRadius(12.dp), contentScale = ContentScale.Fit)
-                            Text("▶ 과정", style = TextStyle(color = ColorProvider(Color.White, Color.White), fontSize = 11.sp),
+                            Text("▶", style = TextStyle(color = ColorProvider(Color.White, Color.White), fontSize = 11.sp),
                                 modifier = GlanceModifier.cornerRadius(10.dp).background(ColorProvider(Color(0x99000000), Color(0x99000000))).padding(horizontal = 8.dp, vertical = 3.dp))
                         }
                     }

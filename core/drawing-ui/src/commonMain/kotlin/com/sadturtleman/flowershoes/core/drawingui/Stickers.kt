@@ -45,14 +45,10 @@ object StickerIds {
 /** 그림 스티커 한 장: [file] 은 composeResources/drawable 의 이름. */
 internal class ImageSticker(val id: String, val label: String, val file: String)
 
-internal class StickerPack(val key: String, val label: String, val price: String?, val items: List<ImageSticker>)
+internal class StickerPack(val key: String, val label: String, val items: List<ImageSticker>)
 
-/** 서랍 탭(Figma Sticker Tabs): 그림 팩 · 글자 · D-day. [price] 가 있으면 잠긴 팩(미리보기만). */
-class StickerTab(val label: String, val ids: List<String>, val price: String? = null, val dday: Boolean = false) {
-    val locked: Boolean get() = price != null
-    /** 칩 글자: "군 생활 · 평생", "봄 소풍 · 1,100원". */
-    val chip: String get() = price?.let { "$label · $it" } ?: label
-}
+/** 서랍 탭(Figma Sticker Tabs): 그림 팩 · 글자 · D-day. 모두 무료. */
+class StickerTab(val label: String, val ids: List<String>, val dday: Boolean = false)
 
 private val INK = Color(0xFF3B2B30)
 private val SHADOW = Color(0x2E3B2B30)
@@ -87,19 +83,16 @@ private fun ddayStyle(label: String, value: String): Pair<Color, Color> = when {
 }
 
 /**
- * 서랍 탭(Figma 최종 정리 › 그림 / 스티커): 하트·꽃 · 군대 · 글자 · D-day.
- * 하트·꽃 = 무료 그림 팩 전부, 군대 = 군 생활 팩(꽃신 평생). D-day 는 그림 화면이 지금 숫자로 채운다.
+ * 서랍 칩(Figma 그림 / 스티커, 화면 기능명세 2-10): 하트 · 꽃 · 표정 · 일상 · 글자 · D-day 다음에 군 생활과 계절 · 기념일 팩.
+ * 모두 무료. D-day 는 그림 화면이 지금 숫자로 채운다.
  */
 val STICKER_TABS: List<StickerTab> = buildList {
-    add(StickerTab("하트·꽃", IMAGE_PACKS.filter { it.price == null }.flatMap { p -> p.items.map(ImageSticker::id) }))
-    IMAGE_PACKS.firstOrNull { it.key == "military" }?.let { add(StickerTab("군대", it.items.map(ImageSticker::id), it.price)) }
+    val packs = IMAGE_PACKS.map { StickerTab(it.label, it.items.map(ImageSticker::id)) }
+    addAll(packs.take(3))
     add(StickerTab("글자", TEXT_STYLES.keys.map(StickerIds::text)))
     add(StickerTab("D-day", emptyList(), dday = true))
+    addAll(packs.drop(3))
 }
-
-/** 서랍 위 잠긴 팩 띠(Figma: "봄 소풍 스티커 · 잠김  ▶ 광고 보고 쓰기"). */
-val FEATURED_LOCKED_PACK: StickerTab? =
-    IMAGE_PACKS.firstOrNull { it.key == "spring" }?.let { StickerTab(it.label, it.items.map(ImageSticker::id), it.price) }
 
 /** 스티커의 사람이 읽는 이름(스크린리더). */
 fun stickerLabel(id: String): String = when {
