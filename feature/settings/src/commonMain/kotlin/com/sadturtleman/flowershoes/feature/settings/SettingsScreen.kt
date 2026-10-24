@@ -2,6 +2,7 @@
 
 package com.sadturtleman.flowershoes.feature.settings
 
+import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.heightIn
@@ -167,7 +168,9 @@ fun SettingsRoute(
     val open: (SettingsPage) -> Unit = { stack.add(it) }
     BackHandler(onBack = back)
     Box(Modifier.fillMaxSize()) {
-        when (stack.last()) {
+        // 깊이가 같거나 깊어지면 앞으로 넘기고, 얕아지면 뒤로 넘긴다.
+        KkPageFlip(stack.last() to stack.size, pageKey = { it.first }, isForward = { from, to -> to.second >= from.second }) { (page, _) ->
+        when (page) {
             SettingsPage.MAIN -> MainPage(state, platform, open, back, onOpenPairing, onHandOver, viewModel)
             SettingsPage.LIFETIME -> LifetimePage(state, viewModel, back)
             SettingsPage.CONNECTION -> ConnectionPage(state, platform, viewModel, back, onOpenPairing, onHandOver, open)
@@ -194,6 +197,7 @@ fun SettingsRoute(
                 },
             )
             SettingsPage.INQUIRY_HISTORY -> InquiryHistoryPage(inquiries, back)
+        }
         }
         notice?.let { KkToast(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg)) }
     }

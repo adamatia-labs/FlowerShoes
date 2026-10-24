@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.feature.letter
 
+import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import androidx.compose.ui.text.style.TextGeometricTransform
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
@@ -126,11 +127,13 @@ fun LetterInboxRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
-        val open = state.open
-        when {
-            open != null && open.drawingOnly -> DrawingLetterScreen(open, viewModel::onIntent, onReplyDrawing)
-            open != null -> LetterReadScreen(open, viewModel::onIntent, onReply)
-            else -> LetterInboxScreen(state, viewModel::onIntent, onCreate)
+        // 편지를 열면 편지함 장이 넘어가고, 닫으면 다시 덮인다.
+        KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "inbox" }, isForward = { _, to -> to != null }) { open ->
+            when {
+                open != null && open.drawingOnly -> DrawingLetterScreen(open, viewModel::onIntent, onReplyDrawing)
+                open != null -> LetterReadScreen(open, viewModel::onIntent, onReply)
+                else -> LetterInboxScreen(state, viewModel::onIntent, onCreate)
+            }
         }
         ToastHost(viewModel.toasts, viewModel::toastShown) { viewModel.onIntent(LetterIntent.Open(it)) }
     }
