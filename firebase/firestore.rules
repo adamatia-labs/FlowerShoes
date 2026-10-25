@@ -243,5 +243,9 @@ service cloud.firestore {
     match /widgetOps/{opId} {
       allow read, write: if false;
     }
+    // 서버가 만든 예고 메일과 발송 상태. 로그인 사용자도 직접 보내거나 수신자를 읽을 수 없다.
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
   }
 }

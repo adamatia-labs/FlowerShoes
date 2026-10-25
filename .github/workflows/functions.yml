@@ -1,0 +1,46 @@
+name: Functions
+
+on:
+  push:
+    branches: [develop, main, 'feature/**']
+    paths: ['firebase/**', '.github/workflows/functions.yml']
+  pull_request:
+    branches: [develop, main]
+    paths: ['firebase/**', '.github/workflows/functions.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: functions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            firebase/functions/package-lock.json
+            firebase/rules-test/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install test dependencies
+        run: |
+          npm ci --prefix firebase/functions
+          npm ci --prefix firebase/rules-test
+          npm install --global firebase-tools@15.30.0
+      - name: Functions unit tests
+        working-directory: firebase/functions
+        run: npm test
+      - name: Firestore and local TLS SMTP integration tests
+        working-directory: firebase/functions
+        run: npm run test:mail:emulator

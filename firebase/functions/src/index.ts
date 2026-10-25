@@ -17,7 +17,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
-import { defineSecret, defineString } from 'firebase-functions/params';
+import { defineBoolean, defineSecret, defineString } from 'firebase-functions/params';
 import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
@@ -26,6 +26,8 @@ import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from '
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { DAY_MS, FREE_KEEP_DAYS, retentionAction, WARN_DAYS, warnMessage } from './retention';
 import { refreshEntitlements } from './revenuecat';
+import { backupWarningId } from './mail';
+export { onMailCreated } from './mail-function';
 
 initializeApp();
 const db = getFirestore();
@@ -41,6 +43,8 @@ const APPLE_PRIVATE_KEY = defineString('APPLE_PRIVATE_KEY', { default: '' });
 // RevenueCat: 웹훅 Authorization 헤더 값 · REST 비밀 키(sk_). Secret Manager 에 둔다(firebase functions:secrets:set).
 const REVENUECAT_WEBHOOK_AUTH = defineSecret('REVENUECAT_WEBHOOK_AUTH');
 const REVENUECAT_SECRET_KEY = defineSecret('REVENUECAT_SECRET_KEY');
+// 웹훅과 메일 수신 검증을 마치고 운영자가 명시적으로 켜기 전에는 삭제하지 않는다.
+const BACKUP_RETENTION_ENABLED = defineBoolean('BACKUP_RETENTION_ENABLED', { default: false });
 const appleConfig = (): AppleConfig => ({
   teamId: APPLE_TEAM_ID.value(), keyId: APPLE_KEY_ID.value(), clientId: APPLE_CLIENT_ID.value(), privateKey: APPLE_PRIVATE_KEY.value(),
 });
@@ -457,6 +461,7 @@ export const appleStoreToken = onCall({ region: REGION }, async (req) => {
  * 기기 안의 기록은 지우지 않는다. 이메일 예고는 메일 발송을 붙이면서 함께 보낸다.
  */
 export const backupRetention = onSchedule({ schedule: 'every day 04:00', region: REGION, timeZone: 'Asia/Seoul' }, async () => {
+  if (!BACKUP_RETENTION_ENABLED.value()) return;
   const now = Date.now();
   const cutoff = Timestamp.fromMillis(now - (FREE_KEEP_DAYS - Math.max(...WARN_DAYS)) * DAY_MS);
   const users = await db.collection('users').where('lastSeenAt', '<=', cutoff).get();
@@ -473,9 +478,15 @@ export const backupRetention = onSchedule({ schedule: 'every day 04:00', region:
     if (action.type === 'warn') {
       const msg = warnMessage(action.daysLeft);
       await push(uid, { visible: msg, data: { kind: 'backupExpiry', daysLeft: String(action.daysLeft) } });
-      // 이메일: 로그인 제공자가 이메일을 준 경우만. "Trigger Email" 확장이 mail 문서를 보낸다(확장이 없으면 쌓이기만 한다).
+      // 서버 전용 mail 문서를 자체 관리하는 onMailCreated 함수가 보낸다.
       const email = await getAuth().getUser(uid).then((u) => u.email).catch(() => undefined);
-      if (email) await db.collection('mail').add({ to: email, message: { subject: msg.title, text: msg.body } });
+      if (email) {
+        const ref = db.doc(`mail/${backupWarningId(uid, lastSeen, action.daysLeft)}`);
+        await db.runTransaction(async (tx) => {
+          if ((await tx.get(ref)).exists) return;
+          tx.create(ref, { to: email, message: { subject: msg.title, text: msg.body }, createdAt: FieldValue.serverTimestamp() });
+        });
+      }
       await user.ref.set({ retentionWarnedFor: lastSeen, retentionWarned: [...warned, action.daysLeft] }, { merge: true });
     } else if (action.type === 'delete') {
       await getStorage().bucket().deleteFiles({ prefix: `backups/${uid}/` }).catch(() => undefined);

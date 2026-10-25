@@ -356,3 +356,16 @@ Play Console 꽃신 앱을 생성했지만 상품 등록에는 판매자 계정 
 74개 경로는 통과50·부분15·미검증9·실패/차단0. 실제 OAuth·스토어 구매·APNs/NSE·다른 iPhone의 iCloud 키 회수·기기 인증, 복원 코드/건너뛰기 UI, 일부 위젯/광고 계측/VoiceOver·실제 시각 알림은 남았다. 구버전 백업 파일의 iOS UI 복원도 별도다. 자동 백업의 실제 iOS 실행/셀룰러 조건은 미검증이며 1분 보조 동기화는 서버 읽기를 늘릴 수 있다.
 
 콘솔 후속: Play memory_book5900원/backup_plus3300원 국내 전용 설정·RevenueCat 비소모성 매핑·전용 서비스 계정·RTDN 수신·인증3개 검사 완료. 사용자 승인으로 Android1.0(1) 내부 테스트 게시, 테스터0명. 실제 Android 런타임/구매는 미검증. Apple 계정과 SMTP는 미준비이며 backupRetention은 계속 미배포. 웹훅→메일 실제 수신→보관 함수 순서를 유지한다.
+
+
+## 자체 관리 SMTP 메일 발송 (2026-10-26)
+
+Firebase Extensions 종료 안내에 따라 Trigger Email 설치 지침을 Cloud Functions 2세대 `onMailCreated`로 교체했다. 서버 전용 `mail/{mailId}` 생성 시 Nodemailer로 TLS SMTP 발송하며, SMTP_PASSWORD는 Secret Manager에서 이 함수에만 연결한다. 단일 수신자와 평문 제목/본문만 전달한다.
+
+Firestore transaction lease로 동시 실행을 제어하고 성공 문서는 재발송하지 않는다. 일시적인 SMTP 장애는 최대 5회 재시도, 인증/영구 거부/잘못된 문서는 ERROR로 남긴다. 로그와 상태에는 SMTP 원문/비밀번호를 기록하지 않는다. SMTP 서버 수락 직후 Firestore 상태 저장 전에 프로세스가 멈추면 중복 수신될 수 있다. SUCCESS는 SMTP 수락이며 수신함 도착의 증거는 별도로 확인한다.
+
+백업 예고 문서 ID는 사용자·마지막 사용 시각·예고 간격으로 고정해 스케줄 재실행의 중복 큐 생성을 막았다. `BACKUP_RETENTION_ENABLED`는 기본 false이며, 웹훅·실제 메일 수신·보관 정책 검증 전에 삭제 함수를 켜지 않는다. 실제 설정 파일 두 개는 로컬에 유지하고 Git 추적에서 제외하며 `.env.example`을 제공한다.
+
+검증: Functions 단위 33개(메일 신규10), 실제 Firestore 에뮬레이터/로컬 TLS SMTP 통합5개, Firestore 규칙16개(메일 접근 차단 신규1), 총54개 통과. Node24.18/Android Studio Java25/Firebase CLI15.30에서 실행했다. CI는 운영 런타임과 같은 Node22 및 Java21로 동일 테스트를 실행하도록 추가했다. CI는 아직 실행 전이다. body-parser의 기존 높은 등급 취약점은 호환 패치1.20.9로 갱신했다.
+
+운영 확인: kkotsin-dev 서울에 Node22 onMailCreated만 배포해 ACTIVE를 확인했다. 2026-10-26 00:16 KST에 승인된 테스트 메일1통이 첫 시도에 SMTP SUCCESS로 기록됐고, Gmail 연결 도구로 지정 수신함(INBOX)의 제목·본문·시각 일치를 확인했다. 기존 이메일 확장은0개, backupRetention은 계속 미배포다. `backupRetention` 활성화는 이번 메일 구현 완료에 포함하지 않는다. 로컬 검증을 실제 Gmail 전달이나 전체 보관 정책 통과로 계산하지 않는다.
