@@ -25,7 +25,7 @@ import { decide, DEFAULT_PREFS, inDigestWindow, INLINE_MAX_BASE64, NotifyPrefs, 
 import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from './sig';
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { DAY_MS, FREE_KEEP_DAYS, retentionAction, WARN_DAYS, warnMessage } from './retention';
-import { entitlementsFrom, usersOf } from './revenuecat';
+import { refreshEntitlements } from './revenuecat';
 
 initializeApp();
 const db = getFirestore();
@@ -495,15 +495,13 @@ export const revenuecatWebhook = onRequest({ region: REGION, secrets: [REVENUECA
     return;
   }
   const key = REVENUECAT_SECRET_KEY.value();
-  if (!key) {
-    res.status(200).send('no key');
+  try {
+    await refreshEntitlements(req.body, key, async (uid, ent) => {
+      await db.doc(`entitlements/${uid}`).set({ ...ent, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    });
+  } catch {
+    res.status(503).send('entitlement sync unavailable');
     return;
-  }
-  for (const uid of usersOf(req.body)) {
-    const r = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(uid)}`, { headers: { Authorization: `Bearer ${key}` } });
-    if (!r.ok) continue;
-    const ent = entitlementsFrom(await r.json(), new Date());
-    await db.doc(`entitlements/${uid}`).set({ ...ent, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   }
   res.status(200).send('ok');
 });

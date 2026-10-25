@@ -10,3 +10,5 @@ Xcode 26.6 / iOS 26.5 / iPhone 17 시뮬레이터 두 대. `demo-kkotsin` 로컬
 | [홈 화면 D-day 위젯](dday-widget.png) | 실제 배치된 위젯. 다른 위젯/App Intent와 NSE 실행까지 검증한 것은 아니다. |
 
 전체 캡처·AX 트리·명령·빌드 로그·71개 자동 테스트 결과·PDF/ZIP는 사용자에게 제공한 로컬 QA 산출물에 보관했다. 암호 인증 경로는 사용자 요청으로 미검증으로 남겼다. 추억책 상품 미설정과 iOS 백업 구현 부재도 남아 있다.
+
+후속 콘솔 설정 후 추억책 구매와 두 기기 PDF 공유를 확인했다. [구매자 PDF](book-purchase-pdf.png), [상대 PDF](book-shared-pdf.png). 신규 테스트 상품은 $0.99, 실제 App Store 검증은 아니며 iOS 백업 구현은 계속 남아 있다.
