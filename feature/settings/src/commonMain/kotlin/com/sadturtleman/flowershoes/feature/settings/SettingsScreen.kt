@@ -829,8 +829,8 @@ private fun BackupPage(state: SettingsState, platform: PlatformActions, viewMode
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgMilitarySubtle).padding(horizontal = KkSpacing.md, vertical = KkSpacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(c.statusSuccess))
-                Text("백업 열쇠가 ${platform.keySyncName}에 안전하게 저장돼 있어요", style = KkTheme.type.caption, color = c.textPrimary)
+                Box(Modifier.size(6.dp).clip(CircleShape).background(c.bgBrand))
+                Text("${platform.keySyncName} 사용 여부와 관계없이 복구 코드도 따로 보관해 주세요", style = KkTheme.type.caption, color = c.textPrimary)
             }
         }
         Group(null) {

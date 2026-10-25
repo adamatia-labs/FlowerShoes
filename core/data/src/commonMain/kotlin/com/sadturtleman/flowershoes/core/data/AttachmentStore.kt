@@ -42,4 +42,20 @@ class AttachmentStore(
         val path = root / row.id
         return if (fs.exists(path)) fs.read(path) { readByteArray() } else null
     }
+
+    /** Stage immutable restored bytes without changing the live database before its transaction. */
+    fun stageRestoredFile(id: String, bytes: ByteArray) {
+        require(id.isNotBlank() && '/' !in id && '\\' !in id && id != "." && id != "..")
+        fs.createDirectories(root)
+        val path = root / id
+        if (fs.exists(path)) {
+            check(fs.read(path) { readByteArray() }.contentEquals(bytes)) { "같은 첨부 ID의 내용이 달라요" }
+            return
+        }
+        val temporary = root / ".restore-${Uuid.random()}"
+        try {
+            fs.write(temporary) { write(bytes) }
+            fs.atomicMove(temporary, path)
+        } finally { fs.delete(temporary, mustExist = false) }
+    }
 }

@@ -97,6 +97,22 @@ fun MainViewController(
                     },
                     vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
                 ) + org.koin.dsl.module {
+                    single<com.sadturtleman.flowershoes.core.backup.BackupKeySync> {
+                        com.sadturtleman.flowershoes.core.backup.ICloudBackupKeySync { get<com.sadturtleman.flowershoes.core.data.Identity>().userId }
+                    }
+                    single {
+                        val temporary = (requireNotNull(support?.path) + "/db/backup-work").toPath()
+                        com.sadturtleman.flowershoes.core.backup.BackupManager(
+                            storage = if (firebase) com.sadturtleman.flowershoes.core.firebase.IosBackupStorage()
+                                else com.sadturtleman.flowershoes.core.backup.FileBackupStorage((requireNotNull(support?.path) + "/db/backup-local").toPath()),
+                            source = com.sadturtleman.flowershoes.core.backup.RoomBackupSource(get(), get(), get(), get(), temporary),
+                            vault = get(),
+                            // Local emulator QA must never put fake-account keys into the user's iCloud.
+                            keySync = if (emulatorAuth) null else get(),
+                            applier = com.sadturtleman.flowershoes.app.ios.IosRestoreApplier(get(), get(), get(), get(), temporary) { getOrNull() },
+                            appSchemaVersion = com.sadturtleman.flowershoes.core.database.AppDatabase.VERSION,
+                        )
+                    }
                     if (kotlin.native.Platform.isDebugBinary) {
                         single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
                     }
@@ -131,9 +147,16 @@ fun MainViewController(
         // 내가 샀거나 연결된 상대가 산 꽃신 평생(연결된 동안 함께).
         val owned = perks?.lifetimeOn?.collectAsState(initial = null)?.value
         // 저장된 상대 혜택과 내 구매 상태를 읽기 전에 광고를 만들지 않는다.
-        val purchasesReady = androidx.compose.runtime.produceState(false) {
-            runCatching { org.koin.mp.KoinPlatform.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.refresh() }
-            value = true
+        val account = org.koin.mp.KoinPlatform.getKoin().get<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
+            .state.collectAsState(initial = null).value
+        val purchasesReady = androidx.compose.runtime.produceState(false, account?.userId) {
+            value = false
+            account?.takeIf { it.userId.isNotBlank() }?.let { current ->
+                val koin = org.koin.mp.KoinPlatform.getKoin()
+                koin.get<com.sadturtleman.flowershoes.core.data.IdentityHolder>().update(current)
+                runCatching { koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.refresh() }
+                value = true
+            }
         }.value
         // 꽃신 평생이면 광고를 모두 숨긴다(Figma 9).
         Box(Modifier.fillMaxSize().imePadding()) {

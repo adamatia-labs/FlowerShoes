@@ -81,6 +81,12 @@ class FirestoreTransport(
         )
     }
 
+    override suspend fun reconnect() {
+        try { db.disableNetwork() } finally {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { db.enableNetwork() }
+        }
+    }
+
     override suspend fun fetch(coupleId: String, myDevice: String): List<MailItem> {
         val now = clock.now().toEpochMilliseconds()
         return ops(coupleId, myDevice).get().documents.mapNotNull { snap ->

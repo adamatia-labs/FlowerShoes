@@ -25,3 +25,6 @@ fun databaseBuilder(): RoomDatabase.Builder<AppDatabase> {
     val file = requireNotNull(dir.URLByAppendingPathComponent(AppDatabase.FILE_NAME)?.path)
     return Room.databaseBuilder<AppDatabase>(name = file)
 }
+
+/** Used only for a private, temporary restore copy, allowing Room's normal migrations. */
+fun backupDatabaseBuilder(path: String): RoomDatabase.Builder<AppDatabase> = Room.databaseBuilder<AppDatabase>(name = path)

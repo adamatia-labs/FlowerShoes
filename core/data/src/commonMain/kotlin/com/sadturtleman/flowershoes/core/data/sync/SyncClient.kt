@@ -62,6 +62,8 @@ class SyncClient(
     private val myStream get() = StreamId(identity.deviceId, StreamId.Channel.APP)
     private val widgetStream get() = StreamId(identity.deviceId, StreamId.Channel.WIDGET).wire
 
+    suspend fun reconnect() = mailbox.reconnect()
+
     suspend fun syncOnce(): SyncReport {
         Sodium.init()
         val couple = db.coupleDao().get() ?: return SyncReport()

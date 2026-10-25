@@ -39,6 +39,9 @@ class RotationApproval(val approverDeviceId: String, val cutoff: Map<String, Lon
 
 /** 기기 교체(7-3-A)에 필요한 서버 문서. 활성화 자체는 승인을 확인한 함수가 한다. */
 interface RotationTransport {
+    /** Wake both phones when a request or server activation changes, without requiring APNs. */
+    fun changes(coupleId: String): kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow()
+
     suspend fun putPendingDevice(coupleId: String, deviceId: String, uid: String, signPub: ByteArray, boxPub: ByteArray)
 
     suspend fun putRotation(coupleId: String, request: RotationRequest)
@@ -155,8 +158,9 @@ class RotationApprover(
         val couple = db.coupleDao().get() ?: return emptyList()
         val all = transport.rotations(couple.id).filter { it.uid == couple.partnerUserId }.sortedBy { it.createdAtMs }
         return all.filter { it.id !in handled && transport.approval(couple.id, it.id) == null }.map { r ->
+            val decision = decide(couple.id, r, all)
             handled += r.id
-            r to decide(couple.id, r, all)
+            r to decision
         }
     }
 

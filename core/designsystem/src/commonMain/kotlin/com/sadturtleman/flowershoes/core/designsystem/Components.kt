@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.designsystem
 
+import androidx.compose.foundation.selection.toggleable
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -602,7 +604,9 @@ fun KkListRow(
         modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
-            .then(if (onClick != null) Modifier.clickable(enabled = enabled, role = if (trailing == KkRowTrailing.Switch) Role.Switch else Role.Button, onClick = onClick) else Modifier)
+            .then(if (onClick == null) Modifier else if (trailing == KkRowTrailing.Switch) {
+                Modifier.toggleable(value = switchOn, enabled = enabled, role = Role.Switch, onValueChange = { onClick() })
+            } else Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick))
             .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,

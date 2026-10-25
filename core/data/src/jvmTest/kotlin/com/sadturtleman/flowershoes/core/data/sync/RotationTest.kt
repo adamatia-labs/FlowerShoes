@@ -84,6 +84,23 @@ class RotationTest {
     }
 
     @Test
+    fun `temporary approval failure is retried instead of marking the request handled`() = runTest {
+        link()
+        val newPhone = restoreOnNewPhone()
+        newPhone.requester.request(oldDeviceId = "dev-b")
+        var fail = true
+        val transport = object : RotationTransport by cloud {
+            override suspend fun putApproval(coupleId: String, rotationId: String, approval: RotationApproval) {
+                if (fail) { fail = false; error("offline") }
+                cloud.putApproval(coupleId, rotationId, approval)
+            }
+        }
+        val approver = RotationApprover(jisu.db, jisu.identity, jisu.vault, transport, drainInbox = {})
+        kotlin.test.assertFails { approver.check() }
+        assertIs<RotationDecision.Approved>(approver.check().single().second)
+    }
+
+    @Test
     fun `복원한 새 폰은 상대 폰의 자동 확인을 거쳐 이어진다`() = runTest {
         link()
         val newPhone = restoreOnNewPhone()

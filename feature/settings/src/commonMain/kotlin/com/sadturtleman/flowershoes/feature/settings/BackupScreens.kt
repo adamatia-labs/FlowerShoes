@@ -161,6 +161,7 @@ sealed interface RestoreUi {
     data class NoBackup(val accountLabel: String) : RestoreUi
     data class Failed(val message: String) : RestoreUi
     data object Unavailable : RestoreUi
+    data object Complete : RestoreUi
 }
 
 /** 복원 흐름. 성공하면 앱이 DB 를 바꿔 끼우고 다시 시작한다(그 뒤 "거의 다 됐어요"는 셸이 보여 준다). */
@@ -175,7 +176,10 @@ class RestoreViewModel(
     init {
         manager?.let { m ->
             viewModelScope.launch {
-                val preview = runCatching { m.preview(identity.userId) }.getOrNull()
+                val preview = try { m.preview(identity.userId) } catch (_: Exception) {
+                    _ui.value = RestoreUi.Failed("백업을 확인하지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요")
+                    return@launch
+                }
                 _ui.value = if (preview != null) RestoreUi.Found(preview) else RestoreUi.NoBackup(accountLabel())
             }
         }
@@ -208,7 +212,7 @@ class RestoreViewModel(
                 RestoreResult.NeedsRecoveryCode -> RestoreUi.Code()
                 RestoreResult.WrongRecoveryCode -> RestoreUi.Code(code.orEmpty(), "복구 코드가 맞지 않아요. 다시 확인해 주세요")
                 is RestoreResult.TooNew -> RestoreUi.Failed("앱을 업데이트한 뒤 다시 복원해 주세요")
-                is RestoreResult.Restored -> RestoreUi.Restoring(1f, RestoreStage.RELINK)
+                is RestoreResult.Restored -> RestoreUi.Complete
             }
         }
     }
@@ -228,6 +232,7 @@ fun RestoreRoute(
     viewModel: RestoreViewModel = koinViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(ui) { if (ui == RestoreUi.Complete) onBack() }
     val c = KkTheme.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
         Column(
@@ -236,6 +241,7 @@ fun RestoreRoute(
         ) {
             when (val s = ui) {
                 RestoreUi.Loading -> Box(Modifier.fillMaxWidth().padding(top = 120.dp), contentAlignment = Alignment.Center) { KkSpinner(c.textBrand, 28.dp) }
+                RestoreUi.Complete -> Header("복원했어요")
                 RestoreUi.Unavailable -> Header("백업에서 복원하기", "이 플랫폼에서는 아직 백업을 쓸 수 없어요.")
                 is RestoreUi.Found -> FoundContent(s.preview, platform.keySyncName)
                 is RestoreUi.Code -> {
@@ -365,6 +371,7 @@ internal fun backupTime(ms: Long): String {
 }
 
 internal fun bytesLabel(b: Long): String = when {
+    b == 0L -> "0KB"
     b >= 1_000_000_000 -> "${(b / 100_000_000) / 10.0}GB"
     b >= 1_000_000 -> "${b / 1_000_000}MB"
     else -> "${maxOf(1, b / 1_000)}KB"

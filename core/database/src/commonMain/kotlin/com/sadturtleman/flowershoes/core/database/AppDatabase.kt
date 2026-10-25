@@ -23,7 +23,7 @@ import kotlinx.coroutines.IO
         SyncOpEntity::class, StreamCounterEntity::class, RecvCursorEntity::class, RecvPendingEntity::class,
         PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class, LeaveGrantEntity::class,
     ],
-    version = 6,
+    version = AppDatabase.VERSION,
     exportSchema = true,
     // 2: 휴가 관리(leave_grant 표 · event.leaveGrantId). 3: 편지 글꼴(letter.font). 4: 만남 사진(event.photoIds). 5: 일정 메모(event.memo) · 폰 기종(user.deviceName).
     // 6: 만남 한 줄 메모(event.meetNotes) · 산 것(user.perks — 연결된 상대와 함께 쓰는 꽃신 평생 · 추억 책).
@@ -47,6 +47,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncDao(): SyncDao
 
     companion object {
+        const val VERSION = 6
         const val FILE_NAME = "kkotsin.db"
     }
 }

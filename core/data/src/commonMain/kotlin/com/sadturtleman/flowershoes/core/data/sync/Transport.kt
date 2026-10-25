@@ -20,6 +20,9 @@ class MailItem(
 class ControlDoc(val payload: ByteArray, val signature: ByteArray)
 
 interface Mailbox {
+    /** Reset a stalled connection after a sync timeout; persistent writes remain queued. */
+    suspend fun reconnect() {}
+
     suspend fun put(coupleId: String, toDevice: String, item: MailItem)
 
     suspend fun fetch(coupleId: String, myDevice: String): List<MailItem>

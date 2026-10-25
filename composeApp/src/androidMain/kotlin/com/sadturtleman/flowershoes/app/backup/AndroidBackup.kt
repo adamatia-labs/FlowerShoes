@@ -79,7 +79,7 @@ class AndroidBackupSource(
     }
 
     companion object {
-        const val DB_VERSION = 1
+        const val DB_VERSION = AppDatabase.VERSION
     }
 }
 

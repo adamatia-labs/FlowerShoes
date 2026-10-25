@@ -49,6 +49,36 @@ class BackupEngineTest {
     fun init() = Sodium.init()
 
     @Test
+    fun `upload uses a frozen source even when the live source changes`() = runTest {
+        val key = BackupKey.generate()
+        val live = Source(byteArrayOf(1), mutableListOf(att("before", "photo")))
+        val source = object : BackupSource by live {
+            override suspend fun capture(): BackupSource {
+                val frozen = Source(live.db.copyOf(), live.atts.toMutableList())
+                live.db = byteArrayOf(2)
+                live.atts.add(att("after", "new photo"))
+                return frozen
+            }
+        }
+        val engine = BackupEngine(key, storage, clock)
+        engine.backup("u1", source)
+        val restored = engine.restore("u1", 1)!!
+        assertContentEquals(byteArrayOf(1), restored.database)
+        assertEquals(setOf("before"), restored.attachments.keys)
+    }
+
+    @Test
+    fun `incremental backup size includes attachments already uploaded`() = runTest {
+        val engine = BackupEngine(BackupKey.generate(), storage, clock)
+        val source = Source(byteArrayOf(1, 2, 3), mutableListOf(att("a1", "photo")))
+        val first = engine.backup("u1", source)
+        clock.now += 1.hours
+        val second = engine.backup("u1", source)
+        assertEquals(8, first.summary.bytes)
+        assertEquals(first.summary.bytes, second.summary.bytes)
+    }
+
+    @Test
     fun `백업한 것을 그대로 복원한다`() = runTest {
         val key = BackupKey.generate()
         val db = ByteArray(BackupEngine.CHUNK + 1000) { (it % 251).toByte() } // 조각 2개

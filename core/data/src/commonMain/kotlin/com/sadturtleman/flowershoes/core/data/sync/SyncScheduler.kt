@@ -13,20 +13,25 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlin.time.Duration.Companion.milliseconds
-import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.CancellationException
 
 /**
  * 언제 동기화를 돌릴지(설계 6-2).
  *
  * - 앱이 뜰 때 · 앞으로 나올 때 · 푸시를 받았을 때: [requestNow]
  * - 내가 쓴 직후: Op 로그가 늘면 1초 모아서
- * - 앱이 살아 있는 동안 15분마다(빠진 푸시 복구)
+ * - 앱이 살아 있는 동안 1분마다(조용히 끊긴 수신 리스너 복구)
  *
  * 한 번에 하나만 돈다. 실패는 다음 차례에 다시 시도한다(Op 로그 · 우편함이 남아 있어 잃지 않는다).
  */
@@ -39,9 +44,11 @@ class SyncScheduler(
     private val afterRestore: PostRestoreRotation? = null,
     /** 앱이 살아 있는 동안 우편함 초인종(Firestore 리스너). */
     private val doorbell: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
-    private val period: Duration = 15.minutes,
+    private val period: Duration = 1.minutes,
     /** 서버가 이 커플을 지웠는지(상대가 연결 해제). 확인하지 못하면 false. */
     private val partnerGone: suspend () -> Boolean = { false },
+    private val retryBase: Duration = 5.seconds,
+    private val syncTimeout: Duration = 30.seconds,
 ) {
     private val _partnerUnlinked = kotlinx.coroutines.flow.MutableStateFlow(false)
 
@@ -72,6 +79,7 @@ class SyncScheduler(
 
     private val kicks = Channel<Unit>(Channel.CONFLATED)
     private val running = Mutex()
+    private val retryNeeded = MutableStateFlow(false)
 
     var lastReport: SyncReport? = null
         private set
@@ -80,7 +88,10 @@ class SyncScheduler(
         kicks.trySend(Unit)
     }
 
-    @OptIn(FlowPreview::class)
+    /** Restoring records and keys must not race an inbox import or a rotation request. */
+    suspend fun <T> whileSyncPaused(block: suspend () -> T): T = running.withLock { block() }
+
+    @OptIn(FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun start(scope: CoroutineScope): Job = scope.launch {
         val writes = db.syncDao().observeLatestSeq().drop(1).debounce(1.seconds).map { }
         val ticks = flow {
@@ -90,21 +101,47 @@ class SyncScheduler(
             }
         }
         requestNow()
-        val rings = doorbell.catch { }.debounce(300.milliseconds)
-        merge(kicks.receiveAsFlow(), writes, ticks, rings).collect { runOnce() }
+        // Firestore ends a listener after errors such as the pending-device permission window.
+        val rings = doorbell.retryWhen { _, attempt ->
+            delay(minOf(60.seconds, retryBase * (attempt + 1).coerceAtMost(60).toInt()))
+            true
+        }.debounce(300.milliseconds)
+        val retries = retryNeeded.flatMapLatest { needed ->
+            if (!needed) emptyFlow() else flow {
+                var attempt = 1L
+                while (true) {
+                    delay(minOf(60.seconds, retryBase * (attempt++).coerceAtMost(60).toInt()))
+                    emit(Unit)
+                }
+            }
+        }
+        merge(kicks.receiveAsFlow(), writes, ticks, rings, retries).collect { runOnce() }
     }
 
     /** 푸시 수신처럼 결과를 기다려야 할 때. */
     suspend fun runOnce(): SyncReport? = running.withLock {
-        afterRestore?.let { r -> runCatching { r.step() }.getOrNull()?.let { _restoreState.value = it } }
-        val report = runCatching { client.syncOnce() }.getOrNull()?.also { lastReport = it }
+        var finished = false
+        val report = withTimeoutOrNull(syncTimeout) { syncOnce().also { finished = true } }
+        if (!finished) withTimeoutOrNull(5.seconds) { attempt { client.reconnect() } }
+        val awaitingAcknowledgement = db.coupleDao().get()?.partnerUserId?.isNotBlank() == true && db.syncDao().streamsWithLog().isNotEmpty()
+        retryNeeded.value = report == null || awaitingAcknowledgement || _restoreState.value == RestoreRotationState.WaitingForPartner
+        report
+    }
+
+    private suspend fun <T> attempt(block: suspend () -> T): T? = try { block() } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) { null }
+
+    private suspend fun syncOnce(): SyncReport? {
+        afterRestore?.let { r -> attempt { r.step() }?.let { _restoreState.value = it } }
+        val report = attempt { client.syncOnce() }?.also { lastReport = it }
         approver?.let { a ->
-            runCatching { a.check() }.getOrNull()?.let { decisions ->
+            attempt { a.check() }?.let { decisions ->
                 pendingManual = pendingManual + decisions.mapNotNull { (r, d) -> (d as? RotationDecision.NeedsManual)?.let { r to it } }
                 _approved.value = _approved.value + decisions.filter { it.second == RotationDecision.Approved }.map { it.first }
             }
         }
-        if (!_partnerUnlinked.value && runCatching { partnerGone() }.getOrDefault(false)) _partnerUnlinked.value = true
-        report
+        if (!_partnerUnlinked.value && attempt { partnerGone() } == true) _partnerUnlinked.value = true
+        return report
     }
 }
