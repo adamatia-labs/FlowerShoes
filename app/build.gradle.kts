@@ -10,6 +10,14 @@ plugins {
 // Firebase 설정(google-services.json, 커밋하지 않음)이 있을 때만. 없으면 혼자 모드로 빌드된다.
 if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
 
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+// USB 연결 기기는 adb reverse 와 127.0.0.1, Android 에뮬레이터는 10.0.2.2를 쓴다.
+val emulatorHost = providers.gradleProperty("firebaseEmulatorHost")
+    .orElse(localProps.getProperty("FIREBASE_EMULATOR_HOST", "")).get().trim()
+require(emulatorHost.isEmpty() || emulatorHost.matches(Regex("[a-zA-Z0-9.-]+"))) { "Firebase emulator host must be a hostname without a port" }
+
 android {
     namespace = "com.sadturtleman.flowershoes"
     compileSdk {
@@ -26,14 +34,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // 소셜 로그인 키(local.properties). 비어 있으면 그 제공자는 "설정 전"으로 안내한다.
-        val props = Properties().apply {
-            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
-        }
+        val props = localProps
         val kakaoKey = props.getProperty("KAKAO_NATIVE_APP_KEY", "")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$kakaoKey\"")
         // 디버그 빌드에서만 의미가 있다(Application 이 BuildConfig.DEBUG 와 함께 본다).
         buildConfigField("boolean", "DEV_EMAIL_LOGIN", props.getProperty("DEV_EMAIL_LOGIN", "false"))
-        buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"${props.getProperty("FIREBASE_EMULATOR_HOST", "")}\"")
+        buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"\"")
+        manifestPlaceholders["firebaseAutoInitEnabled"] = "true"
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${props.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"")
         // 꽃신 평생 결제(RevenueCat 공개 SDK 키 — 앱에 실려 나가는 값이다). 기본은 테스트 스토어 키, 실제 키는 local.properties 로.
         buildConfigField("String", "REVENUECAT_API_KEY", "\"${props.getProperty("REVENUECAT_API_KEY", "test_chjLRvvSdzZezYKFbIWfRxJMRjg")}\"")
@@ -43,6 +50,8 @@ android {
     buildTypes {
         // AdMob 배너 단위. 디버그는 Google 테스트 단위 — 자기 광고를 보거나 누르는 것은 정책 위반이다.
         debug {
+            buildConfigField("String", "FIREBASE_EMULATOR_HOST", "\"$emulatorHost\"")
+            manifestPlaceholders["firebaseAutoInitEnabled"] = emulatorHost.isBlank().toString()
             buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/9214589741\"")
         }
         release {
@@ -157,6 +166,9 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation("com.google.firebase:firebase-firestore")
+    androidTestImplementation("com.google.firebase:firebase-storage")
+    androidTestImplementation(libs.kotlinx.coroutines.play.services)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

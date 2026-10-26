@@ -71,7 +71,7 @@
    - Keychain(access group 공유, ThisDeviceOnly)으로 `KeyVault`를 구현한다.
    - Android는 끝났다. `AndroidKeyVault`가 Keystore AES-GCM으로 감싼 파일을 쓰고, 재시작 뒤에도 키가 남는 것을 확인했다.
 4. **백업 남은 것**
-   - Android는 붙었다: `BackupManager`, `AndroidBackupSource`(VACUUM INTO), Firebase Storage 어댑터(서버 설정이 없으면 이 폰 안의 파일 저장소), Block Store 키 동기화, 설정의 지금 백업 · 복구 코드, 복원 화면, 백그라운드 자동 백업. 에뮬레이터에서 백업 → 일정 삭제 → 복원 → 재시작 → 일정이 돌아오는 것을 확인했다.
+   - Android는 붙었다: `BackupManager`, `RoomBackupSource`(일관된 SQLite 스냅샷), Firebase Storage 어댑터(서버 설정이 없으면 이 폰 안의 파일 저장소), Block Store 키 동기화, 설정의 지금 백업 · 복구 코드, 복원 화면, 백그라운드 자동 백업. 에뮬레이터에서 백업 → 일정 삭제 → 복원 → 재시작 → 일정이 돌아오는 것을 확인했다.
    - 복원 직후 자동 교체는 끝났다: `PostRestoreRotation` 이 동기화 때마다 요청 → 상대 확인 대기(배너) → finalize → 토큰 재로그인. 남은 것: iOS(iCloud 키체인 · Storage), Block Store 복원 시점 실기기 확인.
 5. **나머지 흐름**
    - 7-3-B 상대 넘겨주기는 끝났다: `RelinkSession`(커밋 → 공개 → SAS → cutoff → epoch+1 → 공유 데이터 전체 스냅샷), 함수 `onRelinkStep`, 규칙, 연결 · 설정 화면. 남은 것은 넘겨주기 전 기기 생체 인증
@@ -116,7 +116,8 @@ cd firebase/rules-test && npm install && npm test   # Firestore 에뮬레이터
 1. `cd firebase && firebase emulators:start --project demo-kkotsin --only auth,firestore,functions,storage`
    - 함수 파라미터는 `functions/.env.demo-kkotsin`(데모 값)
 2. `local.properties` 에 `FIREBASE_EMULATOR_HOST=10.0.2.2` → `./gradlew :app:assembleDevDebug`
-   - 디버그 빌드만 10.0.2.2 평문 허용, 로그인은 Auth 에뮬레이터 이메일 계정(규칙이 익명을 막는다)
+   - 디버그 빌드만 평문 허용, 로그인은 Auth 에뮬레이터 이메일 계정(규칙이 익명을 막는다). `-PfirebaseEmulatorHost=127.0.0.1`과 `adb reverse tcp:PORT tcp:PORT`(8080·9099·9199·5001)로 USB 실기기도 로컬 서버에 연결한다.
+   - 로컬 QA는 Firebase 자동 초기화를 비활성화한 뒤 `demo-kkotsin`으로만 연결한다. 실제 프로젝트가 이미 초기화되어 있으면 중단한다. 실제 RevenueCat·AdMob·FCM·Block Store는 사용하지 않는다. Release의 에뮬레이터 주소는 항상 비어 있다.
 3. 확인한 것
    - 두 폰 로그인 → 초대 코드 → 커밋 · 공개 → 양쪽 같은 SAS(387 324) → 함수 `onPairingStep` 이 couples 문서 생성 → 연결
    - 보고싶어: 곰신 → 군인 우편함(inbox/{device}/ops 2건) → 군인 폰 반영
@@ -369,3 +370,15 @@ Firestore transaction lease로 동시 실행을 제어하고 성공 문서는 �
 검증: Functions 단위 33개(메일 신규10), 실제 Firestore 에뮬레이터/로컬 TLS SMTP 통합5개, Firestore 규칙16개(메일 접근 차단 신규1), 총54개 통과. Node24.18/Android Studio Java25/Firebase CLI15.30에서 실행했다. CI는 운영 런타임과 같은 Node22 및 Java21로 동일 테스트를 실행하도록 추가했다. CI는 아직 실행 전이다. body-parser의 기존 높은 등급 취약점은 호환 패치1.20.9로 갱신했다.
 
 운영 확인: kkotsin-dev 서울에 Node22 onMailCreated만 배포해 ACTIVE를 확인했다. 2026-10-26 00:16 KST에 승인된 테스트 메일1통이 첫 시도에 SMTP SUCCESS로 기록됐고, Gmail 연결 도구로 지정 수신함(INBOX)의 제목·본문·시각 일치를 확인했다. 기존 이메일 확장은0개, backupRetention은 계속 미배포다. `backupRetention` 활성화는 이번 메일 구현 완료에 포함하지 않는다. 로컬 검증을 실제 Gmail 전달이나 전체 보관 정책 통과로 계산하지 않는다.
+
+
+## Android 실기기와 공통 백업 후속 검증 (2026-10-26)
+
+- Android 복원이 DB 파일 교체 후 프로세스를 종료해 `BackupManager`의 백업 키 저장에 도달하지 못하던 문제를 수정했다. iOS 복원 구현을 `core:backup/RoomRestoreApplier`로 옮겨 두 OS 모두 마이그레이션·첨부 검증·동기화 일시 중지·트랜잭션 복원·설정 적용을 공유한다. Android 백업도 `RoomBackupSource`로 통합해 알림/초안/화면 모드/자동·셀룰러 백업 설정을 함께 보관한다.
+- `google-services.json`이 있을 때 에뮬레이터 초기화를 건너뛰던 문제를 수정했다. QA의 FirebaseInitProvider를 끄고 demo 프로젝트를 명시하며, release에는 호스트를 넣지 않는다.
+- libsodium 0.9.2의 arm64 라이브러리가 4KB 정렬이라 Android 호환성 경고가 발생했다. 사용자 승인으로 최소 Android를 8(API 26)로 올리고 바인딩 0.9.5를 사용한다. QA/출시 APK의 64비트 라이브러리 각각 12개가 16KB ELF 정렬 검사, QA APK가 zipalign -P 16 검사를 통과했다.
+- Android 16 실기기(4KB)와 Android 17 에뮬레이터(16KB)에서 각각 2개 통합 테스트 통과: 실제 Room/DataStore·암호화 백업→복원→재백업, 키/사진/설정 보존과 로그인 신원 유지; demo Firebase Auth·Storage 왕복. 핵심 JVM 86개(crypto10/sync13/backup16/data39/database8) 통과. 변경이 없는 sync/database 태스크는 Gradle up-to-date 결과를 사용했다.
+- Android QA/출시 빌드, iOS 시뮬레이터 Kotlin 프레임워크 링크, 앱·NSE·위젯·검사 러너의 Xcode build-for-testing 통과. 실제 Play/App Store 결제, APNs 전달, 새 기기의 iCloud/Block Store 키 복원 통과를 의미하지 않는다.
+- Android 실기기 UI에서 로컬 가짜 로그인·필수 약관·곰신/네이비 온보딩·홈·217KB 백업 성공을 확인했다. iOS26.5에서도 최신 Xcode 원본 앱의 홈 실행을 확인했다. [대표 화면](qa/android-core-2026-10-26/README.md).
+- Apple 멤버십·App ID3개·App Group 등록/연결 완료. 사용자 승인으로 꽃신 한 앱에 제한한 Sandbox APNs 키를 Firebase 개발 인증 키에 등록했다. 프로덕션 푸시, 실제 소셜 로그인·스토어 결제는 별도이며 콘솔 등록만으로 통과 처리하지 않는다.
+- 이전 SMTP 커밋49167dc의 Functions 및 iOS PR CI는 모두 성공했다. 이번 미커밋 변경의 원격 CI 결과와 구분한다.

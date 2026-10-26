@@ -1,17 +1,12 @@
-package com.sadturtleman.flowershoes.app.ios
+package com.sadturtleman.flowershoes.core.backup
 
 import androidx.room.useReaderConnection
-import com.sadturtleman.flowershoes.core.backup.BackedUpSettings
-import com.sadturtleman.flowershoes.core.backup.RestoreApplier
-import com.sadturtleman.flowershoes.core.backup.RestoredBackup
 import com.sadturtleman.flowershoes.core.crypto.CoupleKey
 import com.sadturtleman.flowershoes.core.data.AttachmentStore
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.sync.KeyVault
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.database.AppDatabase
-import com.sadturtleman.flowershoes.core.database.backupDatabaseBuilder
-import com.sadturtleman.flowershoes.core.database.buildKkotsin
 import com.sadturtleman.flowershoes.core.database.restoreBackupSnapshot
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
 import kotlinx.coroutines.Dispatchers
@@ -23,13 +18,14 @@ import okio.Path
 import okio.Path.Companion.toPath
 import kotlin.uuid.Uuid
 
-/** iOS cannot relaunch its own process. Import atomically and keep the live Room observers. */
-class IosRestoreApplier(
+/** 두 OS 모두 프로세스 종료 없이 복원한다. 반환 뒤 BackupManager가 백업 키 저장을 완료한다. */
+class RoomRestoreApplier(
     private val db: AppDatabase,
     private val attachments: AttachmentStore,
     private val vault: KeyVault,
     private val settings: DeviceSettings,
     private val temporaryRoot: Path,
+    private val openBackup: (String) -> AppDatabase,
     private val scheduler: () -> SyncScheduler?,
 ) : RestoreApplier {
     override suspend fun apply(restored: RestoredBackup) {
@@ -46,7 +42,7 @@ class IosRestoreApplier(
                 fs.createDirectories(temporaryRoot)
                 fs.write(path) { write(restored.database) }
                 // Opening the copy runs Room's 1→6 migrations and validates its schema.
-                val migrated = backupDatabaseBuilder(path.toString()).buildKkotsin()
+                val migrated = openBackup(path.toString())
                 try {
                     migrated.useReaderConnection { c -> c.usePrepared("SELECT COUNT(*) FROM user") { it.step() } }
                 } finally { migrated.close() }

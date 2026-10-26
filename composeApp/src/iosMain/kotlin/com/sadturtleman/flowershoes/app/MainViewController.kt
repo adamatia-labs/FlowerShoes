@@ -109,7 +109,9 @@ fun MainViewController(
                             vault = get(),
                             // Local emulator QA must never put fake-account keys into the user's iCloud.
                             keySync = if (emulatorAuth) null else get(),
-                            applier = com.sadturtleman.flowershoes.app.ios.IosRestoreApplier(get(), get(), get(), get(), temporary) { getOrNull() },
+                            applier = com.sadturtleman.flowershoes.core.backup.RoomRestoreApplier(get(), get(), get(), get(), temporary,
+                                openBackup = { com.sadturtleman.flowershoes.core.database.backupDatabaseBuilder(it).buildKkotsin() },
+                                scheduler = { getOrNull() }),
                             appSchemaVersion = com.sadturtleman.flowershoes.core.database.AppDatabase.VERSION,
                         )
                     }
