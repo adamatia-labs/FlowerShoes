@@ -5,7 +5,6 @@ enum WidgetSender {
     enum Failure: Error { case notLinked, crypto, rejected(Int) }
 
     /// Cloud Function 엔드포인트(서울 리전). 프로젝트 id 는 빌드 설정으로 바꾼다.
-    static let endpoint = URL(string: "https://asia-northeast3-kkotsin-dev.cloudfunctions.net/sendFromWidget")!
 
     static func sendMissYou() async throws {
         guard let config = linkConfig(),
@@ -21,19 +20,27 @@ enum WidgetSender {
         let plain = OpPlain.join(lamport: now, payload: Array(payload.utf8))
         guard let sealed = OpEnvelope.seal(header: header, plaintext: plain, coupleKey: coupleKey, signSecret: signSecret) else { throw Failure.crypto }
 
-        // 재동기화용 평문 사본 — 앱이 실행되면 SyncOp 로그(stream=widget)로 가져가고 지운다.
-        SharedStore.writeProtected(Data(plain), to: SharedStore.container.appendingPathComponent("widget-outbox/\(seq).op"))
-
-        var req = URLRequest(url: endpoint)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: [
+        let body = try JSONSerialization.data(withJSONObject: [
             "coupleId": config.coupleId, "fromDeviceId": config.deviceId, "toDeviceId": config.partnerDeviceId,
             "opId": opId, "kind": "missyou",
             "header": Data(header.bytes()).base64EncodedString(),
             "ct": Data(sealed.ct).base64EncodedString(),
             "sig": Data(sealed.sig).base64EncodedString(),
         ])
+        // 전송 전에 암호문을 원자적으로 보관한다. 앱은 같은 stream/seq/opId로 재전송한다.
+        let outbox = SharedStore.container.appendingPathComponent("widget-outbox/\(opId).json")
+        try FileManager.default.createDirectory(at: outbox.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try body.write(to: outbox, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        var protected = outbox
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try protected.setResourceValues(values)
+        guard let address = config.sendEndpoint, let endpoint = URL(string: address) else { throw Failure.notLinked }
+        var req = URLRequest(url: endpoint)
+        req.timeoutInterval = 10
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
         let (_, response) = try await URLSession.shared.data(for: req)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         // 실패해도 사본이 남아 있어 앱이 다음 실행 때 보낸다.
@@ -46,6 +53,7 @@ enum WidgetSender {
         let deviceId: String
         let partnerDeviceId: String
         let epoch: Int32
+        let sendEndpoint: String?
     }
 
     /// 앱이 연결 · 키 교체 때 App Group 에 써 둔다.

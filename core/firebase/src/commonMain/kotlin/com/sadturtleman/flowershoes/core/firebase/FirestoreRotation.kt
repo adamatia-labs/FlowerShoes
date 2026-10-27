@@ -11,6 +11,8 @@ import dev.gitlive.firebase.firestore.firestore
 import dev.gitlive.firebase.functions.functions
 import kotlin.io.encoding.Base64
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 
 // firestore.rules 의 hasOnly 목록과 1:1.
 
@@ -54,6 +56,11 @@ class FirestoreRotation(
 ) : RotationTransport {
 
     private fun couple(id: String) = db.collection("couples").document(id)
+
+    override fun changes(coupleId: String): kotlinx.coroutines.flow.Flow<Unit> = merge(
+        couple(coupleId).collection("rotations").snapshots.map { },
+        couple(coupleId).collection("devices").snapshots.map { },
+    )
 
     override suspend fun putPendingDevice(coupleId: String, deviceId: String, uid: String, signPub: ByteArray, boxPub: ByteArray) {
         couple(coupleId).collection("devices").document(deviceId)

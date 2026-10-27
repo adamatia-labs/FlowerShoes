@@ -54,16 +54,19 @@ fun kkotsinAndroidModules(
         single { WidgetSnapshotPublisher(get(), get(), get(), get(), get(), get(), get(), get(), attachments, get()) }
         // 백업: 서버 설정이 있으면 Firebase Storage, 없으면 이 폰 안의 파일(암호문)로.
         single {
+            val temporary = app.cacheDir.resolve("backup-work").absolutePath.toPath()
             val storage: com.sadturtleman.flowershoes.core.backup.BackupStorage =
                 if (firebase) com.sadturtleman.flowershoes.app.backup.FirebaseStorageBackup()
                 else com.sadturtleman.flowershoes.core.backup.FileBackupStorage(app.filesDir.resolve("backup-local").absolutePath.toPath())
             com.sadturtleman.flowershoes.core.backup.BackupManager(
                 storage = storage,
-                source = com.sadturtleman.flowershoes.app.backup.AndroidBackupSource(app, get(), get(), get(), get()),
+                source = com.sadturtleman.flowershoes.core.backup.RoomBackupSource(get(), get(), get(), get(), temporary),
                 vault = get(),
-                keySync = com.sadturtleman.flowershoes.app.backup.BlockStoreKeySync(app),
-                applier = com.sadturtleman.flowershoes.app.backup.AndroidRestoreApplier(app, get(), get(), get(), get()),
-                appSchemaVersion = com.sadturtleman.flowershoes.app.backup.AndroidBackupSource.DB_VERSION,
+                keySync = if (emulatorHost.isNotBlank()) null else com.sadturtleman.flowershoes.app.backup.BlockStoreKeySync(app),
+                applier = com.sadturtleman.flowershoes.core.backup.RoomRestoreApplier(get(), get(), get(), get(), temporary,
+                    openBackup = { androidx.room.Room.databaseBuilder<com.sadturtleman.flowershoes.core.database.AppDatabase>(app, it).buildKkotsin() },
+                    scheduler = { getOrNull() }),
+                appSchemaVersion = com.sadturtleman.flowershoes.core.database.AppDatabase.VERSION,
             )
         }
     }

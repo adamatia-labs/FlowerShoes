@@ -28,6 +28,9 @@ interface BackupStorage {
 interface BackupSource {
     class Attachment(val id: String, val kind: String, val sha256: ByteArray, val read: suspend () -> ByteArray)
 
+    /** Live sources freeze their DB and attachment references before network uploads begin. */
+    suspend fun capture(): BackupSource? = null
+
     suspend fun databaseSnapshot(): ByteArray
 
     suspend fun attachments(): List<Attachment>
@@ -103,6 +106,7 @@ class BackupEngine(
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun backup(uid: String, source: BackupSource): BackupManifest {
+        val captured = source.capture() ?: source
         val root = "backups/$uid"
         val now = clock.now().toEpochMilliseconds()
         val version = now
@@ -111,19 +115,19 @@ class BackupEngine(
         // 1) 첨부(없는 것만)
         val existing = storage.list("$root/blobs/").map { it.path.substringAfterLast('/') }.toSet()
         var blobsBytes = 0L
-        val blobs = source.attachments().map { a ->
+        val blobs = captured.attachments().map { a ->
             val name = key.blobName(a.sha256)
+            val bytes = a.read()
+            blobsBytes += bytes.size
             if (name !in existing) {
                 val path = "$root/blobs/$name"
-                val bytes = a.read()
-                blobsBytes += bytes.size
                 storage.put(path, Aead.seal(dataKey, Zstd.packFlagged(bytes), path.encodeToByteArray()))
             }
             BlobRef(a.id, a.kind, name)
         }
 
         // 2) DB 조각
-        val db = source.databaseSnapshot()
+        val db = captured.databaseSnapshot()
         val chunks = (0 until maxOf(1, (db.size + CHUNK - 1) / CHUNK)).map { n ->
             val path = "$root/db/$version/$n"
             val part = db.copyOfRange(n * CHUNK, minOf(db.size, (n + 1) * CHUNK))
@@ -135,12 +139,12 @@ class BackupEngine(
         val manifest = BackupManifest(
             version = version,
             createdAtMs = now,
-            schemaVersion = source.schemaVersion,
+            schemaVersion = captured.schemaVersion,
             dbChunks = chunks,
             blobs = blobs,
-            coupleKeys = source.coupleKeys().mapValues { Base64.encode(it.value) },
-            deviceSettings = Base64.encode(source.deviceSettings()),
-            summary = runCatching { source.summary() }.getOrDefault(BackupSummary()).copy(bytes = db.size.toLong() + blobsBytes),
+            coupleKeys = captured.coupleKeys().mapValues { Base64.encode(it.value) },
+            deviceSettings = Base64.encode(captured.deviceSettings()),
+            summary = captured.summary().copy(bytes = db.size.toLong() + blobsBytes),
         )
         val manifestPath = "$root/manifests/$version"
         storage.put(manifestPath, Aead.seal(dataKey, json.encodeToString(BackupManifest.serializer(), manifest).encodeToByteArray(), manifestPath.encodeToByteArray()))

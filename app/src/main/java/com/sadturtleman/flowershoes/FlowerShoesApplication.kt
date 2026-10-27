@@ -50,13 +50,14 @@ class FlowerShoesApplication :
      * 값이 오기 전에 읽은 플래그는 기본값이 되고, 그것으로도 앱은 돌아간다.
      */
     private val appScope = CoroutineScope(SupervisorJob())
+    private val localEmulator get() = BuildConfig.DEBUG && BuildConfig.FIREBASE_EMULATOR_HOST.isNotBlank()
 
     /**
      * 푸시 토큰은 앱을 처음 켤 때 발급되는데 그때는 로그인 전이라 등록이 빠진다(onNewToken 은 다시 오지 않는다).
      * 로그인 상태가 될 때마다 지금 토큰을 users/{uid}.fcmTokens 에 넣는다(arrayUnion 이라 중복 없음).
      */
     private fun registerPushTokenOnSignIn() {
-        if (com.google.firebase.FirebaseApp.getApps(this).isEmpty()) return
+        if (localEmulator || com.google.firebase.FirebaseApp.getApps(this).isEmpty()) return
         com.google.firebase.auth.FirebaseAuth.getInstance().addAuthStateListener { auth ->
             if (auth.currentUser == null) return@addAuthStateListener
             com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
@@ -76,29 +77,31 @@ class FlowerShoesApplication :
                 kkotsinAndroidModules(
                     this@FlowerShoesApplication,
                     AuthKeys(BuildConfig.KAKAO_NATIVE_APP_KEY, BuildConfig.GOOGLE_WEB_CLIENT_ID),
-                    emulatorHost = BuildConfig.FIREBASE_EMULATOR_HOST,
+                    emulatorHost = if (BuildConfig.DEBUG) BuildConfig.FIREBASE_EMULATOR_HOST else "",
                     devEmailLogin = BuildConfig.DEBUG && BuildConfig.DEV_EMAIL_LOGIN,
                 ),
             )
             modules(telemetryModules(this@FlowerShoesApplication))
             // 꽃신 평생 결제(RevenueCat). 결제 시트는 MainActivity 가 화면을 넘겨 준다.
             modules(org.koin.dsl.module {
-                single {
-                    com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore(
-                        this@FlowerShoesApplication, BuildConfig.REVENUECAT_API_KEY, get<IdentityHolder>(), BuildConfig.DEBUG,
-                    )
-                }
-                single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>() }
                 if (BuildConfig.DEBUG) single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
-                single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book }
-                single<com.sadturtleman.flowershoes.core.data.BackupPlusStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().backupPlus }
+                if (!localEmulator) {
+                    single {
+                        com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore(
+                            this@FlowerShoesApplication, BuildConfig.REVENUECAT_API_KEY, get<IdentityHolder>(), BuildConfig.DEBUG,
+                        )
+                    }
+                    single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>() }
+                    single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book }
+                    single<com.sadturtleman.flowershoes.core.data.BackupPlusStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().backupPlus }
+                }
             })
         }
         appScope.launch {
             // 신원(로컬 id)을 먼저 읽어 둔다 — Repository 가 쓴다.
             get<IdentityHolder>().update(get<DeviceSettings>().ensureIdentity())
             // 꽃신 평생 이용권: 계정을 맞추고 읽어 둔다(광고 숨김).
-            get<com.sadturtleman.flowershoes.core.data.LifetimeStore>().refresh()
+            getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.refresh()
             // 기기 키는 연결 · 기기 교체에 필요하다. 처음 실행이면 만들어 Keystore 보관함에 둔다.
             val vault = get<KeyVault>()
             Sodium.init()

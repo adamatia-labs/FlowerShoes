@@ -829,8 +829,8 @@ private fun BackupPage(state: SettingsState, platform: PlatformActions, viewMode
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgMilitarySubtle).padding(horizontal = KkSpacing.md, vertical = KkSpacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(c.statusSuccess))
-                Text("백업 열쇠가 ${platform.keySyncName}에 안전하게 저장돼 있어요", style = KkTheme.type.caption, color = c.textPrimary)
+                Box(Modifier.size(6.dp).clip(CircleShape).background(c.bgBrand))
+                Text("${platform.keySyncName} 사용 여부와 관계없이 복구 코드도 따로 보관해 주세요", style = KkTheme.type.caption, color = c.textPrimary)
             }
         }
         Group(null) {
@@ -857,10 +857,12 @@ private fun RecoveryPage(platform: PlatformActions, viewModel: SettingsViewModel
     val clipboard = LocalClipboardManager.current
     var code by remember { mutableStateOf<String?>(null) }
     var denied by remember { mutableStateOf(false) }
+    var loaded by remember { mutableStateOf(false) }
     var confirmNew by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (platform.authenticate("복구 코드를 보려면 본인 확인이 필요해요") == DeviceAuth.Failed) denied = true
         else code = viewModel.recoveryCode()
+        loaded = true
     }
     Page("복구 코드", onBack, bottom = {
         KkButton("새 코드 만들기", { confirmNew = true }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost, enabled = code != null)
@@ -875,6 +877,7 @@ private fun RecoveryPage(platform: PlatformActions, viewModel: SettingsViewModel
             val shown = code
             when {
                 denied -> Text("본인 확인을 하지 못했어요", style = KkTheme.type.bodyM, color = c.textSecondary)
+                shown == null && loaded -> Text("복구 코드를 불러오지 못했어요. 백업 설정을 확인해 주세요", style = KkTheme.type.bodyM, color = c.textSecondary)
                 shown == null -> Text("불러오는 중…", style = KkTheme.type.bodyM, color = c.textTertiary)
                 else -> shown.filter { it.isLetterOrDigit() }.chunked(4).chunked(3).forEach { line ->
                     Text(

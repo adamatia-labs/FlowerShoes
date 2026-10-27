@@ -332,8 +332,12 @@ class LetterViewModel(
 
     private fun open(letterId: String) {
         viewModelScope.launch {
-            val card = state.value.inbox.firstOrNull { it.letter.id == letterId }
-            val letter = card?.letter ?: return@launch
+            // 알림으로 처음 실행하면 화면의 stateIn은 아직 빈 초기값일 수 있다.
+            val letter = letters.observeInbox().first().firstOrNull { it.id == letterId } ?: run {
+                ui.update { it.copy(open = null) }
+                toast("편지를 찾을 수 없어요")
+                return@launch
+            }
             val mine = letter.authorId == me
             val rows = letters.drawingsOf(letterId)
             val docs = rows.mapNotNull { row -> row.docAttachmentId?.let { decode(it) }?.let { row.id to it } }.toMap()

@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -125,7 +128,7 @@ fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: 
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
     ) {
-        Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("추억", style = KkTheme.type.titleL, color = c.textPrimary)
         }
         if (state.loading) return@Column
@@ -187,6 +190,7 @@ private fun BookProgress.label(): String = when {
 }
 
 /** 월별 장 한 줄: 대표 사진(만남 사진 · 첫 그림) + "10월 · 세 번째 장" + 쓰는 중 태그 + 편지 · 그림 · 만남 수. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChapterRow(ch: Chapter, month: MonthDetail?, photos: Map<String, ByteArray?>, onClick: () -> Unit) {
     val c = KkTheme.colors
@@ -204,7 +208,7 @@ private fun ChapterRow(ch: Chapter, month: MonthDetail?, photos: Map<String, Byt
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("${ch.ym.month}월 · ${ordinalKo(ch.number)} 장", style = KkTheme.type.titleS, color = c.textPrimary)
                 if (ch.writing) Pill("쓰는 중", c.bgBrandSubtle, c.textBrand)
             }
@@ -526,7 +530,7 @@ internal fun PhotoImage(bytes: ByteArray?, modifier: Modifier) {
 @Composable
 internal fun Pill(text: String, bg: Color, fg: Color) {
     Text(
-        text, style = KkTheme.type.labelS, color = fg,
+        text, style = KkTheme.type.labelS, color = fg, maxLines = 1, softWrap = false,
         modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(bg).padding(horizontal = KkSpacing.xs, vertical = KkSpacing.xxs),
     )
 }

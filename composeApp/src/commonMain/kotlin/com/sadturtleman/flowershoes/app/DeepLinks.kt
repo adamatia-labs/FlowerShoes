@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /** 셸이 여는 화면. 알림 · 위젯 · 푸시의 딥링크(kkotsin://…)를 이것으로 바꾼다. */
 sealed interface DeepLink {
     data object Home : DeepLink
+    data object Inbox : DeepLink
     data class Letter(val id: String) : DeepLink
     data class Calendar(val date: String?) : DeepLink
     data object Pairing : DeepLink
@@ -17,6 +18,7 @@ sealed interface DeepLink {
             val parts = uri.removePrefix("$SCHEME://").trimEnd('/').split('/')
             return when (parts.firstOrNull()) {
                 "home" -> Home
+                "inbox" -> Inbox
                 "letter" -> parts.getOrNull(1)?.let(::Letter)
                 "calendar" -> Calendar(parts.getOrNull(1))
                 "pairing" -> Pairing

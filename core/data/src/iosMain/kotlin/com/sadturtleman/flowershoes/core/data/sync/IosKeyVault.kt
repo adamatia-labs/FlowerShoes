@@ -49,7 +49,10 @@ import platform.posix.memcpy
  *
  * macOS 에서 빌드 · 실기기 확인이 필요하다(Windows 에서는 iOS 타깃이 컴파일되지 않는다).
  */
-class IosKeyVault(private val accessGroup: String = ACCESS_GROUP) : KeyVault {
+class IosKeyVault(
+    private val accessGroup: String? = (platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("KkotsinKeychainAccessGroup") as? String)
+        ?.takeIf { it.endsWith(".$ACCESS_GROUP") },
+) : KeyVault {
 
     @Serializable
     private data class Stored(
@@ -133,15 +136,15 @@ class IosKeyVault(private val accessGroup: String = ACCESS_GROUP) : KeyVault {
             val pairs = mapOf<Any?, Any?>(
                 kSecClass to kSecClassGenericPassword,
                 kSecAttrAccount to CFBridgingRetain(account as NSString),
-                kSecAttrAccessGroup to CFBridgingRetain(accessGroup as NSString),
-            ) + extra
+            ) + (accessGroup?.let { mapOf(kSecAttrAccessGroup to CFBridgingRetain(it as NSString)) } ?: emptyMap()) + extra
             pairs.forEach { (k, v) -> CFDictionaryAddValue(d, k as platform.CoreFoundation.CFTypeRef?, v as platform.CoreFoundation.CFTypeRef?) }
         }
 
     private fun write(account: String, bytes: ByteArray) {
         SecItemDelete(query(account))
         val data = bytes.toNSData()
-        SecItemAdd(query(account, mapOf(kSecValueData to CFBridgingRetain(data), kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)), null)
+        val status = SecItemAdd(query(account, mapOf(kSecValueData to CFBridgingRetain(data), kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)), null)
+        check(status == errSecSuccess) { "Keychain 저장 실패: $status" }
     }
 
     private fun read(account: String): ByteArray? = memScoped {

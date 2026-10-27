@@ -2,17 +2,24 @@
   "name": "kkotsin-functions",
   "private": true,
   "main": "lib/index.js",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
     "build": "tsc",
-    "test": "tsc && node --test \"lib/test/*.test.js\""
+    "test": "tsc && node --test \"lib/test/*.test.js\"",
+    "test:mail:emulator": "tsc && firebase emulators:exec --project demo-kkotsin-mail --only firestore --config ../firebase.mail-test.json \"node --test lib/test/mail.emulator.js && node --test ../rules-test/firestore.test.js\""
   },
   "dependencies": {
     "firebase-admin": "^13.4.0",
-    "firebase-functions": "^6.4.0"
+    "firebase-functions": "^6.4.0",
+    "nodemailer": "10.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "@types/nodemailer": "8.0.2",
+    "@types/smtp-server": "3.5.13",
+    "smtp-server": "3.21.1",
     "typescript": "^5.8.3"
   }
 }

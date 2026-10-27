@@ -71,7 +71,7 @@
    - Keychain(access group 공유, ThisDeviceOnly)으로 `KeyVault`를 구현한다.
    - Android는 끝났다. `AndroidKeyVault`가 Keystore AES-GCM으로 감싼 파일을 쓰고, 재시작 뒤에도 키가 남는 것을 확인했다.
 4. **백업 남은 것**
-   - Android는 붙었다: `BackupManager`, `AndroidBackupSource`(VACUUM INTO), Firebase Storage 어댑터(서버 설정이 없으면 이 폰 안의 파일 저장소), Block Store 키 동기화, 설정의 지금 백업 · 복구 코드, 복원 화면, 백그라운드 자동 백업. 에뮬레이터에서 백업 → 일정 삭제 → 복원 → 재시작 → 일정이 돌아오는 것을 확인했다.
+   - Android는 붙었다: `BackupManager`, `RoomBackupSource`(일관된 SQLite 스냅샷), Firebase Storage 어댑터(서버 설정이 없으면 이 폰 안의 파일 저장소), Block Store 키 동기화, 설정의 지금 백업 · 복구 코드, 복원 화면, 백그라운드 자동 백업. 에뮬레이터에서 백업 → 일정 삭제 → 복원 → 재시작 → 일정이 돌아오는 것을 확인했다.
    - 복원 직후 자동 교체는 끝났다: `PostRestoreRotation` 이 동기화 때마다 요청 → 상대 확인 대기(배너) → finalize → 토큰 재로그인. 남은 것: iOS(iCloud 키체인 · Storage), Block Store 복원 시점 실기기 확인.
 5. **나머지 흐름**
    - 7-3-B 상대 넘겨주기는 끝났다: `RelinkSession`(커밋 → 공개 → SAS → cutoff → epoch+1 → 공유 데이터 전체 스냅샷), 함수 `onRelinkStep`, 규칙, 연결 · 설정 화면. 남은 것은 넘겨주기 전 기기 생체 인증
@@ -116,7 +116,8 @@ cd firebase/rules-test && npm install && npm test   # Firestore 에뮬레이터
 1. `cd firebase && firebase emulators:start --project demo-kkotsin --only auth,firestore,functions,storage`
    - 함수 파라미터는 `functions/.env.demo-kkotsin`(데모 값)
 2. `local.properties` 에 `FIREBASE_EMULATOR_HOST=10.0.2.2` → `./gradlew :app:assembleDevDebug`
-   - 디버그 빌드만 10.0.2.2 평문 허용, 로그인은 Auth 에뮬레이터 이메일 계정(규칙이 익명을 막는다)
+   - 디버그 빌드만 평문 허용, 로그인은 Auth 에뮬레이터 이메일 계정(규칙이 익명을 막는다). `-PfirebaseEmulatorHost=127.0.0.1`과 `adb reverse tcp:PORT tcp:PORT`(8080·9099·9199·5001)로 USB 실기기도 로컬 서버에 연결한다.
+   - 로컬 QA는 Firebase 자동 초기화를 비활성화한 뒤 `demo-kkotsin`으로만 연결한다. 실제 프로젝트가 이미 초기화되어 있으면 중단한다. 실제 RevenueCat·AdMob·FCM·Block Store는 사용하지 않는다. Release의 에뮬레이터 주소는 항상 비어 있다.
 3. 확인한 것
    - 두 폰 로그인 → 초대 코드 → 커밋 · 공개 → 양쪽 같은 SAS(387 324) → 함수 `onPairingStep` 이 couples 문서 생성 → 연결
    - 보고싶어: 곰신 → 군인 우편함(inbox/{device}/ops 2건) → 군인 폰 반영
@@ -278,3 +279,106 @@ Figma 와 다르게 한 것(이유):
 2. **함수 배포 순서**: 웹훅이 entitlements 를 채운 뒤 `backupRetention` 을 켠다(전에는 평생 사용자도 1년 규칙).
 3. **Trigger Email 확장** 설치(mail 컬렉션) — 없으면 이메일 예고는 쌓이기만 한다.
 4. **iOS 실기기 확인** — CI(시뮬레이터)는 통과. 결제 · PDF · 위젯은 실기기에서 눌러 봐야 한다(결제는 샌드박스 계정).
+
+## iOS 두 시뮬레이터 전체 경로 QA (2026-10-24~25)
+
+기준 `develop@9c363a1`, 작업 브랜치 `feature/ios-full-test`. 이 절은 앞선 Android/CI 기록과 구별되는 **실제 macOS iOS 실행 기록**이다. Xcode 26.6(17F113), iOS 26.5 iPhone 17 두 대, JDK 21.0.7, xcodegen 2.46. 외부 로그인 설정이 없어 사용자 승인 아래 `demo-kkotsin` 로컬 가짜 계정을 썼다. 실제 OAuth 성공을 의미하지 않는다. 사용자가 이 QA 결과와 변경 내역의 커밋·푸시·develop 대상 PR 생성을 승인했다. 머지는 별도 승인 대상이다.
+
+| 영역 | 이번에 실제 확인한 범위 | 남은 것 |
+|---|---|---|
+| 온보딩/연결 | 필수 약관·문서 3종/v1.1, 역할/테마, 군인 입대일, 곰신 단계 생략, CPace 양쪽 SAS 확인 | 실제 소셜 로그인, 수정 후 신규 온보딩부터 연결까지 전체 회귀 |
+| 복원/백업 | iOS ‘이 빌드에서는 아직 백업을 쓸 수 없어요’ 안내 재현 | iOS BackupManager/iCloud 열쇠/백업·복원 전체 실행 |
+| 홈 | 양방향 보고싶어, D-day/군 정보/상대 이름, 재실행 수신 | 상대 상태 값 변경 |
+| 캘린더/휴가 | 일정 종류 6/시각/하루 종일/메모/수정/삭제, 휴가 생성/사용/수정/받은 휴가 삭제 | 예약 알림의 실제 시각, 사용 건 개별 취소, 광고 실제 로드 |
+| 편지/그림 | 텍스트/그림 송수신, 고마워/답장, 유료 편지지·하이멜로디 큰 글자 수신, 임시저장, 예약 저장, 비율·붓·색·밝기·undo/redo·13 스티커·앨범 사진/틀·리플레이 | 예약 시각 도달 후 공개, 카메라 촬영, 모든 편집 조합 |
+| 추억/내보내기 | 만남 메모 각자 40자·사진 양방향 합산 10장/11번째 거절/삭제, 책 미리보기, PDF 2종·ZIP 공유/파일 앱 | 추억책 상품 설정·구매/공유, 대표 콘텐츠 선택 UI |
+| 설정/결제 | 평생 Test Store 승인 구매 1회 성공, A 이용 중/B 연인과 함께 이용 중, 프레임 5종, 프로필·군 정보·기념일·테마·문서·문의/내역 화면 | book/backup_plus 상품/복원, 실제 계정 연결, SDK 동의 순서 계측 |
+| 기기 인증 | 폰 교체/복구 코드의 암호 화면까지 진입, 해제 옵션 선택/취소, 탈퇴 틀린 문구 비활성 | 사용자가 ‘미검증으로 남기기’ 지정. 암호 입력·실제 해제/탈퇴/교체하지 않음 |
+| 위젯 | App Group 스냅샷·그림 PNG, 실제 홈 D-day 위젯 | 그림/다음 만남/App Intent/잠금 화면의 실제 실행 |
+| 알림/NSE | 권한 허용, simctl 보고싶어·편지·backupExpiry 배너, 편지 탭 이동 | 실제 APNs, 종료 상태 NSE 복호화/큐 병합 증거, 실제 시간/조용한 시간 정책 |
+| 딥링크 | home/calendar/pairing/letter, 없는 편지 처리, home 오버레이 닫기 | 실제 배포 서명·소셜 로그인 복귀와의 공존 |
+| 접근성/기타 | AX 라벨·주요 탭 4테마/다크, 최대 글자 UI 수정 전후, 종료 후 유지, 오프라인 저장→재진입 뒤 상대 수신 | 실제 VoiceOver 초점/음성, 모든 하위 화면 조합, 재연결만으로 자동 즉시 도착 |
+
+수정:
+
+- 곰신 군 정보 생략/진행 단계, 연결 완료 전에 온보딩 완료 처리하던 문제.
+- iOS 키보드 루트 이동을 끄고 IME 여백/초점을 처리. 일정 전체 화면 안전 영역/구분선.
+- DI 생성 후 첫 foreground 동기화/알림/위젯 게시를 보장. 구매 상태 변화가 화면 composition을 교체하지 않도록 고정.
+- 앱 URL을 카카오 SDK보다 먼저 분기, 미설정 SDK 호출 차단. home 오버레이 닫기·없는 편지 초기화·DB 첫 결과로 편지 열기.
+- Firestore base64 문자열/문서 제한으로 1,019,798바이트 사진 전송이 멎던 문제: 큰 암호문은 Storage, 작은 것은 기존 Firestore 방식.
+- Keychain 그룹의 팀 접두사 반영/쓰기 오류 확인, 연결/상대 서명키/그림 PNG 공유. 위젯 암호문 사본을 앱 로그에 반영하고 ACK까지 재전송.
+- iOS 알림 delegate·토큰 등록·백그라운드 완료·탭 라우팅, backupExpiry 기본 문구 보존.
+- 광고는 첫 지면 UMP→ATT 이후 시작, 구매/공유 상태 확인 전 생성 차단. 상품별 복원 entitlement 분리.
+- 잠김 접근성 라벨, 큰 글자의 홈 카드·달력 날짜·추억 칩 배치. Swift 테스트 타깃 Info.plist 생성.
+
+검증 결과: 앱/NSE/위젯 빌드 성공. core:data JVM 33 + 알림 JVM 6 + 온보딩 iOS 3 = 42개 통과, Functions 21개 통과, Swift Op 벡터 3개 통과. Firebase/designsystem 및 home/calendar/memory 공통 UI의 Android 컴파일 통과. **빌드 성공을 NSE/App Intent 런타임 성공으로 해석하지 않는다.** simctl 암호화 푸시에서는 배너만 확인했고 NSE 로그/대기열은 비어 있었다.
+
+PDF: iOS UIKit 컨텍스트가 화면용 576×576pt, 인쇄용 593×593pt를 각각 4쪽 생성. 공유 시트 두 파일/파일 앱 저장, 렌더링 8쪽 확인. 무료 개발용 경로로 생성했다. 추억책 Test Store는 사용자 승인한 1회 시도에서 ‘상품 정보 없음’ 실패. 평생 Test Store 표시 $99.99와 Figma 7,900원 차이는 콘솔 설정 확인 대상이다.
+
+Figma: 53:862/53:886/53:923 온보딩, 52:86 홈, 169:3744 일정, 69:302 편지, 91:781 스티커, 262:82 추억, 181:1679 만남, 163:3809 평생, 169:1641 위젯, 169:1707 화면 모드, 118:1509 해제, 169:1966 탈퇴 등을 비교했다. 53:194 편지함의 필터는 요구 기능이므로 코드 유지/Figma 갱신 대상. 263:255 책 대표 콘텐츠 선택은 실제 앱에 없어 미해결 차이로 남긴다. Figma 원본은 수정하지 않았다.
+
+증거는 별도 로컬 QA 산출물 `FlowerShoes-iOS-QA.md/html`, `evidence/ui`(곰신), `evidence/ui/soldier`(군인), `evidence/pdf`, `swift-tests-final.log`, `final-gradle-tests.log`에 보관했다. 각 화면에는 PNG/AX tree/명령 JSON이 있다. 생성된 Xcode 프로젝트·검사 하니스·설정 파일·키는 커밋 대상이 아니다.
+
+배포 전: `storage:v1` 큰 첨부는 구버전 수신 클라이언트와 호환되지 않으므로 양쪽 업데이트/버전 협상 방침이 필요하다. Storage 32일 수명주기 운영 설정은 별도 확인한다. 현재 전체 경로 통과나 출시 준비 완료 상태가 아니다.
+
+추가 회귀: 동작 줄이기 ON에서 군 정보의 뒤로 이동이 멈추는 것을 재현했다. `KkPageFlip`의 이전 장/전환 대기 상태를 Compose 관찰 상태로 바꿔 즉시 끝나는 애니메이션도 이전 장을 치우도록 수정했다. v14에서 군 정보·테마·설정·홈 복귀를 실제 확인하고 OS 옵션을 OFF로 복원했다. 공통 designsystem Android 컴파일도 통과. 사진/그림이 들어간 데이터로 PDF 두 종류를 다시 생성해 8쪽 모두 시각 검토했다.
+
+최종 추가 회귀(v16): 편지 사진 9장+그림 1장으로 합산 10장 제한·삭제 후 추가 활성화를 확인했다. 같은 줄의 큰 그림 때문에 사진이 세로로 늘어나고 겹치는 문제를 각 글리프의 4:3 영역으로 수정했다. 자리 확보용 투명 문자는 접근성 값에 노출하지 않는다. 최종판에서 사진 8장+그림 1장 사이에 본문을 입력하고 전송해 상대 기기의 8개 사진·본문·그림 표시를 확인했다. 종료 상태에서 기존 편지 딥링크로 바로 열기도 통과했다. 기존 66개에 편지 첨부 JVM 5개를 더해 **자동 테스트 71개 통과**. v16 앱/NSE/위젯 빌드와 최종 편지 Android 컴파일 통과. 대표 실제 화면은 [QA 증거](qa/ios-2026-10-25/README.md)에 포함했다.
+
+
+## RevenueCat/Firebase 콘솔 연동 후속 검증 (2026-10-25)
+
+사용자가 콘솔 설정과 서버 키 발급·Secret Manager 저장을 명시적으로 승인했다. RevenueCat의 기존 Test Store 프로젝트에 `memory_book`/`backup_plus` 비소모성 상품, 같은 ID의 entitlement와 offering(각 패키지 하나)을 생성했다. 기존 `default` offering과 `asm_pro`는 변경하지 않았다. Test Store 신규 상품은 테스트 전용 기본 가격 $0.99이며, 실제 판매용 5,900원/3,300원 설정 완료를 의미하지 않는다.
+
+`kkotsin-dev` 서울 리전에 `revenuecatWebhook`만 배포하고 Production/Sandbox 모두 수신하도록 연결했다. 조회 오류에도 200을 보내던 문제를 수정해 누락 키·HTTP 오류·잘못된 응답·저장 실패에는 503으로 재전송을 요청한다. 현재 RevenueCat의 TEST 이벤트는 익명이 아닌 임의 UUID를 포함하므로 명시적으로 제외한다. Functions 테스트 23개 통과(기존 21+신규 2).
+
+별도 승인한 추억책 Test Store 구매 1회가 성공했고 NON_RENEWING_PURCHASE 이벤트 응답 200, 해당 QA UID의 Firestore `lifetime=true`, `book=true`, `backupPlus=false`를 확인했다. 구매자와 비구매 상대 기기 모두 추가 구매 없이 공유 시트에 PDF 두 문서를 생성했다. [구매자](qa/ios-2026-10-25/book-purchase-pdf.png), [상대](qa/ios-2026-10-25/book-shared-pdf.png).
+
+74개 경로 최신 판정은 통과 46·부분 16·미검증 10·차단 2·실패 0이며 전체 경로 통과는 아니다. 기존 71개와 추가 2개로 누적 자동 테스트는 73개다. 앱 바이너리는 기존 검증된 v16이며 서버만 추가 수정했다. 실제 스토어/App Store 복원, 실제 OAuth/APNs/NSE, 기기 인증, iOS BackupManager와 일부 위젯은 여전히 남아 있다.
+
+Play Console 꽃신 앱을 생성했지만 상품 등록에는 판매자 계정 설정이 필요하다. Apple 개발자 계정은 사용자가 없다고 확인했다. SMTP는 사용자 요청으로 보류했다. 안내된 순서를 유지하기 위해 이메일 단계 이후의 `backupRetention`도 아직 배포하지 않았다. 비밀 값·설정 파일은 저장소에 넣지 않는다.
+
+
+## 코드·로컬 QA 후속 완료 (2026-10-25 저녁)
+
+앞 절의 백업 미구현·예약 미검증·온보딩 회귀·오프라인 재진입 한계는 이 절의 결과로 갱신한다. 실제 계정/기기가 필요한 경로와 미실행 UI는 계속 구별한다. 이번 변경은 로컬 검증 완료 상태이며 게시 전 검토 대상이다.
+
+- iOS BackupManager/Storage/RoomBackupSource/RestoreApplier 연결. DB와 첨부 참조 동일 시점 스냅샷, schema6, 증분 총 용량, 실패 시 DB 트랜잭션 롤백·live Room 관찰 유지. Android 백업 schema도 실제 버전6으로 정정.
+- 계정별 iCloud 동기화 열쇠 구현(가짜 계정 비활성), 백업/복원/키 재발급 직렬화, 원격 keywrap 저장 성공 뒤 로컬 캐시, 복원 성공 뒤 백업 키 변경. 백그라운드25초·30분 간격/네트워크 정책 자동 백업.
+- 송신/ACK·리스너·복원 교체 승인 재시도, 30초 타임아웃 후 Firestore 재연결, 활성 중1분 보조 동기화. 승인 기록은 원격 승인 성공 후 처리한다.
+- 백업 Switch/Selected 접근성, 확인하지 않은 iCloud 완료 안내 제거, 계정 변경 후 RevenueCat 소유 상태 재조회.
+- A 앱 재설치 복원:7편지·26첨부, 26/26 SHA-256 동일. B:8편지·3그림·25첨부, 25/25 동일, 상대 앱 재진입 없이 자동 승인·key epoch3·이후 송수신. QA 계정 UUID만 유지했고 DB/첨부/설정을 수동 복사하지 않았다. 동일 기기에 남은 Keychain을 사용한 것으로 실제 iCloud 회수 증거는 아니다.
+- Firestore38.6초 정지 후 foreground 재진입 없이1.0초에 상대 수신·8.1초 ACK·동일 ID1건. 이전 v3/v5의 자동 복구 실패를 수정하고 v7에서 통과했다.
+- 신규 C/D 두 시뮬레이터의 필수 약관→역할/테마/군 정보→초대→SAS544520→홈→보고싶어 수신. 설정 재진입 없이 완료. 휴가 사용 건 개별 삭제 및 양쪽 반영도 확인했다.
+- 21:00 KST 예약 편지:공개 전 숨김→OS 알림 센터 표시→본문 공개 확인. 이 알림 탭 직후 목적지 이동은 확인하지 못했다.
+
+전체 Kotlin jvmTest·iosSimulatorArm64Test170회/고유125개, Functions23개, Swift3개 = 중복 제외151개 통과. v7 앱/NSE/위젯·검사 타깃 빌드와 최종 Android 앱 컴파일 통과. UI 탐색 명령은 자동 assertion 수에 포함하지 않는다. 대표 [추가 QA 화면](qa/ios-2026-10-25-local/README.md).
+
+74개 경로는 통과50·부분15·미검증9·실패/차단0. 실제 OAuth·스토어 구매·APNs/NSE·다른 iPhone의 iCloud 키 회수·기기 인증, 복원 코드/건너뛰기 UI, 일부 위젯/광고 계측/VoiceOver·실제 시각 알림은 남았다. 구버전 백업 파일의 iOS UI 복원도 별도다. 자동 백업의 실제 iOS 실행/셀룰러 조건은 미검증이며 1분 보조 동기화는 서버 읽기를 늘릴 수 있다.
+
+콘솔 후속: Play memory_book5900원/backup_plus3300원 국내 전용 설정·RevenueCat 비소모성 매핑·전용 서비스 계정·RTDN 수신·인증3개 검사 완료. 사용자 승인으로 Android1.0(1) 내부 테스트 게시, 테스터0명. 실제 Android 런타임/구매는 미검증. Apple 계정과 SMTP는 미준비이며 backupRetention은 계속 미배포. 웹훅→메일 실제 수신→보관 함수 순서를 유지한다.
+
+
+## 자체 관리 SMTP 메일 발송 (2026-10-26)
+
+Firebase Extensions 종료 안내에 따라 Trigger Email 설치 지침을 Cloud Functions 2세대 `onMailCreated`로 교체했다. 서버 전용 `mail/{mailId}` 생성 시 Nodemailer로 TLS SMTP 발송하며, SMTP_PASSWORD는 Secret Manager에서 이 함수에만 연결한다. 단일 수신자와 평문 제목/본문만 전달한다.
+
+Firestore transaction lease로 동시 실행을 제어하고 성공 문서는 재발송하지 않는다. 일시적인 SMTP 장애는 최대 5회 재시도, 인증/영구 거부/잘못된 문서는 ERROR로 남긴다. 로그와 상태에는 SMTP 원문/비밀번호를 기록하지 않는다. SMTP 서버 수락 직후 Firestore 상태 저장 전에 프로세스가 멈추면 중복 수신될 수 있다. SUCCESS는 SMTP 수락이며 수신함 도착의 증거는 별도로 확인한다.
+
+백업 예고 문서 ID는 사용자·마지막 사용 시각·예고 간격으로 고정해 스케줄 재실행의 중복 큐 생성을 막았다. `BACKUP_RETENTION_ENABLED`는 기본 false이며, 웹훅·실제 메일 수신·보관 정책 검증 전에 삭제 함수를 켜지 않는다. 실제 설정 파일 두 개는 로컬에 유지하고 Git 추적에서 제외하며 `.env.example`을 제공한다.
+
+검증: Functions 단위 33개(메일 신규10), 실제 Firestore 에뮬레이터/로컬 TLS SMTP 통합5개, Firestore 규칙16개(메일 접근 차단 신규1), 총54개 통과. Node24.18/Android Studio Java25/Firebase CLI15.30에서 실행했다. CI는 운영 런타임과 같은 Node22 및 Java21로 동일 테스트를 실행하도록 추가했다. CI는 아직 실행 전이다. body-parser의 기존 높은 등급 취약점은 호환 패치1.20.9로 갱신했다.
+
+운영 확인: kkotsin-dev 서울에 Node22 onMailCreated만 배포해 ACTIVE를 확인했다. 2026-10-26 00:16 KST에 승인된 테스트 메일1통이 첫 시도에 SMTP SUCCESS로 기록됐고, Gmail 연결 도구로 지정 수신함(INBOX)의 제목·본문·시각 일치를 확인했다. 기존 이메일 확장은0개, backupRetention은 계속 미배포다. `backupRetention` 활성화는 이번 메일 구현 완료에 포함하지 않는다. 로컬 검증을 실제 Gmail 전달이나 전체 보관 정책 통과로 계산하지 않는다.
+
+
+## Android 실기기와 공통 백업 후속 검증 (2026-10-26)
+
+- Android 복원이 DB 파일 교체 후 프로세스를 종료해 `BackupManager`의 백업 키 저장에 도달하지 못하던 문제를 수정했다. iOS 복원 구현을 `core:backup/RoomRestoreApplier`로 옮겨 두 OS 모두 마이그레이션·첨부 검증·동기화 일시 중지·트랜잭션 복원·설정 적용을 공유한다. Android 백업도 `RoomBackupSource`로 통합해 알림/초안/화면 모드/자동·셀룰러 백업 설정을 함께 보관한다.
+- `google-services.json`이 있을 때 에뮬레이터 초기화를 건너뛰던 문제를 수정했다. QA의 FirebaseInitProvider를 끄고 demo 프로젝트를 명시하며, release에는 호스트를 넣지 않는다.
+- libsodium 0.9.2의 arm64 라이브러리가 4KB 정렬이라 Android 호환성 경고가 발생했다. 사용자 승인으로 최소 Android를 8(API 26)로 올리고 바인딩 0.9.5를 사용한다. QA/출시 APK의 64비트 라이브러리 각각 12개가 16KB ELF 정렬 검사, QA APK가 zipalign -P 16 검사를 통과했다.
+- Android 16 실기기(4KB)와 Android 17 에뮬레이터(16KB)에서 각각 2개 통합 테스트 통과: 실제 Room/DataStore·암호화 백업→복원→재백업, 키/사진/설정 보존과 로그인 신원 유지; demo Firebase Auth·Storage 왕복. 핵심 JVM 86개(crypto10/sync13/backup16/data39/database8) 통과. 변경이 없는 sync/database 태스크는 Gradle up-to-date 결과를 사용했다.
+- Android QA/출시 빌드, iOS 시뮬레이터 Kotlin 프레임워크 링크, 앱·NSE·위젯·검사 러너의 Xcode build-for-testing 통과. 실제 Play/App Store 결제, APNs 전달, 새 기기의 iCloud/Block Store 키 복원 통과를 의미하지 않는다.
+- Android 실기기 UI에서 로컬 가짜 로그인·필수 약관·곰신/네이비 온보딩·홈·217KB 백업 성공을 확인했다. iOS26.5에서도 최신 Xcode 원본 앱의 홈 실행을 확인했다. [대표 화면](qa/android-core-2026-10-26/README.md).
+- Apple 멤버십·App ID3개·App Group 등록/연결 완료. 사용자 승인으로 꽃신 한 앱에 제한한 Sandbox APNs 키를 Firebase 개발 인증 키에 등록했다. 프로덕션 푸시, 실제 소셜 로그인·스토어 결제는 별도이며 콘솔 등록만으로 통과 처리하지 않는다.
+- 이전 SMTP 커밋49167dc의 Functions 및 iOS PR CI는 모두 성공했다. 이번 미커밋 변경의 원격 CI 결과와 구분한다.

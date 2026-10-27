@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.Aead
 import com.sadturtleman.flowershoes.core.crypto.CryptoException
 import com.sadturtleman.flowershoes.core.crypto.OpEnvelope
@@ -58,6 +60,9 @@ class SyncClient(
     private val planner: ResendPlanner = ResendPlanner(),
 ) {
     private val myStream get() = StreamId(identity.deviceId, StreamId.Channel.APP)
+    private val widgetStream get() = StreamId(identity.deviceId, StreamId.Channel.WIDGET).wire
+
+    suspend fun reconnect() = mailbox.reconnect()
 
     suspend fun syncOnce(): SyncReport {
         Sodium.init()
@@ -67,15 +72,15 @@ class SyncClient(
 
         val received = pull(couple)
         val plan = handlePeerControl(couple, partnerDevice.id, partnerDevice.signPub)
-        val sent = push(couple, partnerDevice.id)
+        val widgetResent = handleWidgetControl(couple, partnerDevice.id, partnerDevice.signPub)
+        val sent = push(couple, partnerDevice.id, myStream.wire) + push(couple, partnerDevice.id, widgetStream)
         publishControl(couple)
-        return SyncReport(sent = sent, received = received.first, rejected = received.second, resent = plan.first, snapshot = plan.second)
+        return SyncReport(sent = sent, received = received.first, rejected = received.second, resent = plan.first + widgetResent, snapshot = plan.second)
     }
 
     // ── 보내기 ────────────────────────────────────────────────────────────
 
-    private suspend fun push(couple: CoupleEntity, partnerDevice: String): Int {
-        val stream = myStream.wire
+    private suspend fun push(couple: CoupleEntity, partnerDevice: String, stream: String): Int {
         val uploaded = db.syncDao().meta(uploadedKey(stream)) ?: 0L
         val ops = db.syncDao().opsAfter(stream, uploaded)
         ops.forEach { op ->
@@ -83,6 +88,43 @@ class SyncClient(
             db.syncDao().setMeta(MetaEntity(uploadedKey(stream), op.seq))
         }
         return ops.size
+    }
+
+    /** 위젯이 보낸 사본을 같은 stream/seq/opId로 보관한다. 오프라인 전송과 재실행도 중복되지 않는다. */
+    suspend fun importWidgetOp(coupleId: String, item: MailItem): Boolean {
+        val couple = db.coupleDao().get() ?: return false
+        if (couple.id != coupleId || item.from != identity.deviceId || item.kind != "missyou") return false
+        val signer = vault.deviceKeys() ?: return false
+        val header = OpHeader.fromBytes(item.header)
+        if (header.stream != widgetStream || header.seq < 1 || header.opId != item.opId) return false
+        val key = vault.coupleKey(header.keyEpoch) ?: return false
+        val plain = Plain.decode(OpEnvelope.open(OpEnvelope(header, item.ciphertext, item.signature), signer.signPub) { if (it == key.epoch) key else null })
+        val payload = OpCodec.decode(plain.payload) as? OpPayload.MissYouPut ?: return false
+        if (payload.missYou.authorId != identity.userId || payload.missYou.id != item.opId) return false
+        db.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                val result = inbox.apply(ReceivedOp(StreamId.parse(header.stream), header.seq, header.opId, plain.lamport, plain.payload))
+                if (result == com.sadturtleman.flowershoes.core.data.ApplyResult.APPLIED) {
+                    db.syncDao().appendOp(SyncOpEntity(header.stream, header.seq, header.opId, "missyou", "missyou", payload.missYou.id, plain.payload, plain.lamport, header.keyEpoch, clock.now().toEpochMilliseconds()))
+                    val next = maxOf(db.syncDao().nextSeq(header.stream) ?: 1L, header.seq + 1)
+                    db.syncDao().setNextSeq(com.sadturtleman.flowershoes.core.database.StreamCounterEntity(header.stream, next))
+                }
+            }
+        }
+        return true
+    }
+
+    /** 위젯은 별도 번호를 사용한다. 앱 스트림 스냅샷으로 덮지 않고 확인될 때까지 원본을 재전송한다. */
+    private suspend fun handleWidgetControl(couple: CoupleEntity, partnerDevice: String, signPub: ByteArray): Int {
+        val doc = mailbox.getControl(couple.id, partnerDevice) ?: return 0
+        if (!Signatures.verify(doc.payload, doc.signature, signPub)) return 0
+        val control = runCatching { json.decodeFromString(ControlPayload.serializer(), doc.payload.decodeToString()) }.getOrNull() ?: return 0
+        val cursor = control.cursors[widgetStream] ?: 0L
+        db.syncDao().deleteThrough(widgetStream, cursor)
+        val uploaded = db.syncDao().meta(uploadedKey(widgetStream)) ?: 0L
+        val pending = db.syncDao().opsAfter(widgetStream, cursor).filter { it.seq <= uploaded }
+        pending.forEach { mailbox.put(couple.id, partnerDevice, seal(couple, it, resend = true)) }
+        return pending.size
     }
 
     private suspend fun seal(couple: CoupleEntity, op: SyncOpEntity, resend: Boolean): MailItem {

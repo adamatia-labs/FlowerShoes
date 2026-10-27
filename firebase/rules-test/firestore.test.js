@@ -9,7 +9,7 @@ const KAKAO = { firebase: { sign_in_provider: 'custom' } };
 
 before(async () => {
   env = await initializeTestEnvironment({
-    projectId: 'kkotsin-dev',
+    projectId: process.env.GCLOUD_PROJECT ?? 'demo-kkotsin',
     firestore: { rules: readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8') },
   });
 });
@@ -19,6 +19,19 @@ beforeEach(async () => env.clearFirestore());
 
 const as = (uid) => env.authenticatedContext(uid, KAKAO).firestore();
 const later = () => Timestamp.fromMillis(Date.now() + 60 * 60 * 1000);
+
+test('메일 발송 요청·수신자·상태는 로그인 사용자와 비로그인 사용자 모두 접근할 수 없다', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'mail/test-mail'), { to: 'private@example.test', message: { subject: 'x', text: 'x' } });
+  });
+  for (const db of [as('jisu'), env.unauthenticatedContext().firestore()]) {
+    await assertFails(getDoc(doc(db, 'mail/test-mail')));
+    await assertFails(getDocs(collection(db, 'mail')));
+    await assertFails(setDoc(doc(db, 'mail/new-mail'), { to: 'spam@example.test' }));
+    await assertFails(setDoc(doc(db, 'mail/test-mail'), { delivery: { state: 'SUCCESS' } }, { merge: true }));
+    await assertFails(deleteDoc(doc(db, 'mail/test-mail')));
+  }
+});
 
 /** 관리자 권한으로 커플 하나를 깔아 둔다: jisu(dev-a) · minjun(dev-b) 둘 다 활성. */
 async function seedCouple() {

@@ -2,10 +2,11 @@ import UIKit
 import ComposeApp
 import GoogleMobileAds
 import UserMessagingPlatform
+import AppTrackingTransparency
 
 /// AdMob 배너(Figma 9 · 광고 지면: 캘린더 · 휴가 · 설정에 1개씩).
 ///
-/// 동의(UMP) → SDK 시작은 앱이 앞으로 나올 때 한 번. 광고를 요청할 수 없는 동안 만든 배너는
+/// 첫 광고 지면에서만 동의(UMP → ATT) → SDK 시작. 광고를 요청할 수 없는 동안 만든 배너는
 /// 빈 뷰로 두었다가 SDK 가 켜지면 그때 요청한다.
 final class AdBanners: NSObject, IosAdBanners {
     #if DEBUG
@@ -16,10 +17,14 @@ final class AdBanners: NSObject, IosAdBanners {
     #endif
 
     private var started = false
+    private var starting = false
+    private var consentRequested = false
     private var waiting: [() -> Void] = []
 
     /// 동의가 필요한 지역(EEA · 영국 등)이면 양식을 띄우고, 광고를 요청해도 될 때 SDK 를 켠다.
-    func gatherConsent() {
+    private func gatherConsent() {
+        guard !consentRequested else { return }
+        consentRequested = true
         let info = ConsentInformation.shared
         info.requestConsentInfoUpdate(with: RequestParameters()) { [weak self] error in
             guard let self else { return }
@@ -29,15 +34,26 @@ final class AdBanners: NSObject, IosAdBanners {
                 self.startIfAllowed()
             }
         }
-        // 지난 실행에서 이미 동의를 받았으면 갱신을 기다리지 않는다.
-        startIfAllowed()
     }
 
     private func startIfAllowed() {
-        guard ConsentInformation.shared.canRequestAds, !started else { return }
-        started = true
+        guard ConsentInformation.shared.canRequestAds, !started, !starting else { return }
+        starting = true
+        // UMP의 IDFA 메시지가 없더라도 첫 광고에서 OS의 선택을 기다린다.
+        if ATTrackingManager.trackingAuthorizationStatus == .notDetermined {
+            ATTrackingManager.requestTrackingAuthorization { [weak self] _ in
+                DispatchQueue.main.async { self?.startAds() }
+            }
+        } else {
+            startAds()
+        }
+    }
+
+    private func startAds() {
         MobileAds.shared.start { [weak self] _ in
             DispatchQueue.main.async {
+                self?.started = true
+                self?.starting = false
                 let pending = self?.waiting ?? []
                 self?.waiting.removeAll()
                 pending.forEach { $0() }
@@ -57,7 +73,11 @@ final class AdBanners: NSObject, IosAdBanners {
             banner.rootViewController = Self.topViewController()
             banner.load(Request())
         }
-        if started { load() } else { waiting.append(load) }
+        if started { load() } else {
+            waiting.append(load)
+            // UIView가 화면에 올라간 뒤 동의 UI를 띄운다.
+            DispatchQueue.main.async { [weak self] in self?.gatherConsent() }
+        }
         return banner
     }
 

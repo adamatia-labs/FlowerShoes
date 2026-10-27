@@ -20,8 +20,12 @@ object EmulatorFirebase {
     const val PROJECT = "demo-kkotsin"
 
     fun init(context: Context, host: String, region: String = "asia-northeast3") {
-        if (FirebaseApp.getApps(context).isNotEmpty()) return
-        FirebaseApp.initializeApp(
+        require(host.isNotBlank())
+        val existing = FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
+        check(existing == null || existing.options.projectId == PROJECT) {
+            "Local QA requires demo-kkotsin. Disable FirebaseInitProvider before initializing the emulator."
+        }
+        if (existing == null) FirebaseApp.initializeApp(
             context,
             FirebaseOptions.Builder().setProjectId(PROJECT).setApplicationId("1:000000000000:android:0000000000000000")
                 .setApiKey("demo-key").setStorageBucket("$PROJECT.appspot.com").build(),

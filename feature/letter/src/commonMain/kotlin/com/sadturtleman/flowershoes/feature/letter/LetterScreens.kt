@@ -25,6 +25,8 @@ import com.sadturtleman.flowershoes.core.designsystem.family
 import com.sadturtleman.flowershoes.core.designsystem.size
 import com.sadturtleman.flowershoes.core.designsystem.KkSheetOption
 import com.sadturtleman.flowershoes.core.model.Letter
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.editableText
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextAlign
@@ -324,6 +327,7 @@ fun LetterComposeRoute(
     val d = state.draft
     val lifetimeOn by (org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
         ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
+    val focus = LocalFocusManager.current
     var lockedPaper by remember { mutableStateOf<Paper?>(null) }
     var lockedFont by remember { mutableStateOf<String?>(null) }
     val c = KkTheme.colors
@@ -334,8 +338,8 @@ fun LetterComposeRoute(
     var photoSource by remember { mutableStateOf(false) }
     val pickPhoto = photoPicker?.invoke { viewModel.onIntent(LetterIntent.AddPhoto(it)) }
     Box(Modifier.fillMaxSize().background(c.bgCanvas)) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
-            KkTopBar("편지 쓰기", onLeading = onClose, leading = KkTopBarLeading.Close, trailingText = "임시저장", onTrailing = { viewModel.onIntent(LetterIntent.SaveDraft) })
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = KkSpacing.xl)) {
+            KkTopBar("편지 쓰기", onLeading = onClose, leading = KkTopBarLeading.Close, trailingText = "임시저장", onTrailing = { focus.clearFocus(); viewModel.onIntent(LetterIntent.SaveDraft) })
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = KkSpacing.sm),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
@@ -348,7 +352,8 @@ fun LetterComposeRoute(
                 PaperCard(d, paper, state.draftThumbs, state.draftPhotos, viewModel::onIntent)
                 ComposeTools(
                     d, canPhoto = pickPhoto != null,
-                    onDrawing = onAddDrawing, onPhoto = { photoSource = true }, onSticker = { stickers = true }, onFont = { fonts = true },
+                    onDrawing = { focus.clearFocus(); onAddDrawing() }, onPhoto = { focus.clearFocus(); photoSource = true },
+                    onSticker = { focus.clearFocus(); stickers = true }, onFont = { focus.clearFocus(); fonts = true },
                 )
                 d.revealAt?.let { at ->
                     Text(
@@ -358,7 +363,7 @@ fun LetterComposeRoute(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = KkSpacing.sm), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                KkSecondaryButton("예약 보내기", onClick = { scheduling = true }, modifier = Modifier.weight(1f), enabled = d.canSend || scheduleFirst)
+                KkSecondaryButton("예약 보내기", onClick = { focus.clearFocus(); scheduling = true }, modifier = Modifier.weight(1f), enabled = d.canSend || scheduleFirst)
                 KkPrimaryButton("바로 보내기", onClick = {
                     viewModel.onIntent(LetterIntent.Schedule(null))
                     viewModel.onIntent(LetterIntent.Send)
@@ -414,7 +419,7 @@ fun LetterComposeRoute(
                             .clickable(role = Role.RadioButton) {
                                 if (locked) { lockedFont = f.label; fonts = false } else { choose(f, curSize); fonts = false }
                             }
-                            .semantics { selected = on; contentDescription = f.label + if (f.lifetime) ", 꽃신 평생" else "" },
+                            .semantics { selected = on; contentDescription = f.label + (if (f.lifetime) ", 꽃신 평생" else "") + (if (locked) ", 잠김" else "") },
                         horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("보고 싶은 밤", style = KkTheme.type.bodyL.copy(fontFamily = f.family(), fontSize = f.size(17f)), color = c.textPrimary)
@@ -469,7 +474,7 @@ private fun PaperPicker(selected: Paper, lifetimeOn: Boolean, onLocked: (Paper) 
             val locked = p.lifetime && !lifetimeOn
             Column(
                 Modifier.width(60.dp).clickable(role = Role.RadioButton) { if (locked) onLocked(p) else onPick(p) }
-                    .semantics { this.selected = on; contentDescription = "편지지 ${p.label}" + if (p.lifetime) ", 꽃신 평생" else "" },
+                    .semantics { this.selected = on; contentDescription = "편지지 ${p.label}" + (if (p.lifetime) ", 꽃신 평생" else "") + (if (locked) ", 잠김" else "") },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs),
             ) {
@@ -562,7 +567,11 @@ private fun PaperCard(
                 cursorBrush = SolidColor(c.bgBrand),
                 visualTransformation = objectStyle,
                 onTextLayout = { layout = it },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 256.dp).semantics { contentDescription = "편지 내용" },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 256.dp).semantics {
+                    contentDescription = "편지 내용"
+                    // 자리 확보용 투명 글리프를 읽지 않도록 원문을 접근성 값으로 제공한다.
+                    editableText = AnnotatedString(field.text)
+                },
                 decorationBox = { inner ->
                     Box { if (d.text.isEmpty()) Text("마음을 적어 보세요", style = body.copy(color = hint)); inner() }
                 },
@@ -577,12 +586,12 @@ private fun PaperCard(
                     val index = ++k
                     val key = d.objects.getOrNull(index) ?: return@forEachIndexed
                     val drawing = key.startsWith("d:")
-                    // 자리 글자가 실제로 차지한 칸: 앞뒤 커서 위치(자간 포함) × 그 줄 높이.
+                    // 사진과 큰 그림이 같은 줄에 있어도 사진을 줄 전체 높이로 늘리지 않는다.
+                    // 공백의 커서 좌표는 줄 끝/서로 다른 크기 span에서 접힐 수 있어 글리프 영역을 쓴다.
                     val line = l.getLineForOffset(i)
-                    val left = l.getHorizontalPosition(i, usePrimaryDirection = true)
-                    val right = if (i + 1 < d.text.length && l.getLineForOffset(i + 1) == line) l.getBoundingBox(i + 1).left
-                    else l.getLineRight(line)
-                    val r = androidx.compose.ui.geometry.Rect(left, l.getLineTop(line), right, l.getLineBottom(line))
+                    val glyph = l.getBoundingBox(i)
+                    val height = (glyph.width * 0.75f).coerceAtMost(l.getLineBottom(line) - l.getLineTop(line))
+                    val r = androidx.compose.ui.geometry.Rect(glyph.left, l.getLineBottom(line) - height, glyph.right, l.getLineBottom(line))
                     val pad = with(density) { (if (drawing) 4.dp else 2.dp).toPx() }
                     Box(
                         Modifier
@@ -625,7 +634,7 @@ private fun InlineObject(key: String, thumbs: Map<String, DrawingDocument>, phot
 }
 
 /**
- * 글 속 자리 글자의 모양: 그림은 큰 칸, 사진은 작은 칸. 투명 전각 공백을 옆으로 늘려 자리만 잡는다 —
+ * 글 속 자리 글자의 모양: 그림은 큰 칸, 사진은 작은 칸. 투명 전각 글리프를 옆으로 늘려 자리만 잡는다 —
  * 글자 수 · 커서 위치는 그대로(1:1).
  */
 private fun inlineObjectTransformation(objects: List<String>) = VisualTransformation { text ->
@@ -637,7 +646,7 @@ private fun inlineObjectTransformation(objects: List<String>) = VisualTransforma
             b.withStyle(
                 if (drawing) SpanStyle(color = Color.Transparent, fontSize = 112.sp, textGeometricTransform = TextGeometricTransform(scaleX = DRAWING_WIDEN))
                 else SpanStyle(color = Color.Transparent, fontSize = 26.sp, textGeometricTransform = TextGeometricTransform(scaleX = PHOTO_WIDEN)),
-            ) { append(IDEOGRAPHIC_SPACE) }
+            ) { append(OBJECT_GLYPH) }
         } else {
             b.append(ch)
         }
@@ -645,7 +654,8 @@ private fun inlineObjectTransformation(objects: List<String>) = VisualTransforma
     TransformedText(b.toAnnotatedString(), OffsetMapping.Identity)
 }
 
-private const val IDEOGRAPHIC_SPACE = '　'
+// 전각 공백은 iOS 텍스트 레이아웃에서 줄 끝 너비가 접힌다. 비공백 글리프로 한 칸을 보장한다.
+private const val OBJECT_GLYPH = 'Ｍ'
 /** 자리 글자를 옆으로 늘려 칸 비율을 맞춘다(그림 ≈ 4:3, 사진 ≈ 4:3). */
 private const val DRAWING_WIDEN = 1.75f
 private const val PHOTO_WIDEN = 1.5f

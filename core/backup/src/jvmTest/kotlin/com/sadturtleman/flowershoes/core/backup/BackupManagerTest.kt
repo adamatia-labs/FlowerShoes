@@ -11,6 +11,8 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 /** 백업 → 새 폰에서 복원(동기화된 키 / 복구 코드 / 틀린 코드). 저장소는 파일 시스템. */
@@ -72,5 +74,33 @@ class BackupManagerTest {
     @Test
     fun `백업이 없으면 그렇다고 알려 준다`() = runTest {
         assertEquals(RestoreResult.NoBackup, BackupManager(storage, Source(), InMemoryKeyVault(), null, Capture(), 1).restore("nobody"))
+    }
+
+    @Test
+    fun `keywrap upload failure does not cache an unrecoverable key and retry succeeds`() = runTest {
+        var fail = true
+        val flaky = object : BackupStorage by storage {
+            override suspend fun put(path: String, bytes: ByteArray) {
+                if (path.endsWith("/keywrap") && fail) { fail = false; throw IllegalStateException("offline") }
+                storage.put(path, bytes)
+            }
+        }
+        val vault = InMemoryKeyVault()
+        val manager = BackupManager(flaky, Source(), vault, null, Capture(), 1)
+        assertFailsWith<IllegalStateException> { manager.backupNow("u1") }
+        assertNull(vault.backupSecrets())
+        manager.backupNow("u1")
+        val code = assertNotNull(manager.recoveryCode())
+        assertIs<RestoreResult.Restored>(BackupManager(storage, Source(), InMemoryKeyVault(), null, Capture(), 1).restore("u1", code))
+    }
+
+    @Test
+    fun `failed restore does not replace local backup secrets`() = runTest {
+        val source = BackupManager(storage, Source(), InMemoryKeyVault(), null, Capture(), 1)
+        source.backupNow("u1")
+        val vault = InMemoryKeyVault()
+        val target = BackupManager(storage, Source(), vault, null, RestoreApplier { error("disk full") }, 1)
+        assertFailsWith<IllegalStateException> { target.restore("u1", source.recoveryCode()) }
+        assertNull(vault.backupSecrets())
     }
 }

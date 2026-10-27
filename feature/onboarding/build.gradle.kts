@@ -23,6 +23,7 @@ kotlin {
     }
 
     sourceSets {
+        commonTest.dependencies { implementation(kotlin("test")) }
         commonMain.dependencies {
             // feature 는 core 만 본다. 다른 feature 로의 이동은 :composeApp 이 콜백으로 잇는다.
             implementation(project(":core:designsystem"))

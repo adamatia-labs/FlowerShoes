@@ -22,6 +22,7 @@ import com.sadturtleman.flowershoes.jank.presentation.toJankFrame
 import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
 import com.sadturtleman.flowershoes.tti.presentation.LocalTtiRecorder
 import org.koin.android.ext.android.inject
+import org.koin.android.ext.android.getKoin
 
 /** FragmentActivity: 기기 인증(BiometricPrompt)이 필요로 한다. ComponentActivity 의 하위 클래스다. */
 class MainActivity : FragmentActivity() {
@@ -31,8 +32,6 @@ class MainActivity : FragmentActivity() {
 
     /** 프레임 드랍 집계기. 화면 이름과 스크롤 구간을 컴포지션이 알려 주므로 트리에도 꽂는다. */
     private val jankReporter: JankReporter by inject()
-
-    private val lifetime: com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore by inject()
 
     private val perks: com.sadturtleman.flowershoes.core.data.SharedPerks by inject()
 
@@ -78,9 +77,9 @@ class MainActivity : FragmentActivity() {
         intent?.data?.let { DeepLinks.open(it.toString()) }
 
         // 광고: 동의(필요한 지역만) 뒤 AdMob 을 켠다. 지면은 캘린더 · 휴가 · 설정의 배너 1개씩(Figma 9).
-        AdConsent.gather(this)
+        if (!(BuildConfig.DEBUG && BuildConfig.FIREBASE_EMULATOR_HOST.isNotBlank())) AdConsent.gather(this)
         // 꽃신 평생 결제 시트는 이 화면 위에 뜬다.
-        lifetime.activity = java.lang.ref.WeakReference(this)
+        getKoin().getOrNull<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>()?.activity = java.lang.ref.WeakReference(this)
 
         enableEdgeToEdge()
         setContent {
@@ -90,7 +89,7 @@ class MainActivity : FragmentActivity() {
                 LocalTtiRecorder provides ttiRecorder,
                 LocalJankReporter provides jankReporter,
                 // 꽃신 평생이면 광고를 모두 숨긴다(Figma 9).
-                LocalAdBanner provides if (lifetimeOwned) null else { slot, modifier -> AdmobBanner(slot, modifier) },
+                LocalAdBanner provides if (lifetimeOwned || (BuildConfig.DEBUG && BuildConfig.FIREBASE_EMULATOR_HOST.isNotBlank())) null else { slot, modifier -> AdmobBanner(slot, modifier) },
             ) {
                 KkotsinApp()
             }

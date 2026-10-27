@@ -44,6 +44,8 @@ import com.sadturtleman.flowershoes.core.data.sync.RelinkTransport
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.merge
 import com.sadturtleman.flowershoes.core.drawing.DrawingRasterizer
 import com.sadturtleman.flowershoes.core.media.DrawingPng
 import okio.Path
@@ -128,8 +130,11 @@ fun kkotsinModules(
                 }
                 val identity = get<com.sadturtleman.flowershoes.core.data.Identity>()
                 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-                val doorbell = get<AppDatabase>().coupleDao().observe().flatMapLatest { c ->
-                    if (c == null) kotlinx.coroutines.flow.emptyFlow() else cloud.mailbox.rings(c.id, identity.deviceId)
+                val doorbell = get<AppDatabase>().coupleDao().observe().distinctUntilChangedBy { it?.id }.flatMapLatest { c ->
+                    if (c == null) kotlinx.coroutines.flow.emptyFlow() else merge(
+                        cloud.mailbox.rings(c.id, identity.deviceId),
+                        cloud.rotation?.changes(c.id) ?: kotlinx.coroutines.flow.emptyFlow(),
+                    )
                 }
                 val db = get<AppDatabase>()
                 SyncScheduler(get(), client, approver, afterRestore, doorbell, partnerGone = {

@@ -8,6 +8,8 @@ import kotlin.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okio.FileSystem
 import okio.Path
 
@@ -69,38 +71,45 @@ class BackupManager(
     private val appSchemaVersion: Int,
     private val clock: Clock = Clock.System,
 ) {
+    private val operations = Mutex()
     private val _lastBackupAt = MutableStateFlow<Long?>(null)
     val lastBackupAt: StateFlow<Long?> = _lastBackupAt.asStateFlow()
 
     /** 지금 쓰는 BK. 없으면 만들고, 복구 코드 keywrap 을 서버에 · BK 를 플랫폼 동기화에 둔다. */
-    suspend fun ensureKey(uid: String): BackupKey {
+    suspend fun ensureKey(uid: String): BackupKey = operations.withLock { ensureKeyInternal(uid) }
+
+    private suspend fun ensureKeyInternal(uid: String): BackupKey {
         vault.backupSecrets()?.let { return BackupKey(it.first) }
         val key = BackupKey.generate()
         val code = RecoveryCode.generate()
-        vault.putBackupSecrets(key.export(), code)
         BackupEngine.storeKeyWrap(storage, uid, code, key)
+        vault.putBackupSecrets(key.export(), code)
         runCatching { keySync?.store(key.export()) }
         return key
     }
 
     suspend fun recoveryCode(): String? = vault.backupSecrets()?.second
 
+    suspend fun deleteSyncedKey() { keySync?.delete() }
+
     /**
      * 새 복구 코드(설정 › 복구 코드 › 새 코드 만들기). 같은 BK 를 새 코드로 다시 감싸 서버의 keywrap 을 바꾼다 —
      * 옛 코드로는 더 이상 열 수 없다.
      */
-    suspend fun regenerateRecoveryCode(uid: String): String {
-        val key = ensureKey(uid)
+    suspend fun regenerateRecoveryCode(uid: String): String = operations.withLock {
+        val key = ensureKeyInternal(uid)
         val code = RecoveryCode.generate()
         BackupEngine.storeKeyWrap(storage, uid, code, key)
         vault.putBackupSecrets(key.export(), code)
-        return code
+        code
     }
 
-    suspend fun backupNow(uid: String): BackupManifest {
-        val manifest = BackupEngine(ensureKey(uid), storage, clock).backup(uid, source)
+    suspend fun backupNow(uid: String): BackupManifest = operations.withLock {
+        val key = ensureKeyInternal(uid)
+        runCatching { keySync?.store(key.export()) }
+        val manifest = BackupEngine(key, storage, clock).backup(uid, source)
         _lastBackupAt.value = manifest.createdAtMs
-        return manifest
+        manifest
     }
 
     suspend fun hasBackup(uid: String): Boolean = storage.list("backups/$uid/manifests/").isNotEmpty()
@@ -123,6 +132,12 @@ class BackupManager(
         uid: String,
         recoveryCode: String? = null,
         onProgress: (fraction: Float, stage: RestoreStage) -> Unit = { _, _ -> },
+    ): RestoreResult = operations.withLock { restoreInternal(uid, recoveryCode, onProgress) }
+
+    private suspend fun restoreInternal(
+        uid: String,
+        recoveryCode: String?,
+        onProgress: (Float, RestoreStage) -> Unit,
     ): RestoreResult {
         if (!hasBackup(uid)) return RestoreResult.NoBackup
         val key = when {
@@ -141,8 +156,10 @@ class BackupManager(
         } ?: return RestoreResult.NeedsRecoveryCode // 이 키로 풀리는 manifest 가 없다
         // 복원한 기기도 같은 BK 를 계속 쓴다(새 코드로 바꾸려면 설정에서 다시 만든다).
         val code = recoveryCode ?: vault.backupSecrets()?.second ?: RecoveryCode.generate().also { BackupEngine.storeKeyWrap(storage, uid, it, key) }
-        vault.putBackupSecrets(key.export(), code)
         applier.apply(restored)
+        vault.putBackupSecrets(key.export(), code)
+        runCatching { keySync?.store(key.export()) }
+        _lastBackupAt.value = restored.manifest.createdAtMs
         return RestoreResult.Restored(restored.manifest)
     }
 }

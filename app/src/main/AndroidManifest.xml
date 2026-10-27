@@ -16,6 +16,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.FlowerShoes">
+        <!-- 로컬 QA는 Application에서 demo 프로젝트를 초기화한다. 운영 설정 자동 초기화를 먼저 막는다. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            android:enabled="${firebaseAutoInitEnabled}"
+            tools:replace="android:enabled" />
+        <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="${firebaseAutoInitEnabled}" />
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="${firebaseAutoInitEnabled}" />
         <!-- AdMob 앱 ID(꽃신). -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
