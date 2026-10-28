@@ -6,6 +6,7 @@
 
 Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KMP · Firebase(GitLive) 로 구성됩니다.
 설계와 코드가 만나는 지점, 진행 상황은 [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) 에 있습니다.
+목표로 하는 제품 결정은 [docs/product/planning.md](docs/product/planning.md), 화면 · 디자인 기준은 [docs/product/design.md](docs/product/design.md) 에 있습니다.
 
 ## 모듈
 

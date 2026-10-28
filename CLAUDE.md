@@ -1,3 +1,8 @@
+## Product docs
+
+- `docs/product/planning.md`: 꽃신 기획서 — the target product decisions. Where the code disagrees, the doc is the goal.
+- `docs/product/design.md`: Figma pointers (final screens per section), 테마 v2 tokens, and screen/copy rules.
+
 ## Agent skills
 
 ### Issue tracker
