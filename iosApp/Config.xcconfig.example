@@ -4,3 +4,5 @@ GOOGLE_CLIENT_ID =
 GOOGLE_REVERSED_CLIENT_ID =
 // 꽃신 평생 결제(RevenueCat 공개 SDK 키 appl_...). 비우면 테스트 스토어 키.
 REVENUECAT_API_KEY =
+// 피처 플래그 환경(DEV · QA · PROD). 비우면 PROD.
+APP_ENV =

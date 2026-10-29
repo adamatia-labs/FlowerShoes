@@ -47,6 +47,9 @@ struct KkotsinApp: App {
             // 앞으로 나오면 NSE 대기열 합치기 · 동기화 · 위젯 연결 정보 갱신
             if now == .active {
                 MainViewControllerKt.onForeground()
+            } else if now == .background {
+                // 종료 직전의 마지막 신호 — 남은 이벤트를 보내고 기록기를 접는다.
+                MainViewControllerKt.onBackground()
             }
         }
     }

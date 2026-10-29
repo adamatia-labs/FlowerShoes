@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.sadturtleman.flowershoes.core.data.sync.PendingInvite
+import com.sadturtleman.flowershoes.core.data.sync.PendingInviteStore
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlin.uuid.Uuid
@@ -127,6 +129,16 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         totals
     }
 
+    /** 보낸 초대 링크(토큰 · 만료). 앱을 다시 켜도 수락을 이어 받는다 — [com.sadturtleman.flowershoes.core.data.sync.PairingSession]. */
+    val pendingInvites: PendingInviteStore = object : PendingInviteStore {
+        override suspend fun load(): PendingInvite? =
+            store.data.first()[PENDING_INVITE]?.split('|')?.takeIf { it.size == 2 }?.let { (t, at) -> at.toLongOrNull()?.let { PendingInvite(t, it) } }
+
+        override suspend fun save(invite: PendingInvite?) {
+            store.edit { if (invite == null) it.remove(PENDING_INVITE) else it[PENDING_INVITE] = "${invite.token}|${invite.expireAtMs}" }
+        }
+    }
+
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
     suspend fun reset() = store.edit { it.clear() }
 
@@ -147,6 +159,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val NOTIFY_PREFS = stringPreferencesKey("notify_prefs")
         val DISPLAY_MODE = stringPreferencesKey("display_mode")
         val WIDGET_FRAME = stringPreferencesKey("widget_frame")
+        val PENDING_INVITE = stringPreferencesKey("pending_invite")
     }
 }
 

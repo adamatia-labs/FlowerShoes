@@ -10,7 +10,7 @@ import com.sadturtleman.flowershoes.core.data.StatusRepository
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.military.LeavePool
-import com.sadturtleman.flowershoes.core.military.koreanName
+import com.sadturtleman.flowershoes.core.military.expectedName
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.LetterBlock
@@ -137,7 +137,7 @@ class HomeViewModel(
             val left = it.daysLeft(today)
             DdayCard(
                 days = when { left > 0 -> "D-$left"; left == 0 -> "D-DAY"; else -> "전역 +${-left}" },
-                rank = listOfNotNull(it.rankAt(today)?.rank?.koreanName, branch?.koreanName).joinToString(" · "),
+                rank = listOfNotNull(it.rankAt(today)?.rank?.expectedName, branch?.koreanName).joinToString(" · "),
                 percent = "복무 ${(it.progress(today).coerceIn(0.0, 1.0) * 1000).toInt() / 10.0}%",
                 date = "${it.dischargeDate.dotted()} 전역",
                 progress = it.progress(today).toFloat(),
@@ -148,7 +148,7 @@ class HomeViewModel(
         val soldier = t?.let {
             val next = it.nextRank(today)
             SoldierStats(
-                nextRank = next?.let { n -> "${n.rank.koreanName} · D-${today.daysUntil(n.from)}" },
+                nextRank = next?.let { n -> "${n.rank.expectedName} · D-${today.daysUntil(n.from)}" },
                 leaveLeft = pool.takeIf { p -> p.total > 0 }?.remaining,
                 servedDay = it.servedDays(today),
             )

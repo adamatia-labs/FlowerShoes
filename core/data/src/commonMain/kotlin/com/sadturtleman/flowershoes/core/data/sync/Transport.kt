@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import com.sadturtleman.flowershoes.core.crypto.Pairing
+
 /**
  * 서버(Firestore · Storage)와 주고받는 것의 계약. 실제 구현은 Firebase 어댑터, 테스트는 메모리 구현이다.
  * 여기를 지나는 것은 전부 암호문이거나 공개해도 되는 값(공개키 · 커밋 · kind)이다.
@@ -55,29 +57,35 @@ interface BlobStore {
     suspend fun delete(coupleId: String, blobId: String)
 }
 
-/** 연결 단계 문서. pairings/{code}/steps/{name} */
+/** 초대 문서 pairings/{token}. 링크를 아는 사람은 읽을 수 있다 — 토큰(128비트)이 곧 비밀이다. */
+class Invite(
+    val inviterUid: String,
+    val deviceId: String,
+    val keys: Pairing.PublicKeys,
+    /** 보낸 사람 표시 이름. OG 미리보기 · 받는 쪽 화면에 보인다(이름 외 개인 정보는 싣지 않는다). */
+    val name: String,
+    val expireAtMs: Long,
+)
+
+/** 커플에 등록된 기기 하나(couples/{c}/devices/{d}). 연결이 끝나면 양쪽이 여기서 상대 공개키를 읽는다. */
+class LinkedDevice(val uid: String, val deviceId: String, val keys: Pairing.PublicKeys)
+
+/**
+ * 초대 링크 연결. pairings/{token} (보낸 쪽이 만든다) · pairings/{token}/steps/accept (받는 쪽이 한 번 쓴다).
+ * 수락 · 1회 소비 · 커플 생성은 함수(onInviteAccepted)가 한다. 웹 GET(OG 페이지)은 아무것도 바꾸지 않는다.
+ */
 interface PairingTransport {
-    suspend fun createInvite(code: String, inviterUid: String)
+    /** 같은 사람의 이전 초대는 서버(onInviteCreated)가 지운다. */
+    suspend fun createInvite(token: String, invite: Invite)
 
-    /** pairings/{code}.uid — 초대받은 쪽이 상대 uid 를 안다. */
-    suspend fun inviterUid(code: String): String?
+    /** 없거나 이미 쓰였으면 null. 만료 여부는 [Invite.expireAtMs] 로 부른 쪽이 본다. */
+    suspend fun invite(token: String): Invite?
 
-    suspend fun putStep(code: String, name: String, fields: Map<String, String>)
+    suspend fun accept(token: String, uid: String, deviceId: String, keys: Pairing.PublicKeys)
 
-    /** 단계가 올라올 때까지 기다리지 않고 지금 값만. 없으면 null. */
-    suspend fun getStep(code: String, name: String): Map<String, String>?
+    /** 이 토큰으로 서버가 만든 내 커플 id(users/{myUid}.linkedVia == token 일 때만). 아직이면 null. */
+    suspend fun linkedCoupleId(token: String, myUid: String): String?
 
-    /** 양쪽 확인이 끝나 서버(함수)가 만든 커플 id. 아직이면 null. */
-    suspend fun linkedCoupleId(code: String): String?
-
-    /** 서버가 커플을 만들 때 초대받은 기기 앞으로 둔 커플 키 봉투. */
-    suspend fun wrappedKeyFor(coupleId: String, deviceId: String): ByteArray?
-}
-
-object Steps {
-    const val JOIN = "join"
-    const val INVITER = "inviter"
-    const val REVEAL = "reveal"
-    const val CONFIRM_INVITER = "confirm-inviter"
-    const val CONFIRM_JOINER = "confirm-joiner"
+    /** 커플의 상대 기기(내 uid 가 아닌 활성 기기). */
+    suspend fun partnerDevice(coupleId: String, myUid: String): LinkedDevice?
 }

@@ -60,35 +60,38 @@ class CryptoTest {
     }
 
     @Test
-    fun `커밋한 키와 다른 키를 공개하면 들킨다`() {
+    fun `초대 토큰은 128비트 base64url 22자이고 형식이 아니면 거른다`() {
+        val token = InviteToken.random()
+        assertEquals(22, token.length)
+        assertTrue(InviteToken.isValid(token))
+        assertNotEquals(token, InviteToken.random())
+        assertFalse(InviteToken.isValid("K7M2Q9XA"))
+        assertFalse(InviteToken.isValid(token.dropLast(1) + "="))
+        assertFalse(InviteToken.isValid(token.dropLast(1) + "/"))
+    }
+
+    @Test
+    fun `두 기기는 공개키만 주고받고 같은 커플 키를 얻는다`() {
+        val inviter = DeviceKeys.generate()
         val joiner = DeviceKeys.generate()
-        val nonce = Pairing.newNonce()
-        val commitment = Pairing.commit(joiner.publicKeys(), nonce)
-        assertTrue(Pairing.verifyCommitment(commitment, joiner.publicKeys(), nonce))
-        assertFalse(Pairing.verifyCommitment(commitment, DeviceKeys.generate().publicKeys(), nonce))
+        val token = InviteToken.random()
+        val a = Pairing.coupleKey(inviter, joiner.publicKeys(), token)
+        val b = Pairing.coupleKey(joiner, inviter.publicKeys(), token)
+        assertEquals(1, a.epoch)
+        assertContentEquals(a.export(), b.export())
+        // 가운데서 한쪽 키를 바꿔치기하면 키가 갈린다 — 서로의 Op 이 열리지 않는다.
+        assertFalse(a.export().contentEquals(Pairing.coupleKey(joiner, DeviceKeys.generate().publicKeys(), token).export()))
+        // 다른 초대 링크로는 다른 키.
+        assertFalse(a.export().contentEquals(Pairing.coupleKey(inviter, joiner.publicKeys(), InviteToken.random()).export()))
     }
 
     @Test
-    fun `양쪽 SAS 는 같은 키일 때만 같다`() {
-        val inviter = DeviceKeys.generate().publicKeys()
-        val joiner = DeviceKeys.generate().publicKeys()
-        val nonce = Pairing.newNonce()
-        val a = Pairing.sas("K7M2Q9XA", inviter, joiner, nonce)
-        val b = Pairing.sas("K7M2Q9XA", inviter, joiner, nonce)
-        assertEquals(a, b)
-        assertEquals(6, a.length)
-        assertTrue(a.all { it.isDigit() })
-        // 중간에서 한쪽 키를 바꿔치기하면 SAS 가 달라진다.
-        assertNotEquals(a, Pairing.sas("K7M2Q9XA", inviter, DeviceKeys.generate().publicKeys(), nonce))
-    }
-
-    @Test
-    fun `Crockford 코드는 헷갈리는 글자를 맞춰 읽는다`() {
-        assertEquals("01123", CrockfordCode.normalize("o-il 23"))
-        assertNull(CrockfordCode.normalize("ABCU"))
-        val code = CrockfordCode.random(8)
-        assertEquals(8, code.length)
-        assertEquals(code, CrockfordCode.normalize(code.lowercase()))
-        assertEquals("ABCD-EFGH", CrockfordCode.format("ABCDEFGH"))
+    fun `공개키 한 쌍은 문자열 하나로 오가고 형식이 틀리면 null`() {
+        val keys = DeviceKeys.generate().publicKeys()
+        val back = Pairing.PublicKeys.decode(keys.encode())!!
+        assertContentEquals(keys.signPub, back.signPub)
+        assertContentEquals(keys.boxPub, back.boxPub)
+        assertNull(Pairing.PublicKeys.decode("AAAA"))
+        assertNull(Pairing.PublicKeys.decode("not base64!"))
     }
 }

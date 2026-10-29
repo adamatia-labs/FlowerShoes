@@ -51,4 +51,41 @@ class TestVectorTest {
         val plain = OpEnvelope.open(env, unb64.decode(field(json, "signPub"))) { key }
         assertTrue(plain.decodeToString().contains("missyou"))
     }
+
+    private val pairingFile = File("../../spec/test-vectors/pairing-v1.json")
+
+    @Test
+    fun `초대 링크 커플 키 테스트 벡터`() {
+        Sodium.init()
+        if (!pairingFile.exists()) {
+            val a = DeviceKeys.generate()
+            val b = DeviceKeys.generate()
+            val token = InviteToken.random()
+            val key = Pairing.coupleKey(a, Pairing.PublicKeys.of(b), token)
+            pairingFile.writeText(
+                """
+                {
+                  "description": "초대 링크 커플 키 v1. pubKey = base64(signPub‖boxPub), secret = signSec(64)‖boxSec(32), coupleKey = BLAKE2b-256(P(\"kkotsin-pair-v1\")‖P(X25519)‖P(token)‖boxPub 오름차순 P(signPub)‖P(boxPub))",
+                  "token": "$token",
+                  "pubKeyA": "${Pairing.PublicKeys.of(a).encode()}",
+                  "secretA": "${b64.encodeToString(a.exportSecret())}",
+                  "pubKeyB": "${Pairing.PublicKeys.of(b).encode()}",
+                  "secretB": "${b64.encodeToString(b.exportSecret())}",
+                  "coupleKey": "${b64.encodeToString(key.export())}"
+                }
+                """.trimIndent() + "\n",
+            )
+        }
+        val json = pairingFile.readText()
+        fun device(side: String): DeviceKeys {
+            val pub = Pairing.PublicKeys.decode(field(json, "pubKey$side"))!!
+            return DeviceKeys.import(pub.signPub, pub.boxPub, unb64.decode(field(json, "secret$side")))
+        }
+        val a = device("A")
+        val b = device("B")
+        val token = field(json, "token")
+        val expected = field(json, "coupleKey")
+        assertEquals(expected, b64.encodeToString(Pairing.coupleKey(a, Pairing.PublicKeys.of(b), token).export()))
+        assertEquals(expected, b64.encodeToString(Pairing.coupleKey(b, Pairing.PublicKeys.of(a), token).export()))
+    }
 }

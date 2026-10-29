@@ -108,6 +108,17 @@ val Rank.koreanName: String
     }
 
 /**
+ * 화면에 보이는 계급 이름. 계산은 고정 개월이라 진급 심사 · 누락을 모르므로 늘 "예정"을 붙인다(#32).
+ * 지금 계급 · 다음 진급을 보여 주는 곳은 [koreanName] 대신 이것을 쓴다.
+ */
+val Rank.expectedName: String
+    get() = "$koreanName(예정)"
+
+/** 진급 일정 이름(캘린더 막대 등). Figma "상병 진급" 태그 뒤에 "예정"을 붙인다. */
+val Rank.promotionName: String
+    get() = "$koreanName 진급 예정"
+
+/**
  * 복무 기간 전체의 정기휴가 일수(planning §8: 육군 · 해병 24 · 해군 27 · 공군 28). 저장하지 않는 계산값으로 휴가 풀([LeavePool])
  * 출처 내역 맨 위에 놓인다. 사회복무요원은 복무 기관 규정이 달라 0.
  */

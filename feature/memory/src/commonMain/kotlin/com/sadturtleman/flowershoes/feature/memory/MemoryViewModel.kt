@@ -11,7 +11,8 @@ import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.drawing.DrawingCodec
 import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
-import com.sadturtleman.flowershoes.core.military.koreanName
+import com.sadturtleman.flowershoes.core.military.expectedName
+import com.sadturtleman.flowershoes.core.military.promotionName
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
@@ -324,7 +325,7 @@ class MemoryViewModel(
                     val to = minOf(e.end.date, ym.first.plus(DatePeriod(days = ym.length - 1)))
                     if (from <= to) add(MonthBar(from.day, to.day, e.type.label() + if (e.end.date > e.start.date) " · ${e.start.date.daysUntil(e.end.date) + 1}일" else "", e.type.bar()))
                 }
-                timeline?.ranks?.drop(1)?.filter { inMonth(it.from) }?.forEach { add(MonthBar(it.from.day, it.from.day, "${it.rank.koreanName} 진급", BarKind.RANK)) }
+                timeline?.ranks?.drop(1)?.filter { inMonth(it.from) }?.forEach { add(MonthBar(it.from.day, it.from.day, it.rank.promotionName, BarKind.RANK)) }
             }
             val meets = pastMeets.filter { inMonth(it.start.date) }.map { e -> meetCard(e, e.id == firstVisit, my, partner) }
             MonthDetail(
@@ -365,7 +366,7 @@ class MemoryViewModel(
             milestones = buildList {
                 timeline?.let { t ->
                     add(t.enlistDate to "입대")
-                    t.ranks.drop(1).forEach { add(it.from to it.rank.koreanName) }
+                    t.ranks.drop(1).forEach { add(it.from to it.rank.expectedName) }
                     add(t.dischargeDate to "전역")
                 }
             },

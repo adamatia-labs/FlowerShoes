@@ -16,11 +16,9 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 | `:composeApp` | KMP | 공통 셸(`App.kt`) · 탭과 덮어 띄우는 화면 상태 · Koin 모듈(`AppModules.kt`) · 딥링크 · iOS 진입점(`MainViewController`) |
 | `:feature:*` | KMP · Compose | 온보딩 · 홈 · 캘린더 · 편지 · 그림 · 추억 · 연결 · 설정 화면과 ViewModel |
 | `:core:*` | KMP | 도메인 로직 · 저장 · 동기화 · 암호화 · 디자인 시스템 (아래 표) |
-| `:common:*` | Android · JVM | DataStore 래퍼 · 디스패처 한정자 · 기기 정보 · 공통 모델 |
+| `:common:*` | Android · KMP | DataStore 래퍼 · 디스패처 한정자 · 기기 정보 · 공통 모델 |
 | `:tti:*` | 계측 | 화면 진입 시간(TTI). Logcat `TTI:` |
 | `:jank:*` | 계측 | 프레임 드랍. Logcat `JANK` |
-| `:logging:*` | 계측 | 비즈니스 이벤트(`BizEvent`). Logcat `BIZLOG:` |
-| `:featureflag:*` | 설정 | 환경별 피처 플래그 · AB 테스트(`FlagKey`) |
 | `iosApp/` | iOS | XcodeGen 프로젝트 · 앱 진입점 · 알림 확장(NSE) · 위젯 |
 | `firebase/` | 서버 | Firestore 보안 규칙 · Cloud Functions(TypeScript) |
 
@@ -31,7 +29,7 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 | `model` | 도메인 모델 |
 | `military` | 복무 규칙 표 · 전역일 · 진급일 · 호봉 · D-day |
 | `sync` | 스트림 · 커서 · 재전송/floor/스냅샷 판단 · LWW |
-| `crypto` | 기기 키 · 커플 키 · Op 봉투 · SAS · 기기 교체 MAC |
+| `crypto` | 기기 키 · 커플 키 · Op 봉투 · 초대 토큰 · 첫 연결 키 도출 · 기기 교체 MAC |
 | `database` | Room KMP 테이블 · DAO · 플랫폼별 빌더 |
 | `data` | Repository · 쓰기+SyncOp 트랜잭션 · 동기화 클라이언트 · 연결 · 기기 교체 |
 | `drawing-engine` · `drawing-ui` | 그림 문서(TLV) · 간소화 · 리플레이 · 렌더러 |
@@ -40,6 +38,8 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 | `designsystem` | Figma 토큰 4테마 × 라이트/다크 · 컴포넌트 |
 | `auth` · `firebase` | 로그인 계약 · Firestore 전송 어댑터 · 푸시 토큰 |
 | `notification` · `widget-bridge` | 알림 계획 · 위젯 스냅샷 |
+| `logging` | 비즈니스 이벤트(`BizEvent`) → GA4(GitLive Analytics). 디버그는 Logcat · Xcode 콘솔 `BIZLOG:` |
+| `featureflag` | 환경별 피처 플래그 · AB 테스트(`FlagKey`) ← Firebase Remote Config(GitLive) |
 
 ### 의존 방향
 

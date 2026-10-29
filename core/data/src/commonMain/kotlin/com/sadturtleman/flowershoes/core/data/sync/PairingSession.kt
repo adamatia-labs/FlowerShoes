@@ -1,8 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
-import com.sadturtleman.flowershoes.core.crypto.CoupleKey
-import com.sadturtleman.flowershoes.core.crypto.CrockfordCode
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
+import com.sadturtleman.flowershoes.core.crypto.InviteToken
 import com.sadturtleman.flowershoes.core.crypto.Pairing
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.database.AppDatabase
@@ -11,34 +10,57 @@ import com.sadturtleman.flowershoes.core.database.DeviceEntity
 import com.sadturtleman.flowershoes.core.model.DeviceState
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 
-/** 연결 화면이 그리는 상태. */
+/** 연결 화면이 그리는 상태(#15 결정 6). */
 sealed interface PairingState {
     data object Idle : PairingState
 
-    /** 초대한 쪽: 코드를 보여 주고 상대가 입력하기를 기다린다. */
-    data class ShowCode(val code: String) : PairingState
+    /** 보낸 쪽: 링크를 만들었다. [token] 으로 링크를 만들어 공유하고 상대가 누르길 기다린다(앱은 홈으로 가도 된다). */
+    data class Waiting(val token: String, val expireAtMs: Long) : PairingState
 
-    /** 초대받은 쪽: 커밋을 올리고 상대 공개키를 기다린다. */
-    data object WaitingPartner : PairingState
-
-    /** 두 화면에 같은 숫자가 떠야 한다. 전화 · 면회 · 메시지로 서로 확인한다. */
-    /** [device] · [provider]: 상대 폰 교체 받기에서 새 폰 이름 · 로그인 제공자(새 폰이 알려 준 표시 정보, 서명 밖). */
-    data class CompareSas(val sas: String, val device: String? = null, val provider: String? = null) : PairingState
-
-    /** 내 쪽은 [맞아요] 를 눌렀고 상대 확인 · 서버의 커플 생성을 기다린다. */
-    data object WaitingConfirm : PairingState
+    /** 받는 쪽: 수락을 보냈고 서버가 커플을 만들길 기다린다. */
+    data class Accepting(val inviterName: String) : PairingState
 
     data class Linked(val coupleId: String) : PairingState
+
+    /** 만료 · 이미 쓰임 · 새 링크로 무효 · 없는 링크. 서버에서 구분되지 않아 한 상태다("이 초대 링크는 만료됐어요"). */
+    data object Expired : PairingState
+
+    /** 내가 보낸 링크를 내가 눌렀다("내가 보낸 초대 링크예요" + 다시 공유). */
+    data class OwnLink(val token: String) : PairingState
+
+    data object AlreadyLinked : PairingState
 
     data class Failed(val reason: String) : PairingState
 }
 
+/** 보낸 쪽이 만든 링크. 앱을 껐다 켜도 수락을 이어 받도록 이 기기에 둔다. */
+data class PendingInvite(val token: String, val expireAtMs: Long)
+
+interface PendingInviteStore {
+    suspend fun load(): PendingInvite?
+
+    suspend fun save(invite: PendingInvite?)
+}
+
+class InMemoryPendingInvite : PendingInviteStore {
+    private var value: PendingInvite? = null
+
+    override suspend fun load() = value
+
+    override suspend fun save(invite: PendingInvite?) {
+        value = invite
+    }
+}
+
 /**
- * 첫 연결(설계 7-1). 커밋 → 상대 공개 → 공개 → SAS 순서를 지킨다.
+ * 첫 연결 — 초대 링크 한 번(#15). SAS · 코드 입력 없음.
  *
- * 화면은 [start] · [join] 으로 시작하고, 몇 초마다(또는 문서 변경 알림마다) [poll] 을 부른다.
- * 숫자가 맞으면 [confirm], 다르면 화면을 닫는다(서버가 두 SAS 가 다르면 초대를 폐기한다).
+ * - 보낸 쪽: [createLink] → 링크 공유 → 푸시가 오거나 앱을 열 때 [poll] → [PairingState.Linked].
+ * - 받는 쪽: 링크(카카오 앱 실행 · `/i/{token}`)로 들어와 [accept] → 대개 바로 [PairingState.Linked], 아니면 [poll].
+ *
+ * 커플은 서버 함수(onInviteAccepted)가 만들고, 커플 키는 양쪽이 상대 공개키로 각자 도출한다([Pairing.coupleKey]).
  */
 class PairingSession(
     private val db: AppDatabase,
@@ -46,125 +68,121 @@ class PairingSession(
     private val vault: KeyVault,
     private val transport: PairingTransport,
     private val clock: Clock = Clock.System,
+    private val pending: PendingInviteStore = InMemoryPendingInvite(),
 ) {
     var state: PairingState = PairingState.Idle
         private set
 
-    private var role: Role? = null
-    private var code = ""
-    private var nonce = ByteArray(0)
-    private var partner: Partner? = null
-    private var sas = ""
-
-    private enum class Role { INVITER, JOINER }
-
-    private class Partner(val uid: String, val deviceId: String, val keys: Pairing.PublicKeys)
+    /** 지금 다루는 링크. 보낸 쪽이면 [inviter]. */
+    private var token: String? = null
+    private var inviter = false
 
     private suspend fun myKeys(): DeviceKeys = vault.deviceKeys() ?: DeviceKeys.generate().also { vault.putDeviceKeys(it) }
 
-    suspend fun start(): PairingState {
-        myKeys()
-        role = Role.INVITER
-        code = CrockfordCode.random(CODE_LENGTH)
-        transport.createInvite(code, identity.userId)
-        return PairingState.ShowCode(code).also { state = it }
-    }
+    private suspend fun linkedLocally(): Boolean = db.coupleDao().get()?.partnerUserId?.isNotBlank() == true
 
-    suspend fun join(input: String): PairingState {
-        val normalized = CrockfordCode.normalize(input)?.takeIf { it.length == CODE_LENGTH }
-            ?: return PairingState.Failed("코드 8자리를 확인해 주세요").also { state = it }
+    /**
+     * 새 링크를 만든다. 이전 링크는 서버가 지운다(#15 결정 3).
+     * [name] 은 OG 미리보기 · 받는 쪽 화면에 보일 내 표시 이름 — 없으면 내 프로필 이름.
+     */
+    suspend fun createLink(name: String? = null): PairingState {
+        resumePending()?.let { if (it is PairingState.Linked) return it }
+        if (linkedLocally()) return set(PairingState.AlreadyLinked)
         val keys = myKeys()
-        role = Role.JOINER
-        code = normalized
-        nonce = Pairing.newNonce()
-        val commitment = Pairing.commit(Pairing.PublicKeys(keys.signPub, keys.boxPub), nonce)
-        transport.putStep(code, Steps.JOIN, mapOf("uid" to identity.userId, "commit" to commitment.b64()))
-        return PairingState.WaitingPartner.also { state = it }
+        val shownName = (name ?: db.userDao().get(identity.userId)?.nickname.orEmpty()).trim().take(MAX_NAME)
+        val newToken = InviteToken.random()
+        val expireAtMs = (clock.now() + INVITE_TTL).toEpochMilliseconds()
+        transport.createInvite(newToken, Invite(identity.userId, identity.deviceId, Pairing.PublicKeys.of(keys), shownName, expireAtMs))
+        pending.save(PendingInvite(newToken, expireAtMs))
+        token = newToken
+        inviter = true
+        return set(PairingState.Waiting(newToken, expireAtMs))
     }
 
+    /** 링크로 들어왔다. 웹 GET 과 달리 여기서 초대를 소비한다(로그인한 앱의 쓰기). */
+    suspend fun accept(input: String): PairingState {
+        if (linkedLocally()) return set(PairingState.AlreadyLinked)
+        if (!InviteToken.isValid(input)) return set(PairingState.Expired)
+        val invite = transport.invite(input)
+            // 문서가 없다: 쓰였거나 만료. 내가 수락하고 끝내지 못한 링크면 마저 끝낸다.
+            ?: return set(finishIfLinkedVia(input) ?: PairingState.Expired)
+        // 자기 링크: 보낸 쪽 상태(기다리는 링크)는 그대로 둔다.
+        if (invite.inviterUid == identity.userId) return set(PairingState.OwnLink(input))
+        if (invite.expireAtMs <= clock.now().toEpochMilliseconds()) return set(PairingState.Expired)
+        token = input
+        inviter = false
+        // 이미 누가 수락했으면(규칙상 한 번만) 쓰기가 거절된다 — 내가 끝내지 못한 수락이 아니면 만료다.
+        runCatching { transport.accept(input, identity.userId, identity.deviceId, Pairing.PublicKeys.of(myKeys())) }
+            .onFailure { return set(finishIfLinkedVia(input) ?: PairingState.Expired) }
+        set(PairingState.Accepting(invite.name))
+        return poll()
+    }
+
+    /** 서버가 커플을 만들었는지 본다. 보낸 쪽은 앱을 다시 켠 뒤 처음 부를 때 저장해 둔 링크를 이어 받는다. */
     suspend fun poll(): PairingState {
+        if (token == null) return resumePending() ?: state
+        return set(refresh())
+    }
+
+    private suspend fun resumePending(): PairingState? {
+        if (token != null) return null
+        val saved = pending.load() ?: return null
+        token = saved.token
+        inviter = true
+        state = PairingState.Waiting(saved.token, saved.expireAtMs)
+        return set(refresh())
+    }
+
+    private suspend fun refresh(): PairingState {
+        val current = token ?: return state
+        val shown = state
+        if (shown is PairingState.Linked) return shown
+        finishIfLinkedVia(current)?.let { return it }
+        val invite = if (inviter || shown is PairingState.Accepting) transport.invite(current) else return shown
+        val gone = invite == null || invite.expireAtMs <= clock.now().toEpochMilliseconds()
+        if (!gone) return shown
+        // 함수는 커플을 만든 뒤 초대를 지운다 — 두 읽기 사이에 연결됐을 수 있어 한 번 더 본다.
+        finishIfLinkedVia(current)?.let { return it }
+        // 만료 · 새 링크로 무효 · 함수가 수락을 거절(그사이 다른 사람과 연결 등).
+        if (inviter) pending.save(null)
+        return PairingState.Expired
+    }
+
+    private suspend fun finishIfLinkedVia(inviteToken: String): PairingState? =
+        transport.linkedCoupleId(inviteToken, identity.userId)?.let { finish(it, inviteToken) }
+
+    /** 서버가 만든 커플에서 상대 기기 공개키를 읽어 커플 키(epoch 1)를 도출하고 커플 · 기기 행을 만든다. */
+    private suspend fun finish(coupleId: String, inviteToken: String): PairingState? {
+        val partner = transport.partnerDevice(coupleId, identity.userId) ?: return null
         val keys = myKeys()
-        val mine = Pairing.PublicKeys(keys.signPub, keys.boxPub)
-        state = when (role) {
-            Role.INVITER -> pollInviter(mine)
-            Role.JOINER -> pollJoiner(mine)
-            null -> state
-        }
-        return state
-    }
-
-    private suspend fun pollInviter(mine: Pairing.PublicKeys): PairingState {
-        if (state is PairingState.WaitingConfirm) return finishIfLinked()
-        if (state is PairingState.CompareSas) return state
-        val join = transport.getStep(code, Steps.JOIN) ?: return state
-        // 상대 커밋이 올라온 뒤에야 내 공개키를 올린다.
-        if (transport.getStep(code, Steps.INVITER) == null) {
-            transport.putStep(code, Steps.INVITER, mapOf("deviceId" to identity.deviceId, "signPub" to mine.signPub.b64(), "boxPub" to mine.boxPub.b64()))
-        }
-        val reveal = transport.getStep(code, Steps.REVEAL) ?: return state
-        val theirs = Pairing.PublicKeys(reveal.getValue("signPub").unb64(), reveal.getValue("boxPub").unb64())
-        val theirNonce = reveal.getValue("nonce").unb64()
-        if (!Pairing.verifyCommitment(join.getValue("commit").unb64(), theirs, theirNonce)) {
-            return PairingState.Failed("상대 키가 처음 약속과 달라요. 새 코드로 다시 시도해 주세요")
-        }
-        partner = Partner(join.getValue("uid"), reveal.getValue("deviceId"), theirs)
-        sas = Pairing.sas(code, inviter = mine, joiner = theirs, joinerNonce = theirNonce)
-        return PairingState.CompareSas(sas)
-    }
-
-    private suspend fun pollJoiner(mine: Pairing.PublicKeys): PairingState {
-        if (state is PairingState.WaitingConfirm) return finishIfLinked()
-        if (state is PairingState.CompareSas) return state
-        val inviter = transport.getStep(code, Steps.INVITER) ?: return state
-        // 상대 공개키를 본 뒤에야 내 키와 nonce 를 공개한다.
-        if (transport.getStep(code, Steps.REVEAL) == null) {
-            transport.putStep(
-                code, Steps.REVEAL,
-                mapOf("deviceId" to identity.deviceId, "signPub" to mine.signPub.b64(), "boxPub" to mine.boxPub.b64(), "nonce" to nonce.b64()),
-            )
-        }
-        val theirs = Pairing.PublicKeys(inviter.getValue("signPub").unb64(), inviter.getValue("boxPub").unb64())
-        val inviterUid = transport.inviterUid(code) ?: return state
-        partner = Partner(inviterUid, inviter.getValue("deviceId"), theirs)
-        sas = Pairing.sas(code, inviter = theirs, joiner = mine, joinerNonce = nonce)
-        return PairingState.CompareSas(sas)
-    }
-
-    /** 두 화면의 숫자가 같다. 초대한 쪽은 여기서 커플 키(epoch 1)를 만들어 상대 공개키로 봉인해 보낸다. */
-    suspend fun confirm(): PairingState {
-        val p = partner ?: return state
-        when (role) {
-            Role.INVITER -> {
-                val key = CoupleKey.generate(epoch = 1)
-                vault.putCoupleKey(key)
-                transport.putStep(code, Steps.CONFIRM_INVITER, mapOf("wrappedKey" to key.wrapFor(p.keys.boxPub).b64(), "sas" to sas))
-            }
-            Role.JOINER -> transport.putStep(code, Steps.CONFIRM_JOINER, mapOf("sas" to sas))
-            null -> return state
-        }
-        state = PairingState.WaitingConfirm
-        return finishIfLinked()
-    }
-
-    private suspend fun finishIfLinked(): PairingState {
-        val coupleId = transport.linkedCoupleId(code) ?: return PairingState.WaitingConfirm
-        val p = checkNotNull(partner)
-        if (role == Role.JOINER) {
-            val wrapped = transport.wrappedKeyFor(coupleId, identity.deviceId) ?: return PairingState.WaitingConfirm
-            vault.putCoupleKey(CoupleKey.unwrap(myKeys(), wrapped))
-        }
-        val keys = myKeys()
+        vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, inviteToken))
         val now = clock.now().toEpochMilliseconds()
         db.coupleDao().clear()
-        db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, p.uid, keyEpoch = 1, linkedAtMs = now))
+        db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, partner.uid, keyEpoch = 1, linkedAtMs = now))
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
-        db.deviceDao().upsert(DeviceEntity(p.deviceId, p.uid, p.uid, p.keys.signPub, p.keys.boxPub, DeviceState.ACTIVE.name, now, null))
+        db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
+        // 연결됐으면 내가 보낸 링크도 끝났다(서버가 두 사람의 초대를 지운다).
+        pending.save(null)
         return PairingState.Linked(coupleId)
     }
 
+    private fun set(next: PairingState): PairingState = next.also { state = it }
+
     companion object {
-        const val CODE_LENGTH = 8
+        /** 초대 유효기간(#15 결정 3). firestore.rules 의 상한과 같다. */
+        val INVITE_TTL = 7.days
+
+        /** firestore.rules 의 name 상한. */
+        const val MAX_NAME = 40
     }
+}
+
+/** 초대 링크 모양. 경로 `/i/{token}` 은 고정이고 호스트만 바뀐다(커스텀 도메인 전환 대비). */
+object InviteLinks {
+    /** Firebase Hosting 사이트. 실제 값과 설정값 연결은 딥링크 티켓(#39)에서. */
+    const val DEFAULT_HOST = "TODO_HOSTING_SITE.web.app"
+
+    fun url(token: String, host: String = DEFAULT_HOST): String = "https://$host/i/$token"
 }
 
 internal fun ByteArray.b64(): String = Base64.encode(this)

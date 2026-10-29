@@ -1,7 +1,10 @@
 package com.sadturtleman.flowershoes.core.firebase
 
+import com.sadturtleman.flowershoes.core.crypto.Pairing
 import com.sadturtleman.flowershoes.core.data.sync.BlobStore
 import com.sadturtleman.flowershoes.core.data.sync.ControlDoc
+import com.sadturtleman.flowershoes.core.data.sync.Invite
+import com.sadturtleman.flowershoes.core.data.sync.LinkedDevice
 import com.sadturtleman.flowershoes.core.data.sync.MailItem
 import com.sadturtleman.flowershoes.core.data.sync.Mailbox
 import com.sadturtleman.flowershoes.core.data.sync.PairingTransport
@@ -14,7 +17,6 @@ import dev.gitlive.firebase.storage.storage
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
-import kotlin.time.Duration.Companion.hours
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -41,17 +43,16 @@ private data class ControlFields(val payload: String, val sig: String, val at: T
 private data class BlobDoc(val data: String, val expireAt: Timestamp)
 
 @Serializable
-private data class InviteDoc(val uid: String, val expireAt: Timestamp)
+private data class InviteDoc(val uid: String, val deviceId: String, val pubKey: String, val name: String, val expireAt: Timestamp)
 
 @Serializable
-private data class KeyDoc(val wrapped: String, val epoch: Int)
+private data class AcceptDoc(val uid: String, val deviceId: String, val pubKey: String)
 
 private fun ByteArray.b64() = Base64.encode(this)
 private fun String.unb64() = Base64.decode(this)
-private fun Clock.after(d: kotlin.time.Duration): Timestamp {
-    val ms = (now() + d).toEpochMilliseconds()
-    return Timestamp(ms / 1000, ((ms % 1000) * 1_000_000).toInt())
-}
+private fun Clock.after(d: kotlin.time.Duration): Timestamp = (now() + d).toEpochMilliseconds().toTimestamp()
+
+private fun Long.toTimestamp(): Timestamp = Timestamp(this / 1000, ((this % 1000) * 1_000_000).toInt())
 
 private fun Timestamp.ms(): Long = seconds * 1000 + nanoseconds / 1_000_000
 
@@ -148,24 +149,22 @@ class FirestoreTransport(
 
     // ── PairingTransport ──
 
-    private fun pairing(code: String) = db.collection("pairings").document(code)
+    private fun pairing(token: String) = db.collection("pairings").document(token)
 
-    override suspend fun createInvite(code: String, inviterUid: String) {
-        pairing(code).set(InviteDoc(inviterUid, clock.after(24.hours)))
+    override suspend fun createInvite(token: String, invite: Invite) {
+        pairing(token).set(InviteDoc(invite.inviterUid, invite.deviceId, invite.keys.encode(), invite.name, invite.expireAtMs.toTimestamp()))
     }
 
-    override suspend fun inviterUid(code: String): String? {
-        val snap = pairing(code).get()
-        return if (snap.exists) snap.data(InviteDoc.serializer()).uid else null
+    override suspend fun invite(token: String): Invite? {
+        val snap = pairing(token).get()
+        if (!snap.exists) return null
+        val d = runCatching { snap.data(InviteDoc.serializer()) }.getOrNull() ?: return null
+        val keys = Pairing.PublicKeys.decode(d.pubKey) ?: return null
+        return Invite(d.uid, d.deviceId, keys, d.name, d.expireAt.ms())
     }
 
-    override suspend fun putStep(code: String, name: String, fields: Map<String, String>) {
-        pairing(code).collection("steps").document(name).set(fields)
-    }
-
-    override suspend fun getStep(code: String, name: String): Map<String, String>? {
-        val snap = pairing(code).collection("steps").document(name).get()
-        return if (snap.exists) snap.data<Map<String, String>>() else null
+    override suspend fun accept(token: String, uid: String, deviceId: String, keys: Pairing.PublicKeys) {
+        pairing(token).collection("steps").document("accept").set(AcceptDoc(uid, deviceId, keys.encode()))
     }
 
     /**
@@ -177,18 +176,18 @@ class FirestoreTransport(
         if (snap.exists) snap.get<String?>("coupleId") else null
     }
 
-    override suspend fun linkedCoupleId(code: String): String? {
-        val uid = Firebase.auth.currentUser?.uid ?: return null
-        val snap = db.collection("users").document(uid).get()
+    override suspend fun linkedCoupleId(token: String, myUid: String): String? {
+        val snap = db.collection("users").document(myUid).get()
         if (!snap.exists) return null
-        // 이 코드로 생긴 커플일 때만(다시 연결하면 coupleId 가 잠깐 옛 커플을 가리킨다).
-        if (snap.get<String?>("linkedVia") != code) return null
+        // 이 토큰으로 생긴 커플일 때만(다시 연결하면 coupleId 가 잠깐 옛 커플을 가리킨다).
+        if (snap.get<String?>("linkedVia") != token) return null
         return snap.get<String?>("coupleId")
     }
 
-    override suspend fun wrappedKeyFor(coupleId: String, deviceId: String): ByteArray? {
-        val snap = db.collection("couples").document(coupleId).collection("keys").document(deviceId).get()
-        return if (snap.exists) snap.data(KeyDoc.serializer()).wrapped.unb64() else null
+    override suspend fun partnerDevice(coupleId: String, myUid: String): LinkedDevice? {
+        val docs = db.collection("couples").document(coupleId).collection("devices").get().documents
+        val d = docs.firstOrNull { it.get<String?>("uid") != myUid && it.get<Boolean?>("active") == true } ?: return null
+        return LinkedDevice(d.get("uid"), d.id, Pairing.PublicKeys(d.get<String>("signPub").unb64(), d.get<String>("boxPub").unb64()))
     }
 }
 

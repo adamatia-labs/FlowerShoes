@@ -45,6 +45,9 @@ include(":core:firebase")
 include(":core:widget-bridge")
 include(":core:notification")
 include(":core:media")
+// 비즈니스 이벤트 로깅(BizEvent → GA4) · 피처 플래그(Remote Config). 앱 전체를 가로지른다.
+include(":core:logging")
+include(":core:featureflag")
 
 // 화면 단위 기능. core 만 의존하고 서로는 모른다.
 include(":feature:onboarding")
@@ -72,20 +75,6 @@ include(":common:util")
 include(":tti:domain")
 include(":tti:data")
 include(":tti:presentation")
-
-// 비즈니스 이벤트 로깅. TTI 와 마찬가지로 어느 feature 에도 속하지 않고 앱 전체를 가로지른다.
-// domain 은 순수 코틀린이다 — 남길 수 있는 이벤트 목록(BizEvent)을 들고 있고, 쌓아 두지 않아
-// record 한 건이 그대로 한 번의 전송이 된다.
-// 시각(BizLogClock) 과 전송(BizLogShooter) 은 포트로 둔다.
-include(":logging:domain")
-include(":logging:data")
-
-// 피처 플래그 · AB 테스트. 이것도 앱 전체를 가로지른다.
-// domain 은 순수 코틀린이다 — presentation 과 feature:domain 이 함께 읽어야 하므로
-// 안드로이드에 기대면 도메인 레이어에서 못 쓴다.
-// 값 출처(RemoteConfigSource) 와 상태 기록(FlagStateRecorder) 은 포트로 둔다.
-include(":featureflag:domain")
-include(":featureflag:data")
 
 // 프레임 드랍(jank) 계측. TTI 가 "언제 쓸 수 있게 되는가" 를 잰다면 이쪽은 "쓰는 동안 매끄러운가" 를 잰다.
 // domain 은 순수 코틀린이다 — 버킷과 임계치 규칙이 플랫폼과 무관해야 테스트로 잡을 수 있다.

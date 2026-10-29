@@ -48,6 +48,10 @@ kotlin {
             api(project(":feature:settings"))
             api(project(":core:widget-bridge"))
             implementation(project(":core:media"))
+            // 비즈니스 이벤트 로깅(GA4) · 피처 플래그(Remote Config). iOS 는 MainViewController 가 조립하고 수명을 잡는다.
+            implementation(project(":core:logging"))
+            implementation(project(":core:featureflag"))
+            implementation(project(":common:di"))
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)

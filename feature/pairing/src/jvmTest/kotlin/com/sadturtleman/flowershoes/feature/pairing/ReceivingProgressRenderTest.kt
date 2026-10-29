@@ -3,7 +3,7 @@ package com.sadturtleman.flowershoes.feature.pairing
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.use
-import com.sadturtleman.flowershoes.core.data.sync.PairingState
+import com.sadturtleman.flowershoes.core.data.sync.RelinkState
 import com.sadturtleman.flowershoes.core.data.sync.RelinkCounts
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
 import com.sadturtleman.flowershoes.core.model.AppTheme
@@ -21,7 +21,7 @@ class ReceivingProgressRenderTest {
     fun `넘겨받는 중 화면을 그린다`() {
         val ui = PairingUi(
             available = true,
-            state = PairingState.Linked("c"),
+            relink = RelinkState.Linked("c"),
             expected = RelinkCounts(letters = 128, drawings = 42, events = 30),
             received = RelinkCounts(letters = 128, drawings = 2, events = 0),
             receiveStartedMs = System.currentTimeMillis() - 100_000,

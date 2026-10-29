@@ -87,14 +87,9 @@ class RotationTest {
     fun tearDown() = FileSystem.SYSTEM.deleteRecursively(root)
 
     private suspend fun link() {
-        val code = assertIs<PairingState.ShowCode>(jisu.pairing.start()).code
-        minjun.pairing.join(code)
-        jisu.pairing.poll()
-        minjun.pairing.poll()
-        jisu.pairing.poll()
-        jisu.pairing.confirm()
-        minjun.pairing.confirm()
-        jisu.pairing.poll()
+        val token = assertIs<PairingState.Waiting>(jisu.pairing.createLink("지수")).token
+        assertIs<PairingState.Linked>(minjun.pairing.accept(token))
+        assertIs<PairingState.Linked>(jisu.pairing.poll())
     }
 
     /** 민준의 새 기기: 같은 DB · 지금 커플 키, 기기 키는 새로. */

@@ -1,7 +1,9 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import com.sadturtleman.flowershoes.core.crypto.Pairing
+
 /**
- * 테스트용 서버. Firestore · Storage · Cloud Function(onPairingStep) 이 하는 일을 메모리에서 흉내 낸다.
+ * 테스트용 서버. Firestore · Storage · Cloud Function(onInviteAccepted 등) 이 하는 일을 메모리에서 흉내 낸다.
  * [tamper] 로 "서버가 암호문을 바꿔치기하는" 상황도 만든다.
  */
 class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, AccountTransport {
@@ -11,10 +13,11 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
     private val inbox = mutableMapOf<String, MutableMap<String, MailItem>>() // "{c}/{device}" → opId → item
     private val control = mutableMapOf<String, ControlDoc>()
     private val blobStore = mutableMapOf<String, ByteArray>()
-    private val invites = mutableMapOf<String, String>()
-    private val steps = mutableMapOf<String, MutableMap<String, Map<String, String>>>()
+    private val invites = mutableMapOf<String, Invite>()
+    private val accepted = mutableSetOf<String>()
     private val linked = mutableMapOf<String, String>()
-    private val keys = mutableMapOf<String, ByteArray>()
+    private val coupleDevices = mutableMapOf<String, List<LinkedDevice>>()
+    private val members = mutableSetOf<String>()
 
     var tamper: ((MailItem) -> MailItem)? = null
 
@@ -52,39 +55,57 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
 
     fun blobCount() = blobStore.size
 
-    // PairingTransport
-    override suspend fun createInvite(code: String, inviterUid: String) {
-        invites[code] = inviterUid
+    // PairingTransport — 함수 onInviteCreated · onInviteAccepted 와 같은 규칙.
+    private class Accept(val uid: String, val deviceId: String, val keys: Pairing.PublicKeys)
+
+    /** 수락 함수를 잠시 멈춘다(받는 쪽의 "기다리는 중" 상태를 보려고). */
+    var holdAccepts = false
+    private val held = mutableListOf<Pair<String, Accept>>()
+
+    /** 수락 푸시를 받은 보낸 사람 uid. */
+    val acceptedPushes = mutableListOf<String>()
+
+    override suspend fun createInvite(token: String, invite: Invite) {
+        check(token !in invites) { "같은 토큰 문서는 한 번만 만든다" }
+        // onInviteCreated: 같은 사람의 이전 초대를 지운다.
+        invites.values.removeAll { it.inviterUid == invite.inviterUid }
+        invites[token] = invite
     }
 
-    override suspend fun inviterUid(code: String) = invites[code]
+    override suspend fun invite(token: String) = invites[token]
 
-    override suspend fun putStep(code: String, name: String, fields: Map<String, String>) {
-        val s = steps.getOrPut(code) { mutableMapOf() }
-        check(name !in s) { "단계는 한 번만 쓴다(보안 규칙과 같게)" }
-        s[name] = fields
-        onPairingStep(code)
+    override suspend fun accept(token: String, uid: String, deviceId: String, keys: Pairing.PublicKeys) {
+        check(token in invites) { "규칙: 초대 문서가 있어야 수락한다" }
+        check(token !in accepted) { "규칙: 수락은 한 번만" }
+        accepted += token
+        val a = Accept(uid, deviceId, keys)
+        if (holdAccepts) held += token to a else onInviteAccepted(token, a)
     }
 
-    override suspend fun getStep(code: String, name: String) = steps[code]?.get(name)
+    fun releaseAccepts() {
+        holdAccepts = false
+        held.toList().also { held.clear() }.forEach { (t, a) -> onInviteAccepted(t, a) }
+    }
 
-    override suspend fun linkedCoupleId(code: String) = linked[code]
+    override suspend fun linkedCoupleId(token: String, myUid: String) = linked["$token/$myUid"]
 
-    override suspend fun wrappedKeyFor(coupleId: String, deviceId: String) = keys["$coupleId/$deviceId"]
+    override suspend fun partnerDevice(coupleId: String, myUid: String) = coupleDevices[coupleId]?.firstOrNull { it.uid != myUid }
 
-    /** Cloud Function onPairingStep 과 같은 규칙: 두 확인이 모두 있고 SAS 가 같으면 커플을 만든다. */
-    private fun onPairingStep(code: String) {
-        val s = steps[code] ?: return
-        val ci = s[Steps.CONFIRM_INVITER] ?: return
-        val cj = s[Steps.CONFIRM_JOINER] ?: return
-        if (ci["sas"] != cj["sas"]) {
-            steps.remove(code)
+    private fun onInviteAccepted(token: String, a: Accept) {
+        val invite = invites[token] ?: return
+        val expired = invite.expireAtMs <= kotlin.time.Clock.System.now().toEpochMilliseconds()
+        if (expired || invite.inviterUid in members || a.uid in members) {
+            invites.remove(token)
             return
         }
-        val coupleId = "couple-$code"
-        val joinerDevice = s.getValue(Steps.REVEAL).getValue("deviceId")
-        keys["$coupleId/$joinerDevice"] = ci.getValue("wrappedKey").unb64()
-        linked[code] = coupleId
+        val coupleId = "couple-$token"
+        coupleDevices[coupleId] = listOf(LinkedDevice(invite.inviterUid, invite.deviceId, invite.keys), LinkedDevice(a.uid, a.deviceId, a.keys))
+        members += invite.inviterUid
+        members += a.uid
+        linked["$token/${invite.inviterUid}"] = coupleId
+        linked["$token/${a.uid}"] = coupleId
+        invites.values.removeAll { it.inviterUid == invite.inviterUid || it.inviterUid == a.uid }
+        acceptedPushes += invite.inviterUid
     }
 
     // RotationTransport — 서버(onRotationApproved · finalizeDevice)와 같은 확인을 한다.
@@ -121,6 +142,7 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
 
     override suspend fun unlinkCouple(coupleId: String) {
         unlinked += coupleId
+        coupleDevices.remove(coupleId)?.forEach { members -= it.uid }
         inbox.keys.removeAll { it.startsWith("$coupleId/") }
         control.keys.removeAll { it.startsWith("$coupleId/") }
         blobStore.keys.removeAll { it.startsWith("$coupleId/") }
