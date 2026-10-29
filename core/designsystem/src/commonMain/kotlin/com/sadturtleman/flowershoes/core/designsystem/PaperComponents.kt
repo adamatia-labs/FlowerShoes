@@ -52,9 +52,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -74,7 +76,7 @@ import kotlin.math.roundToInt
 
 // Figma "🎨 꽃신 v2 디자인 시스템"의 종이 물건(조합 341:82 · 기본 340:89).
 // 기울기 · 테이프는 보여 주기만 하는 물건(홈 태그 · 폴라로이드 · 추억 페이지 · 책 표지)에만 쓴다(design.md).
-// 편지함 봉투 · 목록 · 버튼처럼 읽고 누르는 것은 반듯하게 두고, 장식(우표 · 소인 · 미니 폴라로이드)만 기운다.
+// 편지함 봉투 · 목록 · 버튼처럼 읽고 누르는 것은 반듯하게 두고, 장식(우표 · 소인 · 미니 폴라로이드)만 기운다(Figma Envelope Row 설명).
 
 // ── Tape ──────────────────────────────────────────────────────────────────
 
@@ -93,7 +95,7 @@ fun KkTape(modifier: Modifier = Modifier, width: Dp = 56.dp, height: Dp = 16.dp)
 // ── Paper Tag ─────────────────────────────────────────────────────────────
 
 /** 종이 태그 값 글꼴: 숫자(D-day/S) · 손글씨(Hand/L). */
-enum class KkPaperTagValue { Number, Hand }
+enum class KkPaperTagStyle { Number, Hand }
 
 /**
  * 종이 태그(Figma Paper Tag `341:212`): paper/tag 바탕 140×66 + 위 가운데 테이프. 다음 휴가 · 만남 · 진급 같은 작은 정보.
@@ -101,31 +103,27 @@ enum class KkPaperTagValue { Number, Hand }
  *
  * @param label 위 라벨(Label), 예: "다음 휴가".
  * @param value 아래 값, 예: "D-23".
- * @param valueStyle [KkPaperTagValue.Number] 면 D-day/S, [KkPaperTagValue.Hand] 면 Hand/L.
- * @param tilt 태그 전체 회전(도). 기본 0.
- * @param onClick 주면 태그 전체가 버튼이 된다.
+ * @param valueStyle [KkPaperTagStyle.Number] 면 D-day/S, [KkPaperTagStyle.Hand] 면 Hand/L.
+ * @param tilt 태그 전체 회전(도). 기본 0. 보여 주기만 하는 물건이라 누르는 동작은 두지 않는다.
  */
 @Composable
 fun KkPaperTag(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    valueStyle: KkPaperTagValue = KkPaperTagValue.Number,
+    valueStyle: KkPaperTagStyle = KkPaperTagStyle.Number,
     tilt: Float = 0f,
-    onClick: (() -> Unit)? = null,
 ) {
     val c = KkTheme.colors
     val t = KkTheme.type
     Box(modifier.rotate(tilt)) {
         Box(
-            Modifier.widthIn(min = 140.dp).height(66.dp)
-                .kkElevation(KkElevation.Low, RectangleShape).background(c.tag)
-                .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
+            Modifier.widthIn(min = 140.dp).height(66.dp).kkElevation(KkElevation.Low, RectangleShape).background(c.tag),
         ) {
             Text(label, style = t.label, color = c.ink, maxLines = 1, modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp))
             Text(
                 value,
-                style = if (valueStyle == KkPaperTagValue.Number) t.ddayS else t.handL,
+                style = if (valueStyle == KkPaperTagStyle.Number) t.ddayS else t.handL,
                 color = c.ink, maxLines = 1,
                 modifier = Modifier.padding(start = 14.dp, top = 28.dp, end = 14.dp),
             )
@@ -166,7 +164,7 @@ fun KkPolaroid(
 ) {
     Box(modifier.rotate(tilt)) {
         Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, RectangleShape).background(Color.White)
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, RectangleShape).background(Palette.PaperWhite)
                 .padding(start = size.frame, end = size.frame, top = size.frame),
         ) {
             Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
@@ -188,13 +186,13 @@ fun KkPolaroid(
 @Composable
 private fun ReplayChip(onClick: () -> Unit, modifier: Modifier) {
     Row(
-        modifier.clip(RoundedCornerShape(KkRadius.full)).background(Color.Black.copy(alpha = 0.6f))
-            .clickable(role = Role.Button, onClick = onClick).padding(start = KkSpacing.sm, end = 10.dp, top = KkSpacing.xs, bottom = KkSpacing.xs),
+        modifier.clickable(role = Role.Button, onClick = onClick).minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(KkRadius.full)).background(Color.Black.copy(alpha = 0.6f)).padding(start = KkSpacing.sm, end = 10.dp, top = KkSpacing.xs, bottom = KkSpacing.xs),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        KkIcon(KkIcons.Play, tint = Color.White, size = 10.dp)
-        Text("다시 보기", style = KkTheme.type.caption.copy(fontWeight = FontWeight.Medium), color = Color.White, maxLines = 1)
+        KkIcon(KkIcons.Play, tint = Palette.PaperWhite, size = 10.dp)
+        Text("다시 보기", style = KkTheme.type.caption.copy(fontWeight = FontWeight.Medium), color = Palette.PaperWhite, maxLines = 1)
     }
 }
 
@@ -242,7 +240,7 @@ fun KkPostmark(
     textWeight: FontWeight = FontWeight.Normal,
     dateFont: FontFamily = KkTheme.fonts.body,
 ) {
-    BoxWithConstraints(modifier.size(64.dp).semantics { contentDescription = listOf(text, date).filter { it.isNotEmpty() }.joinToString(" ") }) {
+    BoxWithConstraints(modifier.size(64.dp).clearAndSetSemantics { contentDescription = listOf(text, date).filter { it.isNotEmpty() }.joinToString(" ") }) {
         val side = minOf(maxWidth, maxHeight)
         val ring = side / 32f
         val density = LocalDensity.current
@@ -327,9 +325,9 @@ fun KkEnvelopeRow(
             }
             Text(
                 line, style = KkTheme.type.handLetter, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 16.dp, top = 35.dp, end = 80.dp),
+                modifier = Modifier.padding(start = 17.dp, top = 35.dp, end = 80.dp),
             )
-            Text(meta, style = KkTheme.type.caption, color = c.sub, maxLines = 1, modifier = Modifier.padding(start = 16.dp, top = 73.dp, end = 80.dp))
+            Text(meta, style = KkTheme.type.caption, color = c.sub, maxLines = 1, modifier = Modifier.padding(start = 17.dp, top = 73.dp, end = 80.dp))
             val deco = Modifier.align(Alignment.TopEnd).clearAndSetSemantics {}
             when (mark) {
                 is KkEnvelopeMark.Seal -> PostageStamp(mark.stamp, deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
@@ -359,7 +357,7 @@ private fun PostageStamp(text: String, modifier: Modifier) {
 /** 봉투 위 미니 폴라로이드(52×66, 흰 틀 · 42 그림). */
 @Composable
 private fun MiniPolaroid(drawing: ImageBitmap?, modifier: Modifier) {
-    Box(modifier.size(52.dp, 66.dp).kkElevation(KkElevation.Low, RectangleShape).background(Color.White).padding(5.dp)) {
+    Box(modifier.size(52.dp, 66.dp).kkElevation(KkElevation.Low, RectangleShape).background(Palette.PaperWhite).padding(5.dp)) {
         Box(Modifier.size(42.dp).background(Palette.InkBrown100)) {
             drawing?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
         }
@@ -403,7 +401,10 @@ fun KkServiceProgress(
 ) {
     val c = KkTheme.colors
     val p = progress.coerceIn(0f, 1f)
-    Column(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        modifier.fillMaxWidth().semantics(mergeDescendants = true) { progressBarRangeInfo = ProgressBarRangeInfo(p, 0f..1f) },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         when (style) {
             KkServiceProgressStyle.Path -> Canvas(Modifier.fillMaxWidth().height(12.dp)) {
                 val y = size.height / 2f
@@ -482,7 +483,7 @@ fun KkMissYouFab(sent: Boolean, onClick: () -> Unit, modifier: Modifier = Modifi
     Row(
         modifier
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) { stateDescription = if (sent) "보냈어요" else "" }
+            .semantics(mergeDescendants = true) {}
             .minimumInteractiveComponentSize()
             .kkElevation(if (pressed) KkElevation.None else KkElevation.Mid, shape)
             .clip(shape)

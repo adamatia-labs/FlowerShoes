@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +43,7 @@ val LocalAdBanner = staticCompositionLocalOf<(@Composable (slot: KkAdSlot, modif
 
 /**
  * 광고 지면 한 칸(Figma Ad Slot `341:1104`). 캘린더 · 휴가 · 설정에만 둔다.
+ * 광고 로딩 · 숨김은 기존 그대로이고, 모양만 v2 Ad Slot 이다.
  * 배너도 줄 광고도 없으면(광고가 오기 전 · 꽃신 평생) 아무것도 그리지 않아 높이가 0 이다.
  *
  * @param slot 어느 지면인지([KkAdSlot]). 공급자가 지면별로 다른 광고를 줄 수 있다.
@@ -60,7 +61,7 @@ fun KkNativeAd(ad: KkAdContent, modifier: Modifier = Modifier) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.sm)
     Row(
-        modifier.fillMaxWidth().height(60.dp).clip(shape).background(c.surface).dashedBorder(c.line, KkRadius.sm)
+        modifier.fillMaxWidth().heightIn(min = 60.dp).clip(shape).background(c.surface).dashedBorder(c.line, KkRadius.sm)
             .clickable(role = Role.Button, onClick = ad.onClick).padding(horizontal = KkSpacing.md, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,

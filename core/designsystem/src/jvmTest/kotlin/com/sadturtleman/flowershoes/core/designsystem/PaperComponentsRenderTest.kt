@@ -59,7 +59,7 @@ private fun Sheet() {
         KkUnderlineTabs(listOf("전체", "받은", "보낸"), selected = 0, onSelect = {})
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg), verticalAlignment = Alignment.CenterVertically) {
             KkPaperTag("다음 휴가", "D-23", modifier = Modifier.padding(top = KkSpacing.sm))
-            KkPaperTag("다음 만남", "11월 2일", valueStyle = KkPaperTagValue.Hand, tilt = -2f, modifier = Modifier.padding(top = KkSpacing.sm))
+            KkPaperTag("다음 만남", "11월 2일", valueStyle = KkPaperTagStyle.Hand, tilt = -2f, modifier = Modifier.padding(top = KkSpacing.sm))
         }
         KkEnvelopeRow("오늘도 보고 싶어. 휴가 나오면 그 카페 가자.", "민준 · 10월 28일", KkEnvelopeMark.Seal("D-479"), onClick = {})
         KkEnvelopeRow("그림 보냈어, 맞혀 봐", "민준 · 10월 27일", KkEnvelopeMark.Polaroid(null), onClick = {})
