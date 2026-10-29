@@ -34,12 +34,12 @@ import kotlin.uuid.Uuid
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** 한 번 돌린 결과. 화면 · 로그용. */
 /** 아직 상대에게 올리지 않은 내 기록: 편지 · 그림 수(연결 직후 "편지 N통 · 그림 M장 보내는 중")와 Op 수. */
 data class Outbox(val letters: Int, val drawings: Int, val ops: Int) {
     val isEmpty: Boolean get() = ops == 0
 }
 
+/** 한 번 돌린 결과. 화면 · 로그용. */
 data class SyncReport(val sent: Int = 0, val received: Int = 0, val resent: Int = 0, val snapshot: Boolean = false, val rejected: Int = 0)
 
 /**

@@ -92,6 +92,7 @@ data class PairingUi(
     /** 받는 쪽: 연결 뒤 혼자 쓴 편지 · 그림이 많아 보내는 중(처음 센 것 · 남은 것). */
     val sendingTotal: Outbox? = null,
     val sendingLeft: Outbox? = null,
+    val sendStartedMs: Long = 0,
     /** 받는 쪽: 링크를 보낸 사람(연결 중 화면에 계속 보인다). */
     val inviterName: String = "",
     /** 보내는 쪽: 내 표시 이름(초대장 · 카카오 템플릿 인자). 비어 있을 수 있다. */
@@ -181,7 +182,10 @@ class PairingViewModel(
 
     /** 보낸 쪽은 홈의 연결 모달([LinkWatcher])이 이어 받고 화면만 닫는다. 받는 쪽은 여기서 혼자 쓴 기록을 보낸다. */
     private suspend fun linked(s: PairingSession) {
-        if (s.isInviter) _ui.update { it.copy(receiveDone = true) } else onLinked()
+        if (!s.isInviter) return onLinked()
+        // 모달이 뜨기 전에 앱이 꺼져도 커플 키 epoch 는 남아 있어야 한다(보내기는 다음 동기화가 한다).
+        settings.setKeyEpoch(1)
+        _ui.update { it.copy(receiveDone = true) }
     }
 
     private fun startPolling(s: PairingSession) {
@@ -226,7 +230,7 @@ class PairingViewModel(
     private suspend fun handOff() {
         val total = handoff.begin()
         if (total.showsProgress()) {
-            _ui.update { it.copy(sendingTotal = total, sendingLeft = total, receiveStartedMs = kotlin.time.Clock.System.now().toEpochMilliseconds()) }
+            _ui.update { it.copy(sendingTotal = total, sendingLeft = total, sendStartedMs = kotlin.time.Clock.System.now().toEpochMilliseconds()) }
             handoff.send { left -> _ui.update { it.copy(sendingLeft = left) } }
         } else {
             runCatching { sync?.syncOnce() }

@@ -75,7 +75,7 @@ internal fun ConnectScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Uni
         is PairingState.Accepting -> InvitedScreen(s.inviterName, accepting = true, onAccept = {}, onLater = close)
         is PairingState.Linked -> {
             val total = ui.sendingTotal
-            if (total != null) SendingProgress(total, ui.sendingLeft ?: total, ui.receiveStartedMs)
+            if (total != null) SendingProgress(total, ui.sendingLeft ?: total, ui.sendStartedMs)
             else InvitedScreen(ui.inviterName, accepting = true, onAccept = {}, onLater = close)
         }
         PairingState.Expired -> Notice(
@@ -84,7 +84,10 @@ internal fun ConnectScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Uni
         )
         is PairingState.OwnLink -> {
             val share = LocalInviteShare.current
-            Notice("내가 보낸 초대 링크예요", close, primary = "다시 공유하기" to { share(InviteShare(s.token, vm.config.url(s.token), ui.myName)) })
+            Notice("내가 보낸 초대 링크예요", close, primary = "다시 공유하기" to {
+                share(InviteShare(s.token, vm.config.url(s.token), ui.myName))
+                close()
+            })
         }
         PairingState.AlreadyLinked -> Notice("이미 연결돼 있어요", close, primary = "닫기" to close)
         is PairingState.Failed -> Notice("연결하지 못했어요", close, primary = "다시 하기" to vm::open, secondary = "처음으로" to close, caption = s.reason)
@@ -163,9 +166,11 @@ private fun SendScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit, o
             }
         }
         if (copied > 0) {
+            // 복사도 보낸 것으로 본다: 토스트를 잠깐 보여 준 뒤 홈으로.
             LaunchedEffect(copied) {
-                delay(2_000)
+                delay(1_500)
                 copied = 0
+                onSent()
             }
             Box(Modifier.fillMaxSize().navigationBarsPadding().padding(start = KkSpacing.xxl, end = KkSpacing.xxl, bottom = 150.dp), contentAlignment = Alignment.BottomCenter) {
                 KkToast("링크를 복사했어요", type = KkToastType.Success)

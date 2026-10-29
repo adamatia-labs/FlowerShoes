@@ -195,7 +195,7 @@ fun KkSocialButton(kind: KkSocial, onClick: () -> Unit, modifier: Modifier = Mod
     }
 }
 
-/** 플랫폼 공유 시트(초대 코드 보내기 등). 앱 셸이 Android · iOS 구현을 꽂는다. */
+/** 플랫폼 공유 시트(초대 링크 보내기 등). 앱 셸이 Android · iOS 구현을 꽂는다. */
 val LocalKkShare = androidx.compose.runtime.staticCompositionLocalOf<(String) -> Unit> { {} }
 
 // ── Card ──────────────────────────────────────────────────────────────────

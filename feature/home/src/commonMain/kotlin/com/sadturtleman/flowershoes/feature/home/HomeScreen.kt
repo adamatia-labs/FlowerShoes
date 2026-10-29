@@ -249,7 +249,7 @@ private fun Invite(pending: Boolean, onOpenPairing: () -> Unit) {
             style = KkTheme.type.labelBold,
             color = c.accent,
             modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).clickable(role = A11y.Button, onClick = onOpenPairing)
-                .heightIn(min = 40.dp).padding(horizontal = KkSpacing.lg, vertical = 12.dp),
+                .heightIn(min = 48.dp).padding(horizontal = KkSpacing.lg, vertical = 12.dp),
         )
     }
 }
