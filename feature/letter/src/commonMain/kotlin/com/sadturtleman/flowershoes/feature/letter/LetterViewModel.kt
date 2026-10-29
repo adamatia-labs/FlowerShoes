@@ -16,6 +16,7 @@ import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.ReceiptEntity
+import com.sadturtleman.flowershoes.core.model.Role
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -54,19 +56,23 @@ enum class Paper(val id: String, val label: String, val lifetime: Boolean = fals
     }
 }
 
-/** 편지함 분류(Segment). */
-enum class LetterFilter(val label: String) { ALL("전체"), LETTER("편지"), DRAWING("그림") }
+/** 편지함 분류(밑줄 탭). */
+enum class LetterFilter(val label: String) { ALL("전체"), RECEIVED("받은 편지"), SENT("보낸 편지"), DRAWING("그림") }
 
-/** 편지함 한 칸. 글 없는 편지(그림만)는 그림을, 글 편지는 줄 그림을 썸네일로 보여 준다. */
+/** 편지함 봉투 한 줄: 실제 편지 첫 줄 + 보낸 사람 · 날짜 + 봉투 표시([envelope]). */
 data class LetterCard(
     val letter: Letter,
     val mine: Boolean,
+    /** 봉투 위 첫 줄: 제목 → 본문 첫 줄 → "그림 n장". */
     val title: String,
     val drawingOnly: Boolean,
     val unread: Boolean,
-    /** "10.21 · 나 → 연인" / "10.19 · 연인". */
+    /** "민준 · 오늘 오후 9:12" · "보낸 편지 · 10.19". */
     val meta: String,
     val thumb: DrawingDocument?,
+    val envelope: Envelope,
+    /** 공개 날짜(서울) — 월 머리로 묶는다. */
+    val date: LocalDate,
 )
 
 @Serializable
@@ -119,10 +125,33 @@ data class OpenLetter(
     val firstView: Set<String>,
     /** 사진 블록의 원본(JPEG). 아직 받는 중이면 없다. */
     val photos: Map<String, ByteArray> = emptyMap(),
+    /** 위 막대: "민준이 보낸 편지" · "10월 28일 (수) 오후 9:12"(잠긴 편지는 "예약 편지"). */
+    val title: String = "",
+    val subtitle: String = "",
+    /** 보낸 사람 역할 — 편지지 위 소인 문구("군사우편" · "꽃신 우편"). */
+    val senderRole: Role = Role.GOMSIN,
+    /** 소인 날짜 "2026.10.28". */
+    val postmark: String = "",
+    /** 그림 id → 폴라로이드 아래 손글씨. */
+    val captions: Map<String, String> = emptyMap(),
+    /** 이 편지에 고마워를 보냈다("고마워를 보냈어요"). */
+    val thanked: Boolean = false,
+    /** 공개 전 예약 편지 — "아직 못 열어요". 내용은 열리기 전까지 읽지 않는다. */
+    val locked: Boolean = false,
+    /** 잠긴 편지가 열리는 때(서울). */
+    val opensAt: LocalDateTime? = null,
+    /** 잠긴 편지 봉투: 첫 줄 · "민준 · 11월 1일 오전 9시 도착" · 우표. */
+    val envelopeLine: String = "",
+    val envelopeMeta: String = "",
+    val stamp: String = "",
 )
 
 data class LetterState(
+    /** 편지함을 아직 읽는 중(Skeleton). */
+    val loading: Boolean = true,
     val inbox: List<LetterCard> = emptyList(),
+    /** 오늘(서울) — 월 머리. */
+    val today: LocalDate = LocalDate(1970, 1, 1),
     val filter: LetterFilter = LetterFilter.ALL,
     val draft: ComposeDraft = ComposeDraft(),
     /** 편지 쓰기 › 붙인 그림 썸네일. */
@@ -145,9 +174,14 @@ data class LetterState(
     val visibleInbox: List<LetterCard>
         get() = when (filter) {
             LetterFilter.ALL -> inbox
-            LetterFilter.LETTER -> inbox.filter { it.letter.hasText }
+            LetterFilter.RECEIVED -> inbox.filter { !it.mine }
+            LetterFilter.SENT -> inbox.filter { it.mine }
             LetterFilter.DRAWING -> inbox.filter { it.letter.drawingCount > 0 }
         }
+
+    /** 보이는 편지를 달마다 묶은 것("10월" → 봉투들). */
+    val months: List<Pair<String, List<LetterCard>>>
+        get() = groupByMonth(visibleInbox, today) { it.date }
 }
 
 sealed interface LetterIntent {
@@ -179,6 +213,8 @@ sealed interface LetterIntent {
     data class DeleteDraft(val id: String) : LetterIntent
     /** 받은 편지 › 고마워: 짧은 답장을 바로 보낸다. */
     data object Thanks : LetterIntent
+    /** 아직 못 여는 편지 › 열리면 알려 주세요: 공개 시각 알림은 이미 잡혀 있다(NotificationPlanner) — 닫고 알린다. */
+    data object NotifyWhenOpen : LetterIntent
     data class Open(val letterId: String) : LetterIntent
     data class DrawingSeen(val drawingId: String) : LetterIntent
     data object Close : LetterIntent
@@ -222,21 +258,36 @@ class LetterViewModel(
         my to partner
     }
 
-    val state: StateFlow<LetterState> = combine(ui, letters.observeInbox(), letters.observeReadLetterIds(), names, thumbs) { s, list, read, (my, partner), th ->
+    /** 사람마다 역할(편지지 위 소인). */
+    private val roles = profile.observeUsers().map { users ->
+        users.mapNotNull { u -> Role.entries.firstOrNull { it.name == u.role }?.let { u.id to it } }.toMap()
+    }
+
+    /** 군인의 전역일(우표 D-day). 복무 정보 전이면 null. */
+    private val discharge = profile.observeTimelines().map { it.firstOrNull()?.second?.dischargeDate }
+
+    val state: StateFlow<LetterState> = combine(
+        ui, letters.observeInbox(), letters.observeReadLetterIds(), combine(names, discharge, ::Pair), thumbs,
+    ) { s, list, read, (people, dischargeDate), th ->
+        val (my, partner) = people
+        val now = clock.now().toLocalDateTime(SEOUL)
         val cards = list.map { l ->
             val mine = l.authorId == me
-            val firstLine = l.blocks.filterIsInstance<LetterBlock.Text>().firstOrNull()?.text?.lineSequence()?.firstOrNull { it.isNotBlank() }.orEmpty()
+            val unread = !mine && l.id !in read
+            val at = l.visibleAt.toLocalDateTime(SEOUL)
             LetterCard(
                 letter = l,
                 mine = mine,
-                title = l.title?.takeIf { it.isNotBlank() } ?: firstLine.ifBlank { "그림 ${l.drawingCount}장" },
+                title = l.firstLine(),
                 drawingOnly = !l.hasText && l.drawingCount > 0,
-                unread = !mine && l.id !in read,
-                meta = "${l.visibleAt.toLocalDateTime(SEOUL).short()} · " + if (mine) my else partner,
+                unread = unread,
+                meta = envelopeMeta(if (mine) my else partner, mine, at, now),
                 thumb = th[l.id],
+                envelope = envelopeOf(mine, unread, l.drawingCount > 0, at.date, dischargeDate),
+                date = at.date,
             )
         }
-        s.copy(inbox = cards, partnerName = partner)
+        s.copy(loading = false, inbox = cards, today = now.date, partnerName = partner)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LetterState())
 
     init {
@@ -304,12 +355,21 @@ class LetterViewModel(
                 keeper.delete(intent.id)
                 if (intent.id == ui.value.draftId) ui.update { it.freshDraft() }
             }
-            LetterIntent.Thanks -> viewModelScope.launch {
-                // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번.
-                ui.value.open?.letter?.id?.let { letters.markRead(ReceiptEntity.HEART, it) }
-                letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
-                bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
-                toast("고마워를 보냈어요")
+            LetterIntent.Thanks -> {
+                val open = ui.value.open?.takeIf { !it.mine && !it.thanked && !it.locked } ?: return
+                // 두 번 보내지 않게 버튼부터 "고마워를 보냈어요"로.
+                ui.update { s -> s.copy(open = s.open?.let { if (it.letter.id == open.letter.id) it.copy(thanked = true) else it }) }
+                viewModelScope.launch {
+                    // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번.
+                    letters.markRead(ReceiptEntity.HEART, open.letter.id)
+                    letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
+                    bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
+                    toast("${names.first().second}에게 고마워를 보냈어요")
+                }
+            }
+            LetterIntent.NotifyWhenOpen -> {
+                ui.update { it.copy(open = null) }
+                toast("열리면 알려 드릴게요")
             }
             is LetterIntent.Open -> open(intent.letterId)
             is LetterIntent.DrawingSeen -> viewModelScope.launch {
@@ -392,19 +452,36 @@ class LetterViewModel(
 
     private fun open(letterId: String) {
         viewModelScope.launch {
-            // 알림으로 처음 실행하면 화면의 stateIn은 아직 빈 초기값일 수 있다.
-            val letter = letters.observeInbox().first().firstOrNull { it.id == letterId } ?: run {
+            // 알림으로 처음 실행하면 화면의 stateIn은 아직 빈 초기값일 수 있어 저장소에서 바로 읽는다.
+            val letter = letters.find(letterId) ?: run {
                 ui.update { it.copy(open = null) }
                 toast("편지를 찾을 수 없어요")
                 return@launch
             }
             val mine = letter.authorId == me
+            val (my, partner) = names.first()
+            val at = letter.visibleAt.toLocalDateTime(SEOUL)
+            val senderRole = roleOf(letter.authorId, roles.first())
+            if (!mine && letter.visibleAt > clock.now()) {
+                // 아직 못 여는 예약 편지: 봉투와 열리는 때만. 글 · 그림 · 사진은 열린 뒤에 읽는다.
+                ui.update {
+                    it.copy(
+                        open = OpenLetter(
+                            letter, mine, meta = "", drawings = emptyMap(), firstView = emptySet(),
+                            title = readTitle(false, partner), subtitle = "예약 편지", senderRole = senderRole,
+                            locked = true, opensAt = at,
+                            envelopeLine = letter.firstLine(), envelopeMeta = "$partner · ${opensAt(at)} 도착",
+                            stamp = stampText(discharge.first(), at.date),
+                        ),
+                    )
+                }
+                return@launch
+            }
             val rows = letters.drawingsOf(letterId)
             val docs = rows.mapNotNull { row -> row.docAttachmentId?.let { decode(it) }?.let { row.id to it } }.toMap()
             val first = rows.filter { !mine && it.replayEnabled && letters.isFirstView(it.id) }.map { it.id }.toSet()
             val photos = letter.blocks.filterIsInstance<LetterBlock.Photo>().mapNotNull { b -> attachments.read(b.attachmentId)?.let { b.attachmentId to it } }.toMap()
-            val (my, partner) = names.first()
-            val at = letter.visibleAt.toLocalDateTime(SEOUL)
+            val thanked = !mine && letters.thanked(letterId)
             val meta = (if (mine) my else partner) + " · ${at.short()} (${weekday(at.date)})"
             val drawingOnly = !letter.hasText && letter.drawingCount == 1
             ui.update {
@@ -415,14 +492,27 @@ class LetterViewModel(
                         drawingTitle = if (mine) "내가 보낸 그림" else "${partner.withSubject()} 보낸 그림",
                         sentAt = "${at.month.ordinal + 1}월 ${at.day}일 ${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}",
                         meta = meta, drawings = docs, firstView = first, photos = photos,
+                        title = readTitle(mine, partner), subtitle = readWhen(at), senderRole = senderRole,
+                        postmark = postmarkDate(at.date),
+                        captions = rows.mapNotNull { r -> r.caption?.takeIf { it.isNotBlank() }?.let { r.id to it } }.toMap(),
+                        thanked = thanked,
                     ),
                 )
             }
             if (!mine) letters.markRead(ReceiptEntity.LETTER, letterId)
         }
     }
+
+    /** 보낸 사람 역할. 그 사람 프로필을 아직 받지 못했으면 다른 사람 역할의 반대로 본다(커플은 곰신 · 군인 한 명씩). */
+    private fun roleOf(userId: String, roles: Map<String, Role>): Role =
+        roles[userId] ?: roles.entries.firstOrNull { it.key != userId }?.value?.let { if (it == Role.SOLDIER) Role.GOMSIN else Role.SOLDIER } ?: Role.GOMSIN
 }
 
+/** 봉투 위 첫 줄: 제목 → 본문 첫 줄 → "그림 n장". */
+private fun Letter.firstLine(): String {
+    val text = blocks.filterIsInstance<LetterBlock.Text>().firstOrNull()?.text?.lineSequence()?.firstOrNull { it.isNotBlank() }.orEmpty()
+    return title?.takeIf { it.isNotBlank() } ?: text.ifBlank { "그림 ${drawingCount}장" }
+}
 
 private fun LocalDateTime.short() = "${month.ordinal + 1}.$day"
 
