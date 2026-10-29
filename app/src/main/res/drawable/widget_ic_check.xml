@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma 🧩 Components 에서 받은 SVG(check.svg)를 변환했다. 직접 고치지 말고 다시 변환한다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="10.5333dp" android:height="7.86667dp"
+    android:viewportWidth="10.5333" android:viewportHeight="7.86667">
+    <path android:pathData="M0.6 3.93334L3.93333 7.26667L9.93333 0.600005" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
