@@ -137,7 +137,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkPostmark
 import com.sadturtleman.flowershoes.core.designsystem.KkPostmarkInk
 import com.sadturtleman.flowershoes.core.designsystem.KkSkeleton
 import com.sadturtleman.flowershoes.core.designsystem.KkUnderlineTabs
-import com.sadturtleman.flowershoes.core.designsystem.Palette
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.sadturtleman.flowershoes.core.drawingui.ReplayCanvas
 import com.sadturtleman.flowershoes.core.drawingui.drawDocument
 import com.sadturtleman.flowershoes.core.drawingui.rememberReplayState
@@ -381,9 +381,8 @@ private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
                                     Modifier.width(160.dp), tilt = 4f, caption = open.captions[block.drawingId],
                                     onReplay = if (replay.playing) null else replay::restart,
                                 ) {
-                                    Box(Modifier.fillMaxSize().background(Palette.InkBrown100), contentAlignment = Alignment.Center) {
-                                        ReplayCanvas(doc, replay, Modifier.fillMaxSize(), onFinished = { onIntent(LetterIntent.DrawingSeen(block.drawingId)) })
-                                    }
+                                    // 그림 바탕은 그림 문서가 칠한다(콘텐츠).
+                                    ReplayCanvas(doc, replay, Modifier.fillMaxSize(), onFinished = { onIntent(LetterIntent.DrawingSeen(block.drawingId)) })
                                 }
                             }
                         }
@@ -437,11 +436,9 @@ private fun LockedLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Uni
         val opens = at.toInstant(SEOUL)
         while (true) {
             now = Clock.System.now()
-            if (now >= opens) {
-                onIntent(LetterIntent.Open(open.letter.id))
-                break
-            }
-            delay(1_000)
+            // 시각이 되면 다시 연다. 뷰모델 시계가 조금 늦으면 아직 잠긴 채 돌아오므로 열릴 때까지 몇 초마다 다시 묻는다.
+            if (now >= opens) onIntent(LetterIntent.Open(open.letter.id))
+            delay(if (now >= opens) 3_000 else 1_000)
         }
     }
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
@@ -451,13 +448,16 @@ private fun LockedLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Uni
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(KkSpacing.xxl),
         ) {
-            Box(contentAlignment = Alignment.Center) {
+            // 누를 수 없는 봉투: 접근성에는 "잠긴 편지, 첫 줄, 보낸 사람 · 도착" 한 덩어리로 읽힌다.
+            Box(
+                Modifier.clearAndSetSemantics { contentDescription = "잠긴 편지, ${open.envelopeLine}, ${open.envelopeMeta}" },
+                contentAlignment = Alignment.Center,
+            ) {
                 KkEnvelopeRow(open.envelopeLine, open.envelopeMeta, KkEnvelopeMark.Stamp(open.stamp), onClick = {})
                 // 봉인 대신 자물쇠: 아직 열 수 없다.
-                Box(
-                    Modifier.size(44.dp).clip(CircleShape).background(c.accent).semantics { contentDescription = "잠긴 편지" },
-                    contentAlignment = Alignment.Center,
-                ) { KkIcon(KkIcons.Lock, tint = c.canvas, size = 20.dp) }
+                Box(Modifier.size(44.dp).clip(CircleShape).background(c.accent), contentAlignment = Alignment.Center) {
+                    KkIcon(KkIcons.Lock, tint = c.canvas, size = 20.dp)
+                }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
                 Text("${opensAt(at)}에 열려요", style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center)

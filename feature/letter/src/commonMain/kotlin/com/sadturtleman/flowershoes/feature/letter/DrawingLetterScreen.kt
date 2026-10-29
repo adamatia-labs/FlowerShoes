@@ -102,7 +102,10 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
                 Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = KkSpacing.lg, vertical = KkSpacing.lg),
                 horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
             ) {
-                KkSecondaryButton("고마워", onClick = { onIntent(LetterIntent.Thanks) }, modifier = Modifier.weight(1f))
+                KkSecondaryButton(
+                    if (open.thanked) "고마워를 보냈어요" else "고마워",
+                    onClick = { onIntent(LetterIntent.Thanks) }, modifier = Modifier.weight(1f), enabled = !open.thanked,
+                )
                 KkPrimaryButton("답장 그리기", onClick = onReplyDrawing, modifier = Modifier.weight(1f))
             }
         }
