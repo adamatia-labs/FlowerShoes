@@ -26,7 +26,7 @@ class MemoryRenderTest {
         YearMonth(2026, 10), 7, emptySet(), emptySet(), emptyList(),
         letters = listOf(
             letter("a", 28, "오늘 당직인데 네 생각나서 몰래 써", title = "당직 편지", unread = true),
-            letter("b", 27, "", kind = LetterKind.DRAWING_ONLY),
+            letter("b", 27, "", kind = LetterKind.DRAWING_ONLY, unread = true),
             letter("c", 24, "훈련 끝나고 쓰는 편지"),
             letter("d", 19, "첫 면회 다녀와서", mine = true),
             letter("e", 12, "이번 주는 비가 많이 와"),
@@ -52,7 +52,7 @@ class MemoryRenderTest {
     @Test
     fun `추억 화면들을 그린다`() {
         render("memory_list") { MemoryScreen(list, emptyMap(), {}, {}) }
-        render("memory_empty") { MemoryScreen(MemoryState(loading = false), emptyMap(), {}, {}) }
+        render("memory_empty") { MemoryScreen(MemoryState(loading = false, today = LocalDate(2026, 10, 28)), emptyMap(), {}, {}) }
         render("memory_loading") { MemoryScreen(MemoryState(), emptyMap(), {}, {}) }
         render("memory_month") { MonthScreen(october, emptyMap(), {}, {}) }
     }

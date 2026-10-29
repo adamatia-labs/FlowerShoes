@@ -158,7 +158,7 @@ fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: 
             state.latestMeet?.let { id -> DayLineButton { onIntent(MemoryIntent.Open(MemoryPage.DayLine(id))) } }
             if (state.empty) {
                 EmptyMemory(onWriteLetter)
-                EmptyPage(YearMonth.of(remember { kotlin.time.Clock.System.today() }), Modifier.padding(horizontal = KkSpacing.lg))
+                state.today?.let { EmptyPage(YearMonth.of(it), Modifier.padding(horizontal = KkSpacing.lg)) }
                 return@Column
             }
             state.chapters.forEachIndexed { i, ch ->
@@ -180,10 +180,10 @@ private fun MemoryTopBar(onBook: (() -> Unit)?) {
         Text("추억", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
         Box(
             Modifier.size(48.dp).clip(CircleShape)
-                .then(if (onBook != null) Modifier.clickable(role = Role.Button, onClick = onBook) else Modifier)
+                .clickable(enabled = onBook != null, role = Role.Button) { onBook?.invoke() }
                 .semantics { contentDescription = "책으로 보기" },
             contentAlignment = Alignment.Center,
-        ) { KkIcon(KkIcons.Book, tint = if (onBook != null) c.ink else c.line) }
+        ) { KkIcon(KkIcons.Book, tint = if (onBook != null) c.ink else c.sub) }
     }
 }
 
@@ -213,7 +213,6 @@ private fun MonthPageCard(ch: Chapter, month: MonthDetail, page: MonthPage, phot
         Column(
             Modifier.fillMaxWidth().kkElevation(KkElevation.Low, RectangleShape).background(c.surface)
                 .clickable(role = Role.Button, onClick = onClick)
-                .semantics { contentDescription = "${ch.ym.month}월 · ${ordinalKo(ch.number)} 장" }
                 .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 18.dp),
         ) {
             Text("${ch.ym.month}월", style = KkTheme.type.handL, color = c.ink)
@@ -382,8 +381,8 @@ private fun TimelineDayRow(day: TimelineDay, photos: Map<String, ByteArray?>, on
                     is TimelineItem.Meet -> item.meet.let { meet ->
                         MeetTicket(
                             meet.title, meet.notes.firstOrNull()?.let { (who, text) -> "$who · $text" } ?: meet.time,
+                            // 누르는 목록 안이라 반듯하게(design.md).
                             Modifier.fillMaxWidth().clickable(role = Role.Button) { onIntent(MemoryIntent.Open(MemoryPage.Meet(meet.eventId))) },
-                            tilt = 1f,
                         )
                     }
                     is TimelineItem.Letter -> item.letter.let { l ->
@@ -416,15 +415,24 @@ private fun kotlinx.datetime.LocalDate.dotted() =
 private fun DrawingLetter(l: MonthLetter, photos: Map<String, ByteArray?>, onOpen: () -> Unit) {
     val c = KkTheme.colors
     Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg), verticalAlignment = Alignment.Top) {
-        KkPolaroid(
-            Modifier.width(140.dp).padding(top = KkSpacing.sm).clickable(role = Role.Button, onClick = onOpen).semantics { contentDescription = "그림 편지" },
-            tilt = 2.5f, caption = l.caption,
-        ) {
-            Box(Modifier.fillMaxSize().background(c.bar)) {
-                when {
-                    l.thumb != null -> DrawingView(l.thumb, Modifier.fillMaxSize())
-                    l.drawingPng != null -> PhotoImage(photos[l.drawingPng], Modifier.fillMaxSize())
+        Box {
+            KkPolaroid(
+                Modifier.width(140.dp).padding(top = KkSpacing.sm).clickable(role = Role.Button, onClick = onOpen).semantics { contentDescription = "그림 편지" },
+                tilt = 2.5f, caption = l.caption,
+            ) {
+                Box(Modifier.fillMaxSize().background(c.bar)) {
+                    when {
+                        l.thumb != null -> DrawingView(l.thumb, Modifier.fillMaxSize())
+                        l.drawingPng != null -> PhotoImage(photos[l.drawingPng], Modifier.fillMaxSize())
+                    }
                 }
+            }
+            // 안 읽은 그림 편지: 봉투처럼 "새" 봉인을 모서리에 건다.
+            if (l.mark() == LetterMark.Seal) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).offset(x = 6.dp).size(28.dp).clip(CircleShape).background(c.accent).clearAndSetSemantics { contentDescription = "새 편지" },
+                    contentAlignment = Alignment.Center,
+                ) { Text("새", style = KkTheme.type.labelBold, color = c.canvas) }
             }
         }
         Column(Modifier.padding(top = 22.dp)) {

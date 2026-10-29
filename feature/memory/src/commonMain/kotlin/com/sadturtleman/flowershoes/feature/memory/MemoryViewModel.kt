@@ -224,6 +224,8 @@ data class MemoryState(
     val dayLineMeets: Map<String, MeetCard> = emptyMap(),
     /** 추억 위쪽 [+ 그날의 한 줄] 이 여는 일정: 가장 최근에 끝난(진행 중이면 그것) 만남. */
     val latestMeet: String? = null,
+    /** 오늘(ViewModel 시계). 비어 있을 때 이번 달 빈 페이지. */
+    val today: LocalDate? = null,
 ) {
     val empty: Boolean get() = !loading && chapters.none { it.letters + it.meets > 0 }
     val top: MemoryPage? get() = stack.lastOrNull()
@@ -380,7 +382,7 @@ class MemoryViewModel(
         // 책의 첫 장: 입대한 달(복무 정보가 없으면 첫 편지 · 만남의 달). 마지막 장: 이번 달(전역했으면 전역한 달).
         val contentStart = (ls.map { it.date() } + pastMeets.map { it.start.date }).minOrNull()
         val start = timeline?.enlistDate ?: contentStart
-        if (start == null) return MemoryState(loading = false, stack = pages, dayLineMeets = dayLineMeets, latestMeet = latestMeet)
+        if (start == null) return MemoryState(loading = false, stack = pages, dayLineMeets = dayLineMeets, latestMeet = latestMeet, today = today)
         val end = timeline?.dischargeDate?.takeIf { it < today } ?: today
         val firstYm = YearMonth.of(minOf(start, contentStart ?: start))
         val lastYm = YearMonth.of(end)
@@ -481,6 +483,7 @@ class MemoryViewModel(
             stack = pages,
             dayLineMeets = dayLineMeets,
             latestMeet = latestMeet,
+            today = today,
         )
     }
 
