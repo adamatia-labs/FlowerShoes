@@ -13,6 +13,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import okio.Path.Companion.toPath
 import org.koin.core.context.startKoin
 import platform.Foundation.NSApplicationSupportDirectory
+import platform.Foundation.NSBundle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIViewController
@@ -96,7 +97,7 @@ fun MainViewController(
                         com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway()
                     },
                     vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
-                ) + org.koin.dsl.module {
+                ) + telemetryModules(firebase = firebase && !emulatorAuth) + org.koin.dsl.module {
                     if (kotlin.native.Platform.isDebugBinary) {
                         single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
                     }
@@ -119,6 +120,10 @@ fun MainViewController(
             )
         }
         started = true
+        // 이 실행의 사용자 UUID 가 여기서 만들어진다. 로깅을 먼저 연 뒤에 플래그를 받는다 — 배정은 받자마자 그 기록기로 나간다.
+        val koin = org.koin.mp.KoinPlatform.getKoin()
+        koin.get<com.sadturtleman.flowershoes.core.logging.BizLogger>().init()
+        appScope.launch { koin.get<com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider>().init() }
     }
     return ComposeUIViewController(configure = {
         // 화면의 imePadding/스크롤이 키보드를 처리한다. 루트 전체를 밀면 상단 버튼이 상태바와 겹친다.
@@ -157,6 +162,8 @@ fun MainViewController(
  */
 fun onForeground() {
     val koin = org.koin.mp.KoinPlatform.getKoinOrNull() ?: return
+    // onBackground 에서 접어 둔 기록기를 다시 연다.
+    koin.get<com.sadturtleman.flowershoes.core.logging.BizLogger>().init()
     appScope.launch {
         if (!servicesStarted) {
             servicesStarted = true
@@ -199,3 +206,29 @@ fun onForeground() {
         )
     }
 }
+
+/**
+ * iosApp 이 앱이 백그라운드로 내려갈 때 부른다. iOS 도 종료를 알려주지 않으므로 이것이 마지막 신호다.
+ * 아직 나가지 못한 이벤트가 끝나기를 기다린 뒤 기록기를 접는다.
+ */
+fun onBackground() {
+    org.koin.mp.KoinPlatform.getKoinOrNull()?.get<com.sadturtleman.flowershoes.core.logging.BizLogger>()?.destroy()
+}
+
+/**
+ * 로깅 · 피처 플래그. [firebase] 는 GoogleService-Info.plist 로 Firebase 가 켜졌고 로컬 에뮬레이터가 아니다.
+ * 디버그 빌드의 기록은 GA4 에 보내지 않고 표준 출력(Xcode 콘솔)으로 흘린다.
+ * 환경(dev · qa · prod)은 Info.plist 의 KkotsinAppEnv(Config.xcconfig 의 APP_ENV)다. 비어 있으면 prod.
+ */
+@OptIn(kotlin.experimental.ExperimentalNativeApi::class)
+private fun telemetryModules(firebase: Boolean): List<org.koin.core.module.Module> = listOf(
+    com.sadturtleman.flowershoes.common.di.coroutineModule,
+    com.sadturtleman.flowershoes.core.logging.bizLogModule {
+        if (firebase && !kotlin.native.Platform.isDebugBinary) com.sadturtleman.flowershoes.core.logging.firebaseAnalyticsSink() else null
+    },
+    com.sadturtleman.flowershoes.core.featureflag.featureFlagModule(
+        com.sadturtleman.flowershoes.core.featureflag.AppEnvironment.of(
+            NSBundle.mainBundle.objectForInfoDictionaryKey("KkotsinAppEnv") as? String ?: "",
+        ),
+    ) { if (firebase) com.sadturtleman.flowershoes.core.featureflag.FirebaseRemoteConfigSource() else null },
+)

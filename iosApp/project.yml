@@ -19,7 +19,8 @@ packages:
     from: 0.9.1
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    from: 11.0.0
+    # GitLive 2.7 이 빌드한 Firebase iOS SDK(11.8) 이상, FirebaseAnalyticsCore 가 생긴 11.14 부터
+    from: 11.14.0
   # zstd 저장소의 Package.swift(C 모듈 libzstd). 그림 문서 · 백업 압축.
   Zstd:
     url: https://github.com/facebook/zstd
@@ -104,6 +105,11 @@ targets:
         product: FirebaseFunctions
       - package: Firebase
         product: FirebaseMessaging
+      # GA4. 광고 ID(IDFA)를 모으지 않는 변형이다 — FirebaseAnalytics 가 아니라 Core.
+      - package: Firebase
+        product: FirebaseAnalyticsCore
+      - package: Firebase
+        product: FirebaseRemoteConfig
     info:
       path: App/Info.plist
       properties:
@@ -132,6 +138,10 @@ targets:
         GADApplicationIdentifier: ca-app-pub-9179621242550991~5857677275
         # RevenueCat 공개 SDK 키(Config.xcconfig 의 REVENUECAT_API_KEY, 비면 테스트 스토어 키)
         RevenueCatAPIKey: $(REVENUECAT_API_KEY)
+        # 피처 플래그 환경(DEV · QA · PROD, Config.xcconfig 의 APP_ENV). 비어 있으면 PROD.
+        KkotsinAppEnv: $(APP_ENV)
+        # GA4 가 광고 개인화 신호를 내지 않는다. AdMob 이 AdSupport 를 링크하므로 Core 변형만으로는 막을 수 없다.
+        GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS: false
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
           - SKAdNetworkIdentifier: 4fzdc2evr5.skadnetwork
