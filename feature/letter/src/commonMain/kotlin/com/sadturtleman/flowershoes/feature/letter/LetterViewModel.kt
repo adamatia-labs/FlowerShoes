@@ -18,6 +18,7 @@ import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.ReceiptEntity
 import com.sadturtleman.flowershoes.core.model.Role
 import kotlin.time.Clock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -106,7 +107,24 @@ data class ComposeDraft(
 }
 
 /** 한 줄 알림. [openLetterId] 가 있으면 "보기" 로 그 편지를 연다. */
-data class LetterToast(val message: String, val openLetterId: String? = null)
+data class LetterToast(val message: String, val openLetterId: String? = null, val kind: Kind = Kind.DEFAULT) {
+    enum class Kind { DEFAULT, SUCCESS, ERROR }
+}
+
+/**
+ * 편지 쓰기를 끝낸 뒤(Figma 편지 쓰기 · 보냄). 바로 보낸 편지는 봉투 + "민준에게 보냈어요" 화면, 예약은 알림만 남기고 닫는다.
+ */
+sealed interface ComposeDone {
+    /**
+     * @param line 봉투 위 첫 줄.
+     * @param meta "지수 · 오늘 오후 10:03".
+     * @param stamp 우표 글자(D-day). 혼자 모드면 "대기".
+     * @param queued 혼자 모드 — 연결하면 한꺼번에 간다. [queuedCount] 는 그때 갈 편지 수.
+     */
+    data class Sent(val line: String, val meta: String, val stamp: String, val partner: String, val queued: Boolean = false, val queuedCount: Int = 0) : ComposeDone
+
+    data object Scheduled : ComposeDone
+}
 
 /** 읽는 중인 편지. 그림 문서는 첨부에서 읽어 둔다. */
 data class OpenLetter(
@@ -166,6 +184,10 @@ data class LetterState(
     val draftId: String = "",
     /** 편지 쓰기를 새로 열었고 아직 아무것도 고르지 않았다 — 쓰던 편지가 있으면 "이어 쓸까요?" 시트. */
     val resumeOffer: Boolean = false,
+    /** 혼자 모드(연결 전): 내가 쓴 편지는 내 폰에 쌓였다가 연결하는 순간 한꺼번에 간다("보낼 편지 N통"). */
+    val solo: Boolean = false,
+    /** 편지 쓰기를 끝냈다(보냄 화면 · 예약 뒤 닫기). */
+    val done: ComposeDone? = null,
 ) {
     /** "이어 쓸까요?" 시트에 보일 쓰던 편지. 비어 있으면 시트를 띄우지 않는다. */
     val resumable: List<DraftSummary>
@@ -179,9 +201,12 @@ data class LetterState(
             LetterFilter.DRAWING -> inbox.filter { it.letter.drawingCount > 0 }
         }
 
-    /** 보이는 편지를 달마다 묶은 것("10월" → 봉투들). */
+    /** 보이는 편지를 달마다 묶은 것("10월" → 봉투들). 혼자 모드는 "보낼 편지 N통" 한 묶음. */
     val months: List<Pair<String, List<LetterCard>>>
-        get() = groupByMonth(visibleInbox, today) { it.date }
+        get() = when {
+            solo && visibleInbox.isNotEmpty() -> listOf("보낼 편지 ${visibleInbox.size}통" to visibleInbox)
+            else -> groupByMonth(visibleInbox, today) { it.date }
+        }
 }
 
 sealed interface LetterIntent {
@@ -209,6 +234,10 @@ sealed interface LetterIntent {
     data object DismissResume : LetterIntent
     /** 편지 쓰기 화면을 나간다 — 쓰던 글을 바로 저장한다. */
     data object LeaveCompose : LetterIntent
+    /** 편지 쓰기 › 임시저장: 기다리지 않고 저장하고 "임시저장했어요". */
+    data object SaveDraft : LetterIntent
+    /** 보냄 화면을 닫았다(편지함으로). */
+    data object DismissDone : LetterIntent
     /** 쓰던 편지 목록 › 지우기. */
     data class DeleteDraft(val id: String) : LetterIntent
     /** 받은 편지 › 고마워: 짧은 답장을 바로 보낸다. */
@@ -242,8 +271,8 @@ class LetterViewModel(
     /** "고마워를 보냈어요" 같은 한 줄 알림. 화면이 바뀌는 사이에 나와도 놓치지 않게 마지막 하나는 남긴다. */
     val toasts: SharedFlow<LetterToast> = _toasts
 
-    private fun toast(message: String, openLetterId: String? = null) {
-        _toasts.tryEmit(LetterToast(message, openLetterId))
+    private fun toast(message: String, openLetterId: String? = null, kind: LetterToast.Kind = LetterToast.Kind.DEFAULT) {
+        _toasts.tryEmit(LetterToast(message, openLetterId, kind))
     }
 
     /** 보여 준 알림은 다시 띄우지 않는다. */
@@ -266,14 +295,18 @@ class LetterViewModel(
     /** 군인의 전역일(우표 D-day). 복무 정보 전이면 null. */
     private val discharge = profile.observeTimelines().map { it.firstOrNull()?.second?.dischargeDate }
 
+    /** 연결 전(혼자 모드) — 내가 쓴 편지는 아직 내 폰에만 있다. */
+    private val solo = profile.observeCouple().map { it?.partnerUserId.isNullOrBlank() }
+
     val state: StateFlow<LetterState> = combine(
-        ui, letters.observeInbox(), letters.observeReadLetterIds(), combine(names, discharge, ::Pair), thumbs,
-    ) { s, list, read, (people, dischargeDate), th ->
+        ui, letters.observeInbox(), letters.observeReadLetterIds(), combine(names, discharge, solo, ::Triple), thumbs,
+    ) { s, list, read, (people, dischargeDate, alone), th ->
         val (my, partner) = people
         val now = clock.now().toLocalDateTime(SEOUL)
         val cards = list.map { l ->
             val mine = l.authorId == me
             val unread = !mine && l.id !in read
+            val queued = mine && alone
             val at = l.visibleAt.toLocalDateTime(SEOUL)
             LetterCard(
                 letter = l,
@@ -281,13 +314,13 @@ class LetterViewModel(
                 title = l.firstLine(),
                 drawingOnly = !l.hasText && l.drawingCount > 0,
                 unread = unread,
-                meta = envelopeMeta(if (mine) my else partner, mine, at, now),
+                meta = if (queued) queuedMeta(my, at) else envelopeMeta(if (mine) my else partner, mine, at, now),
                 thumb = th[l.id],
-                envelope = envelopeOf(mine, unread, l.drawingCount > 0, at.date, dischargeDate),
+                envelope = envelopeOf(mine, unread, l.drawingCount > 0, at.date, dischargeDate, queued),
                 date = at.date,
             )
         }
-        s.copy(loading = false, inbox = cards, today = now.date, partnerName = partner)
+        s.copy(loading = false, inbox = cards, today = now.date, partnerName = partner, solo = alone)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LetterState())
 
     init {
@@ -351,18 +384,34 @@ class LetterViewModel(
             LetterIntent.DismissResume -> ui.update { it.copy(resumeOffer = false) }
             // 시트는 그대로 둔다 — 앱을 잠깐 내렸다 와도 "이어 쓸까요?" 가 남는다.
             LetterIntent.LeaveCompose -> keeper.flush(ui.value.draft)
+            LetterIntent.SaveDraft -> {
+                val d = ui.value.draft
+                if (d.isEmpty || d.sending) return
+                keeper.flush(d)
+                toast("임시저장했어요", kind = LetterToast.Kind.SUCCESS)
+            }
+            LetterIntent.DismissDone -> ui.update { it.copy(done = null) }
             is LetterIntent.DeleteDraft -> {
                 keeper.delete(intent.id)
                 if (intent.id == ui.value.draftId) ui.update { it.freshDraft() }
             }
             LetterIntent.Thanks -> {
                 val open = ui.value.open?.takeIf { !it.mine && !it.thanked && !it.locked } ?: return
-                // 두 번 보내지 않게 버튼부터 "고마워를 보냈어요"로.
-                ui.update { s -> s.copy(open = s.open?.let { if (it.letter.id == open.letter.id) it.copy(thanked = true) else it }) }
+                // 두 번 보내지 않게 버튼부터 "고마워를 보냈어요"로. 보내지 못하면 되돌린다.
+                fun thanked(on: Boolean) = ui.update { s -> s.copy(open = s.open?.let { if (it.letter.id == open.letter.id) it.copy(thanked = on) else it }) }
+                thanked(true)
                 viewModelScope.launch {
-                    // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번.
-                    letters.markRead(ReceiptEntity.HEART, open.letter.id)
-                    letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
+                    try {
+                        letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        thanked(false)
+                        toast("고마워를 보내지 못했어요", kind = LetterToast.Kind.ERROR)
+                        return@launch
+                    }
+                    // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번. 답장은 이미 갔으니 기록이 실패해도 되돌리지 않는다.
+                    runCatching { letters.markRead(ReceiptEntity.HEART, open.letter.id) }
                     bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
                     toast("${names.first().second}에게 고마워를 보냈어요")
                 }
@@ -423,25 +472,53 @@ class LetterViewModel(
         return (DrawingCodec.decode(bytes) as? DrawingCodec.Result.Ok)?.document
     }
 
+    /**
+     * 보내는 중 → 보냄(봉투 화면) · 예약(알림 + 닫기). 보내지 못하면 쓰던 편지를 그대로 두고 "보내지 못했어요".
+     */
     private fun send() {
         val d = ui.value.draft
         if (!d.canSend) return
-        ui.update { it.copy(draft = d.copy(sending = true)) }
+        ui.update { it.copy(draft = d.copy(sending = true), done = null) }
         val draftId = keeper.currentId
         viewModelScope.launch {
             // 글 · 그림 · 사진의 순서: 편지 쓰기 화면의 글 속 자리 그대로.
             val blocks = d.toBlocks()
             val visibleAt = d.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
             val font = d.font.takeIf { it != com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id }
-            letters.send(letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font), d.drawings)
+            val letter = letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font)
+            try {
+                letters.send(letter, d.drawings)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ui.update { s -> if (keeper.currentId == draftId) s.copy(draft = s.draft.copy(sending = false)) else s }
+                toast("보내지 못했어요", kind = LetterToast.Kind.ERROR)
+                return@launch
+            }
             bizLogger.record(BizView.LETTER_COMPOSE, BizEvent.LetterSent(paper = d.paper, font = d.font, scheduled = d.revealAt != null, drawings = d.drawings.size, photos = d.photos.size, reply = false))
             recordSoloQueue(BizView.LETTER_COMPOSE)
             // 보낸 편지는 쓰던 편지 목록에서 빠진다. 아직 이 편지를 보고 있으면 빈 편지지로.
             val stillHere = keeper.currentId == draftId
             keeper.sent(draftId)
-            if (stillHere) ui.update { it.freshDraft() }
+            val done = if (d.revealAt != null) ComposeDone.Scheduled else sentNote(letter)
+            ui.update { (if (stillHere) it.freshDraft() else it).copy(done = done) }
             if (d.revealAt != null) toast("${d.revealAt.month.ordinal + 1}월 ${d.revealAt.day}일 ${d.revealAt.hour}시에 도착해요")
         }
+    }
+
+    /** 보냄 화면의 봉투: 첫 줄 · "지수 · 오늘 오후 10:03" · 우표(혼자 모드면 "대기"). */
+    private suspend fun sentNote(letter: Letter): ComposeDone.Sent {
+        val (my, partner) = names.first()
+        val at = letter.visibleAt.toLocalDateTime(SEOUL)
+        val alone = solo.first()
+        return ComposeDone.Sent(
+            line = letter.firstLine(),
+            meta = envelopeMeta(my, mine = false, at = at, now = clock.now().toLocalDateTime(SEOUL)),
+            stamp = if (alone) "대기" else stampText(discharge.first(), at.date),
+            partner = partner,
+            queued = alone,
+            queuedCount = if (alone) letters.countMine() else 0,
+        )
     }
 
     /** 혼자 모드(연결 전)면 내 폰에 쌓인 내 편지 수를 남긴다 — 연결하는 순간 한꺼번에 전달되는 양이다. */
@@ -521,6 +598,13 @@ internal fun String.withSubject(): String {
     val last = lastOrNull() ?: return this
     val batchim = last in '가'..'힣' && (last - '가') % 28 != 0
     return this + if (batchim) "이" else "가"
+}
+
+/** 이름 + "과/와": 받침이 있으면 "민준과", 없으면 "지수와". 한글이 아니면 "와". */
+internal fun String.withAnd(): String {
+    val last = lastOrNull() ?: return this
+    val batchim = last in '가'..'힣' && (last - '가') % 28 != 0
+    return this + if (batchim) "과" else "와"
 }
 
 internal fun weekday(d: LocalDate) = listOf("월", "화", "수", "목", "금", "토", "일")[d.dayOfWeek.ordinal]

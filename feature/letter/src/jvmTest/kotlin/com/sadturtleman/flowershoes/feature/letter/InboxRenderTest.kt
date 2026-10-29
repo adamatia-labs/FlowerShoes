@@ -71,6 +71,43 @@ class InboxRenderTest {
         }
     }
 
+    private val solo = LetterState(
+        loading = false, today = today, solo = true,
+        inbox = listOf(
+            card("q1", "입대하는 날 못 한 말", "지수 · 10.27 씀", Envelope.Waiting, LocalDate(2026, 10, 27), mine = true),
+            card("q2", "훈련소 밥은 먹을 만해?", "지수 · 10.25 씀", Envelope.Waiting, LocalDate(2026, 10, 25), mine = true),
+            card("q3", "벌써 보고 싶어", "지수 · 10.21 씀", Envelope.Waiting, LocalDate(2026, 10, 21), mine = true),
+        ),
+    )
+
+    @Test
+    fun `혼자 모드 편지함은 연결 안내와 보낼 편지 N통`() {
+        render("inbox_solo") { LetterInboxScreen(solo.copy(partnerName = "민준"), {}, {}, {}, {}) }
+    }
+
+    private val writing = LetterState(
+        loading = false, partnerName = "민준",
+        draft = ComposeDraft(
+            title = "보고 싶은 밤",
+            text = "민준아, 오늘은 유난히 네 생각이 많이 났어. 퇴근길에 우리 자주 가던 떡볶이집 앞을 지나는데 괜히 혼자 웃었어.\n\n이번 휴가 때 꼭 같이 가자.\n훈련 다치지 말고, 밥 잘 챙겨 먹어!",
+            paper = Paper.PLAIN.id,
+        ),
+    )
+
+    @Test
+    fun `편지 쓰기 상태를 그린다`() {
+        fun compose(name: String, s: LetterState, theme: AppTheme = AppTheme.GOMSIN, dark: Boolean = false) =
+            render(name, theme, dark) { LetterComposeScreen(s, lifetimeOn = false, canPhoto = true, onIntent = {}, onClose = {}, onSchedule = {}) }
+        compose("compose_blank", LetterState(loading = false, partnerName = "민준"))
+        compose("compose_writing", writing)
+        compose("compose_scheduled", writing.copy(draft = writing.draft.copy(revealAt = LocalDateTime(2026, 11, 1, 9, 0))))
+        compose("compose_sending", writing.copy(draft = writing.draft.copy(sending = true)))
+        // 편지지는 콘텐츠: 군인 · 다크에서도 같은 종이 색.
+        compose("compose_writing_soldier_dark", writing, AppTheme.SOLDIER, dark = true)
+        render("compose_sent") { LetterSentScreen(ComposeDone.Sent("보고 싶은 밤", "지수 · 오늘 오후 10:03", "D-479", "민준"), {}) }
+        render("compose_sent_solo") { LetterSentScreen(ComposeDone.Sent("보고 싶은 밤", "지수 · 오늘 오후 10:03", "대기", "연인", queued = true, queuedCount = 4), {}) }
+    }
+
     private fun render(name: String, theme: AppTheme = AppTheme.GOMSIN, dark: Boolean = false, content: @Composable () -> Unit) {
         val png = ImageComposeScene(width = 360 * 2, height = 760 * 2, density = Density(2f)) {
             KkotsinTheme(theme = theme, dark = dark) { content() }

@@ -91,7 +91,10 @@ import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import com.sadturtleman.flowershoes.core.designsystem.KkScheduleSheet
+import com.sadturtleman.flowershoes.core.designsystem.KkScheduleDialogs
+import com.sadturtleman.flowershoes.core.designsystem.KkBanner
+import com.sadturtleman.flowershoes.core.designsystem.KkDialog
+import com.sadturtleman.flowershoes.core.designsystem.KkDialogHost
 import com.sadturtleman.flowershoes.core.designsystem.KkToastType
 import com.sadturtleman.flowershoes.core.designsystem.hhmm
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
@@ -156,6 +159,8 @@ fun LetterInboxRoute(
     onOpenDrafts: () -> Unit,
     onReply: () -> Unit,
     onReplyDrawing: () -> Unit = onDraw,
+    /** 혼자 모드 › 연결하기: 초대(연결) 화면. */
+    onConnect: () -> Unit = {},
     viewModel: LetterViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -165,7 +170,7 @@ fun LetterInboxRoute(
             when {
                 open != null && open.drawingOnly -> DrawingLetterScreen(open, viewModel::onIntent, onReplyDrawing)
                 open != null -> LetterReadScreen(open, viewModel::onIntent, onReply, onReplyDrawing)
-                else -> LetterInboxScreen(state, viewModel::onIntent, onWriteLetter, onDraw, onOpenDrafts)
+                else -> LetterInboxScreen(state, viewModel::onIntent, onWriteLetter, onDraw, onOpenDrafts, onConnect)
             }
         }
         ToastHost(viewModel.toasts, viewModel::toastShown) { viewModel.onIntent(LetterIntent.Open(it)) }
@@ -179,6 +184,7 @@ fun LetterInboxScreen(
     onWriteLetter: () -> Unit,
     onDraw: () -> Unit,
     onOpenDrafts: () -> Unit,
+    onConnect: () -> Unit = {},
 ) {
     val c = KkTheme.colors
     var writeMenu by remember { mutableStateOf(false) }
@@ -207,6 +213,8 @@ fun LetterInboxScreen(
             }
         }
         KkUnderlineTabs(LetterFilter.entries.map { it.label }, state.filter.ordinal, { onIntent(LetterIntent.Filter(LetterFilter.entries[it])) })
+        // 혼자 모드(Figma 편지함 · 혼자 모드): 연결 전 안내 + 연결하기. 보조 설명 줄은 없다(design.md).
+        if (state.solo && !state.loading) KkBanner(soloBannerTitle(state.partnerName), body = "", action = "연결하기", onAction = onConnect)
         if (state.drafts.isNotEmpty()) DraftRow(state.drafts, onOpenDrafts)
         when {
             state.loading -> repeat(4) { EnvelopeSkeleton() }
@@ -239,6 +247,7 @@ private fun InboxEnvelope(card: LetterCard, onClick: () -> Unit) {
         Envelope.Drawing -> KkEnvelopeMark.Polaroid(rememberDrawingThumb(card.thumb))
         is Envelope.Sent -> KkEnvelopeMark.Postmark(e.date)
         is Envelope.Received -> KkEnvelopeMark.Stamp(e.stamp)
+        Envelope.Waiting -> KkEnvelopeMark.Waiting
     }
     KkEnvelopeRow(card.title, card.meta, mark, onClick)
 }
@@ -474,8 +483,10 @@ private fun LockedLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Uni
 // ── 편지 쓰기 ─────────────────────────────────────────────────────────────
 
 /**
- * 편지 쓰기(Figma 4 · 편지 쓰기): 받는 사람 · 편지지 · 제목과 줄 친 본문 · 붙인 그림 · 사진(합쳐 최대 10) · 도구 · 예약 / 바로 보내기.
- * [scheduleFirst] 면 예약 시트를 먼저 띄운다(만들기 › 예약 메시지).
+ * 편지 쓰기(Figma 4 · 편지 쓰기 `361:2907`): 위 막대("민준에게" · 임시저장) → 보낸 사람이 고른 편지지(콘텐츠 색, [Paper.look]) →
+ * 편지지 줄(예약했으면 도착 칩) → 도구 → 예약 · 보내기. 보내는 중엔 버튼에 스피너, 보내면 봉투 화면, 못 보내면 쓰던 편지 그대로 오류 알림.
+ * 닫기(X)는 쓰던 글이 있으면 "쓰던 편지는 임시저장할까요?"를 묻는다. 뒤로 가기 · 앱 전환은 묻지 않고 저장한다.
+ * [scheduleFirst] 면 예약(날짜 → 시간)을 먼저 띄운다(만들기 › 예약 메시지).
  */
 @Composable
 fun LetterComposeRoute(
@@ -483,62 +494,83 @@ fun LetterComposeRoute(
     onClose: () -> Unit,
     scheduleFirst: Boolean = false,
     photoPicker: (@Composable (onPicked: (ByteArray) -> Unit) -> ((fromCamera: Boolean) -> Unit))? = null,
-    /** 꽃신 평생 화면 열기(잠긴 편지지를 눌렀을 때). */
+    /** 꽃신 평생 화면 열기(평생 안내 시트 › 꽃신 평생 보기). */
     onOpenLifetime: (() -> Unit)? = null,
+    /** 보냄 화면 › 편지함으로. */
+    onOpenInbox: () -> Unit = onClose,
     viewModel: LetterViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val d = state.draft
-    val lifetimeOn by (org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
+    val koin = org.koin.compose.getKoin()
+    val lifetimeOn by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
         ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
+    val lifetimeStore = remember { koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>() }
+    var price by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(lifetimeStore) { price = runCatching { lifetimeStore?.price() }.getOrNull() }
     val focus = LocalFocusManager.current
-    var lockedPaper by remember { mutableStateOf<Paper?>(null) }
-    var lockedFont by remember { mutableStateOf<String?>(null) }
-    val c = KkTheme.colors
-    val paper = Paper.of(d.paper)
+    var lifetimeSheet by remember { mutableStateOf(false) }
+    var paperSheet by remember { mutableStateOf(false) }
     var scheduling by remember { mutableStateOf(scheduleFirst) }
     var stickers by remember { mutableStateOf(false) }
     var fonts by remember { mutableStateOf(false) }
     var photoSource by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
     val pickPhoto = photoPicker?.invoke { viewModel.onIntent(LetterIntent.AddPhoto(it)) }
     // 쓰던 글은 멈추고 2초 뒤 · 화면을 나갈 때(닫기 · 그림판 · 앱 전환) 이 기기에 저장한다.
     DisposableEffect(viewModel) { onDispose { viewModel.onIntent(LetterIntent.LeaveCompose) } }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onIntent(LetterIntent.LeaveCompose) }
-    Box(Modifier.fillMaxSize().background(c.canvas)) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = KkSpacing.xl)) {
-            KkTopBar("편지 쓰기", onLeading = onClose, leading = KkTopBarLeading.Close)
-            Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = KkSpacing.sm),
-                verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                    Text("받는 사람", style = KkTheme.type.label, color = c.sub)
-                    KkStatusChip(state.partnerName, selected = false, onClick = {}, dot = c.danger)
-                }
-                PaperPicker(paper, lifetimeOn, onLocked = { lockedPaper = it }) { viewModel.onIntent(LetterIntent.ChoosePaper(it)) }
-                PaperCard(d, paper, state.draftThumbs, state.draftPhotos, viewModel::onIntent)
-                ComposeTools(
-                    d, canPhoto = pickPhoto != null,
-                    onDrawing = { focus.clearFocus(); onAddDrawing() }, onPhoto = { focus.clearFocus(); photoSource = true },
-                    onSticker = { focus.clearFocus(); stickers = true }, onFont = { focus.clearFocus(); fonts = true },
-                )
-                d.revealAt?.let { at ->
-                    Text(
-                        "${at.month.ordinal + 1}월 ${at.day}일 ${at.time.hhmm()}에 도착해요 · 그 전에는 상대 화면 어디에도 보이지 않아요",
-                        style = KkTheme.type.caption, color = c.sub,
-                    )
-                }
+    when (val done = state.done) {
+        is ComposeDone.Sent -> {
+            LetterSentScreen(done) {
+                viewModel.onIntent(LetterIntent.DismissDone)
+                onOpenInbox()
             }
-            Row(Modifier.fillMaxWidth().padding(vertical = KkSpacing.sm), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                KkSecondaryButton("예약 보내기", onClick = { focus.clearFocus(); scheduling = true }, modifier = Modifier.weight(1f), enabled = d.canSend || scheduleFirst)
-                KkPrimaryButton("바로 보내기", onClick = {
-                    viewModel.onIntent(LetterIntent.Schedule(null))
-                    viewModel.onIntent(LetterIntent.Send)
-                    onClose()
-                }, modifier = Modifier.weight(1f), enabled = d.canSend, loading = d.sending)
+            return
+        }
+        // 예약은 "11월 1일 9시에 도착해요" 알림만 남기고 닫는다(알림은 편지함에서 이어서 보인다).
+        ComposeDone.Scheduled -> LaunchedEffect(done) {
+            viewModel.onIntent(LetterIntent.DismissDone)
+            onClose()
+        }
+        null -> Unit
+    }
+    val requestClose = {
+        focus.clearFocus()
+        if (d.isEmpty || d.sending) onClose() else leaving = true
+    }
+    Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas)) {
+        LetterComposeScreen(
+            state = state,
+            lifetimeOn = lifetimeOn,
+            canPhoto = pickPhoto != null,
+            onIntent = viewModel::onIntent,
+            onClose = requestClose,
+            onSchedule = { focus.clearFocus(); scheduling = true },
+            onDrawing = { focus.clearFocus(); onAddDrawing() },
+            onPhoto = { focus.clearFocus(); photoSource = true },
+            onSticker = { focus.clearFocus(); stickers = true },
+            onFont = { focus.clearFocus(); fonts = true },
+            onMorePapers = { focus.clearFocus(); paperSheet = true },
+        )
+        ToastHost(viewModel.toasts, viewModel::toastShown) {}
+        if (leaving) {
+            // Figma 편지 쓰기 · 나가기 확인: 지우기 · 저장하고 나가기. 바깥을 누르면 계속 쓴다.
+            KkDialogHost(onDismiss = { leaving = false }) {
+                KkDialog(
+                    title = "쓰던 편지는 임시저장할까요?", body = "",
+                    cancel = "지우기", onCancel = {
+                        leaving = false
+                        viewModel.onIntent(LetterIntent.DeleteDraft(state.draftId))
+                        onClose()
+                    },
+                    confirm = "저장하고 나가기", onConfirm = {
+                        leaving = false
+                        onClose()
+                    },
+                )
             }
         }
-        ToastHost(viewModel.toasts, viewModel::toastShown) {}
     }
     val resumable = state.resumable
     if (resumable.isNotEmpty()) {
@@ -549,39 +581,36 @@ fun LetterComposeRoute(
         )
     }
     if (scheduling) {
-        KkScheduleSheet(
+        // Figma 편지 쓰기 · 예약: 날짜(모달 캘린더) → 시간(입력형). 고르면 "예약해서 보내기"로 바뀐다.
+        KkScheduleDialogs(
             initial = d.revealAt,
-            confirmLabel = if (d.canSend) null else "이 시각으로 정하기",
             onDismiss = { scheduling = false },
             onPick = { at ->
                 viewModel.onIntent(LetterIntent.Schedule(at))
                 scheduling = false
-                if (d.canSend) {
-                    viewModel.onIntent(LetterIntent.Send)
-                    onClose()
-                }
             },
         )
     }
     if (photoSource && pickPhoto != null) {
         KkModalSheet({ photoSource = false }) {
-            KkSheetHeader("사진", "커서 자리에 글자처럼 들어가요 · 그림과 합쳐 최대 ${Letter.MAX_ATTACHMENTS}장")
+            KkSheetHeader("사진")
             KkSheetOption("사진첩에서 고르기", false, { photoSource = false; pickPhoto(false) })
             KkSheetOption("카메라로 찍기", false, { photoSource = false; pickPhoto(true) })
         }
     }
     if (fonts) {
         // 글꼴 시트(화면 기능명세 2-10): 크기(작게 · 보통 · 크게) + 글꼴 11종(꽃신 평생은 "평생" 표시).
-        val curFont = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.of(d.font)
-        val curSize = com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.of(d.font)
-        val choose = { f: com.sadturtleman.flowershoes.core.designsystem.KkLetterFont, z: com.sadturtleman.flowershoes.core.designsystem.KkLetterSize ->
-            viewModel.onIntent(LetterIntent.ChooseFont(com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.encode(f, z) ?: KkLetterFont.SANS.id))
+        val c = KkTheme.colors
+        val curFont = KkLetterFont.of(d.font)
+        val curSize = KkLetterSize.of(d.font)
+        val choose = { f: KkLetterFont, z: KkLetterSize ->
+            viewModel.onIntent(LetterIntent.ChooseFont(KkLetterSize.encode(f, z) ?: KkLetterFont.SANS.id))
         }
         // Figma 편지 쓰기 · 글꼴: 크기 칩 세 개 + 줄마다 "보고 싶은 밤"(그 글꼴) · 이름 · 평생 알약 · 라디오.
         KkModalSheet({ fonts = false }) {
             Text("글꼴", style = KkTheme.type.title, color = c.ink)
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.entries.forEach { z ->
+                KkLetterSize.entries.forEach { z ->
                     KkStatusChip(z.label, selected = z == curSize, onClick = { choose(curFont, z) }, dot = if (z == curSize) c.surface else c.danger)
                 }
             }
@@ -592,7 +621,8 @@ fun LetterComposeRoute(
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 44.dp)
                             .clickable(role = Role.RadioButton) {
-                                if (locked) { lockedFont = f.label; fonts = false } else { choose(f, curSize); fonts = false }
+                                fonts = false
+                                if (locked) lifetimeSheet = true else choose(f, curSize)
                             }
                             .semantics { selected = on; contentDescription = f.label + (if (f.lifetime) ", 꽃신 평생" else "") + (if (locked) ", 잠김" else "") },
                         horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
@@ -611,15 +641,24 @@ fun LetterComposeRoute(
             }
         }
     }
-    lockedFont?.let { name ->
-        KkModalSheet({ lockedFont = null }) {
-            KkSheetHeader("$name 글꼴", "꽃신 평생 글꼴이에요. 받는 사람은 이용권 없이도 그대로 보여요")
-            if (onOpenLifetime != null) KkPrimaryButton("꽃신 평생 보기", { lockedFont = null; onOpenLifetime() }, Modifier.fillMaxWidth())
-        }
+    if (paperSheet) {
+        PaperSheet(
+            Paper.of(d.paper), lifetimeOn,
+            onPick = { paperSheet = false; viewModel.onIntent(LetterIntent.ChoosePaper(it)) },
+            onLocked = { paperSheet = false; lifetimeSheet = true },
+            onDismiss = { paperSheet = false },
+        )
+    }
+    if (lifetimeSheet) {
+        LifetimeSheet(
+            partner = state.partnerName, price = price ?: LIFETIME_PRICE,
+            onOpen = onOpenLifetime?.let { open -> { lifetimeSheet = false; open() } },
+            onDismiss = { lifetimeSheet = false },
+        )
     }
     if (stickers) {
         KkModalSheet({ stickers = false }) {
-            KkSheetHeader("스티커", "커서 자리에 붙여요")
+            KkSheetHeader("스티커")
             StickerGrid { glyph ->
                 val at = d.cursor.coerceIn(0, d.text.length)
                 viewModel.onIntent(LetterIntent.EditText(d.text.substring(0, at) + glyph + d.text.substring(at), at + glyph.length, external = true))
@@ -627,61 +666,215 @@ fun LetterComposeRoute(
             }
         }
     }
-    lockedPaper?.let { p ->
-        KkModalSheet({ lockedPaper = null }) {
-            KkSheetHeader("${p.label} 편지지", "꽃신 평생 편지지예요. 받는 사람은 이용권 없이도 그대로 보여요")
-            if (onOpenLifetime != null) KkPrimaryButton("꽃신 평생 보기", { lockedPaper = null; onOpenLifetime() }, Modifier.fillMaxWidth())
-        }
-    }
 }
 
+/** 스토어 가격을 못 읽었을 때(설정 › 꽃신 평생과 같은 값). */
+private const val LIFETIME_PRICE = "7,900원"
+
 /**
- * 편지지 열 장(가로로 넘김). 고른 것은 브랜드 테두리 + 브랜드 글자. 꽃신 평생 편지지는 "평생" 표시 —
- * 이용권이 없으면([lifetimeOn] false) 누를 때 [onLocked].
+ * 편지 쓰기 화면 몸통(시트 · 확인 창 빼고). 화면 상태는 [state] 하나로 정해진다 — 빈 편지지 · 쓰는 중 · 예약 · 설정됨 · 보내는 중.
  */
 @Composable
-private fun PaperPicker(selected: Paper, lifetimeOn: Boolean, onLocked: (Paper) -> Unit, onPick: (Paper) -> Unit) {
+fun LetterComposeScreen(
+    state: LetterState,
+    lifetimeOn: Boolean,
+    canPhoto: Boolean,
+    onIntent: (LetterIntent) -> Unit,
+    onClose: () -> Unit,
+    onSchedule: () -> Unit,
+    onDrawing: () -> Unit = {},
+    onPhoto: () -> Unit = {},
+    onSticker: () -> Unit = {},
+    onFont: () -> Unit = {},
+    onMorePapers: () -> Unit = {},
+) {
     val c = KkTheme.colors
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-        Paper.entries.forEach { p ->
-            val on = p == selected
-            val shape = RoundedCornerShape(KkRadius.md)
-            val locked = p.lifetime && !lifetimeOn
-            Column(
-                Modifier.width(60.dp).clickable(role = Role.RadioButton) { if (locked) onLocked(p) else onPick(p) }
-                    .semantics { this.selected = on; contentDescription = "편지지 ${p.label}" + (if (p.lifetime) ", 꽃신 평생" else "") + (if (locked) ", 잠김" else "") },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs),
-            ) {
-                val bordered = p == Paper.GRID || p == Paper.NIGHT
-                Box(
-                    Modifier.fillMaxWidth().height(64.dp)
-                        .then(if (bordered) Modifier else Modifier.kkElevation(KkElevation.Low, shape))
-                        .clip(shape).background(p.background(c))
-                        .then(
-                            when {
-                                on -> Modifier.border(2.dp, c.accent, shape)
-                                bordered -> Modifier.border(1.dp, c.line, shape)
-                                else -> Modifier
-                            },
-                        ),
-                ) {
-                    // 꽃신 평생 편지지: 오른쪽 위 작은 표시(이름은 그대로).
-                    if (p.lifetime) {
-                        Text(
-                            "평생", style = KkTheme.type.label, color = c.surface,
-                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).clip(RoundedCornerShape(KkRadius.full))
-                                .background(if (locked) c.sub else c.accent).padding(horizontal = 5.dp, vertical = 1.dp),
-                        )
-                    }
-                }
-                Text(p.label, style = KkTheme.type.caption, maxLines = 1, color = if (on) c.accent else c.sub)
+    val d = state.draft
+    val paper = Paper.of(d.paper)
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().imePadding()) {
+        KkTopBar(
+            "${state.partnerName}에게", onLeading = onClose, leading = KkTopBarLeading.Close,
+            modifier = Modifier.padding(horizontal = KkSpacing.xs),
+            trailingText = "임시저장", trailingEnabled = !d.isEmpty && !d.sending, onTrailing = { onIntent(LetterIntent.SaveDraft) },
+        )
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.xs)) {
+            PaperCard(d, paper, state.draftThumbs, state.draftPhotos, onIntent, partner = state.partnerName)
+        }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+        ) {
+            val at = d.revealAt
+            if (at != null) ScheduledChip(at, onEdit = onSchedule, onClear = { onIntent(LetterIntent.Schedule(null)) })
+            else PaperRow(paper, onPick = { onIntent(LetterIntent.ChoosePaper(it)) }, onMore = onMorePapers)
+            ComposeTools(d, canPhoto = canPhoto, onDrawing = onDrawing, onPhoto = onPhoto, onSticker = onSticker, onFont = onFont)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+                KkButton("예약", onSchedule, Modifier.width(100.dp), style = KkButtonStyle.Ghost, enabled = !d.sending)
+                KkButton(
+                    if (at != null) "예약해서 보내기" else "${state.partnerName}에게 보내기",
+                    { onIntent(LetterIntent.Send) }, Modifier.weight(1f),
+                    enabled = d.canSend || d.sending, loading = d.sending, loadingText = "보내는 중…",
+                )
             }
         }
     }
 }
 
-/** 편지지(Paper): 제목 + 본문. 본문 속 그림 · 사진은 글자처럼 커서 자리에 들어간다(Figma 최종 정리 › 편지 쓰기). */
+/** 예약 · 설정됨: 시계 + "11월 1일 (일) 오전 9시 도착" 칩. 누르면 다시 고르고, ×는 예약을 지운다. */
+@Composable
+private fun ScheduledChip(at: LocalDateTime, onEdit: () -> Unit, onClear: () -> Unit) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.full)
+    Row(
+        Modifier.clip(shape).background(c.tag).heightIn(min = 40.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier.clickable(role = Role.Button, onClick = onEdit).heightIn(min = 40.dp).padding(start = 14.dp, end = KkSpacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            KkIcon(KkIcons.Clock, tint = c.ink, size = 16.dp)
+            Text(arrivalLabel(at), style = KkTheme.type.labelBold, color = c.ink)
+        }
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClear).semantics { contentDescription = "예약 지우기" },
+            contentAlignment = Alignment.Center,
+        ) { KkIcon(KkIcons.Close, tint = c.sub, size = 10.dp) }
+    }
+}
+
+/**
+ * 편지지 줄(Figma 편지 쓰기): "편지지" + 무료 편지지 견본 + "+5 평생"(편지지 시트). 꽃신 평생 편지지를 골랐으면 그 견본도 줄에 둔다.
+ */
+@Composable
+private fun PaperRow(selected: Paper, onPick: (Paper) -> Unit, onMore: () -> Unit) {
+    val c = KkTheme.colors
+    val shown = Paper.entries.filter { !it.lifetime } + listOfNotNull(selected.takeIf { it.lifetime })
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.xxs), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("편지지", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(end = KkSpacing.sm))
+        shown.forEach { p ->
+            Box(
+                Modifier.size(44.dp).clickable(role = Role.RadioButton) { onPick(p) }
+                    .semantics { this.selected = p == selected; contentDescription = "편지지 ${p.label}" },
+                contentAlignment = Alignment.Center,
+            ) { PaperSwatch(p, on = p == selected) }
+        }
+        Text(
+            "+${Paper.entries.count { it.lifetime }} 평생", style = KkTheme.type.caption, color = c.sub,
+            modifier = Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onMore)
+                .padding(horizontal = KkSpacing.xs, vertical = 15.dp),
+        )
+    }
+}
+
+/** 편지지 견본(30×38): 종이 색 + 괘선 네 줄. 고른 것은 accent 2 테두리. 색은 편지지 그대로(테마 · 다크 무관). */
+@Composable
+private fun PaperSwatch(p: Paper, on: Boolean, modifier: Modifier = Modifier, width: androidx.compose.ui.unit.Dp = 30.dp, height: androidx.compose.ui.unit.Dp = 38.dp) {
+    val look = p.look()
+    val shape = RoundedCornerShape(3.dp)
+    Box(
+        modifier.size(width, height).clip(shape).background(look.background)
+            .border(if (on) 2.dp else 1.dp, if (on) KkTheme.colors.accent else look.edge, shape)
+            .drawBehind {
+                val inset = size.width * 0.1f
+                for (i in 1..4) {
+                    val y = size.height * (0.2f + 0.19f * (i - 1))
+                    drawLine(look.rule, Offset(inset, y), Offset(size.width - inset, y), strokeWidth = 1.dp.toPx())
+                }
+            },
+    )
+}
+
+/** 편지지 시트(Figma 편지 쓰기 · 편지지 시트): 무료 · 꽃신 평생 두 줄. 잠긴 편지지는 자물쇠 — 누르면 평생 안내. */
+@Composable
+private fun PaperSheet(selected: Paper, lifetimeOn: Boolean, onPick: (Paper) -> Unit, onLocked: () -> Unit, onDismiss: () -> Unit) {
+    val c = KkTheme.colors
+    KkModalSheet(onDismiss) {
+        KkSheetHeader("편지지")
+        listOf("무료" to Paper.entries.filter { !it.lifetime }, "꽃신 평생" to Paper.entries.filter { it.lifetime }).forEach { (title, papers) ->
+            Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                papers.forEach { p ->
+                    val locked = p.lifetime && !lifetimeOn
+                    Column(
+                        Modifier.width(60.dp).clickable(role = Role.RadioButton) { if (locked) onLocked() else onPick(p) }
+                            .semantics { this.selected = p == selected; contentDescription = "편지지 ${p.label}" + if (locked) ", 잠김" else "" },
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            PaperSwatch(p, on = p == selected, width = 44.dp, height = 56.dp)
+                            if (locked) KkIcon(KkIcons.Lock, tint = c.ink, size = 18.dp)
+                        }
+                        Text(p.label, style = KkTheme.type.caption, color = if (p == selected) c.accent else c.sub, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 평생 안내 시트(Figma 편지 쓰기 · 평생 안내 시트): 잠긴 편지지 · 글꼴을 눌렀을 때. 가격 · 혜택 다섯 줄 · 꽃신 평생 보기 · 다음에.
+ */
+@Composable
+private fun LifetimeSheet(partner: String, price: String, onOpen: (() -> Unit)?, onDismiss: () -> Unit) {
+    val c = KkTheme.colors
+    KkModalSheet(onDismiss) {
+        KkSheetHeader("꽃신 평생")
+        Text("한 번이면 평생, 둘이 함께", style = KkTheme.type.handL, color = c.ink)
+        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg), verticalAlignment = Alignment.CenterVertically) {
+            Text(price, style = KkTheme.type.ddayS, color = c.accent)
+            Text("한 번 결제 · 구독 아님", style = KkTheme.type.caption, color = c.sub)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+            listOf("광고 제거", "손글씨 글꼴 7종", "편지지 5종", "펜 · 색 · 위젯 꾸미기", "연결된 ${partner}도 함께").forEach { perk ->
+                Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
+                    KkIcon(KkIcons.Check, tint = c.sub, size = 18.dp)
+                    Text(perk, style = KkTheme.type.body, color = c.ink)
+                }
+            }
+        }
+        if (onOpen != null) KkPrimaryButton("꽃신 평생 보기", onOpen, Modifier.padding(top = KkSpacing.sm))
+        Box(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.full)).clickable(role = Role.Button, onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) { Text("다음에", style = KkTheme.type.labelBold, color = c.accent) }
+    }
+}
+
+/**
+ * 보냄(Figma 편지 쓰기 · 보냄): 보낸 봉투(보여 주기만 하는 물건이라 기운다) + "민준에게 보냈어요" + 편지함으로.
+ * 혼자 모드면 우표는 "대기", 제목은 "보낼 편지 N통" — 연결하는 순간 한꺼번에 간다.
+ */
+@Composable
+fun LetterSentScreen(done: ComposeDone.Sent, onInbox: () -> Unit) {
+    val c = KkTheme.colors
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
+        Column(
+            Modifier.weight(1f).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.xxxl, Alignment.CenterVertically),
+        ) {
+            Box(Modifier.fillMaxWidth().rotate(-6f).clearAndSetSemantics {}) {
+                KkEnvelopeRow(done.line, done.meta, if (done.queued) KkEnvelopeMark.Waiting else KkEnvelopeMark.Stamp(done.stamp), onClick = {})
+            }
+            Text(
+                if (done.queued) "보낼 편지 ${done.queuedCount}통" else "${done.partner}에게 보냈어요",
+                style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { contentDescription = if (done.queued) "보낼 편지 ${done.queuedCount}통, ${done.line}" else "${done.partner}에게 보냈어요, ${done.line}" },
+            )
+        }
+        KkPrimaryButton("편지함으로", onInbox, Modifier.padding(bottom = KkSpacing.lg))
+    }
+}
+
+/**
+ * 편지지(Paper): 화면 폭 종이 + 제목 + 줄 친 본문. 색은 읽기 화면과 같은 [Paper.look] — 쓰는 사람의 테마 · 다크 모드와 무관하다.
+ * 본문 속 그림 · 사진은 글자처럼 커서 자리에 들어간다(Figma 최종 정리 › 편지 쓰기).
+ */
 @Composable
 private fun PaperCard(
     d: ComposeDraft,
@@ -689,22 +882,15 @@ private fun PaperCard(
     thumbs: Map<String, DrawingDocument>,
     photos: Map<String, ByteArray>,
     onIntent: (LetterIntent) -> Unit,
+    partner: String = "",
 ) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    // 꽃신 평생 편지지는 밝은 종이라 글자는 늘 진한 색(다크 모드에서도).
-    val ink = when {
-        paper == Paper.NIGHT -> c.canvas
-        paper.lifetime -> Color(0xFF2E2A26)
-        else -> c.ink
-    }
-    val hint = when {
-        paper == Paper.NIGHT -> c.canvas.copy(alpha = 0.5f)
-        paper.lifetime -> Color(0xFF7A6E60)
-        else -> c.sub
-    }
+    val look = paper.look()
+    val ink = look.ink
+    val hint = look.ink.copy(alpha = 0.5f)
     Column(
-        Modifier.fillMaxWidth().heightIn(min = 341.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(paper.background(c)).padding(KkSpacing.xl),
+        Modifier.fillMaxWidth().heightIn(min = 480.dp).kkElevation(KkElevation.Low, RectangleShape).background(look.background).border(1.dp, look.edge)
+            .padding(horizontal = KkSpacing.xxl, vertical = KkSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
         BasicTextField(
@@ -742,13 +928,27 @@ private fun PaperCard(
                 cursorBrush = SolidColor(c.accent),
                 visualTransformation = objectStyle,
                 onTextLayout = { layout = it },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 256.dp).semantics {
+                modifier = Modifier.fillMaxWidth().heightIn(min = 380.dp).drawBehind {
+                    // 괘선: 글줄마다, 글이 끝난 뒤로는 같은 간격으로 종이 끝까지.
+                    val l = layout ?: return@drawBehind
+                    val stroke = 1.dp.toPx()
+                    var y = 0f
+                    for (i in 0 until l.lineCount) {
+                        y = l.getLineBottom(i)
+                        drawLine(look.rule, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
+                    }
+                    val step = if (l.lineCount > 0) l.getLineBottom(0) - l.getLineTop(0) else 0f
+                    if (step > 0f) while (y + step <= size.height) {
+                        y += step
+                        drawLine(look.rule, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
+                    }
+                }.semantics {
                     contentDescription = "편지 내용"
                     // 자리 확보용 투명 글리프를 읽지 않도록 원문을 접근성 값으로 제공한다.
                     editableText = AnnotatedString(field.text)
                 },
                 decorationBox = { inner ->
-                    Box { if (d.text.isEmpty()) Text("마음을 적어 보세요", style = body.copy(color = hint)); inner() }
+                    Box { if (d.text.isEmpty() && partner.isNotEmpty()) Text("${partner}에게…", style = body.copy(color = hint)); inner() }
                 },
             )
             // 글 속 자리(OBJ) 위에 그림 · 사진을 그린다. 누르면 고른 테두리 + 빼기.
@@ -895,37 +1095,13 @@ private fun BoxScope.ToastHost(toasts: SharedFlow<LetterToast>, onShown: () -> U
         KkToast(
             t.message,
             Modifier.align(Alignment.BottomCenter).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
-            type = if (t.openLetterId != null) KkToastType.Success else KkToastType.Default,
+            type = when {
+                t.kind == LetterToast.Kind.ERROR -> KkToastType.Error
+                t.kind == LetterToast.Kind.SUCCESS || t.openLetterId != null -> KkToastType.Success
+                else -> KkToastType.Default
+            },
             action = t.openLetterId?.let { "보기" },
             onAction = { t.openLetterId?.let(onOpen); current = null },
         )
     }
 }
-
-internal fun Paper.background(c: KkColors): Color = when (this) {
-    Paper.PLAIN -> c.surface
-    Paper.BLOSSOM -> c.bar
-    Paper.OLIVE -> c.bar
-    Paper.GRID -> c.line
-    Paper.NIGHT -> c.ink
-    // 꽃신 평생 편지지: 테마와 무관한 종이 색(Figma 📖 · 편지지 시안).
-    Paper.MANUSCRIPT -> Color(0xFFFFF8EC)
-    Paper.KRAFT -> Color(0xFFE9DCC4)
-    Paper.MAIL -> Color(0xFFFFFDF7)
-    Paper.NOTE -> Color(0xFFFFFFFF)
-    Paper.SKY -> Color(0xFFDDEFFA)
-}
-
-private fun Paper.rule(c: KkColors): Color = when (this) {
-    Paper.PLAIN -> c.line
-    Paper.BLOSSOM -> c.accent.copy(alpha = 0.35f)
-    Paper.OLIVE -> c.accent.copy(alpha = 0.25f)
-    Paper.GRID -> c.line
-    Paper.NIGHT -> c.canvas.copy(alpha = 0.18f)
-    Paper.MANUSCRIPT -> Color(0x66D9776B)
-    Paper.KRAFT -> Color(0xFFCFC3AE)
-    Paper.MAIL -> Color(0x55C8463D)
-    Paper.NOTE -> Color(0xFFA9C4E8)
-    Paper.SKY -> Color(0x99FFFFFF)
-}
-
