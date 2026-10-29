@@ -22,6 +22,8 @@ fun kkotsinAndroidModules(
     emulatorHost: String = "",
     /** 디버그 빌드에서 소셜 키 없이 실제 프로젝트에 이메일 계정으로 로그인(두 폰 확인용). */
     devEmailLogin: Boolean = false,
+    /** 초대 링크 호스트 · 카카오 피드 템플릿 ID(local.properties). */
+    invite: com.sadturtleman.flowershoes.core.data.sync.InviteConfig = com.sadturtleman.flowershoes.core.data.sync.InviteConfig(),
 ): List<Module> {
     val app = context.applicationContext
     if (emulatorHost.isNotBlank()) com.sadturtleman.flowershoes.app.auth.EmulatorFirebase.init(app, emulatorHost)
@@ -44,6 +46,7 @@ fun kkotsinAndroidModules(
         auth = auth,
         cloud = firebaseBackendOrNull(app),
         vault = com.sadturtleman.flowershoes.core.data.sync.AndroidKeyVault(app),
+        invite = invite,
     ) + module {
         single { SnapshotStore(app.filesDir.resolve("widget/snapshot.json").absolutePath.toPath()) }
         single { WidgetSnapshotPublisher(get(), get(), get(), get(), get(), get(), get(), get(), attachments, get()) }

@@ -50,7 +50,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.crypto.CrockfordCode
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
-import com.sadturtleman.flowershoes.core.data.sync.InviteLinks
+import com.sadturtleman.flowershoes.core.data.sync.InviteConfig
+import com.sadturtleman.flowershoes.core.data.sync.Outbox
+import com.sadturtleman.flowershoes.core.data.ProfileRepository
+import kotlinx.coroutines.flow.first
 import com.sadturtleman.flowershoes.core.data.sync.PairingSession
 import com.sadturtleman.flowershoes.core.data.sync.PairingState
 import com.sadturtleman.flowershoes.core.data.sync.RelinkSession
@@ -86,11 +89,18 @@ data class PairingUi(
     val received: com.sadturtleman.flowershoes.core.data.sync.RelinkCounts? = null,
     val receiveStartedMs: Long = 0,
     val receiveDone: Boolean = false,
+    /** 받는 쪽: 연결 뒤 혼자 쓴 편지 · 그림이 많아 보내는 중(처음 센 것 · 남은 것). */
+    val sendingTotal: Outbox? = null,
+    val sendingLeft: Outbox? = null,
+    /** 받는 쪽: 링크를 보낸 사람(연결 중 화면에 계속 보인다). */
+    val inviterName: String = "",
+    /** 보내는 쪽: 내 표시 이름(초대장 · 카카오 템플릿 인자). 비어 있을 수 있다. */
+    val myName: String = "",
 )
 
 /**
  * 첫 연결 화면(초대 링크, #15). [session] 이 null 이면 이 빌드에는 서버 설정이 없다.
- * 상대 수락은 2초마다 확인한다(푸시 · Firestore 실시간 구독으로 바꿔도 화면은 그대로다).
+ * 화면이 열려 있는 동안 상대 수락은 2초마다 확인한다. 보낸 쪽이 홈으로 간 뒤에는 [LinkWatchViewModel] 이 이어 본다.
  */
 class PairingViewModel(
     private val session: PairingSession?,
@@ -98,7 +108,11 @@ class PairingViewModel(
     private val settings: DeviceSettings,
     /** 상대 폰이 넘겨주기(7-3-B). */
     private val relink: RelinkSession? = null,
+    /** 링크 호스트 · 카카오 템플릿(빌드 설정). */
+    val config: InviteConfig = InviteConfig(),
+    private val profile: ProfileRepository? = null,
 ) : ViewModel() {
+    private val handoff = LinkHandoff(settings, sync)
 
     private var relinkMode = false
 
@@ -123,10 +137,16 @@ class PairingViewModel(
     val ui: StateFlow<PairingUi> = _ui.asStateFlow()
     private var polling: Job? = null
 
-    /** 새 초대 링크를 만든다(이전 링크는 무효). */
-    fun create() = run { it.createLink() }
+    /** 연인 초대 화면을 열었다: 아직 유효한 내 링크가 있으면 그대로(다시 보내기), 없으면 새로 만든다(이전 링크는 무효). */
+    fun open() = run { s ->
+        val now = s.poll()
+        if (now is PairingState.Waiting || now is PairingState.Linked) now else s.createLink()
+    }
 
-    /** 초대 링크로 들어왔다(딥링크). */
+    /** 초대 링크로 들어왔다(딥링크): 보낸 사람을 보여 주고 수락을 기다린다. */
+    fun preview(token: String) = run { it.preview(token) }
+
+    /** "수락하고 연결하기". */
     fun accept(token: String) = run { it.accept(token) }
 
     fun editCode(text: String) = _ui.update { it.copy(codeInput = text.uppercase().take(9)) }
@@ -153,9 +173,15 @@ class PairingViewModel(
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
             val next = runCatching { block(s) }.getOrElse { PairingState.Failed(it.message ?: "연결하지 못했어요") }
-            _ui.update { it.copy(state = next, busy = false) }
-            if (next is PairingState.Linked) onLinked() else startPolling(s)
+            val myName = runCatching { profile?.let { p -> p.observeUsers().first().firstOrNull { it.id == p.myUserId() }?.nickname } }.getOrNull().orEmpty()
+            _ui.update { it.copy(state = next, busy = false, inviterName = next.inviterName() ?: it.inviterName, myName = myName) }
+            if (next is PairingState.Linked) linked(s) else startPolling(s)
         }
+    }
+
+    /** 보낸 쪽은 홈의 연결 모달([LinkWatcher])이 이어 받고 화면만 닫는다. 받는 쪽은 여기서 혼자 쓴 기록을 보낸다. */
+    private suspend fun linked(s: PairingSession) {
+        if (s.isInviter) _ui.update { it.copy(receiveDone = true) } else onLinked()
     }
 
     private fun startPolling(s: PairingSession) {
@@ -167,7 +193,7 @@ class PairingViewModel(
                 delay(2_000)
                 val next = runCatching { s.poll() }.getOrNull() ?: continue
                 _ui.update { it.copy(state = next) }
-                if (next is PairingState.Linked) onLinked()
+                if (next is PairingState.Linked) linked(s)
             }
         }
     }
@@ -187,13 +213,25 @@ class PairingViewModel(
     }
 
     private suspend fun onLinked() {
+        if (!relinkMode) return handOff()
         settings.setKeyEpoch(1)
-        // 혼자 모드에서 쌓인 내 데이터가 첫 동기화로 넘어간다.
         runCatching { sync?.syncOnce() }
         val r = relink
         val expected = r?.expected
         // 받는 폰만 expected(넘겨줄 기록 수)를 안다 — 넘겨주는 폰 · 처음 연결은 바로 끝.
         if (relinkMode && r != null && expected != null) receive(r, expected) else _ui.update { it.copy(receiveDone = true) }
+    }
+
+    /** 처음 연결(받는 쪽): 혼자 모드에서 쌓인 내 기록을 첫 동기화로 보낸다. 많으면 보내는 중 화면. */
+    private suspend fun handOff() {
+        val total = handoff.begin()
+        if (total.showsProgress()) {
+            _ui.update { it.copy(sendingTotal = total, sendingLeft = total, receiveStartedMs = kotlin.time.Clock.System.now().toEpochMilliseconds()) }
+            handoff.send { left -> _ui.update { it.copy(sendingLeft = left) } }
+        } else {
+            runCatching { sync?.syncOnce() }
+        }
+        _ui.update { it.copy(receiveDone = true) }
     }
 
     /**
@@ -223,6 +261,12 @@ class PairingViewModel(
     }
 }
 
+private fun PairingState.inviterName(): String? = when (this) {
+    is PairingState.Invited -> inviterName
+    is PairingState.Accepting -> inviterName
+    else -> null
+}
+
 /** 연결 화면 모드. CONNECT 처음 연결 · HAND_OVER 연인 폰 교체 받기(넘겨주는 쪽) · RECEIVE 다시 연결하기(새 폰). */
 enum class PairingMode { CONNECT, HAND_OVER, RECEIVE }
 
@@ -233,24 +277,40 @@ fun PairingRoute(
     /** 설정 › "연인 폰 교체 받기"로 들어오면 넘겨주는 쪽. */
     handOver: Boolean = false,
     mode: PairingMode = if (handOver) PairingMode.HAND_OVER else PairingMode.CONNECT,
+    /** 초대 링크로 들어왔다(받는 쪽). null 이면 연인 초대(보내는 쪽). */
+    invite: String? = null,
     viewModel: PairingViewModel = koinViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    // 새 폰은 넘겨받기가 끝날 때까지 진행 화면을 보여 준 뒤 닫는다.
-    LaunchedEffect(ui.state, ui.relink, ui.receiveDone, ui.expected) {
-        val linked = if (mode == PairingMode.CONNECT) ui.state is PairingState.Linked else ui.relink is RelinkState.Linked
-        if (linked && (mode != PairingMode.RECEIVE || ui.receiveDone)) onDone()
-    }
-    // 새 폰은 확인 코드가 뜨면 바로 확인한다 — 비교 · 넘겨주기는 넘겨주는 폰(데이터를 가진 쪽)이 한다.
-    LaunchedEffect(ui.relink, mode) {
-        if (mode == PairingMode.RECEIVE && ui.relink is RelinkState.CompareSas && !ui.busy) viewModel.confirm()
+    // ViewModel 은 셸과 같은 범위라 닫을 때마다 비운다 — 다음에 열 때 지난 결과(연결됨 등)로 바로 닫히지 않게.
+    val done = {
+        viewModel.reset()
+        onDone()
     }
     val close = {
         viewModel.reset()
         onBack()
     }
+    LaunchedEffect(mode, invite) {
+        if (mode != PairingMode.CONNECT) return@LaunchedEffect
+        if (invite != null) viewModel.preview(invite) else viewModel.open()
+    }
+    // 새 폰은 넘겨받기가, 받는 쪽은 혼자 쓴 기록 보내기가 끝날 때까지 기다린 뒤 닫는다.
+    LaunchedEffect(ui.state, ui.relink, ui.receiveDone, ui.expected) {
+        val finished = when (mode) {
+            PairingMode.CONNECT -> ui.state is PairingState.Linked && ui.receiveDone
+            PairingMode.HAND_OVER -> ui.relink is RelinkState.Linked
+            PairingMode.RECEIVE -> ui.relink is RelinkState.Linked && ui.receiveDone
+        }
+        if (finished) done()
+    }
+    // 새 폰은 확인 코드가 뜨면 바로 확인한다 — 비교 · 넘겨주기는 넘겨주는 폰(데이터를 가진 쪽)이 한다.
+    LaunchedEffect(ui.relink, mode) {
+        if (mode == PairingMode.RECEIVE && ui.relink is RelinkState.CompareSas && !ui.busy) viewModel.confirm()
+    }
     when (mode) {
-        PairingMode.CONNECT -> ConnectScreen(ui, viewModel, close, onDone)
+        // 보내기를 누르면 바로 홈(#15) — 수락은 홈의 연결 모달이 이어 받는다.
+        PairingMode.CONNECT -> ConnectScreen(ui, viewModel, close, onSent = done)
         PairingMode.HAND_OVER -> HandOverScreen(ui, viewModel, close)
         PairingMode.RECEIVE -> ReceiveScreen(ui, viewModel, close)
     }
@@ -317,41 +377,6 @@ private fun CodeCard(label: String, code: String, caption: String, copyable: Boo
         Text(label, style = KkTheme.type.label, color = c.accent)
         Text(code, style = KkTheme.type.title, color = c.ink)
         Text(if (copied) "복사했어요" else caption, style = KkTheme.type.caption, color = c.sub)
-    }
-}
-
-/** 처음 연결: 온보딩 연결과 같은 본문(내 초대 링크) → 수락되면 연결됨. 화면 자체는 #39 에서 Figma 로 다시 그린다. */
-@Composable
-private fun ConnectScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit, onDone: () -> Unit) {
-    val share = LocalKkShare.current
-    when (val s = ui.state) {
-        PairingState.Idle, is PairingState.Waiting -> Frame("연인과 연결", KkTopBarLeading.Close, close) {
-            Title("연인과 연결해요")
-            InviteConnect(onAdvance = {}, viewModel = vm)
-        }
-        is PairingState.Accepting -> Frame("연인과 연결", KkTopBarLeading.Close, close) {
-            Title("${s.inviterName}님과 연결하는 중")
-            Waiting("연결하는 중…")
-        }
-        is PairingState.Linked -> Frame("연인과 연결", KkTopBarLeading.Close, onDone) {
-            Title("연결됐어요")
-        }
-        PairingState.Expired -> Frame("연인과 연결", KkTopBarLeading.Close, close, footer = {
-            KkPrimaryButton("내가 초대 링크 보내기", vm::create, enabled = !ui.busy, loading = ui.busy)
-        }) {
-            Title("이 초대 링크는 만료됐어요")
-        }
-        is PairingState.OwnLink -> Frame("연인과 연결", KkTopBarLeading.Close, close, footer = {
-            KkPrimaryButton("다시 공유하기", { share(inviteMessage(s.token)) })
-        }) {
-            Title("내가 보낸 초대 링크예요")
-        }
-        PairingState.AlreadyLinked -> Frame("연인과 연결", KkTopBarLeading.Close, close) {
-            Title("이미 연결돼 있어요")
-        }
-        is PairingState.Failed -> Frame("연인과 연결", KkTopBarLeading.Close, close, footer = { GhostButton("처음부터", vm::reset) }) {
-            Title("연결하지 못했어요", s.reason)
-        }
     }
 }
 
@@ -453,50 +478,6 @@ private fun ReceiveScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit
 @Composable
 private fun GhostButton(text: String, onClick: () -> Unit) =
     KkButton(text, onClick, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
-
-/**
- * 온보딩 3 · 연결(Figma 53:923)의 본문: 내 초대 링크 · 카카오톡으로 초대 보내기.
- * 들어오면 바로 링크를 만든다. 상대가 링크를 누르면 수락돼 [onAdvance]. 카카오 피드 템플릿 공유 · Figma 화면은 #39.
- */
-@Composable
-fun ColumnScope.InviteConnect(onAdvance: () -> Unit, viewModel: PairingViewModel = koinViewModel()) {
-    val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val c = KkTheme.colors
-    val share = LocalKkShare.current
-    LaunchedEffect(ui.available) { if (ui.available && ui.state is PairingState.Idle) viewModel.create() }
-    LaunchedEffect(ui.state) { if (ui.state is PairingState.Linked) onAdvance() }
-    val token = (ui.state as? PairingState.Waiting)?.token
-    val shape = RoundedCornerShape(KkRadius.xl)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .kkElevation(KkElevation.Low, shape)
-            .clip(shape)
-            .background(c.bar)
-            .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.xxl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
-    ) {
-        Text("내 초대 링크", style = KkTheme.type.label, color = c.accent)
-        Text(
-            when {
-                !ui.available -> "서버 설정 전"
-                token == null -> "링크를 만드는 중"
-                else -> "7일 동안 유효 · 1회용"
-            },
-            style = KkTheme.type.caption, color = c.sub,
-        )
-    }
-    KkPrimaryButton(
-        "카카오톡으로 초대 보내기",
-        onClick = { token?.let { share(inviteMessage(it)) } },
-        enabled = token != null,
-    )
-    (ui.state as? PairingState.Failed)?.let { Text(it.reason, style = KkTheme.type.caption, color = c.sub) }
-}
-
-/** OS 공유 시트로 보낼 문구. 카카오 피드 템플릿 공유는 #39. */
-private fun inviteMessage(token: String) = "꽃신에서 나랑 연결해 줘! ${InviteLinks.url(token)}"
 
 /** "KAKAO" → "카카오". */
 private fun providerName(id: String) = when (id) {

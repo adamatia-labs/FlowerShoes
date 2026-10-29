@@ -35,6 +35,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /** 한 번 돌린 결과. 화면 · 로그용. */
+/** 아직 상대에게 올리지 않은 내 기록: 편지 · 그림 수(연결 직후 "편지 N통 · 그림 M장 보내는 중")와 Op 수. */
+data class Outbox(val letters: Int, val drawings: Int, val ops: Int) {
+    val isEmpty: Boolean get() = ops == 0
+}
+
 data class SyncReport(val sent: Int = 0, val received: Int = 0, val resent: Int = 0, val snapshot: Boolean = false, val rejected: Int = 0)
 
 /**
@@ -76,6 +81,15 @@ class SyncClient(
         val sent = push(couple, partnerDevice.id, myStream.wire) + push(couple, partnerDevice.id, widgetStream)
         publishControl(couple)
         return SyncReport(sent = sent, received = received.first, rejected = received.second, resent = plan.first + widgetResent, snapshot = plan.second)
+    }
+
+    /** 내 앱 스트림에서 아직 올리지 않은 것. 혼자 모드에서 쓴 것은 연결 뒤 첫 동기화까지 여기 남는다. */
+    suspend fun outbox(): Outbox {
+        val stream = myStream.wire
+        val ops = db.syncDao().opsAfter(stream, db.syncDao().meta(uploadedKey(stream)) ?: 0L)
+        val letters = ops.filter { it.entity == "letter" }.map { it.entityId }.distinct()
+        val drawings = letters.sumOf { id -> db.drawingDao().forLetter(id).count { it.authorId == identity.userId } }
+        return Outbox(letters.size, drawings, ops.size)
     }
 
     // ── 보내기 ────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.feature.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
-import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkDdayCard
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkHeartIcon
@@ -49,7 +49,7 @@ import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * 홈(Figma 2 · 홈). 연결 뒤(52:86) · 연결 전 곰신(70:629) · 연결 전 군인(137:1428) 세 모양.
- * [onOpenPairing] 연결(초대 코드), [onEnterCode] 받은 코드 입력, [onWriteLetter] 편지 미리 쓰기, [onOpenCalendar] 일정.
+ * [onOpenPairing] 초대 링크 보내기 · 다시 보내기, [onWriteLetter] 편지 미리 쓰기, [onOpenCalendar] 일정.
  */
 @Composable
 fun HomeRoute(
@@ -57,12 +57,11 @@ fun HomeRoute(
     onOpenCalendar: () -> Unit,
     onOpenSettings: () -> Unit,
     onWriteLetter: () -> Unit = {},
-    onEnterCode: () -> Unit = onOpenPairing,
     onOpenLeave: () -> Unit = onOpenCalendar,
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings, onWriteLetter, onEnterCode, onOpenLeave)
+    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings, onWriteLetter, onOpenLeave)
 }
 
 @Composable
@@ -73,7 +72,6 @@ fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onWriteLetter: () -> Unit = {},
-    onEnterCode: () -> Unit = onOpenPairing,
     onOpenLeave: () -> Unit = onOpenCalendar,
 ) {
     val c = KkTheme.colors
@@ -89,8 +87,8 @@ fun HomeScreen(
         when {
             state.loading -> Unit
             state.linked -> LinkedHome(state, onIntent, onOpenCalendar)
-            state.role == Role.SOLDIER -> SoldierUnlinked(state, onOpenPairing, onEnterCode, onOpenCalendar, onOpenLeave)
-            else -> GomsinUnlinked(onOpenPairing, onWriteLetter, onOpenCalendar)
+            state.role == Role.SOLDIER -> SoldierUnlinked(state, onOpenPairing, onOpenCalendar, onOpenLeave)
+            else -> GomsinUnlinked(state.invitePending, onOpenPairing, onWriteLetter, onOpenCalendar)
         }
     }
 }
@@ -207,11 +205,9 @@ private fun ScheduledMessage(row: ScheduledRow) {
 // ── 연결 전 · 곰신(70:629) ──
 
 @Composable
-private fun GomsinUnlinked(onOpenPairing: () -> Unit, onWriteLetter: () -> Unit, onOpenCalendar: () -> Unit) {
+private fun GomsinUnlinked(invitePending: Boolean, onOpenPairing: () -> Unit, onWriteLetter: () -> Unit, onOpenCalendar: () -> Unit) {
     val c = KkTheme.colors
-    InviteCard {
-        KkButton("초대 코드 보내기", onOpenPairing, Modifier.fillMaxWidth(), size = KkButtonSize.M)
-    }
+    Invite(invitePending, onOpenPairing)
     Text("연결 전에 할 수 있어요", style = KkTheme.type.title, color = c.ink)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CanDoTile(KkIcons.Mail, "편지 미리 쓰기", "연결되면 한 번에 도착해요", Modifier.weight(1f), onWriteLetter)
@@ -229,6 +225,32 @@ private fun GomsinUnlinked(onOpenPairing: () -> Unit, onWriteLetter: () -> Unit,
                 Text(value, style = KkTheme.type.labelBold, color = c.sub)
             }
         }
+    }
+}
+
+/** 초대를 보냈으면 "초대 보냄 · 기다리는 중 · 링크 다시 보내기"(409:8664), 아니면 연결 권유 카드. */
+@Composable
+private fun Invite(pending: Boolean, onOpenPairing: () -> Unit) {
+    if (!pending) {
+        InviteCard { KkButton("초대 링크 보내기", onOpenPairing, Modifier.fillMaxWidth(), size = KkButtonSize.M) }
+        return
+    }
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.lg)
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(c.surface).border(1.dp, c.line, shape).padding(start = 12.dp, end = 4.dp, top = KkSpacing.sm, bottom = KkSpacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        KkIcon(KkIcons.Send, tint = c.sub, size = 16.dp)
+        Text("초대 보냄 · 기다리는 중", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
+        Text(
+            "링크 다시 보내기",
+            style = KkTheme.type.labelBold,
+            color = c.accent,
+            modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).clickable(role = A11y.Button, onClick = onOpenPairing)
+                .heightIn(min = 40.dp).padding(horizontal = KkSpacing.lg, vertical = 12.dp),
+        )
     }
 }
 
@@ -266,7 +288,7 @@ private fun CanDoTile(icon: KkIcons, title: String, body: String, modifier: Modi
 // ── 연결 전 · 군인(137:1428) ──
 
 @Composable
-private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnterCode: () -> Unit, onOpenCalendar: () -> Unit, onOpenLeave: () -> Unit) {
+private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onOpenCalendar: () -> Unit, onOpenLeave: () -> Unit) {
     val c = KkTheme.colors
     Dday(state, onOpenCalendar)
     state.soldier?.let { s ->
@@ -276,12 +298,7 @@ private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnter
             StatTile("복무", "${s.servedDay}일째", Modifier.weight(1f))
         }
     }
-    InviteCard {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkButton("내 코드 보내기", onOpenPairing, Modifier.weight(1f), style = KkButtonStyle.Secondary, size = KkButtonSize.M)
-            KkButton("코드 입력", onEnterCode, Modifier.weight(1f), size = KkButtonSize.M)
-        }
-    }
+    Invite(state.invitePending, onOpenPairing)
     state.nextLeave?.let { leave ->
         val shape = RoundedCornerShape(KkRadius.lg)
         Row(

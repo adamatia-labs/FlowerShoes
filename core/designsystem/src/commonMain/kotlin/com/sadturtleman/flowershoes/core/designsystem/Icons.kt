@@ -43,6 +43,8 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_download
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_pause
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_play
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_replay
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_link
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_cloud
 import com.sadturtleman.flowershoes.core.designsystem.res.logo_mark
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -71,6 +73,8 @@ enum class KkIcons(internal val res: DrawableResource) {
     Trace(Res.drawable.ic_trace),
     Settings(Res.drawable.ic_settings),
     ChevronRight(Res.drawable.ic_chevron_right),
+    Link(Res.drawable.ic_link),
+    Cloud(Res.drawable.ic_cloud),
 
     // 컴포넌트 안에서만 쓰는 글리프(크기가 24 가 아니다 — 자리에 맞춰 가운데 둔다)
     Back(Res.drawable.ic_back),

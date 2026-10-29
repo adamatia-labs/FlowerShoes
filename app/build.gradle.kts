@@ -45,6 +45,15 @@ android {
         // 꽃신 평생 결제(RevenueCat 공개 SDK 키 — 앱에 실려 나가는 값이다). 기본은 테스트 스토어 키, 실제 키는 local.properties 로.
         buildConfigField("String", "REVENUECAT_API_KEY", "\"${props.getProperty("REVENUECAT_API_KEY", "test_chjLRvvSdzZezYKFbIWfRxJMRjg")}\"")
         manifestPlaceholders["kakaoScheme"] = if (kakaoKey.isBlank()) "kakaonotconfigured" else "kakao$kakaoKey"
+        // 초대 링크(#39): Firebase Hosting 사이트(App Links 호스트 · 링크 모양)와 카카오 사용자 정의 피드 템플릿 ID.
+        // 비어 있으면 자리표시 호스트 · OS 공유 시트로 동작한다.
+        val inviteHost = props.getProperty("INVITE_HOST", "").ifBlank { "TODO_HOSTING_SITE.web.app" }
+        require(inviteHost.matches(Regex("[a-zA-Z0-9._-]+"))) { "INVITE_HOST must be a hostname" }
+        buildConfigField("String", "INVITE_HOST", "\"$inviteHost\"")
+        manifestPlaceholders["inviteHost"] = inviteHost
+        val templateId = props.getProperty("KAKAO_INVITE_TEMPLATE_ID", "").trim()
+        require(templateId.isEmpty() || templateId.all(Char::isDigit)) { "KAKAO_INVITE_TEMPLATE_ID must be a number" }
+        buildConfigField("long", "KAKAO_INVITE_TEMPLATE_ID", "${templateId.ifEmpty { "0" }}L")
     }
 
     buildTypes {

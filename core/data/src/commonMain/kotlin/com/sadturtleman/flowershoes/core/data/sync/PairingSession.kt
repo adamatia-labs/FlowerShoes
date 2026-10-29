@@ -19,6 +19,9 @@ sealed interface PairingState {
     /** 보낸 쪽: 링크를 만들었다. [token] 으로 링크를 만들어 공유하고 상대가 누르길 기다린다(앱은 홈으로 가도 된다). */
     data class Waiting(val token: String, val expireAtMs: Long) : PairingState
 
+    /** 받는 쪽: 링크를 열었다(아직 수락 전). 보낸 사람 이름을 보여 주고 "수락하고 연결하기"를 기다린다. */
+    data class Invited(val token: String, val inviterName: String) : PairingState
+
     /** 받는 쪽: 수락을 보냈고 서버가 커플을 만들길 기다린다. */
     data class Accepting(val inviterName: String) : PairingState
 
@@ -77,6 +80,9 @@ class PairingSession(
     private var token: String? = null
     private var inviter = false
 
+    /** 지금 다루는 링크를 내가 보냈다. 연결되면 보낸 쪽만 연결 모달을 띄운다. */
+    val isInviter: Boolean get() = inviter
+
     private suspend fun myKeys(): DeviceKeys = vault.deviceKeys() ?: DeviceKeys.generate().also { vault.putDeviceKeys(it) }
 
     private suspend fun linkedLocally(): Boolean = db.coupleDao().get()?.partnerUserId?.isNotBlank() == true
@@ -97,6 +103,16 @@ class PairingSession(
         token = newToken
         inviter = true
         return set(PairingState.Waiting(newToken, expireAtMs))
+    }
+
+    /** 링크를 열었다: 초대를 읽기만 한다(소비하지 않는다). 수락은 사용자가 누른 뒤 [accept]. */
+    suspend fun preview(input: String): PairingState {
+        if (linkedLocally()) return set(PairingState.AlreadyLinked)
+        if (!InviteToken.isValid(input)) return set(PairingState.Expired)
+        val invite = transport.invite(input) ?: return set(finishIfLinkedVia(input) ?: PairingState.Expired)
+        if (invite.inviterUid == identity.userId) return set(PairingState.OwnLink(input))
+        if (invite.expireAtMs <= clock.now().toEpochMilliseconds()) return set(PairingState.Expired)
+        return set(PairingState.Invited(input, invite.name))
     }
 
     /** 링크로 들어왔다. 웹 GET 과 달리 여기서 초대를 소비한다(로그인한 앱의 쓰기). */
@@ -180,12 +196,40 @@ class PairingSession(
     }
 }
 
-/** 초대 링크 모양. 경로 `/i/{token}` 은 고정이고 호스트만 바뀐다(커스텀 도메인 전환 대비). */
+/**
+ * 초대 링크 모양. 경로 `/i/{token}` 은 고정이고 호스트만 바뀐다(커스텀 도메인 전환 대비).
+ * 호스트는 빌드 설정(Android local.properties · iOS Config.xcconfig 의 `INVITE_HOST`)에서 온다 — [InviteConfig].
+ */
 object InviteLinks {
-    /** Firebase Hosting 사이트. 실제 값과 설정값 연결은 딥링크 티켓(#39)에서. */
+    /** Firebase Hosting 사이트 자리표시. 실제 값은 빌드 설정에서 넣는다. */
     const val DEFAULT_HOST = "TODO_HOSTING_SITE.web.app"
 
     fun url(token: String, host: String = DEFAULT_HOST): String = "https://$host/i/$token"
+
+    /**
+     * 앱으로 들어온 링크에서 초대 토큰을 꺼낸다. 웹 링크(`https://{host}/i/{token}`, App Links · Universal Links)와
+     * 카카오 피드 템플릿의 앱 실행 링크(`kakao{앱키}://kakaolink?invite={token}`)가 같은 값이 된다.
+     * 호스트는 보지 않는다 — 운영체제가 등록된 도메인의 링크만 앱으로 넘긴다.
+     */
+    fun tokenFrom(uri: String): String? {
+        val token = when {
+            uri.startsWith("https://") -> uri.removePrefix("https://").substringBefore('?').substringBefore('#').split('/')
+                .takeIf { it.size >= 3 && it[1] == "i" }?.get(2)
+            uri.startsWith("kakao") && uri.substringAfter("://", "").startsWith("kakaolink") ->
+                uri.substringAfter('?', "").split('&').firstOrNull { it.startsWith("invite=") }?.removePrefix("invite=")
+            else -> null
+        }
+        return token?.takeIf(InviteToken::isValid)
+    }
+}
+
+/** 초대 링크 · 카카오 공유 설정(빌드마다). 템플릿이 없으면 카카오 공유 대신 OS 공유 시트로 보낸다. */
+data class InviteConfig(
+    val host: String = InviteLinks.DEFAULT_HOST,
+    /** 카카오 사용자 정의 피드 템플릿 ID. 템플릿 인자는 `name`(보낸 사람) · `token`(초대 토큰). */
+    val kakaoTemplateId: Long? = null,
+) {
+    fun url(token: String) = InviteLinks.url(token, host)
 }
 
 internal fun ByteArray.b64(): String = Base64.encode(this)

@@ -79,6 +79,8 @@ targets:
         keychain-access-groups: ["$(AppIdentifierPrefix)com.sadturtleman.kkotsin.shared"]
         aps-environment: development
         com.apple.developer.applesignin: [Default]
+        # 초대 링크 Universal Links(https://{INVITE_HOST}/i/{token}). 검증 파일은 firebase/hosting/public/.well-known/apple-app-site-association
+        com.apple.developer.associated-domains: ["applinks:$(INVITE_HOST)"]
     dependencies:
       - target: KkotsinNotification
       - target: KkotsinWidgets
@@ -87,6 +89,11 @@ targets:
         product: libzstd
       - package: KakaoSDK
         product: KakaoSDKUser
+      # 초대 링크: 카카오 사용자 정의 피드 템플릿 공유
+      - package: KakaoSDK
+        product: KakaoSDKShare
+      - package: KakaoSDK
+        product: KakaoSDKTemplate
       - package: GoogleSignIn
       - package: GoogleMobileAds
       - package: GoogleUMP
@@ -127,6 +134,9 @@ targets:
           UIColorName: ""
         # 키는 Config.xcconfig(커밋하지 않음)에서: KAKAO_NATIVE_APP_KEY, GOOGLE_CLIENT_ID, GOOGLE_REVERSED_CLIENT_ID
         KakaoNativeAppKey: $(KAKAO_NATIVE_APP_KEY)
+        # 초대 링크 호스트 · 카카오 피드 템플릿 ID(Config.xcconfig 의 INVITE_HOST · KAKAO_INVITE_TEMPLATE_ID)
+        KkotsinInviteHost: $(INVITE_HOST)
+        KakaoInviteTemplateId: $(KAKAO_INVITE_TEMPLATE_ID)
         GIDClientID: $(GOOGLE_CLIENT_ID)
         LSApplicationQueriesSchemes: [kakaokompassauth, kakaolink]
         CFBundleURLTypes:

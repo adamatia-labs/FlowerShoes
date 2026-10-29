@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
-import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
+import com.sadturtleman.flowershoes.core.designsystem.KkChoice
 import com.sadturtleman.flowershoes.core.designsystem.KkCheckbox
 import com.sadturtleman.flowershoes.core.designsystem.KkDdayCard
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
@@ -91,14 +91,14 @@ import kotlinx.datetime.plus
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * 온보딩(Figma 1 · 온보딩). [connect] 는 연결 단계 본문 — 연결 기능(:feature:pairing)을 앱 셸이 끼운다.
- * 인자는 "확인 코드 비교로 넘어가자" 콜백.
+ * 온보딩(Figma 1 · 온보딩). 마지막 시작 방법에서 "연인 초대하기"면 [onOpenPairing] — 연결 화면(:feature:pairing)은 앱 셸이 띄운다.
+ * [invited] 면 받은 초대 링크가 있다: 시작 방법을 묻지 않고 바로 수락 화면으로 간다.
  */
 @Composable
 fun OnboardingRoute(
     onFinished: () -> Unit,
     onOpenPairing: () -> Unit,
-    connect: @Composable ColumnScope.(onAdvance: () -> Unit) -> Unit = {},
+    invited: Boolean = false,
     viewModel: OnboardingViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -113,14 +113,16 @@ fun OnboardingRoute(
     BackHandler(enabled = state.reading != null || state.step.ordinal > OnboardingStep.TERMS.ordinal) {
         viewModel.onIntent(OnboardingIntent.Back)
     }
-    OnboardingScreen(state, viewModel::onIntent, connect)
+    LaunchedEffect(state.step, invited) {
+        if (state.step == OnboardingStep.CONNECT && invited) viewModel.onIntent(OnboardingIntent.StartPairing)
+    }
+    OnboardingScreen(state, viewModel::onIntent)
 }
 
 @Composable
 fun OnboardingScreen(
     state: OnboardingState,
     onIntent: (OnboardingIntent) -> Unit,
-    connect: @Composable ColumnScope.(onAdvance: () -> Unit) -> Unit = {},
 ) {
     val c = KkTheme.colors
     state.reading?.let { doc ->
@@ -151,9 +153,13 @@ fun OnboardingScreen(
                     OnboardingStep.THEME -> ThemeContent(state, onIntent)
                     OnboardingStep.SERVICE -> ServiceContent(state) { sheet = it }
                     OnboardingStep.CONNECT -> {
+                        // 시작 방법(346:457): 연인 초대하기 · 혼자 먼저 시작하기.
                         KkStepIndicator(step = state.totalSteps, total = state.totalSteps)
-                        Text("연인과 연결해요", style = KkTheme.type.title, color = c.ink)
-                        connect { onIntent(OnboardingIntent.StartPairing) }
+                        Text("어떻게 시작할까요?", style = KkTheme.type.title, color = c.ink)
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            KkChoice("연인 초대하기", state.startWithInvite, { onIntent(OnboardingIntent.SelectStart(true)) })
+                            KkChoice("혼자 먼저 시작하기", !state.startWithInvite, { onIntent(OnboardingIntent.SelectStart(false)) })
+                        }
                     }
                 }
             }
@@ -170,7 +176,6 @@ fun OnboardingScreen(
                         state.error?.let { Text(it, style = KkTheme.type.caption, color = c.danger) }
                     }
                     OnboardingStep.TERMS -> KkPrimaryButton("동의하고 시작하기", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
-                    OnboardingStep.CONNECT -> KkButton("혼자 먼저 둘러볼게요", { onIntent(OnboardingIntent.FinishSolo) }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
                     else -> KkPrimaryButton("다음", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
                 }
             }
