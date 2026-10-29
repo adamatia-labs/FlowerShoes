@@ -60,10 +60,13 @@ import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkInput
 import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
 import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
+import com.sadturtleman.flowershoes.core.designsystem.KkPolaroid
+import com.sadturtleman.flowershoes.core.designsystem.KkPolaroidSize
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
 import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
+import com.sadturtleman.flowershoes.core.designsystem.KkTape
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkToast
 import com.sadturtleman.flowershoes.core.designsystem.KkTopBar
@@ -495,7 +498,7 @@ private fun MeetTag(meet: MeetCard) {
                 Text(listOfNotNull(meet.time, "사진 ${meet.photos.size}".takeIf { meet.photos.isNotEmpty() }).joinToString(" · "), style = KkTheme.type.caption, color = c.sub)
             }
         }
-        Tape(Modifier.align(Alignment.TopEnd).padding(end = 28.dp).offset(y = (-10).dp).rotate(-4f))
+        KkTape(Modifier.align(Alignment.TopEnd).padding(end = 28.dp).offset(y = (-10).dp).rotate(-4f))
     }
 }
 
@@ -516,25 +519,14 @@ private fun LineNote(label: String, text: String, tilt: Float) {
             }
             Text(text, style = KkTheme.type.handLetter, color = c.ink)
         }
-        Tape(Modifier.align(Alignment.TopCenter).offset(y = (-8).dp))
+        KkTape(Modifier.align(Alignment.TopCenter).offset(y = (-8).dp))
     }
 }
 
-/** 마스킹 테이프(Figma Tape: 56×16, 반투명). */
-@Composable
-private fun Tape(modifier: Modifier = Modifier) {
-    Box(modifier.size(56.dp, 16.dp).background(KkTheme.colors.tape))
-}
-
-/** 폴라로이드(사진은 콘텐츠라 흰 틀 그대로). 위에 테이프. */
+/** 작은 폴라로이드(사진은 콘텐츠라 흰 틀 그대로). 위에 테이프. */
 @Composable
 private fun Polaroid(bytes: ByteArray?, tilt: Float, modifier: Modifier = Modifier) {
-    Box(modifier.rotate(tilt)) {
-        Box(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, RoundedCornerShape(0.dp)).background(Color.White).padding(start = 5.dp, end = 5.dp, top = 5.dp, bottom = 24.dp)) {
-            PhotoImage(bytes, Modifier.fillMaxWidth().aspectRatio(1f))
-        }
-        Box(Modifier.align(Alignment.TopCenter).offset(y = (-5).dp).rotate(4f).size(35.dp, 10.dp).background(KkTheme.colors.tape))
-    }
+    KkPolaroid(modifier, tilt = tilt, size = KkPolaroidSize.Compact) { PhotoImage(bytes, Modifier.fillMaxWidth().aspectRatio(1f)) }
 }
 
 /**

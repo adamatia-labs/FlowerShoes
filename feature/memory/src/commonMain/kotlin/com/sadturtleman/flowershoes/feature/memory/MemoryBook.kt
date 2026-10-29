@@ -50,7 +50,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -68,6 +67,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkLetterFont
+import com.sadturtleman.flowershoes.core.designsystem.KkPostmark
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
@@ -440,17 +440,11 @@ internal fun AirmailStripe(modifier: Modifier, background: Color = PAPER) {
     }
 }
 
-/** 소인(Figma Postmark): 동그라미 테두리 + 이름 + 날짜. */
+/** 소인(Figma Postmark): 책 글꼴 · 표지 잉크로 그린 [KkPostmark]. */
 @Composable
 private fun Postmark(s: BookScale, x: Number, y: Number, size: Number, ink: Color, text: String, date: String) {
     At(s, x, y, size, size) {
-        Box(Modifier.fillMaxSize().padding(s.u(size.toFloat() / 32f)), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize()) { drawCircle(ink.copy(alpha = 0.85f), style = Stroke(width = s.u(size.toFloat() / 32f).toPx())) }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text, style = s.body(size.toFloat() * 0.19f, ink, bold = true), maxLines = 1)
-                Text(date, style = s.body(size.toFloat() * 0.11f, ink), maxLines = 1)
-            }
-        }
+        KkPostmark(text, date, Modifier.fillMaxSize(), color = ink, textFont = s.fonts.body, textWeight = FontWeight.Bold, dateFont = s.fonts.body)
     }
 }
 
