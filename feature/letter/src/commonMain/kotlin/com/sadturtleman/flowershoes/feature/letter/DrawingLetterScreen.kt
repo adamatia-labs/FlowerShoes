@@ -129,7 +129,7 @@ private fun ReplayBar(state: ReplayState) {
                 .semantics { contentDescription = if (state.playing) "멈추기" else if (state.finished) "다시 보기" else "재생" },
             contentAlignment = Alignment.Center,
         ) { KkIcon(icon, tint = c.surface, size = 20.dp) }
-        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.bar)) {
+        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.line)) {
             Box(Modifier.fillMaxHeight().fillWidth(state.progress.coerceIn(0f, 1f)).clip(RoundedCornerShape(2.dp)).background(c.accent))
         }
         if (state.finished) {
@@ -138,7 +138,7 @@ private fun ReplayBar(state: ReplayState) {
             Text("${clock(state.elapsedMs)} / ${clock(state.durationMs)}", style = KkTheme.type.caption, color = c.sub)
         }
         Box(
-            Modifier.size(40.dp).clip(CircleShape).background(c.bar)
+            Modifier.size(40.dp).clip(CircleShape).background(c.line)
                 .clickable(role = Role.Button) { state.speed = when (state.speed) { 1f -> 2f; 2f -> 0.5f; else -> 1f } }
                 .semantics { contentDescription = "속도 ${state.speed}배" },
             contentAlignment = Alignment.Center,

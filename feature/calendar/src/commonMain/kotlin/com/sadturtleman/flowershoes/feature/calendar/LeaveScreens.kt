@@ -238,7 +238,7 @@ private fun UseRow(e: Event, state: LeaveUseState) {
         val (bg, fg) = when (state) {
             LeaveUseState.PLANNED -> c.bar to c.accent
             LeaveUseState.ONGOING -> c.bar to c.accent
-            LeaveUseState.DONE -> c.bar to c.sub
+            LeaveUseState.DONE -> c.line to c.sub
         }
         Text(
             state.label, style = KkTheme.type.label, color = fg,
@@ -365,7 +365,7 @@ private fun suggestName(kind: LeaveKind, regularCount: Int): String =
 private fun StepButton(label: String, description: String, enabled: Boolean, onClick: () -> Unit) {
     val c = KkTheme.colors
     Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar)
+        Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {

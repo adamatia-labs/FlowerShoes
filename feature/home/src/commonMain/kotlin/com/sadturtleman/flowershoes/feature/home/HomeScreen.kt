@@ -221,7 +221,7 @@ private fun GomsinUnlinked(onOpenPairing: () -> Unit, onWriteLetter: () -> Unit,
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(Triple(KkIcons.Clock, "전역", "D-?"), Triple(KkIcons.Home, "상대 상태", "?"), Triple(KkIcons.Heart, "보고싶어", "?")).forEach { (icon, label, value) ->
             Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(KkRadius.lg)).background(c.bar).padding(horizontal = 12.dp, vertical = 14.dp),
+                Modifier.weight(1f).clip(RoundedCornerShape(KkRadius.lg)).background(c.line).padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 KkIcon(icon, tint = c.sub)

@@ -233,7 +233,7 @@ private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit) 
                                 Modifier.sizeIn(minWidth = 28.dp, minHeight = 28.dp).clip(CircleShape).background(
                                     when {
                                         selected -> c.accent
-                                        day == state.today -> c.bar
+                                        day == state.today -> c.line
                                         else -> Color.Transparent
                                     },
                                 ),

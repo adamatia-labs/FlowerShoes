@@ -343,7 +343,7 @@ private fun RestoringContent(s: RestoreUi.Restoring) {
                 style = KkTheme.type.caption, color = c.sub,
             )
         }
-        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bar)) {
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.line)) {
             Box(Modifier.fillMaxWidth(s.fraction.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(c.accent))
         }
         fun state(stage: RestoreStage) = when {

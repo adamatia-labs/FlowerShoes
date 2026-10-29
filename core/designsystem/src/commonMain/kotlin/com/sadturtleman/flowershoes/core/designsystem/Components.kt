@@ -215,7 +215,7 @@ fun KkStatusChip(
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(KkRadius.full)
     val bg = when {
-        !enabled -> c.bar
+        !enabled -> c.line
         selected -> c.accent
         pressed -> c.line
         else -> c.surface
@@ -243,7 +243,7 @@ fun KkEventTag(label: String, dot: Color, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(KkRadius.full))
-            .background(c.bar)
+            .background(c.line)
             .padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
         verticalAlignment = Alignment.CenterVertically,
@@ -264,7 +264,7 @@ fun KkMilitaryBadge(text: String, modifier: Modifier = Modifier) {
         textAlign = TextAlign.Center,
         modifier = modifier
             .clip(RoundedCornerShape(KkRadius.full))
-            .background(c.bar)
+            .background(c.line)
             .padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
     )
 }
@@ -308,7 +308,7 @@ fun KkInput(
                 .height(48.dp)
                 .then(if (enabled) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
                 .clip(shape)
-                .background(if (enabled) c.surface else c.bar)
+                .background(if (enabled) c.surface else c.line)
                 .then(border)
                 .then(if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier)
                 .padding(horizontal = KkSpacing.lg),
@@ -437,7 +437,7 @@ fun KkSegmentedControl(items: List<String>, selected: Int, onSelect: (Int) -> Un
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(KkRadius.md))
-            .background(c.bar)
+            .background(c.line)
             .padding(KkSpacing.xxs),
     ) {
         items.forEachIndexed { i, label ->
@@ -802,7 +802,7 @@ fun KkDdayCard(
             KkMilitaryBadge(rank)
         }
         Text(days, style = KkTheme.type.ddayM, color = c.ink)
-        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bar)) {
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.line)) {
             Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.accent))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

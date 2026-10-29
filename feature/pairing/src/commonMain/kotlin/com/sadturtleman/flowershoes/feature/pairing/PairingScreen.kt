@@ -546,7 +546,7 @@ internal fun ReceivingProgress(ui: PairingUi) {
                     style = KkTheme.type.caption, color = c.sub,
                 )
             }
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bar)) {
+            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.line)) {
                 Box(Modifier.fillMaxWidth(percent / 100f).height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.accent))
             }
             if (expected != null) {

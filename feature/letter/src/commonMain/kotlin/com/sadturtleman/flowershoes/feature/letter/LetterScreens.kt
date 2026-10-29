@@ -286,7 +286,7 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
                                 )
                             } else {
                                 Box(
-                                    Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(KkRadius.lg)).background(c.bar),
+                                    Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(KkRadius.lg)).background(c.line),
                                     contentAlignment = Alignment.Center,
                                 ) { Text("사진을 받는 중이에요", style = KkTheme.type.body, color = c.sub) }
                             }
@@ -626,7 +626,7 @@ private fun InlineObject(key: String, thumbs: Map<String, DrawingDocument>, phot
     } else {
         val bytes = photos[key.removePrefix("p:")]
         val bitmap = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
-        Box(modifier.clip(RoundedCornerShape(KkRadius.sm)).background(c.bar), contentAlignment = Alignment.Center) {
+        Box(modifier.clip(RoundedCornerShape(KkRadius.sm)).background(c.line), contentAlignment = Alignment.Center) {
             if (bitmap != null) Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             else KkIcon(KkIcons.Photo, tint = c.sub, size = 18.dp)
         }
@@ -701,7 +701,7 @@ private fun StickerGrid(onPick: (String) -> Unit) {
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         STICKERS.values.forEach { glyph ->
             Box(
-                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar).clickable(role = Role.Button) { onPick(glyph) },
+                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line).clickable(role = Role.Button) { onPick(glyph) },
                 contentAlignment = Alignment.Center,
             ) { Text(glyph, fontSize = 28.sp) }
         }
@@ -731,7 +731,7 @@ internal fun Paper.background(c: KkColors): Color = when (this) {
     Paper.PLAIN -> c.surface
     Paper.BLOSSOM -> c.bar
     Paper.OLIVE -> c.bar
-    Paper.GRID -> c.bar
+    Paper.GRID -> c.line
     Paper.NIGHT -> c.ink
     // 꽃신 평생 편지지: 테마와 무관한 종이 색(Figma 📖 · 편지지 시안).
     Paper.MANUSCRIPT -> Color(0xFFFFF8EC)

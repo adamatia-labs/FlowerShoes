@@ -191,7 +191,7 @@ fun DrawingEditorScreen(
         if (drawingNow) {
             Row(
                 Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)
-                    .clip(RoundedCornerShape(KkRadius.full)).background(c.bar).padding(horizontal = KkSpacing.md, vertical = 6.dp),
+                    .clip(RoundedCornerShape(KkRadius.full)).background(c.line).padding(horizontal = KkSpacing.md, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.width(16.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(c.line))
@@ -345,7 +345,7 @@ private fun ToolButton(icon: KkIcons, label: String, selected: Boolean, enabled:
     val shape = RoundedCornerShape(KkRadius.lg)
     Box(
         Modifier.size(48.dp).then(if (selected) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
-            .clip(shape).background(if (selected) c.ink else c.bar)
+            .clip(shape).background(if (selected) c.ink else c.line)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label; this.selected = selected },
         contentAlignment = Alignment.Center,
@@ -405,7 +405,7 @@ private fun PenPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Uni
         BrushSize.entries.forEach { b ->
             val on = state.brush == b
             Box(
-                Modifier.size(48.dp).clip(CircleShape).background(if (on) c.surface else c.bar)
+                Modifier.size(48.dp).clip(CircleShape).background(if (on) c.surface else c.line)
                     .then(if (on) Modifier.border(2.dp, c.accent, CircleShape) else Modifier)
                     .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetBrush(b)) }
                     .semantics { contentDescription = BRUSH_LABEL.getValue(b); selected = on },
@@ -452,7 +452,7 @@ private fun PenPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Uni
 private fun BrushChip(label: String, on: Boolean, lifetimeLocked: Boolean, onClick: () -> Unit) {
     val c = KkTheme.colors
     Row(
-        Modifier.height(40.dp).clip(CircleShape).background(if (on) c.accent else c.bar)
+        Modifier.height(40.dp).clip(CircleShape).background(if (on) c.accent else c.line)
             .clickable(role = Role.RadioButton, onClick = onClick).semantics {
                 selected = on
                 contentDescription = label + if (lifetimeLocked) ", 꽃신 평생, 잠김" else ""
@@ -509,7 +509,7 @@ private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) ->
         items.forEach { id ->
             val on = state.sticker == id
             Box(
-                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar)
+                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
                     .then(if (on) Modifier.border(2.dp, c.accent, RoundedCornerShape(KkRadius.md)) else Modifier)
                     .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetSticker(id)) }
                     .semantics {
@@ -591,7 +591,7 @@ private fun TemplatePanel(state: DrawingEditorState, onIntent: (DrawingIntent) -
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
             ) {
                 Box(
-                    Modifier.fillMaxWidth().height(56.dp).clip(shape).background(if (on) c.bar else c.bar)
+                    Modifier.fillMaxWidth().height(56.dp).clip(shape).background(if (on) c.bar else c.line)
                         .then(if (on) Modifier.border(2.dp, c.accent, shape) else Modifier),
                     contentAlignment = Alignment.Center,
                 ) { TemplatePreview(id, Modifier.size(48.dp)) }

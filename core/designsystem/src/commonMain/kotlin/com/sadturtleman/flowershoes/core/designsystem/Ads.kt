@@ -60,7 +60,7 @@ fun KkNativeAd(ad: KkAdContent, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar)) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)) {
             ad.image?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop) }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

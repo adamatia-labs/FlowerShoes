@@ -112,7 +112,7 @@ fun KkSlider(value: Float, onValueChange: (Float) -> Unit, valueRange: ClosedFlo
         contentAlignment = Alignment.CenterStart,
     ) {
         val thumb = 20.dp
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.bar))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.line))
         Box(Modifier.fillMaxWidth(fraction).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
         Box(
             Modifier.offset(x = (maxWidth - thumb) * fraction).size(thumb)

@@ -329,7 +329,7 @@ private fun MainPage(
             // 꽃신 평생(Figma): 프로필 바로 아래 옅은 색 한 줄.
             val lifetime = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
             val owned by (lifetime?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
-            Box(Modifier.fillMaxWidth().clip(shape).background(c.bar)) {
+            Box(Modifier.fillMaxWidth().clip(shape).background(c.line)) {
                 val shared by (org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
                     ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
                 val value = when {
@@ -700,7 +700,7 @@ private fun WidgetsPage(state: SettingsState, platform: PlatformActions, onBack:
         ) {
             listOf("홈 화면 빈 곳을 길게 누르기", "위젯 → 꽃신 선택", "원하는 크기를 골라 놓기").forEachIndexed { i, step ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(22.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(22.dp).clip(CircleShape).background(c.line), contentAlignment = Alignment.Center) {
                         Text("${i + 1}", style = KkTheme.type.label, color = c.sub)
                     }
                     Text(step, style = KkTheme.type.body, color = c.ink)
@@ -767,7 +767,7 @@ private fun WidgetFramePicker() {
                         .border(if (on) 2.dp else 1.dp, if (on) c.accent else c.line, shape)
                         .padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = if (id == "POLAROID") 14.dp else 6.dp),
                 ) {
-                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).background(c.bar))
+                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).background(c.line))
                     if (!free) {
                         Text(
                             "평생", style = KkTheme.type.label, color = c.surface,
@@ -821,7 +821,7 @@ private fun BackupPage(state: SettingsState, platform: PlatformActions, viewMode
             val plusOwned by (plus?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
             val quotaGb = (if (owned) LIFETIME_BACKUP_GB else FREE_BACKUP_GB) + if (plusOwned) PLUS_BACKUP_GB else 0
             val fraction = (b.bytes.toFloat() / (quotaGb * GB)).coerceIn(0f, 1f)
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.bar)) {
+            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.line)) {
                 Box(Modifier.fillMaxHeight().fillMaxWidth(if (b.bytes > 0) fraction.coerceAtLeast(0.02f) else 0f).clip(RoundedCornerShape(3.dp)).background(c.accent))
             }
             Text("${bytesLabel(b.bytes)} / ${quotaGb}GB", style = KkTheme.type.caption, color = c.sub)
@@ -1087,7 +1087,7 @@ fun PartnerUnlinkedScreen(partnerName: String, onConfirm: (AfterUnlink) -> Unit)
     BackHandler { }
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.xxl), verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
-            Box(Modifier.size(56.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Heart, tint = c.ink) }
+            Box(Modifier.size(56.dp).clip(CircleShape).background(c.line), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Heart, tint = c.ink) }
             Text("${partnerName.withSubject()} 연결을 해제했어요", style = KkTheme.type.title, color = c.ink)
             Text("이제 소식을 주고받을 수 없어요. 이 폰에 남은 기록을 어떻게 할까요?", style = KkTheme.type.body, color = c.sub)
             KkChoice("추억으로 보관", keep, { keep = true }, radio = true)

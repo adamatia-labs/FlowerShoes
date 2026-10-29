@@ -466,7 +466,7 @@ private fun PhotoGrid(ids: List<String>, photos: Map<String, ByteArray?>, onClic
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                 row.forEach { id ->
                     Box(
-                        Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(KkRadius.md)).background(c.bar)
+                        Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
                             .then(if (id.isNotEmpty()) Modifier.clickable(role = Role.Button) { onClick(id) }.semantics { contentDescription = "만남 사진" } else Modifier),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -524,7 +524,7 @@ private fun MeetNoteScreen(meet: MeetCard, photos: Map<String, ByteArray?>, onIn
 internal fun PhotoImage(bytes: ByteArray?, modifier: Modifier) {
     val bitmap: ImageBitmap? = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
     if (bitmap != null) Image(bitmap, null, modifier, contentScale = ContentScale.Crop)
-    else Box(modifier.background(KkTheme.colors.bar))
+    else Box(modifier.background(KkTheme.colors.line))
 }
 
 @Composable

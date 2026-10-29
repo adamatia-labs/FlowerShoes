@@ -114,7 +114,7 @@ internal fun InquiryPage(
                     shots.forEachIndexed { i, bytes ->
                         val bitmap = remember(bytes) { runCatching { bytes.decodeToImageBitmap() }.getOrNull() }
                         Box(
-                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar)
+                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
                                 .clickable(role = Role.Button) { shots.removeAt(i) }
                                 .semantics { contentDescription = "스크린샷 ${i + 1} 빼기" },
                         ) {
@@ -127,7 +127,7 @@ internal fun InquiryPage(
                     }
                     if (shots.size < MAX_SHOTS) {
                         Column(
-                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar)
+                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
                                 .clickable(role = Role.Button) { pick(false) }.semantics { contentDescription = "스크린샷 추가" },
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
@@ -229,14 +229,14 @@ private fun InquiryCard(q: Inquiry) {
                 if (answered) "답변 완료" else "답변 대기",
                 style = KkTheme.type.label,
                 color = if (answered) c.accent else c.sub,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(if (answered) c.bar else c.bar)
+                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(if (answered) c.bar else c.line)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
         Text(q.title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         q.answer?.let { a ->
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bar).padding(horizontal = 14.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.line).padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text("꽃신 답변" + (q.answeredAtMs?.let { " · ${md(it)}" } ?: ""), style = KkTheme.type.caption, color = c.sub)
