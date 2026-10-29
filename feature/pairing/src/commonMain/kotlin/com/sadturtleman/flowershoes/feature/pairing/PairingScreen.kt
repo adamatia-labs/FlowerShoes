@@ -248,7 +248,7 @@ private fun Frame(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar(title, onLeading = onClose, leading = leading)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
@@ -265,8 +265,8 @@ private fun Frame(
 
 @Composable
 private fun Title(title: String, body: String? = null) {
-    Text(title, style = KkTheme.type.titleL, color = KkTheme.colors.textPrimary)
-    body?.let { Text(it, style = KkTheme.type.bodyL, color = KkTheme.colors.textSecondary) }
+    Text(title, style = KkTheme.type.title, color = KkTheme.colors.ink)
+    body?.let { Text(it, style = KkTheme.type.body, color = KkTheme.colors.sub) }
 }
 
 /** "● 기다리는 중…" 한 줄. */
@@ -274,8 +274,8 @@ private fun Title(title: String, body: String? = null) {
 private fun Waiting(text: String) {
     val c = KkTheme.colors
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(c.bgBrand))
-        Text(text, style = KkTheme.type.bodyS, color = c.textSecondary, modifier = Modifier.weight(1f))
+        Box(Modifier.size(8.dp).clip(CircleShape).background(c.accent))
+        Text(text, style = KkTheme.type.body, color = c.sub, modifier = Modifier.weight(1f))
     }
 }
 
@@ -286,7 +286,7 @@ private fun CodeCard(label: String, code: String, caption: String, copyable: Boo
     val clipboard = LocalClipboardManager.current
     var copied by remember(code) { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.xl)).background(c.bgBrandSubtle)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.xl)).background(c.bar)
             .clickable(enabled = copyable) {
                 clipboard.setText(AnnotatedString(code))
                 copied = true
@@ -296,9 +296,9 @@ private fun CodeCard(label: String, code: String, caption: String, copyable: Boo
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(label, style = KkTheme.type.labelM, color = c.textBrand)
-        Text(code, style = KkTheme.type.display, color = c.textPrimary)
-        Text(if (copied) "복사했어요" else caption, style = KkTheme.type.caption, color = c.textSecondary)
+        Text(label, style = KkTheme.type.label, color = c.accent)
+        Text(code, style = KkTheme.type.title, color = c.ink)
+        Text(if (copied) "복사했어요" else caption, style = KkTheme.type.caption, color = c.sub)
     }
 }
 
@@ -346,15 +346,15 @@ private fun HandOverScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Uni
             Title("연인이 폰을 바꿨나요?")
             val shape = RoundedCornerShape(KkRadius.lg)
             Column(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 listOf("코드를 만들어 연인에게 알려 주세요", "연인이 새 폰에 코드를 입력해요", "넘겨주기를 누르면 기록이 새 폰으로 옮겨져요").forEachIndexed { i, step ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(28.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
-                            Text("${i + 1}", style = KkTheme.type.labelS, color = c.textBrand)
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+                            Text("${i + 1}", style = KkTheme.type.label, color = c.accent)
                         }
-                        Text(step, style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
+                        Text(step, style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -378,15 +378,15 @@ private fun HandOverScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Uni
             val shape = RoundedCornerShape(KkRadius.lg)
             // 새 기기(Figma 지수 · 확인): 기종 · 로그인 방법. 아래 확인 코드는 바꿔치기 방지(설계 7-3-B)라 함께 둔다.
             Column(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("새 기기", style = KkTheme.type.caption, color = c.textTertiary)
-                Text(s.device ?: "새 폰", style = KkTheme.type.titleS, color = c.textPrimary)
-                s.provider?.let { Text("${providerName(it)} 계정으로 로그인", style = KkTheme.type.bodyS, color = c.textSecondary) }
-                Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(c.borderDefault))
-                Text("확인 코드 ${s.sas.chunked(3).joinToString(" ")}", style = KkTheme.type.labelM, color = c.textPrimary)
-                Text("새 폰 화면의 숫자와 같을 때만 넘겨주세요", style = KkTheme.type.caption, color = c.textSecondary)
+                Text("새 기기", style = KkTheme.type.caption, color = c.sub)
+                Text(s.device ?: "새 폰", style = KkTheme.type.labelBold, color = c.ink)
+                s.provider?.let { Text("${providerName(it)} 계정으로 로그인", style = KkTheme.type.body, color = c.sub) }
+                Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(c.line))
+                Text("확인 코드 ${s.sas.chunked(3).joinToString(" ")}", style = KkTheme.type.label, color = c.ink)
+                Text("새 폰 화면의 숫자와 같을 때만 넘겨주세요", style = KkTheme.type.caption, color = c.sub)
             }
         }
         PairingState.WaitingConfirm, is PairingState.Linked -> Frame("상대 폰 교체 받기", KkTopBarLeading.Close, close) {
@@ -458,7 +458,7 @@ fun ColumnScope.InviteConnect(onAdvance: () -> Unit, viewModel: PairingViewModel
             .fillMaxWidth()
             .kkElevation(KkElevation.Low, shape)
             .clip(shape)
-            .background(c.bgBrandSubtle)
+            .background(c.bar)
             .clickable(enabled = code != null) {
                 clipboard.setText(AnnotatedString(code.orEmpty()))
                 copied = true
@@ -467,15 +467,15 @@ fun ColumnScope.InviteConnect(onAdvance: () -> Unit, viewModel: PairingViewModel
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
-        Text("내 초대 코드", style = KkTheme.type.labelM, color = c.textBrand)
-        Text(code ?: "····-····", style = KkTheme.type.display, color = c.textPrimary)
+        Text("내 초대 코드", style = KkTheme.type.label, color = c.accent)
+        Text(code ?: "····-····", style = KkTheme.type.title, color = c.ink)
         Text(
             when {
                 !ui.available -> "서버 설정이 들어가면 코드를 만들 수 있어요"
                 copied -> "복사했어요"
                 else -> "24시간 동안 유효 · 눌러서 복사"
             },
-            style = KkTheme.type.caption, color = c.textSecondary,
+            style = KkTheme.type.caption, color = c.sub,
         )
     }
     KkPrimaryButton(
@@ -484,9 +484,9 @@ fun ColumnScope.InviteConnect(onAdvance: () -> Unit, viewModel: PairingViewModel
         enabled = code != null,
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f).height(1.dp).background(c.borderDefault))
-        Text("코드를 받았나요?", style = KkTheme.type.caption, color = c.textTertiary)
-        Box(Modifier.weight(1f).height(1.dp).background(c.borderDefault))
+        Box(Modifier.weight(1f).height(1.dp).background(c.line))
+        Text("코드를 받았나요?", style = KkTheme.type.caption, color = c.sub)
+        Box(Modifier.weight(1f).height(1.dp).background(c.line))
     }
     KkInput(
         value = ui.codeInput,
@@ -525,29 +525,29 @@ internal fun ReceivingProgress(ui: PairingUi) {
     val elapsed = (kotlin.time.Clock.System.now().toEpochMilliseconds() - ui.receiveStartedMs).coerceAtLeast(1)
     val remainingSec = if (percent in 1..99) (elapsed * (100 - percent) / percent / 1000) else null
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()
+        Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
     ) {
-        Text("기록을 넘겨받는 중이에요", style = KkTheme.type.titleL, color = c.textPrimary)
+        Text("기록을 넘겨받는 중이에요", style = KkTheme.type.title, color = c.ink)
         val shape = RoundedCornerShape(KkRadius.lg)
         Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("$percent%", style = KkTheme.type.titleM, color = c.textBrand, modifier = Modifier.weight(1f))
+                Text("$percent%", style = KkTheme.type.title, color = c.accent, modifier = Modifier.weight(1f))
                 Text(
                     when {
                         percent >= 100 -> "다 받았어요"
                         remainingSec == null -> "준비 중"
                         else -> "약 ${maxOf(1, (remainingSec + 59) / 60)}분 남음"
                     },
-                    style = KkTheme.type.caption, color = c.textTertiary,
+                    style = KkTheme.type.caption, color = c.sub,
                 )
             }
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgSubtle)) {
-                Box(Modifier.fillMaxWidth(percent / 100f).height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgBrand))
+            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.line)) {
+                Box(Modifier.fillMaxWidth(percent / 100f).height(6.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.accent))
             }
             if (expected != null) {
                 val rows = listOf(
@@ -565,8 +565,8 @@ internal fun ReceivingProgress(ui: PairingUi) {
                     }
                     if (n < of) before = false
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(label, style = KkTheme.type.bodyS, color = c.textPrimary, modifier = Modifier.weight(1f))
-                        Text(state, style = KkTheme.type.caption, color = if (state == "받는 중") c.textBrand else c.textTertiary)
+                        Text(label, style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
+                        Text(state, style = KkTheme.type.caption, color = if (state == "받는 중") c.accent else c.sub)
                     }
                 }
             }

@@ -78,7 +78,7 @@ import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.military.ServiceRulesTable
 import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.model.Role
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.core.model.koreanName
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -197,7 +197,7 @@ private fun Page(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar(title, onLeading = onBack, leading = leading)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.lg, bottom = KkSpacing.xxxl),
@@ -213,14 +213,14 @@ private fun Page(
 private fun Group(label: String?, content: @Composable ColumnScope.() -> Unit) {
     val c = KkTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-        if (label != null) Text(label, style = KkTheme.type.labelM, color = c.textSecondary)
+        if (label != null) Text(label, style = KkTheme.type.label, color = c.sub)
         val shape = RoundedCornerShape(KkRadius.lg)
-        Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface), content = content)
+        Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface), content = content)
     }
 }
 
 @Composable
-private fun Divider() = Box(Modifier.fillMaxWidth().height(1.dp).background(KkTheme.colors.borderDefault))
+private fun Divider() = Box(Modifier.fillMaxWidth().height(1.dp).background(KkTheme.colors.line))
 
 @Composable
 private fun SwitchRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) =
@@ -282,25 +282,25 @@ private fun MainPage(
         val shape = RoundedCornerShape(KkRadius.lg)
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
             Row(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
                     .clickable(role = androidx.compose.ui.semantics.Role.Button) { nameSheet = true }.padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(48.dp).clip(CircleShape).background(c.bgMilitarySubtle), contentAlignment = Alignment.Center) {
-                    Text(state.myName.take(1), style = KkTheme.type.titleS, color = c.textMilitary)
+                Box(Modifier.size(48.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+                    Text(state.myName.take(1), style = KkTheme.type.labelBold, color = c.accent)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("${state.myName} · ${if (state.role == Role.SOLDIER) "군인" else "곰신"}", style = KkTheme.type.titleS, color = c.textPrimary)
+                    Text("${state.myName} · ${if (state.role == Role.SOLDIER) "군인" else "곰신"}", style = KkTheme.type.labelBold, color = c.ink)
                     Text(
                         if (state.linked) "${state.partnerName.withAnd()} 연결됨" else "아직 연결 전이에요",
-                        style = KkTheme.type.bodyS, color = c.textSecondary,
+                        style = KkTheme.type.body, color = c.sub,
                     )
                 }
             }
             // 꽃신 평생(Figma): 프로필 바로 아래 옅은 색 한 줄.
             val lifetime = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
             val owned by (lifetime?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
-            Box(Modifier.fillMaxWidth().clip(shape).background(c.bgSubtle)) {
+            Box(Modifier.fillMaxWidth().clip(shape).background(c.line)) {
                 val shared by (org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
                     ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
                 val value = when {
@@ -338,7 +338,7 @@ private fun MainPage(
             if (state.linked) {
                 KkListRow("상대 폰 교체 받기", onClick = { handOver(scope, platform, viewModel, onHandOver) })
                 Divider()
-                KkListRow("연결 해제", labelColor = c.statusDanger, onClick = { open(SettingsPage.UNLINK) })
+                KkListRow("연결 해제", labelColor = c.danger, onClick = { open(SettingsPage.UNLINK) })
             } else {
                 KkListRow("연인과 연결하기", onClick = onOpenPairing)
             }
@@ -417,31 +417,31 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
         }
     }) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("꽃신 평생", style = KkTheme.type.titleL, color = c.textPrimary)
-            Text("한 번 결제로 광고 없이, 더 예쁘게", style = KkTheme.type.bodyM, color = c.textSecondary)
+            Text("꽃신 평생", style = KkTheme.type.title, color = c.ink)
+            Text("한 번 결제로 광고 없이, 더 예쁘게", style = KkTheme.type.body, color = c.sub)
         }
         val shape = RoundedCornerShape(KkRadius.lg)
         Column(
-            Modifier.fillMaxWidth().clip(shape).background(c.bgBrandSubtle).padding(vertical = KkSpacing.lg),
+            Modifier.fillMaxWidth().clip(shape).background(c.bar).padding(vertical = KkSpacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("출시 기념", style = KkTheme.type.labelS, color = c.textBrand)
+            Text("출시 기념", style = KkTheme.type.label, color = c.accent)
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                 Text(
-                    LIFETIME_LIST_PRICE, style = KkTheme.type.bodyM.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough),
-                    color = c.textTertiary, modifier = Modifier.padding(bottom = 6.dp),
+                    LIFETIME_LIST_PRICE, style = KkTheme.type.body.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough),
+                    color = c.sub, modifier = Modifier.padding(bottom = 6.dp),
                 )
-                Text(price, style = KkTheme.type.display, color = c.textPrimary)
+                Text(price, style = KkTheme.type.title, color = c.ink)
             }
         }
         Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
         ) {
             (LIFETIME_BENEFITS + "${if (state.linked) state.partnerName else "연인"}도 광고 없이 · 꾸미기 함께 (연결된 동안)").forEach { b ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(5.dp).clip(CircleShape).background(c.bgBrand))
-                    Text(b, style = KkTheme.type.bodyM, color = c.textPrimary)
+                    Box(Modifier.size(5.dp).clip(CircleShape).background(c.accent))
+                    Text(b, style = KkTheme.type.body, color = c.ink)
                 }
             }
         }
@@ -472,13 +472,13 @@ private fun ConnectionPage(
         val shape = RoundedCornerShape(KkRadius.lg)
         val partnerRole = if (state.role == Role.SOLDIER) "곰신" else "군인"
         Row(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(16.dp),
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(40.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
-                Text(state.partnerName.take(1), style = KkTheme.type.titleS, color = c.textBrand)
+            Box(Modifier.size(40.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+                Text(state.partnerName.take(1), style = KkTheme.type.labelBold, color = c.accent)
             }
-            Text("${state.partnerName} · $partnerRole", style = KkTheme.type.titleS, color = c.textPrimary)
+            Text("${state.partnerName} · $partnerRole", style = KkTheme.type.labelBold, color = c.ink)
         }
         Group(null) {
             KkListRow("연결한 날", value = state.linkedSince?.dotted() ?: "-", trailing = KkRowTrailing.None)
@@ -488,7 +488,7 @@ private fun ConnectionPage(
         Group(null) {
             KkListRow("상대 폰 교체 받기", onClick = { handOver(scope, platform, viewModel, onHandOver) })
             Divider()
-            KkListRow("연결 해제", labelColor = c.statusDanger, onClick = { open(SettingsPage.UNLINK) })
+            KkListRow("연결 해제", labelColor = c.danger, onClick = { open(SettingsPage.UNLINK) })
         }
     }
 }
@@ -504,7 +504,7 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
     val t = state.timeline
     Page("군 정보", onBack) {
         if (s == null || t == null) {
-            Text("입대일이 아직 없어요. 군인 폰에서 입대일을 넣으면 여기에도 보여요.", style = KkTheme.type.bodyM, color = c.textTertiary)
+            Text("입대일이 아직 없어요. 군인 폰에서 입대일을 넣으면 여기에도 보여요.", style = KkTheme.type.body, color = c.sub)
             return@Page
         }
         val months = ServiceRulesTable.BUNDLED.ruleFor(s.branch, s.enlistDate).serviceMonths
@@ -522,7 +522,7 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
             )
         }
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("전역일이 달라졌나요?", style = KkTheme.type.labelM, color = c.textSecondary)
+            Text("전역일이 달라졌나요?", style = KkTheme.type.label, color = c.sub)
             Group(null) {
                 SwitchRow("전역일 직접 고치기", t.isOverridden) { on -> if (on) sheet = "discharge" else viewModel.overrideDischarge(null) }
             }
@@ -573,7 +573,7 @@ private fun AnniversaryPage(state: SettingsState, platform: PlatformActions, vie
     }) {
         KkInput(date?.dotted() ?: "", {}, label = "사귄 날", placeholder = "날짜를 골라 주세요", onClick = { picking = true })
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("기념일 알림", style = KkTheme.type.labelM, color = c.textSecondary)
+            Text("기념일 알림", style = KkTheme.type.label, color = c.sub)
             Group(null) {
                 SwitchRow("100일 단위", hundreds) { hundreds = it }
                 Divider()
@@ -596,10 +596,10 @@ private fun AnniversaryPage(state: SettingsState, platform: PlatformActions, vie
 /** 테마(Figma 7 · 테마): 네 가지 카드 + 화면 모드. */
 @Composable
 private fun ThemePage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit, open: (SettingsPage) -> Unit) {
-    val recommended = state.role?.let { ThemeAccent.defaultFor(it) }
+    val recommended = state.role?.let { AppTheme.defaultFor(it) }
     Page("테마", onBack) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ThemeAccent.entries.chunked(2).forEach { row ->
+            AppTheme.entries.chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { theme ->
                         KkThemeCard(theme, selected = state.theme == theme, recommended = theme == recommended, modifier = Modifier.weight(1f)) { viewModel.setTheme(theme) }
@@ -608,7 +608,7 @@ private fun ThemePage(state: SettingsState, viewModel: SettingsViewModel, onBack
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("화면 모드", style = KkTheme.type.labelM, color = KkTheme.colors.textSecondary)
+            Text("화면 모드", style = KkTheme.type.label, color = KkTheme.colors.sub)
             Group(null) { KkListRow("라이트 · 다크", value = modeLabel(state.displayMode), onClick = { open(SettingsPage.DISPLAY_MODE) }) }
         }
     }
@@ -637,7 +637,7 @@ private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = KkTheme.type.bodyM, color = KkTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+        Text(label, style = KkTheme.type.body, color = KkTheme.colors.ink, modifier = Modifier.weight(1f))
         KkRadio(selected)
     }
 }
@@ -662,46 +662,46 @@ private fun WidgetsPage(state: SettingsState, platform: PlatformActions, onBack:
     Page("위젯", onBack) {
         val shape = RoundedCornerShape(KkRadius.lg)
         Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(16.dp),
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
         ) {
             listOf("홈 화면 빈 곳을 길게 누르기", "위젯 → 꽃신 선택", "원하는 크기를 골라 놓기").forEachIndexed { i, step ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(22.dp).clip(CircleShape).background(c.bgSubtle), contentAlignment = Alignment.Center) {
-                        Text("${i + 1}", style = KkTheme.type.labelS, color = c.textSecondary)
+                    Box(Modifier.size(22.dp).clip(CircleShape).background(c.line), contentAlignment = Alignment.Center) {
+                        Text("${i + 1}", style = KkTheme.type.label, color = c.sub)
                     }
-                    Text(step, style = KkTheme.type.bodyM, color = c.textPrimary)
+                    Text(step, style = KkTheme.type.body, color = c.ink)
                 }
             }
         }
-        Text("꽃신 위젯", style = KkTheme.type.titleM, color = c.textPrimary)
+        Text("꽃신 위젯", style = KkTheme.type.title, color = c.ink)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             val tile = RoundedCornerShape(KkRadius.xl)
             Column(
-                Modifier.weight(1f).aspectRatio(1f).clip(tile).background(c.bgBrand)
+                Modifier.weight(1f).aspectRatio(1f).clip(tile).background(c.love)
                     .clickable(role = androidx.compose.ui.semantics.Role.Button) { pin("missyou") }.padding(14.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("${state.partnerName}에게", style = KkTheme.type.caption, color = c.textOnBrand)
-                KkIcon(KkIcons.Heart, tint = c.textOnBrand, size = 28.dp)
+                Text("${state.partnerName}에게", style = KkTheme.type.caption, color = c.loveOn)
+                KkIcon(KkIcons.Heart, tint = c.loveOn, size = 28.dp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                    Text("보고싶어", style = KkTheme.type.titleS, color = c.textOnBrand)
-                    Text("오늘", style = KkTheme.type.caption, color = c.textOnBrand)
+                    Text("보고싶어", style = KkTheme.type.labelBold, color = c.loveOn)
+                    Text("오늘", style = KkTheme.type.caption, color = c.loveOn)
                 }
             }
             Column(
-                Modifier.weight(1f).aspectRatio(1f).clip(tile).background(c.bgMilitarySubtle)
+                Modifier.weight(1f).aspectRatio(1f).clip(tile).background(c.bar)
                     .clickable(role = androidx.compose.ui.semantics.Role.Button) { pin("nextmeet") }.padding(14.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("다음 만남", style = KkTheme.type.caption, color = c.textMilitary)
+                Text("다음 만남", style = KkTheme.type.caption, color = c.accent)
                 Column {
-                    Text("D-3", style = KkTheme.type.display, color = c.textPrimary)
-                    Text("면회 · 외박 · 휴가", style = KkTheme.type.caption, color = c.textSecondary)
+                    Text("D-3", style = KkTheme.type.title, color = c.ink)
+                    Text("면회 · 외박 · 휴가", style = KkTheme.type.caption, color = c.sub)
                 }
             }
         }
-        message?.let { Text(it, style = KkTheme.type.bodyS, color = c.textTertiary) }
+        message?.let { Text(it, style = KkTheme.type.body, color = c.sub) }
         WidgetFramePicker()
     }
 }
@@ -717,7 +717,7 @@ private fun WidgetFramePicker() {
     val frame by settings.widgetFrame.collectAsStateWithLifecycle("BASIC")
     val scope = rememberCoroutineScope()
     var locked by remember { mutableStateOf(false) }
-    Text("그림 위젯 프레임", style = KkTheme.type.titleM, color = c.textPrimary)
+    Text("그림 위젯 프레임", style = KkTheme.type.title, color = c.ink)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         WIDGET_FRAMES.forEach { (id, label, color) ->
             val on = frame == id
@@ -730,20 +730,20 @@ private fun WidgetFramePicker() {
             ) {
                 val shape = RoundedCornerShape(KkRadius.md)
                 Box(
-                    Modifier.fillMaxWidth().aspectRatio(1f).clip(shape).background(color ?: c.bgSurface)
-                        .border(if (on) 2.dp else 1.dp, if (on) c.borderBrand else c.borderDefault, shape)
+                    Modifier.fillMaxWidth().aspectRatio(1f).clip(shape).background(color ?: c.surface)
+                        .border(if (on) 2.dp else 1.dp, if (on) c.accent else c.line, shape)
                         .padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = if (id == "POLAROID") 14.dp else 6.dp),
                 ) {
-                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).background(c.bgSubtle))
+                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).background(c.line))
                     if (!free) {
                         Text(
-                            "평생", style = KkTheme.type.labelS, color = c.textOnBrand,
+                            "평생", style = KkTheme.type.label, color = c.surface,
                             modifier = Modifier.align(Alignment.TopEnd).clip(RoundedCornerShape(KkRadius.full))
-                                .background(if (lifetimeOn) c.bgBrand else c.textTertiary).padding(horizontal = 5.dp, vertical = 1.dp),
+                                .background(if (lifetimeOn) c.accent else c.sub).padding(horizontal = 5.dp, vertical = 1.dp),
                         )
                     }
                 }
-                Text(label, style = KkTheme.type.caption, color = if (on) c.textBrand else c.textTertiary, maxLines = 1)
+                Text(label, style = KkTheme.type.caption, color = if (on) c.accent else c.sub, maxLines = 1)
             }
         }
     }
@@ -778,7 +778,7 @@ private fun AccountPage(state: SettingsState, platform: PlatformActions, viewMod
             Divider()
             KkListRow("이 폰", value = platform.deviceName.ifBlank { "-" }, trailing = KkRowTrailing.None)
         }
-        Group(null) { KkListRow("회원 탈퇴", labelColor = c.statusDanger, onClick = { open(SettingsPage.DELETE_ACCOUNT) }) }
+        Group(null) { KkListRow("회원 탈퇴", labelColor = c.danger, onClick = { open(SettingsPage.DELETE_ACCOUNT) }) }
     }
 }
 
@@ -841,10 +841,10 @@ private fun DeleteAccountPage(state: SettingsState, platform: PlatformActions, v
             }
         }, Modifier.fillMaxWidth(), danger = true, enabled = ok)
     }) {
-        Text("탈퇴하면 지워지는 것", style = KkTheme.type.titleL, color = c.textPrimary)
+        Text("탈퇴하면 지워지는 것", style = KkTheme.type.title, color = c.ink)
         val shape = RoundedCornerShape(KkRadius.lg)
         Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
         ) {
             listOfNotNull(
@@ -853,8 +853,8 @@ private fun DeleteAccountPage(state: SettingsState, platform: PlatformActions, v
                 "꽃신 평생 이용권",
             ).forEach { item ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(5.dp).clip(CircleShape).background(c.statusDanger))
-                    Text(item, style = KkTheme.type.bodyM, color = c.textPrimary)
+                    Box(Modifier.size(5.dp).clip(CircleShape).background(c.danger))
+                    Text(item, style = KkTheme.type.body, color = c.ink)
                 }
             }
         }
@@ -892,8 +892,8 @@ private fun UnlinkPage(state: SettingsState, platform: PlatformActions, viewMode
         }, Modifier.fillMaxWidth(), danger = true, enabled = ok)
     }) {
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("${state.partnerName.withAnd()}의 연결을 해제할까요?", style = KkTheme.type.titleL, color = c.textPrimary)
-            Text("해제하면 서로 소식을 주고받을 수 없고, 되돌릴 수 없어요.", style = KkTheme.type.bodyM, color = c.textSecondary)
+            Text("${state.partnerName.withAnd()}의 연결을 해제할까요?", style = KkTheme.type.title, color = c.ink)
+            Text("해제하면 서로 소식을 주고받을 수 없고, 되돌릴 수 없어요.", style = KkTheme.type.body, color = c.sub)
         }
         KeepChoice(keep) { keep = it }
         KkInput(confirm, { confirm = it }, label = "확인을 위해 \"연결 해제\"를 입력해 주세요", placeholder = "연결 해제", helper = "다음 단계에서 지문 · 얼굴 또는 기기 암호를 확인해요")
@@ -904,7 +904,7 @@ private fun UnlinkPage(state: SettingsState, platform: PlatformActions, viewMode
 @Composable
 private fun KeepChoice(keep: Boolean, onChange: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-        Text("내 폰에 남은 기록", style = KkTheme.type.labelM, color = KkTheme.colors.textSecondary)
+        Text("내 폰에 남은 기록", style = KkTheme.type.label, color = KkTheme.colors.sub)
         KkChoice("추억으로 보관", keep, { onChange(true) }, radio = true)
         KkChoice("모두 지우기", !keep, { onChange(false) }, radio = true)
     }
@@ -917,11 +917,11 @@ fun PartnerUnlinkedScreen(partnerName: String, onConfirm: (AfterUnlink) -> Unit)
     var keep by remember { mutableStateOf(true) }
     // 고르기 전에는 닫지 않는다(사본을 어떻게 할지 정해야 한다).
     BackHandler { }
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.xxl), verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
-            Box(Modifier.size(56.dp).clip(CircleShape).background(c.bgSubtle), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Heart, tint = c.textPrimary) }
-            Text("${partnerName.withSubject()} 연결을 해제했어요", style = KkTheme.type.titleL, color = c.textPrimary)
-            Text("이제 소식을 주고받을 수 없어요. 이 폰에 남은 기록을 어떻게 할까요?", style = KkTheme.type.bodyM, color = c.textSecondary)
+            Box(Modifier.size(56.dp).clip(CircleShape).background(c.line), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Heart, tint = c.ink) }
+            Text("${partnerName.withSubject()} 연결을 해제했어요", style = KkTheme.type.title, color = c.ink)
+            Text("이제 소식을 주고받을 수 없어요. 이 폰에 남은 기록을 어떻게 할까요?", style = KkTheme.type.body, color = c.sub)
             KkChoice("추억으로 보관", keep, { keep = true }, radio = true)
             KkChoice("모두 지우기", !keep, { keep = false }, radio = true)
         }
@@ -936,18 +936,18 @@ fun PartnerUnlinkedScreen(partnerName: String, onConfirm: (AfterUnlink) -> Unit)
 @Composable
 fun PartnerDeviceChangedScreen(partnerName: String, deviceName: String, at: String, providerLabel: String?, onAcknowledge: () -> Unit, onUnknown: () -> Unit) {
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.xxl), verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
-            Box(Modifier.size(56.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Home, tint = c.textPrimary) }
-            Text("${partnerName.withSubject()} 새 폰으로 바꿨어요", style = KkTheme.type.titleL, color = c.textPrimary)
+            Box(Modifier.size(56.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Home, tint = c.ink) }
+            Text("${partnerName.withSubject()} 새 폰으로 바꿨어요", style = KkTheme.type.title, color = c.ink)
             val shape = RoundedCornerShape(KkRadius.lg)
             Column(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(16.dp),
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
             ) {
-                Text("새 기기", style = KkTheme.type.caption, color = c.textTertiary)
-                Text(listOf(deviceName.ifBlank { "새 폰" }, at).joinToString(" · "), style = KkTheme.type.titleS, color = c.textPrimary)
-                providerLabel?.let { Text("$it 계정으로 로그인", style = KkTheme.type.caption, color = c.textSecondary) }
+                Text("새 기기", style = KkTheme.type.caption, color = c.sub)
+                Text(listOf(deviceName.ifBlank { "새 폰" }, at).joinToString(" · "), style = KkTheme.type.labelBold, color = c.ink)
+                providerLabel?.let { Text("$it 계정으로 로그인", style = KkTheme.type.caption, color = c.sub) }
             }
         }
         Column(Modifier.padding(vertical = KkSpacing.lg), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
@@ -1068,8 +1068,8 @@ private fun ExportPage(shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?, o
             KkListRow("일정 · 만남", value = p?.let { "${it.events}개 · 날짜 · 메모" } ?: "…", trailing = KkRowTrailing.None)
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-            Text("ZIP 파일", style = KkTheme.type.caption, color = c.textTertiary, modifier = Modifier.weight(1f))
-            Text(p?.let { "약 ${bytesLabel(it.bytes)}" } ?: "", style = KkTheme.type.caption, color = c.textSecondary)
+            Text("ZIP 파일", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.weight(1f))
+            Text(p?.let { "약 ${bytesLabel(it.bytes)}" } ?: "", style = KkTheme.type.caption, color = c.sub)
         }
     }
 }

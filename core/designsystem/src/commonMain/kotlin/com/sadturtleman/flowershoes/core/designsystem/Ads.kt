@@ -55,21 +55,21 @@ fun KkNativeAd(ad: KkAdContent, modifier: Modifier = Modifier) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
-        modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .clickable(role = Role.Button, onClick = ad.onClick).padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)) {
             ad.image?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop) }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(ad.title, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(ad.body, style = KkTheme.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(ad.title, style = KkTheme.type.label, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(ad.body, style = KkTheme.type.caption, color = c.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(
-            "광고", style = KkTheme.type.caption, color = c.textTertiary,
-            modifier = Modifier.border(1.dp, c.borderDefault, RoundedCornerShape(KkRadius.sm)).padding(horizontal = 6.dp, vertical = 2.dp),
+            "광고", style = KkTheme.type.caption, color = c.sub,
+            modifier = Modifier.border(1.dp, c.line, RoundedCornerShape(KkRadius.sm)).padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
 }

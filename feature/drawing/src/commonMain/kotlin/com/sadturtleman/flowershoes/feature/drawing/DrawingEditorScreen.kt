@@ -154,7 +154,7 @@ fun DrawingEditorScreen(
     // 뒤로 가기도 닫기와 같다: 그린 게 있으면 지울지 묻는다.
     BackHandler { if (leaving) leaving = false else close() }
 
-    Box(Modifier.fillMaxSize().background(c.bgCanvas)) {
+    Box(Modifier.fillMaxSize().background(c.canvas)) {
         Column(Modifier.fillMaxSize()) {
             Column(
                 Modifier.weight(1f).statusBarsPadding().padding(horizontal = KkSpacing.lg, vertical = KkSpacing.xs),
@@ -191,11 +191,11 @@ fun DrawingEditorScreen(
         if (drawingNow) {
             Row(
                 Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 96.dp)
-                    .clip(RoundedCornerShape(KkRadius.full)).background(c.bgSubtle).padding(horizontal = KkSpacing.md, vertical = 6.dp),
+                    .clip(RoundedCornerShape(KkRadius.full)).background(c.line).padding(horizontal = KkSpacing.md, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.width(16.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(c.borderStrong))
-                Text("손을 떼면 도구가 다시 나와요", style = KkTheme.type.caption, color = c.textSecondary)
+                Box(Modifier.width(16.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(c.line))
+                Text("손을 떼면 도구가 다시 나와요", style = KkTheme.type.caption, color = c.sub)
             }
         }
         shadesOf?.let { base ->
@@ -292,7 +292,7 @@ private fun DrawingCanvas(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
             ) {
-                Text("손가락으로 바로 그려 보세요", style = KkTheme.type.titleS, color = c.textPrimary)
+                Text("손가락으로 바로 그려 보세요", style = KkTheme.type.labelBold, color = c.ink)
                 Row(Modifier.padding(top = KkSpacing.xs), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                     HintChip(KkIcons.Photo, "사진") { onOpenMenu(EditorMenu.PHOTO) }
                     HintChip(KkIcons.Sticker, "스티커") { onOpenMenu(EditorMenu.STICKER) }
@@ -301,9 +301,9 @@ private fun DrawingCanvas(
         }
         if (state.canUndo && !drawing) {
             Text(
-                "두 손가락으로 확대 · 이동", style = KkTheme.type.caption, color = c.textInverse,
+                "두 손가락으로 확대 · 이동", style = KkTheme.type.caption, color = c.canvas,
                 modifier = Modifier.align(Alignment.BottomStart).padding(KkSpacing.md)
-                    .clip(RoundedCornerShape(KkRadius.full)).background(c.bgInverse.copy(alpha = 0.85f))
+                    .clip(RoundedCornerShape(KkRadius.full)).background(c.ink.copy(alpha = 0.85f))
                     .padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
             )
         }
@@ -314,12 +314,12 @@ private fun DrawingCanvas(
 private fun HintChip(icon: KkIcons, label: String, onClick: () -> Unit) {
     val c = KkTheme.colors
     Row(
-        Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bgBrandSubtle).clickable(role = Role.Button, onClick = onClick)
+        Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bar).clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = KkSpacing.md, vertical = KkSpacing.sm),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically,
     ) {
-        KkIcon(icon, tint = c.textBrand, size = 18.dp)
-        Text(label, style = KkTheme.type.labelM, color = c.textBrand)
+        KkIcon(icon, tint = c.accent, size = 18.dp)
+        Text(label, style = KkTheme.type.label, color = c.accent)
     }
 }
 
@@ -329,12 +329,12 @@ private fun FocusPill(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.full)
     Row(
-        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(horizontal = KkSpacing.md, vertical = 6.dp),
+        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(horizontal = KkSpacing.md, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
     ) {
-        KkIcon(KkIcons.Undo, tint = c.textPrimary, size = 20.dp, modifier = Modifier.clickable(role = Role.Button) { onIntent(DrawingIntent.Undo) })
-        Box(Modifier.size(16.dp).clip(CircleShape).background(Color(state.color.toInt())).border(1.dp, c.borderDefault, CircleShape))
-        Text(BRUSH_LABEL.getValue(state.brush), style = KkTheme.type.labelS, color = c.textSecondary)
+        KkIcon(KkIcons.Undo, tint = c.ink, size = 20.dp, modifier = Modifier.clickable(role = Role.Button) { onIntent(DrawingIntent.Undo) })
+        Box(Modifier.size(16.dp).clip(CircleShape).background(Color(state.color.toInt())).border(1.dp, c.line, CircleShape))
+        Text(BRUSH_LABEL.getValue(state.brush), style = KkTheme.type.label, color = c.sub)
     }
 }
 
@@ -345,11 +345,11 @@ private fun ToolButton(icon: KkIcons, label: String, selected: Boolean, enabled:
     val shape = RoundedCornerShape(KkRadius.lg)
     Box(
         Modifier.size(48.dp).then(if (selected) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
-            .clip(shape).background(if (selected) c.bgInverse else c.bgSubtle)
+            .clip(shape).background(if (selected) c.ink else c.line)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label; this.selected = selected },
         contentAlignment = Alignment.Center,
-    ) { KkIcon(icon, tint = (if (selected) c.textInverse else c.textPrimary).copy(alpha = if (enabled) 1f else 0.4f)) }
+    ) { KkIcon(icon, tint = (if (selected) c.canvas else c.ink).copy(alpha = if (enabled) 1f else 0.4f)) }
 }
 
 /** 아래 도구 패널: 메뉴에 따라 내용이 바뀌고, 맨 아래 메뉴바는 항상 그대로. */
@@ -364,7 +364,7 @@ private fun ToolPanel(
     val c = KkTheme.colors
     val shape = RoundedCornerShape(topStart = KkRadius.xl, topEnd = KkRadius.xl)
     Column(
-        modifier.fillMaxWidth().kkElevation(KkElevation.Bar, shape).clip(shape).background(c.bgSurfaceRaised)
+        modifier.fillMaxWidth().kkElevation(KkElevation.Bar, shape).clip(shape).background(c.surface)
             .navigationBarsPadding().padding(start = KkSpacing.lg, end = KkSpacing.lg, top = KkSpacing.lg, bottom = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
@@ -374,7 +374,7 @@ private fun ToolPanel(
             EditorMenu.PHOTO -> PhotoPanel(state, onIntent, onPhoto)
             EditorMenu.TEMPLATE -> TemplatePanel(state, onIntent)
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(c.borderDefault))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
         MenuBar(state.menu) { onIntent(DrawingIntent.SetMenu(it)) }
     }
 }
@@ -401,18 +401,18 @@ private fun PenPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Uni
         BrushChip("크레용", state.tool == EditorTool.CRAYON, !lifetimeOn) { tool(EditorTool.CRAYON, "크레용", true) }
         BrushChip("수채", state.tool == EditorTool.WATERCOLOR, !lifetimeOn) { tool(EditorTool.WATERCOLOR, "수채 붓", true) }
         ToolButton(KkIcons.Eraser, "지우개", state.tool == EditorTool.ERASER) { tool(EditorTool.ERASER, "지우개", false) }
-        Box(Modifier.width(1.dp).height(32.dp).background(c.borderDefault))
+        Box(Modifier.width(1.dp).height(32.dp).background(c.line))
         BrushSize.entries.forEach { b ->
             val on = state.brush == b
             Box(
-                Modifier.size(48.dp).clip(CircleShape).background(if (on) c.bgSurface else c.bgSubtle)
-                    .then(if (on) Modifier.border(2.dp, c.borderBrand, CircleShape) else Modifier)
+                Modifier.size(48.dp).clip(CircleShape).background(if (on) c.surface else c.line)
+                    .then(if (on) Modifier.border(2.dp, c.accent, CircleShape) else Modifier)
                     .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetBrush(b)) }
                     .semantics { contentDescription = BRUSH_LABEL.getValue(b); selected = on },
                 contentAlignment = Alignment.Center,
             ) {
                 val d = when (b) { BrushSize.S -> 6.dp; BrushSize.M -> 10.dp; BrushSize.L -> 16.dp }
-                Box(Modifier.size(d).clip(CircleShape).background(if (on) c.bgBrand else c.textSecondary))
+                Box(Modifier.size(d).clip(CircleShape).background(if (on) c.accent else c.sub))
             }
         }
     }
@@ -429,13 +429,13 @@ private fun PenPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Uni
             val name = if (palette == PenPalette.BASIC) PEN_COLOR_NAMES[i] else "${palette.label} ${i + 1}"
             Box(
                 Modifier.size(44.dp).clip(CircleShape)
-                    .then(if (on) Modifier.border(2.dp, c.borderBrand, CircleShape) else Modifier)
+                    .then(if (on) Modifier.border(2.dp, c.accent, CircleShape) else Modifier)
                     .combinedClickable(role = Role.RadioButton, onLongClick = { onLongPressColor(argb) }) { onIntent(DrawingIntent.SetColor(argb)) }
                     .semantics { contentDescription = "$name, 길게 누르면 밝기"; selected = on },
                 contentAlignment = Alignment.Center,
             ) {
                 val inner = if (on) Color(state.color.toInt()) else Color(argb.toInt())
-                Box(Modifier.size(if (on) 34.dp else 36.dp).clip(CircleShape).background(inner).border(1.dp, if (argb == 0xFFFFFFFF) c.borderDefault else Color.Transparent, CircleShape))
+                Box(Modifier.size(if (on) 34.dp else 36.dp).clip(CircleShape).background(inner).border(1.dp, if (argb == 0xFFFFFFFF) c.line else Color.Transparent, CircleShape))
             }
         }
     }
@@ -452,7 +452,7 @@ private fun PenPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Uni
 private fun BrushChip(label: String, on: Boolean, lifetimeLocked: Boolean, onClick: () -> Unit) {
     val c = KkTheme.colors
     Row(
-        Modifier.height(40.dp).clip(CircleShape).background(if (on) c.bgBrand else c.bgSubtle)
+        Modifier.height(40.dp).clip(CircleShape).background(if (on) c.accent else c.line)
             .clickable(role = Role.RadioButton, onClick = onClick).semantics {
                 selected = on
                 contentDescription = label + if (lifetimeLocked) ", 꽃신 평생, 잠김" else ""
@@ -460,8 +460,8 @@ private fun BrushChip(label: String, on: Boolean, lifetimeLocked: Boolean, onCli
             .padding(horizontal = KkSpacing.md),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, style = KkTheme.type.labelM, color = if (on) c.textOnBrand else c.textPrimary)
-        if (lifetimeLocked) Text("평생", style = KkTheme.type.labelS, color = c.textTertiary)
+        Text(label, style = KkTheme.type.label, color = if (on) c.surface else c.ink)
+        if (lifetimeLocked) Text("평생", style = KkTheme.type.label, color = c.sub)
     }
 }
 
@@ -471,15 +471,15 @@ private fun BrightnessPopup(base: Long, current: Long, modifier: Modifier, onPic
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        modifier.kkElevation(KkElevation.High, shape).clip(shape).background(c.bgSurfaceRaised).padding(KkSpacing.md),
+        modifier.kkElevation(KkElevation.High, shape).clip(shape).background(c.surface).padding(KkSpacing.md),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
-        Text("밝기 고르기", style = KkTheme.type.labelS, color = c.textSecondary)
+        Text("밝기 고르기", style = KkTheme.type.label, color = c.sub)
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
             shadesOf(base).forEachIndexed { i, shade ->
                 Box(
                     Modifier.size(32.dp).clip(CircleShape).background(Color(shade.toInt()))
-                        .then(if (shade == current) Modifier.border(2.dp, c.textPrimary, CircleShape) else Modifier)
+                        .then(if (shade == current) Modifier.border(2.dp, c.ink, CircleShape) else Modifier)
                         .clickable(role = Role.Button) { onPick(shade) }
                         .semantics { contentDescription = "밝기 ${i + 1}단계" },
                 )
@@ -502,15 +502,15 @@ private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) ->
     }
     val items = if (tab.dday) state.ddayStickers else tab.ids
     if (items.isEmpty()) {
-        Text("복무 정보를 넣으면 D-day 스티커가 생겨요", style = KkTheme.type.bodyS, color = c.textTertiary, modifier = Modifier.padding(vertical = KkSpacing.lg))
+        Text("복무 정보를 넣으면 D-day 스티커가 생겨요", style = KkTheme.type.body, color = c.sub, modifier = Modifier.padding(vertical = KkSpacing.lg))
         return
     }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         items.forEach { id ->
             val on = state.sticker == id
             Box(
-                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
-                    .then(if (on) Modifier.border(2.dp, c.borderBrand, RoundedCornerShape(KkRadius.md)) else Modifier)
+                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
+                    .then(if (on) Modifier.border(2.dp, c.accent, RoundedCornerShape(KkRadius.md)) else Modifier)
                     .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetSticker(id)) }
                     .semantics {
                         contentDescription = "스티커 ${com.sadturtleman.flowershoes.core.drawingui.stickerLabel(id)}"
@@ -529,16 +529,16 @@ private fun StickerPanel(state: DrawingEditorState, onIntent: (DrawingIntent) ->
 private fun StickerChip(label: String, on: Boolean, onClick: () -> Unit) {
     val c = KkTheme.colors
     Row(
-        Modifier.clip(CircleShape).background(if (on) c.bgBrand else c.bgSurface)
-            .then(if (on) Modifier else Modifier.border(1.dp, c.borderDefault, CircleShape))
+        Modifier.clip(CircleShape).background(if (on) c.accent else c.surface)
+            .then(if (on) Modifier else Modifier.border(1.dp, c.line, CircleShape))
             .clickable(role = Role.Tab, onClick = onClick)
             .semantics { selected = on }
             .padding(horizontal = KkSpacing.md, vertical = KkSpacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(Modifier.size(6.dp).clip(CircleShape).background(if (on) c.textOnBrand else c.statusWarning))
-        Text(label, style = KkTheme.type.labelM, color = if (on) c.textOnBrand else c.textPrimary)
+        Box(Modifier.size(6.dp).clip(CircleShape).background(if (on) c.surface else c.danger))
+        Text(label, style = KkTheme.type.label, color = if (on) c.surface else c.ink)
     }
 }
 
@@ -550,16 +550,16 @@ private fun PhotoPanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> U
         PhotoButton(KkIcons.Photo, "앨범에서 고르기", onPhoto != null, Modifier.weight(1f)) { onPhoto?.invoke(false) }
         PhotoButton(KkIcons.Camera, "카메라로 찍기", onPhoto != null, Modifier.weight(1f)) { onPhoto?.invoke(true) }
     }
-    if (onPhoto == null) Text("이 기기에서는 사진을 넣을 수 없어요", style = KkTheme.type.caption, color = c.textTertiary)
+    if (onPhoto == null) Text("이 기기에서는 사진을 넣을 수 없어요", style = KkTheme.type.caption, color = c.sub)
     val photo = state.photo ?: return
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
-        Text("사진 흐리게", style = KkTheme.type.labelS, color = c.textSecondary)
+        Text("사진 흐리게", style = KkTheme.type.label, color = c.sub)
         com.sadturtleman.flowershoes.core.designsystem.KkSlider(
             value = photo.dim, onValueChange = { onIntent(DrawingIntent.SetPhotoDim(it)) },
             valueRange = 0f..com.sadturtleman.flowershoes.core.drawing.PhotoBackground.MAX_DIM,
             modifier = Modifier.weight(1f).semantics { contentDescription = "사진 흐리게" },
         )
-        Text("빼기", style = KkTheme.type.labelM, color = c.statusDanger, modifier = Modifier.clickable(role = Role.Button) { onIntent(DrawingIntent.RemovePhoto) }.padding(KkSpacing.xs))
+        Text("빼기", style = KkTheme.type.label, color = c.danger, modifier = Modifier.clickable(role = Role.Button) { onIntent(DrawingIntent.RemovePhoto) }.padding(KkSpacing.xs))
     }
 }
 
@@ -568,19 +568,19 @@ private fun PhotoButton(icon: KkIcons, label: String, enabled: Boolean, modifier
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.md)
     Row(
-        modifier.height(52.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).alpha(if (enabled) 1f else 0.4f)
+        modifier.height(52.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).alpha(if (enabled) 1f else 0.4f)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
     ) {
-        KkIcon(icon, tint = c.textPrimary)
-        Text(label, style = KkTheme.type.labelM, color = c.textPrimary)
+        KkIcon(icon, tint = c.ink)
+        Text(label, style = KkTheme.type.label, color = c.ink)
     }
 }
 
 @Composable
 private fun TemplatePanel(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
     val c = KkTheme.colors
-    Text("따라 그릴 틀", style = KkTheme.type.labelS, color = c.textSecondary)
+    Text("따라 그릴 틀", style = KkTheme.type.label, color = c.sub)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         TEMPLATES.forEach { (id, label) ->
             val on = state.template == id
@@ -591,11 +591,11 @@ private fun TemplatePanel(state: DrawingEditorState, onIntent: (DrawingIntent) -
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
             ) {
                 Box(
-                    Modifier.fillMaxWidth().height(56.dp).clip(shape).background(if (on) c.bgBrandSubtle else c.bgSubtle)
-                        .then(if (on) Modifier.border(2.dp, c.borderBrand, shape) else Modifier),
+                    Modifier.fillMaxWidth().height(56.dp).clip(shape).background(if (on) c.bar else c.line)
+                        .then(if (on) Modifier.border(2.dp, c.accent, shape) else Modifier),
                     contentAlignment = Alignment.Center,
                 ) { TemplatePreview(id, Modifier.size(48.dp)) }
-                Text(label, style = KkTheme.type.caption, color = if (on) c.textBrand else c.textSecondary)
+                Text(label, style = KkTheme.type.caption, color = if (on) c.accent else c.sub)
             }
         }
     }
@@ -613,10 +613,10 @@ private fun MenuBar(selected: EditorMenu, onSelect: (EditorMenu) -> Unit) {
                 Modifier.weight(1f).fillMaxSize().clickable(role = Role.Tab) { onSelect(m) }.semantics { this.selected = on },
                 contentAlignment = Alignment.Center,
             ) {
-                if (on) Box(Modifier.align(Alignment.TopCenter).width(24.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(c.bgBrand))
+                if (on) Box(Modifier.align(Alignment.TopCenter).width(24.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    KkIcon(icon, tint = if (on) c.textBrand else c.textSecondary)
-                    Text(m.label, style = KkTheme.type.labelS, color = if (on) c.textBrand else c.textTertiary)
+                    KkIcon(icon, tint = if (on) c.accent else c.sub)
+                    Text(m.label, style = KkTheme.type.label, color = if (on) c.accent else c.sub)
                 }
             }
         }
@@ -634,34 +634,34 @@ fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
     var writing by remember { mutableStateOf(state.caption.isNotEmpty()) }
     BackHandler { onIntent(DrawingIntent.BackToEdit) }
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()
+        Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()
             .verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
     ) {
-        Text(if (forLetter) "편지에 넣을까요?" else "${state.partnerName}에게 보내기", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.padding(top = KkSpacing.sm))
+        Text(if (forLetter) "편지에 넣을까요?" else "${state.partnerName}에게 보내기", style = KkTheme.type.title, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
         val shape = RoundedCornerShape(KkRadius.xl)
         Box(
             Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(Color.White).padding(KkSpacing.xxl),
             contentAlignment = Alignment.Center,
         ) { DrawingView(state.preview) }
         if (!forLetter) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, Alignment.CenterHorizontally)) {
-            KkStatusChip("위젯에 띄우기", selected = state.showOnWidget, onClick = { onIntent(DrawingIntent.SetWidget(!state.showOnWidget)) }, dot = if (state.showOnWidget) Color.White else c.statusWarning)
+            KkStatusChip("위젯에 띄우기", selected = state.showOnWidget, onClick = { onIntent(DrawingIntent.SetWidget(!state.showOnWidget)) }, dot = if (state.showOnWidget) Color.White else c.danger)
             val at = state.revealAt
             KkStatusChip(
                 at?.let { "${it.month.ordinal + 1}.${it.day} ${it.time.hhmm()} 예약" } ?: "예약 보내기", selected = at != null,
-                onClick = { scheduling = true }, dot = if (at != null) Color.White else c.statusWarning,
+                onClick = { scheduling = true }, dot = if (at != null) Color.White else c.danger,
             )
         }
         OptionRow(Modifier.clickable(role = Role.Switch) { onIntent(DrawingIntent.SetReplay(!state.replayEnabled)) }) {
-            Text(if (forLetter) "그리는 과정도 함께 넣기" else "그리는 과정도 함께 보내기", style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
+            Text(if (forLetter) "그리는 과정도 함께 넣기" else "그리는 과정도 함께 보내기", style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
             KkSwitch(state.replayEnabled)
         }
         if (forLetter) Unit else if (writing) {
             KkInput(state.caption, { onIntent(DrawingIntent.SetCaption(it)) }, label = "함께 보낼 글", placeholder = "예) 오늘 당직 힘내", helper = "${state.caption.length} / 40")
         } else {
             OptionRow(Modifier.clickable(role = Role.Button) { writing = true }) {
-                Text("글도 함께 쓸까요? (선택)", style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
-                Text("쓰기", style = KkTheme.type.labelM, color = c.textBrand)
+                Text("글도 함께 쓸까요? (선택)", style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
+                Text("쓰기", style = KkTheme.type.label, color = c.accent)
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = KkSpacing.xxxl), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
@@ -687,7 +687,7 @@ private fun OptionRow(modifier: Modifier, content: @Composable androidx.compose.
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).then(modifier)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).then(modifier)
             .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -706,9 +706,9 @@ private fun RoundAction(icon: KkIcons, label: String, big: Boolean, modifier: Mo
     ) {
         Box(
             Modifier.size(if (big) 80.dp else 52.dp).kkElevation(if (big) KkElevation.Mid else KkElevation.Low, CircleShape).clip(CircleShape)
-                .background(if (big) c.bgBrand else c.bgSurface),
+                .background(if (big) c.accent else c.surface),
             contentAlignment = Alignment.Center,
-        ) { KkIcon(icon, tint = if (big) c.textOnBrand else c.textPrimary, size = if (big) 32.dp else 24.dp) }
-        Text(label, style = if (big) KkTheme.type.labelM else KkTheme.type.caption, color = if (big) c.textBrand else c.textSecondary)
+        ) { KkIcon(icon, tint = if (big) c.surface else c.ink, size = if (big) 32.dp else 24.dp) }
+        Text(label, style = if (big) KkTheme.type.label else KkTheme.type.caption, color = if (big) c.accent else c.sub)
     }
 }

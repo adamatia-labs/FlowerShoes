@@ -4,7 +4,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.use
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlinx.datetime.LocalDate
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
@@ -17,7 +17,7 @@ class LoginRenderTest {
     fun `로그인 화면을 밝은 · 어두운 테마로 그린다`() {
         listOf(false, true).forEach { dark ->
             val png = ImageComposeScene(width = 390 * 3, height = 844 * 3, density = Density(3f)) {
-                KkotsinTheme(accent = ThemeAccent.ROSE, dark = dark) {
+                KkotsinTheme(theme = AppTheme.GOMSIN, dark = dark) {
                     OnboardingScreen(OnboardingState(today = LocalDate(2026, 10, 29)), onIntent = {})
                 }
             }.use { scene ->

@@ -30,6 +30,11 @@ kotlin {
             api(compose.components.resources)
             implementation(compose.components.uiToolingPreview)
         }
+        // 테마 v2 토큰 값 확인 + 4개 모드 견본 그림(build/render).
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(compose.desktop.currentOs)
+        }
     }
 }
 

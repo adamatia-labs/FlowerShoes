@@ -124,7 +124,7 @@ fun LeaveRoute(onBack: () -> Unit, viewModel: LeaveViewModel = koinViewModel()) 
 @Composable
 private fun LeaveListScreen(state: LeaveState, onBack: () -> Unit, onSort: (LeaveSort) -> Unit, onOpen: (String) -> Unit, onAdd: () -> Unit) {
     val c = KkTheme.colors
-    Box(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+    Box(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding()) {
         Column(Modifier.fillMaxSize()) {
             KkTopBar("", onLeading = onBack)
             Column(
@@ -132,22 +132,22 @@ private fun LeaveListScreen(state: LeaveState, onBack: () -> Unit, onSort: (Leav
                     .padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.lg, bottom = 110.dp),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
             ) {
-                Text("휴가 관리", style = KkTheme.type.titleL, color = c.textPrimary)
+                Text("휴가 관리", style = KkTheme.type.title, color = c.ink)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Stat("전체 휴가일", state.total, c.textPrimary, Modifier.weight(1f))
-                        Stat("사용 예정일", state.planned, c.textMilitary, Modifier.weight(1f))
+                        Stat("전체 휴가일", state.total, c.ink, Modifier.weight(1f))
+                        Stat("사용 예정일", state.planned, c.accent, Modifier.weight(1f))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Stat("사용한 일수", state.usedDays, c.textPrimary, Modifier.weight(1f))
-                        Stat("남은 휴가일", state.remaining, c.textBrand, Modifier.weight(1f))
+                        Stat("사용한 일수", state.usedDays, c.ink, Modifier.weight(1f))
+                        Stat("남은 휴가일", state.remaining, c.accent, Modifier.weight(1f))
                     }
                 }
                 KkSegmentedControl(LeaveSort.entries.map { it.label }, state.sort.ordinal, { onSort(LeaveSort.entries[it]) })
                 if (state.cards.isEmpty()) {
                     Text(
                         "받은 휴가를 + 로 추가하면 남은 일수를 세어 드려요.\n정기휴가 · 포상휴가 · 위로휴가를 받은 단위로 적어요.",
-                        style = KkTheme.type.bodyS, color = c.textSecondary,
+                        style = KkTheme.type.body, color = c.sub,
                         modifier = Modifier.fillMaxWidth().padding(vertical = KkSpacing.xl),
                     )
                 }
@@ -161,11 +161,11 @@ private fun LeaveListScreen(state: LeaveState, onBack: () -> Unit, onSort: (Leav
         val shape = CircleShape
         Box(
             Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = KkSpacing.xl, bottom = 34.dp)
-                .size(56.dp).kkElevation(KkElevation.High, shape).clip(shape).background(c.bgBrand)
+                .size(56.dp).kkElevation(KkElevation.High, shape).clip(shape).background(c.accent)
                 .clickable(role = Role.Button, onClick = onAdd).semantics { contentDescription = "휴가 추가" },
             contentAlignment = Alignment.Center,
         ) {
-            Text("+", style = KkTheme.type.titleL, color = c.textOnBrand)
+            Text("+", style = KkTheme.type.title, color = c.surface)
         }
     }
 }
@@ -173,8 +173,8 @@ private fun LeaveListScreen(state: LeaveState, onBack: () -> Unit, onSort: (Leav
 @Composable
 private fun Stat(label: String, value: Int, color: Color, modifier: Modifier) {
     LowCard(modifier, spacing = 6.dp) {
-        Text(label, style = KkTheme.type.bodyS, color = KkTheme.colors.textSecondary)
-        Text("$value", style = KkTheme.type.dday, color = color)
+        Text(label, style = KkTheme.type.body, color = KkTheme.colors.sub)
+        Text("$value", style = KkTheme.type.ddayM, color = color)
     }
 }
 
@@ -183,18 +183,18 @@ private fun GrantCard(card: LeaveCard, onClick: () -> Unit) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .clickable(role = Role.Button, onClick = onClick).padding(start = 20.dp, end = 8.dp, top = 18.dp, bottom = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(card.grant.title, style = KkTheme.type.titleS, color = c.textPrimary)
-            Text(card.grant.subtitle, style = KkTheme.type.caption, color = c.textSecondary)
+            Text(card.grant.title, style = KkTheme.type.labelBold, color = c.ink)
+            Text(card.grant.subtitle, style = KkTheme.type.caption, color = c.sub)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-            Text("${card.remaining}일", style = KkTheme.type.titleS, color = if (card.remaining == 0) c.textTertiary else c.textPrimary)
-            Text(" / ${card.grant.days}일", style = KkTheme.type.bodyM, color = c.textTertiary)
-            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { KkIcon(KkIcons.ChevronRight, tint = c.textSecondary) }
+            Text("${card.remaining}일", style = KkTheme.type.labelBold, color = if (card.remaining == 0) c.sub else c.ink)
+            Text(" / ${card.grant.days}일", style = KkTheme.type.body, color = c.sub)
+            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { KkIcon(KkIcons.ChevronRight, tint = c.sub) }
         }
     }
 }
@@ -215,12 +215,12 @@ private fun LeaveDetailScreen(card: LeaveCard, onBack: () -> Unit, onEdit: () ->
             Kv("종류", g.kind.label)
             Kv("받은 날", g.grantedOn.dotted())
             Kv("일수", "${g.days}일")
-            Kv("남은 일수", "${card.remaining}일", c.textBrand)
+            Kv("남은 일수", "${card.remaining}일", c.accent)
         }
-        Text("사용 내역", style = KkTheme.type.titleM, color = c.textPrimary)
+        Text("사용 내역", style = KkTheme.type.title, color = c.ink)
         LowCard(spacing = 14.dp) {
             if (card.uses.isEmpty()) {
-                Text("아직 쓴 날이 없어요. 사용 등록을 하면 캘린더에 휴가 일정으로 들어가요.", style = KkTheme.type.bodyS, color = c.textSecondary)
+                Text("아직 쓴 날이 없어요. 사용 등록을 하면 캘린더에 휴가 일정으로 들어가요.", style = KkTheme.type.body, color = c.sub)
             }
             card.uses.forEach { e -> UseRow(e, card.stateOf(e)) }
         }
@@ -232,16 +232,16 @@ private fun UseRow(e: Event, state: LeaveUseState) {
     val c = KkTheme.colors
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("${e.start.date.md()} – ${e.end.date.md()}", style = KkTheme.type.bodyM, color = c.textPrimary)
-            Text("${e.dayCount}일 · 캘린더에 등록됨", style = KkTheme.type.caption, color = c.textSecondary)
+            Text("${e.start.date.md()} – ${e.end.date.md()}", style = KkTheme.type.body, color = c.ink)
+            Text("${e.dayCount}일 · 캘린더에 등록됨", style = KkTheme.type.caption, color = c.sub)
         }
         val (bg, fg) = when (state) {
-            LeaveUseState.PLANNED -> c.bgMilitarySubtle to c.textMilitary
-            LeaveUseState.ONGOING -> c.bgBrandSubtle to c.textBrand
-            LeaveUseState.DONE -> c.bgSubtle to c.textSecondary
+            LeaveUseState.PLANNED -> c.bar to c.accent
+            LeaveUseState.ONGOING -> c.bar to c.accent
+            LeaveUseState.DONE -> c.line to c.sub
         }
         Text(
-            state.label, style = KkTheme.type.labelS, color = fg,
+            state.label, style = KkTheme.type.label, color = fg,
             modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(bg).padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }
@@ -274,21 +274,21 @@ private fun LeaveUseScreen(
         KkPrimaryButton("등록", { onRegister(start, end, notify) }, Modifier.fillMaxWidth(), enabled = error == null)
     }) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(c.bgMilitarySubtle).padding(horizontal = 20.dp, vertical = 18.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(c.bar).padding(horizontal = 20.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(card.grant.title, style = KkTheme.type.titleS, color = c.textMilitary)
-            Text("남은 ${card.remaining}일", style = KkTheme.type.bodyS, color = c.textSecondary)
+            Text(card.grant.title, style = KkTheme.type.labelBold, color = c.accent)
+            Text("남은 ${card.remaining}일", style = KkTheme.type.body, color = c.sub)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             KkInput(start.md(), {}, Modifier.weight(1f), label = "시작", onClick = { picking = true })
             KkInput(end.md(), {}, Modifier.weight(1f), label = "끝", onClick = { picking = false }, error = error)
         }
         LowCard {
-            Kv("사용 일수", "${days.coerceAtLeast(0)}일", c.textMilitary, labelColor = c.textPrimary)
+            Kv("사용 일수", "${days.coerceAtLeast(0)}일", c.accent, labelColor = c.ink)
         }
         if (partnerName != null) {
-            KkStatusChip("${partnerName}에게 알리기", selected = notify, onClick = { notify = !notify }, dot = if (notify) Color.White else c.statusWarning)
+            KkStatusChip("${partnerName}에게 알리기", selected = notify, onClick = { notify = !notify }, dot = if (notify) Color.White else c.danger)
         }
     }
     picking?.let { isStart ->
@@ -326,10 +326,10 @@ private fun LeaveEditScreen(
         KkPrimaryButton(if (editing) "저장" else "추가", { onSave(d) }, Modifier.fillMaxWidth(), enabled = d.valid)
         if (onDelete != null) KkButton("휴가 지우기", onDelete, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost, danger = true)
     }) {
-        Text("종류", style = KkTheme.type.labelM, color = c.textSecondary)
+        Text("종류", style = KkTheme.type.label, color = c.sub)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             LeaveKind.entries.forEach { k ->
-                KkStatusChip(k.label, selected = d.kind == k, dot = if (d.kind == k) Color.White else c.statusWarning, onClick = {
+                KkStatusChip(k.label, selected = d.kind == k, dot = if (d.kind == k) Color.White else c.danger, onClick = {
                     // 이름을 아직 안 고쳤으면 종류에 맞춰 채운다(정기휴가는 "N차 정기휴가").
                     val auto = d.name.isBlank() || LeaveKind.entries.any { d.name == suggestName(it, regularCount) }
                     d = d.copy(kind = k, name = if (auto) suggestName(k, regularCount) else d.name)
@@ -337,15 +337,15 @@ private fun LeaveEditScreen(
             }
         }
         KkInput(d.name, { d = d.copy(name = it.take(30)) }, label = "이름", placeholder = suggestName(d.kind, regularCount))
-        Text("일수", style = KkTheme.type.labelM, color = c.textSecondary)
+        Text("일수", style = KkTheme.type.label, color = c.sub)
         val shape = RoundedCornerShape(KkRadius.lg)
         Row(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(4.dp),
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StepButton("−", "하루 줄이기", d.days > 1) { d = d.copy(days = d.days - 1) }
-            Text("${d.days}일", style = KkTheme.type.titleM, color = c.textPrimary)
+            Text("${d.days}일", style = KkTheme.type.title, color = c.ink)
             StepButton("+", "하루 늘리기", d.days < LeaveDraft.MAX_DAYS) { d = d.copy(days = d.days + 1) }
         }
         KkInput(d.grantedOn.dotted(), {}, label = "받은 날", onClick = { picking = true })
@@ -365,11 +365,11 @@ private fun suggestName(kind: LeaveKind, regularCount: Int): String =
 private fun StepButton(label: String, description: String, enabled: Boolean, onClick: () -> Unit) {
     val c = KkTheme.colors
     Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
+        Modifier.size(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = KkTheme.type.titleM, color = if (enabled) c.textPrimary else c.textTertiary)
+        Text(label, style = KkTheme.type.title, color = if (enabled) c.ink else c.sub)
     }
 }
 
@@ -385,7 +385,7 @@ private fun Screen(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar(title, onLeading = onLeading, leading = leading)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
@@ -405,7 +405,7 @@ private fun Screen(
 private fun LowCard(modifier: Modifier = Modifier, spacing: androidx.compose.ui.unit.Dp = 0.dp, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(KkTheme.colors.bgSurface)
+        modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(KkTheme.colors.surface)
             .padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(spacing),
         content = content,
@@ -413,10 +413,10 @@ private fun LowCard(modifier: Modifier = Modifier, spacing: androidx.compose.ui.
 }
 
 @Composable
-private fun Kv(label: String, value: String, valueColor: Color = KkTheme.colors.textPrimary, labelColor: Color = KkTheme.colors.textSecondary) {
+private fun Kv(label: String, value: String, valueColor: Color = KkTheme.colors.ink, labelColor: Color = KkTheme.colors.sub) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = KkTheme.type.bodyM, color = labelColor)
-        Text(value, style = KkTheme.type.titleS, color = valueColor)
+        Text(label, style = KkTheme.type.body, color = labelColor)
+        Text(value, style = KkTheme.type.labelBold, color = valueColor)
     }
 }
 

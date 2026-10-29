@@ -124,24 +124,24 @@ fun MemoryRoute(
 fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onWriteLetter: () -> Unit) {
     val c = KkTheme.colors
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).verticalScroll(rememberScrollState())
+        Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
     ) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("추억", style = KkTheme.type.titleL, color = c.textPrimary)
+            Text("추억", style = KkTheme.type.title, color = c.ink)
         }
         if (state.loading) return@Column
         if (state.empty) {
             BookCard(null) {}
             Column(Modifier.fillMaxWidth().padding(vertical = 80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-                Text("편지 · 그림 · 만남이 달마다 한 장씩 모여 책이 돼요", style = KkTheme.type.bodyM, color = c.textSecondary, textAlign = TextAlign.Center)
+                Text("편지 · 그림 · 만남이 달마다 한 장씩 모여 책이 돼요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
                 KkButton("편지 쓰기", onWriteLetter)
             }
             return@Column
         }
         BookCard(state.progress) { onIntent(MemoryIntent.Open(MemoryPage.Book)) }
-        Text("월별 장", style = KkTheme.type.labelM, color = c.textTertiary)
+        Text("월별 장", style = KkTheme.type.label, color = c.sub)
         state.chapters.forEach { ch ->
             ChapterRow(ch, state.months[ch.ym], photos) { onIntent(MemoryIntent.Open(MemoryPage.Month(ch.ym))) }
         }
@@ -155,29 +155,29 @@ private fun BookCard(progress: BookProgress?, onOpen: () -> Unit) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
-        Modifier.fillMaxWidth().clip(shape).background(c.bgBrandSubtle)
+        Modifier.fillMaxWidth().clip(shape).background(c.bar)
             .then(if (progress != null) Modifier.clickable(role = Role.Button, onClick = onOpen) else Modifier)
             .padding(KkSpacing.lg),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg), verticalAlignment = Alignment.CenterVertically,
     ) {
         val coverShape = RoundedCornerShape(6.dp)
         if (progress == null) {
-            Box(Modifier.size(84.dp, 112.dp).clip(coverShape).border(1.5.dp, c.borderBrand, coverShape))
+            Box(Modifier.size(84.dp, 112.dp).clip(coverShape).border(1.5.dp, c.accent, coverShape))
         } else {
-            Box(Modifier.size(84.dp, 112.dp).clip(coverShape).background(c.bgBrand)) {
+            Box(Modifier.size(84.dp, 112.dp).clip(coverShape).background(c.accent)) {
                 AirmailStripe(Modifier.fillMaxWidth().height(8.dp))
-                Text("우리의\n책", style = KkTheme.type.labelM, color = c.textOnBrand, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
+                Text("우리의\n책", style = KkTheme.type.label, color = c.surface, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("우리의 책", style = KkTheme.type.titleS, color = c.textPrimary)
-            Text(progress?.label() ?: "첫 장을 채워 보세요", style = KkTheme.type.bodyS, color = c.textSecondary)
+            Text("우리의 책", style = KkTheme.type.labelBold, color = c.ink)
+            Text(progress?.label() ?: "첫 장을 채워 보세요", style = KkTheme.type.body, color = c.sub)
             if (progress != null) {
                 val f = progress.total?.let { (progress.current.toFloat() / it).coerceIn(0f, 1f) } ?: 1f
-                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.bgSurface)) {
-                    Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(3.dp)).background(c.bgBrand))
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.surface)) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(3.dp)).background(c.accent))
                 }
-                Text("책으로 보기 ›", style = KkTheme.type.labelM, color = c.textBrand)
+                Text("책으로 보기 ›", style = KkTheme.type.label, color = c.accent)
             }
         }
     }
@@ -196,21 +196,21 @@ private fun ChapterRow(ch: Chapter, month: MonthDetail?, photos: Map<String, Byt
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .clickable(role = Role.Button, onClick = onClick).padding(KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar), contentAlignment = Alignment.Center) {
             when (val cover = ch.cover) {
                 is ChapterCover.Photo -> PhotoImage(photos[cover.attachmentId], Modifier.fillMaxSize())
                 is ChapterCover.Drawing -> month?.letters?.firstOrNull { it.id == cover.letterId }?.thumb?.let { Box(Modifier.size(56.dp)) { DrawingView(it) } }
-                null -> KkIcon(KkIcons.Album, tint = c.textBrand)
+                null -> KkIcon(KkIcons.Album, tint = c.accent)
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("${ch.ym.month}월 · ${ordinalKo(ch.number)} 장", style = KkTheme.type.titleS, color = c.textPrimary)
-                if (ch.writing) Pill("쓰는 중", c.bgBrandSubtle, c.textBrand)
+                Text("${ch.ym.month}월 · ${ordinalKo(ch.number)} 장", style = KkTheme.type.labelBold, color = c.ink)
+                if (ch.writing) Pill("쓰는 중", c.bar, c.accent)
             }
             Text(
                 listOfNotNull(
@@ -219,10 +219,10 @@ private fun ChapterRow(ch: Chapter, month: MonthDetail?, photos: Map<String, Byt
                     "그림 ${ch.drawings}".takeIf { ch.drawings > 0 },
                     "만남 ${ch.meets}".takeIf { ch.meets > 0 },
                 ).ifEmpty { listOf("아직 비어 있어요") }.joinToString(" · "),
-                style = KkTheme.type.bodyS, color = c.textSecondary,
+                style = KkTheme.type.body, color = c.sub,
             )
         }
-        Text("›", style = KkTheme.type.titleM, color = c.textTertiary)
+        Text("›", style = KkTheme.type.title, color = c.sub)
     }
 }
 
@@ -233,7 +233,7 @@ private fun ChapterRow(ch: Chapter, month: MonthDetail?, photos: Map<String, Byt
 private fun MonthScreen(m: MonthDetail, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit) {
     val c = KkTheme.colors
     var all by remember(m.ym) { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
         KkTopBar("${m.ym.month}월 · ${ordinalKo(m.number)} 장", onLeading = { onIntent(MemoryIntent.Back) }, modifier = Modifier.padding(horizontal = KkSpacing.lg))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
@@ -241,22 +241,22 @@ private fun MonthScreen(m: MonthDetail, photos: Map<String, ByteArray?>, onInten
         ) {
             Text(
                 listOf("편지 ${m.letters.size}", "그림 ${m.drawings}", "만남 ${m.meets.size}").joinToString(" · "),
-                style = KkTheme.type.bodyM, color = c.textSecondary,
+                style = KkTheme.type.body, color = c.sub,
             )
             val shape = RoundedCornerShape(KkRadius.lg)
-            Box(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.md)) {
-                MonthCalendar(m, today = remember { kotlin.time.Clock.System.today() }, ink = c.textPrimary, muted = c.textTertiary, sunday = c.statusDanger)
+            Box(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.md)) {
+                MonthCalendar(m, today = remember { kotlin.time.Clock.System.today() }, ink = c.ink, muted = c.sub, sunday = c.danger)
             }
             Legend()
             if (m.letters.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("편지 ${m.letters.size}", style = KkTheme.type.titleS, color = c.textPrimary, modifier = Modifier.weight(1f))
-                    if (m.letters.size > 3) Text(if (all) "접기" else "전체 보기", style = KkTheme.type.labelM, color = c.textBrand, modifier = Modifier.clickable(role = Role.Button) { all = !all })
+                    Text("편지 ${m.letters.size}", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
+                    if (m.letters.size > 3) Text(if (all) "접기" else "전체 보기", style = KkTheme.type.label, color = c.accent, modifier = Modifier.clickable(role = Role.Button) { all = !all })
                 }
                 (if (all) m.letters else m.letters.take(3)).forEach { l -> LetterRow(l, photos) { onOpenLetter(l.id) } }
             }
             if (m.meets.isNotEmpty()) {
-                Text("만남 ${m.meets.size}", style = KkTheme.type.titleS, color = c.textPrimary)
+                Text("만남 ${m.meets.size}", style = KkTheme.type.labelBold, color = c.ink)
                 m.meets.forEach { meet -> MeetSummary(meet, photos) { onIntent(MemoryIntent.Open(MemoryPage.Meet(meet.eventId))) } }
             }
             Spacer(Modifier.height(KkSpacing.lg))
@@ -270,13 +270,13 @@ private fun LetterRow(l: MonthLetter, photos: Map<String, ByteArray?>, onClick: 
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .clickable(role = Role.Button, onClick = onClick).padding(KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
     ) {
         if (l.kind != LetterKind.TEXT) {
             val s = if (l.kind == LetterKind.DRAWING_ONLY) 56.dp else 44.dp
-            Box(Modifier.size(s).clip(RoundedCornerShape(KkRadius.md)).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(s).clip(RoundedCornerShape(KkRadius.md)).background(c.bar), contentAlignment = Alignment.Center) {
                 when {
                     l.thumb != null -> Box(Modifier.size(s - 6.dp)) { DrawingView(l.thumb) }
                     l.photoId != null -> PhotoImage(photos[l.photoId], Modifier.fillMaxSize())
@@ -284,10 +284,10 @@ private fun LetterRow(l: MonthLetter, photos: Map<String, ByteArray?>, onClick: 
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(l.meta, style = KkTheme.type.caption, color = c.textTertiary)
+            Text(l.meta, style = KkTheme.type.caption, color = c.sub)
             Text(
                 if (l.kind == LetterKind.DRAWING_ONLY) "그림 편지" else l.text,
-                style = KkTheme.type.bodyM, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                style = KkTheme.type.body, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -299,20 +299,20 @@ private fun MeetSummary(meet: MeetCard, photos: Map<String, ByteArray?>, onClick
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .clickable(role = Role.Button, onClick = onClick).padding(KkSpacing.md),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            Pill(meet.tag, c.bgMilitarySubtle, c.textMilitary)
-            Text("${meet.title} · ${meet.date.md()}", style = KkTheme.type.labelM, color = c.textPrimary)
+            Pill(meet.tag, c.bar, c.accent)
+            Text("${meet.title} · ${meet.date.md()}", style = KkTheme.type.label, color = c.ink)
         }
         if (meet.photos.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                 meet.photos.take(3).forEach { id -> PhotoImage(photos[id], Modifier.size(96.dp, 72.dp).clip(RoundedCornerShape(KkRadius.md))) }
             }
         }
-        meet.notes.firstOrNull()?.let { (who, text) -> Text("$who · $text", style = KkTheme.type.bodyS, color = c.textSecondary) }
+        meet.notes.firstOrNull()?.let { (who, text) -> Text("$who · $text", style = KkTheme.type.body, color = c.sub) }
     }
 }
 
@@ -321,8 +321,8 @@ private fun MeetSummary(meet: MeetCard, photos: Map<String, ByteArray?>, onClick
 private fun Legend() {
     val c = KkTheme.colors
     Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
-        LegendItem("편지") { Box(Modifier.size(6.dp).clip(CircleShape).background(c.heart)) }
-        LegendItem("그림 편지") { Box(Modifier.size(6.dp).rotate(45f).background(c.textMilitary)) }
+        LegendItem("편지") { Box(Modifier.size(6.dp).clip(CircleShape).background(c.stamp)) }
+        LegendItem("그림 편지") { Box(Modifier.size(6.dp).rotate(45f).background(c.accent)) }
         LegendItem("면회") { Box(Modifier.size(14.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(c.eventVisit)) }
         LegendItem("휴가") { Box(Modifier.size(14.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(c.eventVacation)) }
     }
@@ -332,7 +332,7 @@ private fun Legend() {
 private fun LegendItem(label: String, mark: @Composable () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
         mark()
-        Text(label, style = KkTheme.type.caption, color = KkTheme.colors.textTertiary)
+        Text(label, style = KkTheme.type.caption, color = KkTheme.colors.sub)
     }
 }
 
@@ -372,17 +372,17 @@ internal fun MonthCalendar(
                     Box(Modifier.offset(x, y).size(cw, ch)) {
                         Box(
                             Modifier.align(Alignment.TopCenter).padding(top = (2 * scale).dp).size((24 * scale).dp).clip(CircleShape)
-                                .background(if (isToday) c.bgBrand else Color.Transparent),
+                                .background(if (isToday) c.accent else Color.Transparent),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 "$day", style = type.copy(fontSize = type.fontSize * scale),
-                                color = when { isToday -> c.textOnBrand; idx % 7 == 0 -> sunday; else -> ink },
+                                color = when { isToday -> c.surface; idx % 7 == 0 -> sunday; else -> ink },
                             )
                         }
                         Row(Modifier.align(Alignment.BottomCenter).padding(bottom = (10 * scale).dp), horizontalArrangement = Arrangement.spacedBy((4 * scale).dp)) {
-                            if (day in m.letterDays) Box(Modifier.size((6 * scale).dp).clip(CircleShape).background(c.heart))
-                            if (day in m.drawingDays) Box(Modifier.size((5 * scale).dp).rotate(45f).background(c.textMilitary))
+                            if (day in m.letterDays) Box(Modifier.size((6 * scale).dp).clip(CircleShape).background(c.stamp))
+                            if (day in m.drawingDays) Box(Modifier.size((5 * scale).dp).rotate(45f).background(c.accent))
                         }
                     }
                 }
@@ -409,7 +409,7 @@ internal fun BarKind.color(): Color = KkTheme.colors.let {
         BarKind.VISIT -> it.eventVisit
         BarKind.OVERNIGHT -> it.eventOvernight
         BarKind.VACATION -> it.eventVacation
-        BarKind.RANK -> it.bgMilitary
+        BarKind.RANK -> it.accent
     }
 }
 
@@ -425,27 +425,27 @@ private fun MeetDetailScreen(
     onRemovePhoto: (String) -> Unit,
 ) {
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
         KkTopBar(meet.title, onLeading = { onIntent(MemoryIntent.Back) }, modifier = Modifier.padding(horizontal = KkSpacing.lg))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                Pill(meet.tag, c.bgMilitarySubtle, c.textMilitary)
-                Text(meet.time, style = KkTheme.type.bodyS, color = c.textSecondary)
+                Pill(meet.tag, c.bar, c.accent)
+                Text(meet.time, style = KkTheme.type.body, color = c.sub)
             }
             PhotoGrid(meet.photos.ifEmpty { listOf("", "", "", "") }, photos) { id -> if (id.isNotEmpty()) onRemovePhoto(id) }
             val shape = RoundedCornerShape(KkRadius.lg)
             Column(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
             ) {
-                if (meet.notes.isEmpty()) Text("아직 남긴 한 줄이 없어요", style = KkTheme.type.bodyM, color = c.textTertiary)
+                if (meet.notes.isEmpty()) Text("아직 남긴 한 줄이 없어요", style = KkTheme.type.body, color = c.sub)
                 meet.notes.forEach { (who, text) ->
                     Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-                        Text(who, style = KkTheme.type.labelM, color = c.textSecondary, modifier = Modifier.width(40.dp))
-                        Text(text, style = KkTheme.type.bodyM, color = c.textPrimary)
+                        Text(who, style = KkTheme.type.label, color = c.sub, modifier = Modifier.width(40.dp))
+                        Text(text, style = KkTheme.type.body, color = c.ink)
                     }
                 }
             }
@@ -466,11 +466,11 @@ private fun PhotoGrid(ids: List<String>, photos: Map<String, ByteArray?>, onClic
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                 row.forEach { id ->
                     Box(
-                        Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
+                        Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
                             .then(if (id.isNotEmpty()) Modifier.clickable(role = Role.Button) { onClick(id) }.semantics { contentDescription = "만남 사진" } else Modifier),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (id.isEmpty()) KkIcon(KkIcons.Album, tint = c.textTertiary) else PhotoImage(photos[id], Modifier.fillMaxSize())
+                        if (id.isEmpty()) KkIcon(KkIcons.Album, tint = c.sub) else PhotoImage(photos[id], Modifier.fillMaxSize())
                     }
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -484,25 +484,25 @@ private fun PhotoGrid(ids: List<String>, photos: Map<String, ByteArray?>, onClic
 private fun MeetNoteScreen(meet: MeetCard, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, addPhoto: ((String) -> Unit)?) {
     val c = KkTheme.colors
     var text by remember(meet.eventId) { mutableStateOf(meet.myNote) }
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
         KkTopBar("오늘 어땠어요?", onLeading = { onIntent(MemoryIntent.Back) }, leading = KkTopBarLeading.Close, modifier = Modifier.padding(horizontal = KkSpacing.lg))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                Pill(meet.tag, c.bgMilitarySubtle, c.textMilitary)
-                Text("${meet.title} · ${meet.date.md()} (${weekday(meet.date)})", style = KkTheme.type.titleS, color = c.textPrimary)
+                Pill(meet.tag, c.bar, c.accent)
+                Text("${meet.title} · ${meet.date.md()} (${weekday(meet.date)})", style = KkTheme.type.labelBold, color = c.ink)
             }
-            Text("사진", style = KkTheme.type.labelS, color = c.textSecondary)
+            Text("사진", style = KkTheme.type.label, color = c.sub)
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                 meet.photos.takeLast(3).forEach { id -> PhotoImage(photos[id], Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md))) }
                 if (addPhoto != null) {
                     Box(
-                        Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md)).border(1.dp, c.borderDefault, RoundedCornerShape(KkRadius.md))
+                        Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md)).border(1.dp, c.line, RoundedCornerShape(KkRadius.md))
                             .clickable(role = Role.Button) { addPhoto(meet.eventId) }.semantics { contentDescription = "사진 추가" },
                         contentAlignment = Alignment.Center,
-                    ) { Text("+", style = KkTheme.type.titleM, color = c.textTertiary) }
+                    ) { Text("+", style = KkTheme.type.title, color = c.sub) }
                 }
             }
             KkInput(
@@ -524,13 +524,13 @@ private fun MeetNoteScreen(meet: MeetCard, photos: Map<String, ByteArray?>, onIn
 internal fun PhotoImage(bytes: ByteArray?, modifier: Modifier) {
     val bitmap: ImageBitmap? = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
     if (bitmap != null) Image(bitmap, null, modifier, contentScale = ContentScale.Crop)
-    else Box(modifier.background(KkTheme.colors.bgSubtle))
+    else Box(modifier.background(KkTheme.colors.line))
 }
 
 @Composable
 internal fun Pill(text: String, bg: Color, fg: Color) {
     Text(
-        text, style = KkTheme.type.labelS, color = fg, maxLines = 1, softWrap = false,
+        text, style = KkTheme.type.label, color = fg, maxLines = 1, softWrap = false,
         modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(bg).padding(horizontal = KkSpacing.xs, vertical = KkSpacing.xxs),
     )
 }

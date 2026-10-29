@@ -42,7 +42,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.feature.calendar.CalendarRoute
 import com.sadturtleman.flowershoes.feature.drawing.DrawingEditorRoute
 import com.sadturtleman.flowershoes.feature.home.HomeRoute
@@ -101,13 +101,13 @@ fun KkotsinApp() {
         "DARK" -> true
         else -> androidx.compose.foundation.isSystemInDarkTheme()
     }
-    KkotsinTheme(accent = current?.theme ?: ThemeAccent.ROSE, dark = dark) {
+    KkotsinTheme(theme = current?.theme ?: AppTheme.GOMSIN, dark = dark) {
         CompositionLocalProvider(
             com.sadturtleman.flowershoes.core.designsystem.LocalKkShare provides share,
             com.sadturtleman.flowershoes.core.drawingui.LocalDrawingPhotoLoader provides photoLoader,
         ) {
             when {
-                current == null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.bgCanvas))
+                current == null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas))
                 !current.onboarded -> OnboardingFlow()
                 else -> MainShell()
             }
@@ -293,7 +293,7 @@ private fun MainShell() {
             )
             return@KkPageFlip
         }
-        Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding()) {
             Box(Modifier.weight(1f)) {
                 Crossfade(tab, animationSpec = tween(TAB_FADE_MS), label = "tab") { t ->
                 when (t) {
@@ -370,14 +370,14 @@ private fun BottomBar(current: Tab, onSelect: (Tab) -> Unit) {
 private fun ComingSoon(title: String, onBack: (() -> Unit)?) {
     val c = KkTheme.colors
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().padding(KkSpacing.screen),
+        Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().padding(KkSpacing.screen),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
         if (onBack != null) {
-            Text("← 돌아가기", style = KkTheme.type.labelM, color = c.textSecondary, modifier = Modifier.clickable(onClick = onBack))
+            Text("← 돌아가기", style = KkTheme.type.label, color = c.sub, modifier = Modifier.clickable(onClick = onBack))
         }
-        Text(title, style = KkTheme.type.titleL, color = c.textPrimary)
-        Text("곧 만나요. 이 화면은 다음 단계에서 열려요.", style = KkTheme.type.bodyM, color = c.textSecondary)
+        Text(title, style = KkTheme.type.title, color = c.ink)
+        Text("곧 만나요. 이 화면은 다음 단계에서 열려요.", style = KkTheme.type.body, color = c.sub)
     }
 }
 

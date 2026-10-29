@@ -98,42 +98,42 @@ internal fun InquiryPage(
     val emailOk = email.isBlank() || Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email.trim())
     val canSend = transport != null && body.isNotBlank() && email.isNotBlank() && emailOk && !sending
 
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar("문의하기", onLeading = onBack, trailingText = "내역", onTrailing = onHistory, trailingEnabled = transport != null)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
             if (transport == null) {
-                Text("이 빌드에는 서버 설정이 없어 문의를 보낼 수 없어요.", style = KkTheme.type.bodyS, color = c.statusDanger)
+                Text("이 빌드에는 서버 설정이 없어 문의를 보낼 수 없어요.", style = KkTheme.type.body, color = c.danger)
             }
-            Text("내용", style = KkTheme.type.labelM, color = c.textSecondary)
+            Text("내용", style = KkTheme.type.label, color = c.sub)
             TextArea(body, { body = it.take(MAX_BODY) }, placeholder = "어떤 일이 있었는지 적어 주세요. 언제 · 어느 화면에서인지 알려 주시면 더 빨리 도와드릴 수 있어요.")
             if (pick != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     shots.forEachIndexed { i, bytes ->
                         val bitmap = remember(bytes) { runCatching { bytes.decodeToImageBitmap() }.getOrNull() }
                         Box(
-                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
+                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
                                 .clickable(role = Role.Button) { shots.removeAt(i) }
                                 .semantics { contentDescription = "스크린샷 ${i + 1} 빼기" },
                         ) {
                             if (bitmap != null) Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                             Box(
-                                Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp).clip(CircleShape).background(c.bgInverse.copy(alpha = 0.7f)),
+                                Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp).clip(CircleShape).background(c.ink.copy(alpha = 0.7f)),
                                 contentAlignment = Alignment.Center,
-                            ) { Text("×", style = KkTheme.type.labelS, color = c.textInverse) }
+                            ) { Text("×", style = KkTheme.type.label, color = c.canvas) }
                         }
                     }
                     if (shots.size < MAX_SHOTS) {
                         Column(
-                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle)
+                            Modifier.size(72.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
                                 .clickable(role = Role.Button) { pick(false) }.semantics { contentDescription = "스크린샷 추가" },
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
                         ) {
-                            Text("+", style = KkTheme.type.titleM, color = c.textSecondary)
-                            Text("${shots.size} / $MAX_SHOTS", style = KkTheme.type.caption, color = c.textTertiary)
+                            Text("+", style = KkTheme.type.title, color = c.sub)
+                            Text("${shots.size} / $MAX_SHOTS", style = KkTheme.type.caption, color = c.sub)
                         }
                     }
                 }
@@ -144,7 +144,7 @@ internal fun InquiryPage(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             )
             val shape = RoundedCornerShape(KkRadius.lg)
-            Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)) {
+            Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
                 KkListRow("기기 정보 함께 보내기", value = "기종 · OS · 앱 버전", trailing = KkRowTrailing.Switch, switchOn = withDevice, onClick = { withDevice = !withDevice })
             }
         }
@@ -172,22 +172,22 @@ private fun TextArea(value: String, onValueChange: (String) -> Unit, placeholder
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(KkRadius.md)
     Column(
-        Modifier.fillMaxWidth().height(150.dp).clip(shape).background(c.bgSurface)
-            .border(if (focused) 2.dp else 1.dp, if (focused) c.bgBrand else c.borderDefault, shape)
+        Modifier.fillMaxWidth().height(150.dp).clip(shape).background(c.surface)
+            .border(if (focused) 2.dp else 1.dp, if (focused) c.accent else c.line, shape)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (value.isEmpty()) Text(placeholder, style = KkTheme.type.bodyM, color = c.textTertiary)
+            if (value.isEmpty()) Text(placeholder, style = KkTheme.type.body, color = c.sub)
             BasicTextField(
                 value, onValueChange,
-                textStyle = KkTheme.type.bodyM.copy(color = c.textPrimary),
-                cursorBrush = SolidColor(c.bgBrand),
+                textStyle = KkTheme.type.body.copy(color = c.ink),
+                cursorBrush = SolidColor(c.accent),
                 interactionSource = interaction,
                 modifier = Modifier.fillMaxSize().semantics { contentDescription = "내용" },
             )
         }
-        Text("${value.length} / $MAX_BODY", style = KkTheme.type.caption, color = c.textTertiary, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+        Text("${value.length} / $MAX_BODY", style = KkTheme.type.caption, color = c.sub, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -198,7 +198,7 @@ internal fun InquiryHistoryPage(transport: InquiryTransport?, onBack: () -> Unit
     val flow = remember(transport) { transport?.observeMine() ?: emptyFlow() }
     var list by remember { mutableStateOf<List<Inquiry>?>(null) }
     LaunchedEffect(flow) { runCatching { flow.collect { list = it } }.onFailure { if (list == null) list = emptyList() } }
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar("문의 내역", onLeading = onBack)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
@@ -207,7 +207,7 @@ internal fun InquiryHistoryPage(transport: InquiryTransport?, onBack: () -> Unit
             val items = list
             when {
                 items == null -> Unit
-                items.isEmpty() -> Text("아직 보낸 문의가 없어요.", style = KkTheme.type.bodyS, color = c.textSecondary)
+                items.isEmpty() -> Text("아직 보낸 문의가 없어요.", style = KkTheme.type.body, color = c.sub)
                 else -> items.forEach { InquiryCard(it) }
             }
         }
@@ -219,28 +219,28 @@ private fun InquiryCard(q: Inquiry) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(horizontal = 20.dp, vertical = 18.dp),
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(horizontal = 20.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${q.type} · ${md(q.createdAtMs)}", style = KkTheme.type.caption, color = c.textTertiary, modifier = Modifier.weight(1f))
+            Text("${q.type} · ${md(q.createdAtMs)}", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.weight(1f))
             val answered = q.answer != null
             Text(
                 if (answered) "답변 완료" else "답변 대기",
-                style = KkTheme.type.labelS,
-                color = if (answered) c.textBrand else c.textSecondary,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(if (answered) c.bgBrandSubtle else c.bgSubtle)
+                style = KkTheme.type.label,
+                color = if (answered) c.accent else c.sub,
+                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(if (answered) c.bar else c.line)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
-        Text(q.title, style = KkTheme.type.titleS, color = c.textPrimary, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text(q.title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         q.answer?.let { a ->
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle).padding(horizontal = 14.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.line).padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("꽃신 답변" + (q.answeredAtMs?.let { " · ${md(it)}" } ?: ""), style = KkTheme.type.caption, color = c.textTertiary)
-                Text(a, style = KkTheme.type.bodyS, color = c.textPrimary)
+                Text("꽃신 답변" + (q.answeredAtMs?.let { " · ${md(it)}" } ?: ""), style = KkTheme.type.caption, color = c.sub)
+                Text(a, style = KkTheme.type.body, color = c.ink)
             }
         }
     }

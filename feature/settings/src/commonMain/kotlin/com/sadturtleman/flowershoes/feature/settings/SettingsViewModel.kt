@@ -15,7 +15,7 @@ import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.Service
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -31,7 +31,7 @@ import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
 
 data class SettingsState(
-    val theme: ThemeAccent = ThemeAccent.ROSE,
+    val theme: AppTheme = AppTheme.GOMSIN,
     val displayMode: String = "SYSTEM",
     val role: Role? = null,
     val myName: String = "나",
@@ -97,7 +97,7 @@ class SettingsViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
 
-    fun setTheme(theme: ThemeAccent) = viewModelScope.launch { settings.setTheme(theme) }
+    fun setTheme(theme: AppTheme) = viewModelScope.launch { settings.setTheme(theme) }
 
     /** 내 이름(연인 폰의 "민준 ♥ 지수" · 편지 · 알림에 쓰인다). */
     fun setNickname(name: String) {
