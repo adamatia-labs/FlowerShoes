@@ -304,6 +304,11 @@ class LetterRepository(
             }.sortedBy { it.visibleAtMs }.map { it.toModel() }
         }.distinctUntilChanged()
 
+    /** 내가 쓴 편지(예약 편지 포함, 지운 것 빼고). 혼자 모드 홈 "연결되면 보낼 편지 N통". */
+    fun observeMine(): Flow<List<Letter>> =
+        db.letterDao().observeAll().map { list -> list.filter { it.authorId == identity.userId && it.deletedAtMs == null }.map { it.toModel() } }
+            .distinctUntilChanged()
+
     suspend fun drawingsOf(letterId: String): List<DrawingEntity> = db.drawingDao().forLetter(letterId)
 
     /**

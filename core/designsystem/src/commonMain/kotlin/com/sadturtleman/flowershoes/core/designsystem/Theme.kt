@@ -150,11 +150,15 @@ private val DefaultFonts = KkFonts(FontFamily.Default, FontWeight.Bold, FontFami
 val LocalKkColors = staticCompositionLocalOf { kkColors(AppTheme.GOMSIN, dark = false) }
 val LocalKkFonts = staticCompositionLocalOf { DefaultFonts }
 val LocalKkTypography = staticCompositionLocalOf { KkTypography.of(DefaultFonts) }
+val LocalKkAppTheme = staticCompositionLocalOf { AppTheme.GOMSIN }
 
 object KkTheme {
     val colors: KkColors @Composable get() = LocalKkColors.current
     val fonts: KkFonts @Composable get() = LocalKkFonts.current
     val type: KkTypography @Composable get() = LocalKkTypography.current
+
+    /** 지금 테마(곰신 · 군인). 색 · 글꼴로 안 되는 장식 차이(홈 말린 꽃 · 소인, 진행 길 · 개월 칸)에만 쓴다. */
+    val appTheme: AppTheme @Composable get() = LocalKkAppTheme.current
 }
 
 /**
@@ -183,7 +187,7 @@ fun KkotsinTheme(
             outline = colors.line, error = colors.danger,
         )
     }
-    CompositionLocalProvider(LocalKkColors provides colors, LocalKkFonts provides fonts, LocalKkTypography provides type) {
+    CompositionLocalProvider(LocalKkColors provides colors, LocalKkFonts provides fonts, LocalKkTypography provides type, LocalKkAppTheme provides theme) {
         MaterialTheme(colorScheme = material, content = content)
     }
 }
