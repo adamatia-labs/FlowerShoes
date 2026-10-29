@@ -121,7 +121,7 @@ private fun String.hasFinalConsonant(): Boolean {
 data class HomeTag(val label: String, val value: String, val hand: Boolean)
 
 /**
- * 종이 태그(보여 주기만 하는 물건). 복무 중: 다음 휴가 + 곰신은 다음 만남(면회 · 외박 · 휴가) / 군인은 다음 진급("예정", #46).
+ * 종이 태그(보여 주기만 하는 물건). 복무 중: 다음 휴가 + 곰신은 다음 만남(면회 · 외박, 휴가는 옆 태그와 겹쳐 뺀다) / 군인은 다음 진급("예정", #46).
  * 입대 전: 입대일 + 함께한 날. 일정이 없으면 그 태그는 뺀다. 보관 모드에는 없다.
  */
 internal fun homeTags(phase: HomePhase, role: Role, t: ServiceTimeline, events: List<Event>, today: LocalDate, daysTogether: Int?): List<HomeTag> {
@@ -135,7 +135,7 @@ internal fun homeTags(phase: HomePhase, role: Role, t: ServiceTimeline, events: 
         HomePhase.SERVING, HomePhase.DISCHARGE_DAY -> listOfNotNull(
             next(EventType.VACATION)?.let { HomeTag("다음 휴가", dDay(today, it), hand = false) },
             if (role == Role.SOLDIER) t.nextRank(today)?.let { HomeTag(it.rank.promotionName, dDay(today, it.from), hand = false) }
-            else next(EventType.VISIT, EventType.OVERNIGHT, EventType.VACATION)?.let { HomeTag("다음 만남", it.monthDay(), hand = true) },
+            else next(EventType.VISIT, EventType.OVERNIGHT)?.let { HomeTag("다음 만남", it.monthDay(), hand = true) },
         )
         HomePhase.ARCHIVE -> emptyList()
     }

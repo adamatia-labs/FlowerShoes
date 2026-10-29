@@ -56,6 +56,14 @@ class HomeTagsTest {
         )
     }
 
+    @Test fun leaveIsNotRepeatedAsNextMeeting() {
+        val onlyLeave = listOf(event(EventType.VACATION, LocalDate(2026, 11, 14), LocalDate(2026, 11, 22)))
+        assertEquals(
+            listOf(HomeTag("다음 휴가", "D-17", hand = false)),
+            homeTags(HomePhase.SERVING, Role.GOMSIN, timeline, onlyLeave, today, daysTogether = 411),
+        )
+    }
+
     @Test fun missingPlansDropTheirTag() {
         assertEquals(emptyList(), homeTags(HomePhase.SERVING, Role.GOMSIN, timeline, emptyList(), today, daysTogether = null))
     }

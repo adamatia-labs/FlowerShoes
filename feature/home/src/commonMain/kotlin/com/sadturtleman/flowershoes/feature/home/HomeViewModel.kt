@@ -7,6 +7,7 @@ import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.MissYouRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
+import com.sadturtleman.flowershoes.core.data.SEOUL
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
@@ -120,17 +121,17 @@ class HomeViewModel(
 
     val state: StateFlow<HomeState> = combine(
         combine(people, profile.observeTimelines(), upcoming) { p, t, e -> Triple(p, t, e) },
-        letters.observeInbox(),
+        combine(letters.observeInbox(), letters.observeMine()) { inbox, mine -> inbox to mine },
         dayLine,
         missYou.observeTodayFrom(me),
         days,
-    ) { (p, timelines, upcomingEvents), inbox, dayLinePrompt, sent, today ->
+    ) { (p, timelines, upcomingEvents), (inbox, mine), dayLinePrompt, sent, today ->
         val pair = timelines.firstOrNull()
         val t = pair?.second
         val partnerName = p.partnerName.takeIf { p.linked }
         // 혼자 모드에서도 같은 계산: 곰신이 넣어 둔 연인 입대일(PENDING_SOLDIER)도 timelines 에 있다.
         val hero = homeHero(t, pair?.first?.branch, today, p.myRole, p.myName, partnerName)
-        val daysTogether = (p.anniversary ?: p.linkedAt?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(com.sadturtleman.flowershoes.core.data.SEOUL).date })
+        val daysTogether = (p.anniversary ?: p.linkedAt?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(SEOUL).date })
             ?.let { it.daysUntil(today) + 1 }
         HomeState(
             loading = false,
@@ -142,7 +143,7 @@ class HomeViewModel(
             hero = hero,
             tags = if (hero != null && t != null) homeTags(hero.phase, p.myRole, t, upcomingEvents, today, daysTogether) else emptyList(),
             letter = todayLetter(inbox, p.partnerId, p.partnerName, today, archive = hero?.phase == HomePhase.ARCHIVE),
-            pendingLetters = if (!p.linked && p.myRole == Role.GOMSIN) pendingLetters(inbox, me, p.myName, today) else emptyList(),
+            pendingLetters = if (!p.linked && p.myRole == Role.GOMSIN) pendingLetters(mine, me, p.myName, today) else emptyList(),
             ranks = if (!p.linked && p.myRole == Role.SOLDIER && hero?.phase == HomePhase.SERVING) t?.let { rankRows(it, today) }.orEmpty() else emptyList(),
             partnerName = partnerName,
             sentMissYouToday = sent,

@@ -105,7 +105,11 @@ fun HomeScreen(
                 Loading()
                 return@Column
             }
-            if (state.enlistNudge) KkBanner("입대 전에 같이 연결해 두세요", modifier = Modifier.padding(top = KkSpacing.md), action = "초대", onAction = onOpenPairing)
+            // 초대를 이미 보냈으면 띠의 "초대"는 빼고 아래 상태 줄의 "링크 다시 보내기"만 남긴다.
+            if (state.enlistNudge) KkBanner(
+                "입대 전에 같이 연결해 두세요", modifier = Modifier.padding(top = KkSpacing.md),
+                action = "초대".takeUnless { state.invitePending }, onAction = onOpenPairing,
+            )
             Hero(state.hero, onOpenSettings)
             Tags(state.tags)
             state.dayLine?.let { Spacer(Modifier.height(KkSpacing.lg)); DayLineCard(it, onOpenDayLine) { id -> onIntent(HomeIntent.DismissDayLine(id)) } }
@@ -120,7 +124,7 @@ fun HomeScreen(
                 else -> GomsinSolo(state, onOpenPairing, onOpenLetter)
             }
         }
-        if (fab) MissYouFab(state, onIntent, Modifier.align(Alignment.BottomEnd).padding(end = KkSpacing.xxl, bottom = KkSpacing.lg))
+        if (fab) MissYouFab(onIntent, Modifier.align(Alignment.BottomEnd).padding(end = KkSpacing.xxl, bottom = KkSpacing.lg))
     }
 }
 
@@ -156,17 +160,21 @@ private fun Hero(hero: HomeHero?, onOpenSettings: () -> Unit) {
     val c = KkTheme.colors
     val soldier = KkTheme.appTheme == AppTheme.SOLDIER
     Spacer(Modifier.height(KkSpacing.xxxl))
+    // 입대일이 없으면(곰신이 "나중에 넣을게요") 자리표시 D-day 대신 입대일 넣기만 둔다(설정 › 군 정보).
+    if (hero == null) {
+        TextAction("입대일 넣기", onOpenSettings)
+        return
+    }
     Text(
-        hero?.caption ?: "전역까지",
+        hero.caption,
         style = if (soldier) KkTheme.type.title else KkTheme.type.handL,
         color = if (soldier) c.accent else c.sub,
         maxLines = 1,
         modifier = Modifier.padding(start = KkSpacing.xxs),
     )
     // D-day/L 은 글자 앞 여백이 있어 Figma 처럼 4 왼쪽으로 당긴다.
-    Text(hero?.value ?: "D-?", style = KkTheme.type.ddayL, color = c.ink, maxLines = 1, softWrap = false, modifier = Modifier.offset(x = (-4).dp))
+    Text(hero.value, style = KkTheme.type.ddayL, color = c.ink, maxLines = 1, softWrap = false, modifier = Modifier.offset(x = (-4).dp))
     when {
-        hero == null -> TextAction("입대일 넣기", onOpenSettings)
         hero.phase == HomePhase.SERVING || hero.phase == HomePhase.DISCHARGE_DAY -> KkServiceProgress(
             progress = hero.progress, start = hero.start, end = hero.end, percent = hero.percent,
             modifier = Modifier.padding(top = KkSpacing.sm),
@@ -223,9 +231,9 @@ private fun ColumnScope.Letters(state: HomeState, onWriteLetter: () -> Unit, onO
     }
 }
 
-/** 보고싶어 FAB. 누르면 잠깐 "보냈어요"로 바뀌었다가 돌아온다(Figma 홈 · 보고싶어 보냄). */
+/** 보고싶어 FAB. 누르면 잠깐 "보냈어요"로 바뀌었다가 돌아온다(Figma 홈 · 보고싶어 보냄). 읽어 주는 말은 버튼 글자 그대로. */
 @Composable
-private fun MissYouFab(state: HomeState, onIntent: (HomeIntent) -> Unit, modifier: Modifier) {
+private fun MissYouFab(onIntent: (HomeIntent) -> Unit, modifier: Modifier) {
     var sent by remember { mutableStateOf(false) }
     LaunchedEffect(sent) {
         if (sent) {
@@ -236,7 +244,7 @@ private fun MissYouFab(state: HomeState, onIntent: (HomeIntent) -> Unit, modifie
     KkMissYouFab(sent, onClick = {
         if (!sent) onIntent(HomeIntent.SendMissYou)
         sent = true
-    }, modifier.semantics { contentDescription = "보고싶어 보내기, 오늘 ${state.sentMissYouToday}번 보냄" })
+    }, modifier)
 }
 
 private const val SENT_MS = 2_000L
@@ -261,7 +269,9 @@ private fun GomsinSolo(state: HomeState, onOpenPairing: () -> Unit, onOpenLetter
     PendingLetters(state, onOpenLetter)
 }
 
-/** "연결되면 보낼 편지 N통" + 최근 두 통을 봉투로 겹쳐 보여 준다(보여 주기용 더미라 살짝 기울인다). */
+/**
+ * "연결되면 보낼 편지 N통" + 최근 두 통. Figma 는 봉투를 기울여 겹쳤지만, 누르면 열리는 봉투라 design.md 대로 반듯하게 세로로 둔다.
+ */
 @Composable
 private fun PendingLetters(state: HomeState, onOpenLetter: (String) -> Unit) {
     val letters = state.pendingLetters
@@ -269,12 +279,8 @@ private fun PendingLetters(state: HomeState, onOpenLetter: (String) -> Unit) {
     val c = KkTheme.colors
     Text("연결되면 보낼 편지 ${letters.size}통", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.xxxl))
     val stamp = state.hero?.value.orEmpty()
-    Box(Modifier.padding(top = KkSpacing.lg).fillMaxWidth()) {
-        letters.getOrNull(1)?.let { back ->
-            KkEnvelopeRow(back.line, back.meta, KkEnvelopeMark.Stamp(stamp), { onOpenLetter(back.id) }, Modifier.padding(start = KkSpacing.lg, end = KkSpacing.lg).rotate(-3f))
-        }
-        val front = letters.first()
-        KkEnvelopeRow(front.line, front.meta, KkEnvelopeMark.Stamp(stamp), { onOpenLetter(front.id) }, Modifier.padding(top = KkSpacing.xs, end = 32.dp).rotate(1.5f))
+    Column(Modifier.padding(top = KkSpacing.lg), verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+        letters.take(2).forEach { l -> KkEnvelopeRow(l.line, l.meta, KkEnvelopeMark.Stamp(stamp), { onOpenLetter(l.id) }) }
     }
 }
 
@@ -344,7 +350,7 @@ private fun DayLineCard(prompt: DayLinePrompt, onWrite: (String) -> Unit, onDism
         Text(prompt.text, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
         KkButton("남기기", { onWrite(prompt.eventId) }, size = KkButtonSize.M)
         Box(
-            Modifier.size(44.dp).clip(CircleShape).clickable(role = A11y.Button) { onDismiss(prompt.eventId) }.semantics { contentDescription = "닫기" },
+            Modifier.size(48.dp).clip(CircleShape).clickable(role = A11y.Button) { onDismiss(prompt.eventId) }.semantics { contentDescription = "닫기" },
             contentAlignment = Alignment.Center,
         ) { KkIcon(KkIcons.Close, tint = c.sub, size = 13.8.dp) }
     }
