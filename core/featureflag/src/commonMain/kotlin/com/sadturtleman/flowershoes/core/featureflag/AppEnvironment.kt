@@ -1,7 +1,7 @@
 package com.sadturtleman.flowershoes.core.featureflag
 
 /**
- * 지금 앱이 어느 환경으로 빌드됐는가. :app 의 빌드 플레이버가 정해 주입한다.
+ * 지금 앱이 어느 환경으로 빌드됐는가. Android 는 :app 의 빌드 플레이버가, iOS 는 Info.plist(APP_ENV)가 정해 주입한다.
  *
  * 환경마다 플래그와 실험이 따로 있어야 하므로 리모트 키에 환경 이름을 붙여 나눈다 —
  * 프로젝트 하나 안에서 `new_onboarding_dev` · `new_onboarding_qa` · `new_onboarding_prod` 가 따로 산다.

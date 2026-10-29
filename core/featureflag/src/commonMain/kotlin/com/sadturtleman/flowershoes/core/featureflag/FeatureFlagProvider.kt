@@ -41,7 +41,8 @@ interface FeatureFlagProvider {
 /**
  * 이 실행에서 사용자가 어떤 플래그 · 실험에 놓였는지 남기는 포트.
  *
- * 이 모듈이 로깅 모듈을 직접 알지 않는 것은, 어디에 남길지가 앱의 결정이기 때문이다.
+ * 제공자가 [com.sadturtleman.flowershoes.core.logging.BizLogger] 를 직접 부르지 않고 포트를 두는 것은,
+ * 테스트가 "무엇을 남겼는가" 를 기록기의 IO 스코프 없이 바로 보기 위해서다. 실제 구현은 [BizLogFlagStateRecorder] 다.
  * 기록을 [FeatureFlagProvider.init] 안에서 부르는 것은 부르는 쪽이 잊어버릴 수 있어서다 —
  * 어떤 배정을 받았는지 모르면 실험 결과를 나중에 되짚을 수 없다.
  */

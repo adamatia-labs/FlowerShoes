@@ -10,7 +10,7 @@ package com.sadturtleman.flowershoes.core.featureflag
  * 환경 꼬리도 실제와 같다. 모든 키를 세 번씩 적지 않는 것도 같다 —
  * 읽는 쪽이 dev → qa → prod 순으로 내려가며 찾으므로 달라지는 것만 적어 두면 된다.
  */
-internal class SampleRemoteConfigSource constructor() : RemoteConfigSource {
+internal class SampleRemoteConfigSource : RemoteConfigSource {
 
     /** 여기 없는 키는 "리모트가 모르는 플래그" 이고, 읽는 쪽이 기본값으로 떨어뜨린다. */
     private val values: Map<String, String> = mapOf(

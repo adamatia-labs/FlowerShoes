@@ -12,7 +12,7 @@ import com.sadturtleman.flowershoes.core.logging.BizLogShooter
  * 플랫폼 로거 대신 println 을 쓰는 이유는 [BizLog] 를 찍는 데 플랫폼이 필요 없기 때문이다.
  * 안드로이드에서는 표준 출력도 Logcat 으로, iOS 에서는 Xcode 콘솔로 들어오므로 보는 데는 차이가 없다.
  */
-internal class PrintBizLogShooter constructor() : BizLogShooter {
+internal class PrintBizLogShooter : BizLogShooter {
 
     override suspend fun shoot(log: BizLog) {
         val parameters = log.event.parameters.entries.joinToString(", ") { "${it.key}=${it.value}" }

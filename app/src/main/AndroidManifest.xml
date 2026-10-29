@@ -24,8 +24,9 @@
             tools:replace="android:enabled" />
         <meta-data android:name="firebase_messaging_auto_init_enabled" android:value="${firebaseAutoInitEnabled}" />
         <meta-data android:name="firebase_analytics_collection_enabled" android:value="${firebaseAutoInitEnabled}" />
-        <!-- GA4 는 광고 ID 를 모으지 않는다(분석 때문에 광고 식별자를 잇지 않는다). -->
+        <!-- GA4 는 광고 ID 를 모으지 않고 광고 개인화 신호도 내지 않는다(분석 때문에 광고 식별자를 잇지 않는다). -->
         <meta-data android:name="google_analytics_adid_collection_enabled" android:value="false" />
+        <meta-data android:name="google_analytics_default_allow_ad_personalization_signals" android:value="false" />
         <!-- AdMob 앱 ID(꽃신). -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"

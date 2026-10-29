@@ -5,7 +5,7 @@ package com.sadturtleman.flowershoes.common.util.device
  *
  * 이 모듈이 스스로 읽을 수 없는 유일한 값이다 — `BuildConfig` 는 그것을 생성한 모듈의 것이고,
  * 플레이버를 가진 것은 :app 뿐이다. 그래서 :app 이 DI 로 꽂아 준다.
- * (:featureflag 의 [com.sadturtleman.flowershoes.featureflag.domain.AppEnvironment] 가
+ * (:core:featureflag 의 [com.sadturtleman.flowershoes.core.featureflag.AppEnvironment] 가
  * 같은 이유로 같은 길을 쓴다.)
  *
  * @param buildType debug · release 같은 빌드 타입.
