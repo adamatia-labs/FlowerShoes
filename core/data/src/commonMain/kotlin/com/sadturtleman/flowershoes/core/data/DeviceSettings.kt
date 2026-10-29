@@ -76,11 +76,6 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setKeyEpoch(epoch: Int) = store.edit { it[KEY_EPOCH] = epoch }
 
-    /** 편지 쓰기 › 임시저장(JSON). 이 기기에만 — 보내기 전 글은 서버에도 상대에게도 가지 않는다. null 이면 지운다. */
-    suspend fun saveLetterDraft(json: String?) = store.edit { if (json == null) it.remove(LETTER_DRAFT) else it[LETTER_DRAFT] = json }
-
-    val letterDraft: Flow<String?> = store.data.map { it[LETTER_DRAFT] }
-
     private val prefsJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
     /** 알림 설정(이 기기). 서버에 올리는 것은 [NotifyPrefsTransport] 가 따로 한다. */
@@ -151,7 +146,6 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val KEY_EPOCH = intPreferencesKey("key_epoch")
         val MARKETING = intPreferencesKey("marketing_consent")
         val PROVIDER = stringPreferencesKey("account_provider")
-        val LETTER_DRAFT = stringPreferencesKey("letter_draft")
         val WIDGET_PIN = stringPreferencesKey("widget_pin")
         val WIDGET_CURRENT = stringPreferencesKey("widget_current")
         val WIDGET_TOTALS = stringPreferencesKey("widget_totals")
