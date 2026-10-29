@@ -104,6 +104,54 @@ class SyncSchedulerTest {
         } finally { job.cancelAndJoin(); scope.cancel() }
     }
 
+    // ---- 서버 오류 화면(#72) ----
+
+    @Test fun `failed sync is surfaced with the transport error code and the time it started`() = runBlocking {
+        val mailbox = object : Mailbox by cloud {
+            override suspend fun fetch(coupleId: String, myDevice: String): List<MailItem> = throw IllegalStateException("UNAVAILABLE")
+            override fun errorCode(error: Throwable): String? = error.message
+        }
+        val now = kotlin.time.Instant.fromEpochMilliseconds(1_000)
+        val scheduler = SyncScheduler(db, client(mailbox), period = 1.hours, clock = object : kotlin.time.Clock { override fun now() = now })
+
+        scheduler.runOnce()
+
+        assertEquals(SyncFailure(code = "UNAVAILABLE", since = now), scheduler.failure.value)
+    }
+
+    /** 화면은 한 번 닫으면 같은 실패가 이어지는 동안 다시 뜨지 않는다 — 그러려면 시작 시각이 그대로여야 한다. */
+    @Test fun `repeated failures keep the time the failure started`() = runBlocking {
+        val mailbox = object : Mailbox by cloud {
+            override suspend fun fetch(coupleId: String, myDevice: String): List<MailItem> = error("down")
+        }
+        var now = kotlin.time.Instant.fromEpochMilliseconds(1_000)
+        val scheduler = SyncScheduler(db, client(mailbox), period = 1.hours, clock = object : kotlin.time.Clock { override fun now() = now })
+
+        scheduler.runOnce()
+        now = kotlin.time.Instant.fromEpochMilliseconds(9_000)
+        scheduler.runOnce()
+
+        assertEquals(kotlin.time.Instant.fromEpochMilliseconds(1_000), scheduler.failure.value?.since)
+    }
+
+    @Test fun `a successful sync clears the failure`() = runBlocking {
+        val failing = java.util.concurrent.atomic.AtomicBoolean(true)
+        val mailbox = object : Mailbox by cloud {
+            override suspend fun fetch(coupleId: String, myDevice: String): List<MailItem> {
+                if (failing.get()) error("down")
+                return cloud.fetch(coupleId, myDevice)
+            }
+        }
+        val scheduler = SyncScheduler(db, client(mailbox), period = 1.hours)
+        scheduler.runOnce()
+        assertNotNull(scheduler.failure.value)
+
+        failing.set(false)
+        scheduler.runOnce()
+
+        assertNull(scheduler.failure.value)
+    }
+
     @Test fun `terminated listener is resubscribed and still wakes synchronization`() = runBlocking {
         val subscriptions = AtomicInteger()
         val received = AtomicInteger()

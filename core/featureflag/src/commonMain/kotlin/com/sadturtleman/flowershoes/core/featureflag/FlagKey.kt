@@ -98,6 +98,26 @@ sealed class FlagKey<T>(
         defaultValue = HomeBannerVO(title = ""),
     )
 
+    // ---- 앱 막기(#72) ----
+    // 공통 상태 화면의 "업데이트 필요" · "점검 중". 판단은 appGate 가 한다.
+    // 다시 시도 · 앞으로 나올 때마다 다시 읽어야 점검이 끝난 것을 바로 알 수 있으므로 둘 다 stable 이 아니다.
+
+    /** 이 버전보다 낮은 앱은 막고 스토어로 보낸다. 비어 있으면 막지 않는다. */
+    data object MinVersion : FlagKey<String>(
+        key = "min_version",
+        serializer = String.serializer(),
+        defaultValue = "",
+        stable = false,
+    )
+
+    /** 켜져 있으면 모든 화면을 막고 "잠시 점검 중이에요" 를 띄운다. 문구 키는 따로 두지 않는다. */
+    data object Maintenance : FlagKey<Boolean>(
+        key = "maintenance",
+        serializer = Boolean.serializer(),
+        defaultValue = false,
+        stable = false,
+    )
+
     // ---- AB 테스트 ----
     // 배정을 바꾸면 같은 사용자가 다른 화면을 보게 되므로 전부 stable 이다.
 
@@ -122,6 +142,8 @@ sealed class FlagKey<T>(
             FetchTimeoutMillis,
             RetryBackoffMillis,
             HomeBanner,
+            MinVersion,
+            Maintenance,
         )
 
         /** AB 테스트. 값이 곧 변형이다. */

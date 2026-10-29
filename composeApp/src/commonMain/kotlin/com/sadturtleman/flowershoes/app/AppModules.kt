@@ -138,7 +138,7 @@ fun kkotsinModules(
                     // 연결돼 있는데 서버의 내 커플 id 가 비었다 = 상대가 해제했다. 다른 커플 id(다시 연결 중)는 해제가 아니다.
                     if (couple == null || couple.partnerUserId.isBlank()) false
                     else cloud.mailbox.serverCoupleId().let { r -> r.isSuccess && r.getOrNull() == null }
-                })
+                }, clock = get())
             }
         }
     },

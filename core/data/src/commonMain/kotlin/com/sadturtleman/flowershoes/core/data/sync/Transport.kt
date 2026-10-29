@@ -25,6 +25,9 @@ interface Mailbox {
     /** Reset a stalled connection after a sync timeout; persistent writes remain queued. */
     suspend fun reconnect() {}
 
+    /** 이 우편함이 던진 실패를 서버 오류 화면의 "오류 코드"로(예: Firestore 의 UNAVAILABLE). 모르면 null. */
+    fun errorCode(error: Throwable): String? = null
+
     suspend fun put(coupleId: String, toDevice: String, item: MailItem)
 
     suspend fun fetch(coupleId: String, myDevice: String): List<MailItem>

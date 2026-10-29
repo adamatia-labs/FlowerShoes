@@ -88,6 +88,10 @@ class FirestoreTransport(
         }
     }
 
+    /** Firestore 오류는 상태 이름(UNAVAILABLE · PERMISSION_DENIED …)을 서버 오류 화면의 코드로 쓴다. */
+    override fun errorCode(error: Throwable): String? =
+        (error as? dev.gitlive.firebase.firestore.FirebaseFirestoreException)?.code?.name
+
     override suspend fun fetch(coupleId: String, myDevice: String): List<MailItem> {
         val now = clock.now().toEpochMilliseconds()
         return ops(coupleId, myDevice).get().documents.mapNotNull { snap ->

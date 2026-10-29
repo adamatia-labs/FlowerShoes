@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    시스템 스플래시 아이콘(Figma 9 · 공통 상태 · 앱 시작의 icon/sprig). SplashScreen 아이콘 칸은 240dp(보이는 원 160dp)라
+    가지를 셸 스플래시와 같은 72dp 로 가운데 둔다. 모양은 designsystem 의 ic_sprig 와 같다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp" android:height="240dp"
+    android:viewportWidth="240" android:viewportHeight="240">
+    <group android:translateX="84" android:translateY="84" android:scaleX="1.2" android:scaleY="1.2">
+        <path android:pathData="M18.75 54.375C24.375 37.5 31.875 22.5 43.125 7.5" android:strokeColor="@color/kk_splash_plant" android:strokeWidth="1.8" android:strokeLineCap="round" />
+        <path android:pathData="M26.25 37.5C20.625 35.625 16.875 30.9375 16.875 26.25C22.5 27.1875 26.25 31.875 26.25 37.5ZM30 28.125C25.3125 25.3125 23.4375 20.625 24.375 15.9375C29.0625 17.8125 31.875 22.5 30 28.125ZM35.625 19.6875C39.375 15.9375 44.0625 15 47.8125 15.9375C45.9375 20.625 41.25 22.5 35.625 19.6875ZM28.125 36.5625C32.8125 33.75 38.4375 33.75 42.1875 36.5625C38.4375 39.375 32.8125 39.375 28.125 36.5625Z" android:fillColor="@color/kk_splash_plant" />
+    </group>
+</vector>

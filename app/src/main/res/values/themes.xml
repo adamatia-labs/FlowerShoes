@@ -2,4 +2,14 @@
 <resources>
 
     <style name="Theme.FlowerShoes" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+        시작 테마(SplashScreen API). canvas 바탕에 말린 꽃 가지 — 첫 프레임이 그려지면 Theme.FlowerShoes 로 바뀌고
+        공유 셸의 스플래시(꽃신 · 슬로건)가 이어서 신원 · 앱 막기 판단을 기다린다.
+    -->
+    <style name="Theme.FlowerShoes.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/kk_splash_canvas</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_sprig</item>
+        <item name="postSplashScreenTheme">@style/Theme.FlowerShoes</item>
+    </style>
 </resources>

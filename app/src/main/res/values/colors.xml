@@ -9,4 +9,7 @@
     <color name="white">#FFFFFFFF</color>
     <!-- 알림 강조색(디자인 토큰 rose) -->
     <color name="kk_rose">#FFC72C4D</color>
+    <!-- 시스템 스플래시(곰신 · 라이트 paper/canvas · deco/plant). 다크는 values-night. -->
+    <color name="kk_splash_canvas">#FFF7F1E8</color>
+    <color name="kk_splash_plant">#FF7C8B5A</color>
 </resources>
