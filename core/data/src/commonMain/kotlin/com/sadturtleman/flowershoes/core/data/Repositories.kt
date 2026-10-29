@@ -77,9 +77,14 @@ class ProfileRepository(
     /** 커플(연결). 혼자 모드면 null 이거나 상대가 비어 있다. */
     fun observeCouple(): Flow<com.sadturtleman.flowershoes.core.database.CoupleEntity?> = db.coupleDao().observe()
 
-    /** 커플 중 군인의 복무 일정. 혼자 모드에서 곰신이 입력한 값이어도 여기서 보인다. */
+    /**
+     * 커플 중 군인의 복무 일정. 혼자 모드에서 곰신이 입력한 값([PENDING_SOLDIER])이어도 여기서 보인다 —
+     * 군인이 직접 넣은 값이 있으면 그것이 먼저다(화면은 첫 줄을 쓴다).
+     */
     fun observeTimelines(): Flow<List<Pair<Service, ServiceTimeline>>> =
-        db.serviceDao().observeAll().map { list -> list.map { it.toModel() }.map { it to calculator.timeline(it) } }
+        db.serviceDao().observeAll().map { list ->
+            list.map { it.toModel() }.sortedBy { it.userId == PENDING_SOLDIER }.map { it to calculator.timeline(it) }
+        }
 
     /** 내 역할 · 이름. 연결돼 있으면 상대 폰에도 간다(이름은 "민준 ♥ 지수" · 편지 · 알림에 쓰인다). */
     suspend fun saveMe(role: Role, nickname: String, deviceName: String? = null, perks: Set<String>? = null) {

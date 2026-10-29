@@ -501,9 +501,15 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
     var sheet by remember { mutableStateOf<String?>(null) }
     val s = state.service
     val t = state.timeline
+    var draftBranch by remember { mutableStateOf(Branch.ARMY) }
     Page("군 정보", onBack) {
         if (s == null || t == null) {
-            Text("입대일이 아직 없어요. 군인 폰에서 입대일을 넣으면 여기에도 보여요.", style = KkTheme.type.body, color = c.sub)
+            // 아직 없으면 군종을 먼저 고르고(이 화면에만 기억) 입대일을 고르면 저장한다.
+            Group(null) {
+                KkListRow("군종", value = "${draftBranch.koreanName} · ${ServiceRulesTable.BUNDLED.ruleFor(draftBranch, Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths}개월", onClick = { sheet = "branch" })
+                Divider()
+                KkListRow("입대일", value = "", onClick = { sheet = "enlist" })
+            }
             return@Page
         }
         val months = ServiceRulesTable.BUNDLED.ruleFor(s.branch, s.enlistDate).serviceMonths
@@ -532,7 +538,10 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
             KkSheetHeader("군종", "복무 기간이 군종마다 달라요")
             Branch.entries.forEach { b ->
                 val m = ServiceRulesTable.BUNDLED.ruleFor(b, s?.enlistDate ?: Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths
-                KkSheetOption(b.koreanName, s?.branch == b, { viewModel.updateService(branch = b); sheet = null }, meta = "${m}개월")
+                KkSheetOption(b.koreanName, (s?.branch ?: draftBranch) == b, {
+                    if (s == null) draftBranch = b else viewModel.updateService(branch = b)
+                    sheet = null
+                }, meta = "${m}개월")
             }
         }
         "enlist", "discharge" -> {
@@ -543,7 +552,7 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
                 KkSheetHeader(if (enlist) "입대일" else "전역일", if (enlist) "훈련소 입소일을 골라 주세요" else "조기 전역 · 연장처럼 바뀐 날을 골라요. 연인 폰에도 같이 바뀌어요")
                 KkDatePicker(pick, { pick = it })
                 KkPrimaryButton("선택 완료", {
-                    if (enlist) viewModel.updateService(enlist = pick) else viewModel.overrideDischarge(pick)
+                    if (enlist) viewModel.updateService(branch = if (s == null) draftBranch else null, enlist = pick) else viewModel.overrideDischarge(pick)
                     sheet = null
                 }, Modifier.fillMaxWidth())
             }

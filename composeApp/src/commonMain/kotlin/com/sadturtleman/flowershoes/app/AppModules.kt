@@ -149,6 +149,7 @@ fun kkotsinModules(
         viewModel { MemoryViewModel(get(), get(), get(), get(), get(), clock = get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull(), get(), get(), bizLogger = get()) }
         viewModel { com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel(getOrNull(), get(), getOrNull(), get(), bizLogger = get()) }
+        viewModel { com.sadturtleman.flowershoes.feature.pairing.SoloArrivalViewModel(get(), get(), get()) }
         viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull()) }
     },
 )

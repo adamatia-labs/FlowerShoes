@@ -4,8 +4,11 @@ package com.sadturtleman.flowershoes.core.auth
 enum class AuthProvider { KAKAO, APPLE, GOOGLE }
 
 sealed interface SignInResult {
-    /** 로그인됨. [uid] 는 Firebase uid(카카오는 "kakao:{회원번호}"). */
-    data class Success(val uid: String, val provider: AuthProvider) : SignInResult
+    /**
+     * 로그인됨. [uid] 는 Firebase uid(카카오는 "kakao:{회원번호}").
+     * [displayName] 은 제공자가 알려 준 이름(카카오 닉네임 · Google 이름 · Apple 첫 로그인 이름) — 없을 수 있다.
+     */
+    data class Success(val uid: String, val provider: AuthProvider, val displayName: String? = null) : SignInResult
 
     data object Cancelled : SignInResult
 

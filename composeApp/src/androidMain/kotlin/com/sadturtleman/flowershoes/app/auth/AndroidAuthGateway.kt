@@ -69,13 +69,14 @@ class AndroidAuthGateway(
     override suspend fun signIn(provider: AuthProvider): SignInResult {
         val activity = CurrentActivity.activity ?: return SignInResult.Failed("화면을 찾지 못했어요")
         return try {
+            var name: String? = null
             val uid = when (provider) {
-                AuthProvider.KAKAO -> kakao(activity) ?: return SignInResult.Cancelled
+                AuthProvider.KAKAO -> kakao(activity) { name = it } ?: return SignInResult.Cancelled
                 AuthProvider.GOOGLE -> googleToken(activity)?.let { auth.signInWithCredential(GoogleAuthProvider.getCredential(it, null)).await().user?.uid }
                     ?: return SignInResult.Cancelled
                 AuthProvider.APPLE -> apple(activity)
             }
-            SignInResult.Success(uid, provider)
+            SignInResult.Success(uid, provider, name ?: auth.currentUser?.displayName?.takeIf { it.isNotBlank() })
         } catch (e: NotConfigured) {
             SignInResult.Failed(e.message ?: "로그인 설정 전이에요")
         } catch (e: Exception) {
@@ -90,13 +91,15 @@ class AndroidAuthGateway(
 
     private class NotConfigured(message: String) : Exception(message)
 
-    private suspend fun kakao(activity: Activity): String? {
+    /** 카카오 로그인 → uid. 함수가 닉네임을 알려 주면 [onName] 으로 넘긴다(처음 내 이름). */
+    private suspend fun kakao(activity: Activity, onName: (String) -> Unit): String? {
         if (keys.kakaoNativeAppKey.isBlank()) throw NotConfigured("카카오 로그인 설정 전이에요")
         val token = kakaoToken(activity) ?: return null
         @Suppress("UNCHECKED_CAST")
         val result = FirebaseFunctions.getInstance(region).getHttpsCallable("kakaoSignIn")
             .call(mapOf("accessToken" to token.accessToken)).await().getData() as Map<String, Any?>
         val custom = result["token"] as? String ?: error("커스텀 토큰이 없다")
+        (result["name"] as? String)?.takeIf { it.isNotBlank() }?.let(onName)
         return auth.signInWithCustomToken(custom).await().user?.uid
     }
 
