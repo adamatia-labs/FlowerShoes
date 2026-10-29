@@ -158,6 +158,8 @@ private fun MainShell() {
         overlay = Overlay.COMPOSE
     }
     val bookStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookStore>()
+    val bookPromo = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookPromo>()
+    val promoScope = androidx.compose.runtime.rememberCoroutineScope()
     // 그날의 한 줄 쓰기(다음 날 알림 · 홈 카드 · 일정 상세): 추억 탭 위에 쓰기 화면을 연다.
     val openDayLine = { eventId: String ->
         overlay = null
@@ -327,6 +329,7 @@ private fun MainShell() {
             )
             return@KkPageFlip
         }
+        Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding()) {
             Box(Modifier.weight(1f)) {
                 Crossfade(tab, animationSpec = tween(TAB_FADE_MS), label = "tab") { t ->
@@ -374,6 +377,24 @@ private fun MainShell() {
             // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 그날의 한 줄 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
             val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
             if (!reading) BottomBar(tab, onSelect = { tab = it })
+        }
+        // 추억 책 권유(전역 D-30 · 전역일, 각자 폰 한 번씩): 홈 위 가운데 팝업. 홈 화면은 그대로 둔다.
+        if (tab == Tab.HOME) bookPromo?.let { promo ->
+            val day by promo.day.collectAsState(initial = null)
+            day?.let { d ->
+                val memoryState by memory.state.collectAsState()
+                com.sadturtleman.flowershoes.feature.memory.BookPromoPopup(
+                    memoryState.cover, memoryState.summary,
+                    onOpenBook = {
+                        promoScope.launch { promo.close(d) }
+                        tab = Tab.MEMORY
+                        memory.onIntent(com.sadturtleman.flowershoes.feature.memory.MemoryIntent.Open(com.sadturtleman.flowershoes.feature.memory.MemoryPage.Book))
+                    },
+                    onNever = { promoScope.launch { promo.never() } },
+                    onClose = { promoScope.launch { promo.close(d) } },
+                )
+            }
+        }
         }
         }
     }

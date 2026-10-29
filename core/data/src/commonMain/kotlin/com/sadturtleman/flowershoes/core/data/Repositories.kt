@@ -1,12 +1,14 @@
 package com.sadturtleman.flowershoes.core.data
 
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import com.sadturtleman.flowershoes.core.database.BookCoverEntity
 import com.sadturtleman.flowershoes.core.database.DrawingEntity
 import com.sadturtleman.flowershoes.core.database.MemoryEntity
 import com.sadturtleman.flowershoes.core.database.UserEntity
 import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
+import com.sadturtleman.flowershoes.core.model.BookCover
 import com.sadturtleman.flowershoes.core.model.DayLine
 import com.sadturtleman.flowershoes.core.model.hasDayLine
 import com.sadturtleman.flowershoes.core.model.Event
@@ -405,6 +407,26 @@ class StatusRepository(
             OpKind.STATUS, "status", s.id,
             localWrite = { lamport -> db.statusDao().upsert(s.copy(lamport = lamport).toEntity()) },
             payload = { lamport -> OpPayload.StatusPut(s.copy(lamport = lamport)) },
+        )
+    }
+}
+
+/**
+ * 추억 책 표지(#23 결정 1): 산 사람이 고르고 두 사람이 같은 표지를 쓴다. 구매 뒤에도 언제든 바꾼다(PDF 는 다시 만든다).
+ * 커플에 하나인 값이라 조용한 종류(PROFILE)의 `bookcover` Op 으로 보내고, 받는 쪽은 행 LWW 로 합친다.
+ */
+class BookCoverRepository(
+    private val db: AppDatabase,
+    private val writer: SyncWriter,
+    private val identity: Identity,
+) {
+    fun observe(): Flow<BookCover> = db.bookCoverDao().observe().map { BookCover.from(it?.cover) }
+
+    suspend fun choose(cover: BookCover) {
+        writer.write(
+            OpKind.PROFILE, "book_cover", "book",
+            localWrite = { lamport -> db.bookCoverDao().upsert(BookCoverEntity(cover = cover.name, lamport = lamport, lastWriterDevice = identity.deviceId)) },
+            payload = { lamport -> OpPayload.BookCoverPut(cover, lamport, identity.deviceId) },
         )
     }
 }

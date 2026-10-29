@@ -146,6 +146,22 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         }
     }
 
+    /** 추억 책 권유 팝업(이 기기에만): 본 날 · 다시 보지 않기. 상대 폰은 따로 한 번씩 본다. */
+    val bookPromo: BookPromoStore = object : BookPromoStore {
+        override val seen: Flow<BookPromoSeen> = store.data.map { p ->
+            val s = p[BOOK_PROMO]?.split('|').orEmpty().toSet()
+            BookPromoSeen(d30 = BookPromoDay.D30.name in s, discharge = BookPromoDay.DISCHARGE.name in s, never = PROMO_NEVER in s)
+        }
+
+        override suspend fun markSeen(day: BookPromoDay) = add(day.name)
+
+        override suspend fun never() = add(PROMO_NEVER)
+
+        private suspend fun add(flag: String) {
+            store.edit { p -> p[BOOK_PROMO] = (p[BOOK_PROMO]?.split('|').orEmpty().filter { it.isNotEmpty() }.toSet() + flag).joinToString("|") }
+        }
+    }
+
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
     suspend fun reset() = store.edit { it.clear() }
 
@@ -168,6 +184,8 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val PENDING_INVITE = stringPreferencesKey("pending_invite")
         val DAYLINE_DISMISSED = stringPreferencesKey("dayline_dismissed")
         const val DAYLINE_KEEP = 20
+        val BOOK_PROMO = stringPreferencesKey("book_promo")
+        const val PROMO_NEVER = "NEVER"
     }
 }
 

@@ -3,6 +3,7 @@ package com.sadturtleman.flowershoes.feature.memory
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.AttachmentStore
+import com.sadturtleman.flowershoes.core.data.BookCoverRepository
 import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
@@ -14,6 +15,7 @@ import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.military.expectedName
 import com.sadturtleman.flowershoes.core.military.promotionName
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
+import com.sadturtleman.flowershoes.core.model.BookCover
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.Letter
@@ -29,6 +31,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -131,7 +137,31 @@ data class MonthDetail(
     val letters: List<MonthLetter>,
     val meets: List<MeetCard>,
     val drawings: Int,
+    /** 그 달의 그날의 한 줄(추억 책이 편지가 모자랄 때 쓴다). 편지가 세 통 이상인 달은 비워 둔다. */
+    val dayLines: List<MonthDayLine> = emptyList(),
 )
+
+/** 그날의 한 줄 한 사람 것(추억 책 한 달 쪽). [meta] 는 "10.19 · 면회 · 지수". */
+data class MonthDayLine(val date: LocalDate, val meta: String, val mine: Boolean, val text: String)
+
+/** 추억 책 한 달 쪽 오른쪽의 칸 하나: 편지 · 그날의 한 줄 · 빈칸. */
+sealed interface BookSlot {
+    data class Letter(val letter: MonthLetter) : BookSlot
+    data class Line(val line: MonthDayLine) : BookSlot
+    data object Empty : BookSlot
+}
+
+/** 한 달 쪽의 편지 칸 수. */
+const val BOOK_SLOTS = 3
+
+/**
+ * 한 달 쪽 편지 세 칸(#23 결정 2): 두 사람 편지를 섞어 글이 긴 순, 모자라면 그 달의 그날의 한 줄(날짜 순), 그것도 없으면 빈칸.
+ */
+fun bookSlots(letters: List<MonthLetter>, dayLines: List<MonthDayLine>): List<BookSlot> {
+    val picked = letters.sortedWith(compareByDescending<MonthLetter> { it.text.length }.thenBy { it.date }).take(BOOK_SLOTS).map { BookSlot.Letter(it) }
+    val lines = dayLines.sortedBy { it.date }.take(BOOK_SLOTS - picked.size).map { BookSlot.Line(it) }
+    return picked + lines + List(BOOK_SLOTS - picked.size - lines.size) { BookSlot.Empty }
+}
 
 /** 추억 책 전체 요약(표지 · 요약 쪽). */
 data class BookSummary(
@@ -152,6 +182,12 @@ data class BookSummary(
     val busiest: Pair<YearMonth, Int>?,
     /** 지나온 길: (날짜, 이름). */
     val milestones: List<Pair<LocalDate, String>>,
+    /** 군인 이름(마지막 장 "수고했어, 민준아."). */
+    val soldier: String = partner,
+    /** 마지막 장의 한마디: 가장 최근 편지의 글(글, 쓴 사람). */
+    val lastWord: Pair<String, String>? = null,
+    /** 책을 만든 날(표지 소인). */
+    val madeOn: LocalDate? = null,
 )
 
 /** 추억 탭 안에서 덮어 여는 화면(뒤로 가기는 하나씩 닫는다). */
@@ -171,6 +207,8 @@ data class MemoryState(
     val months: Map<YearMonth, MonthDetail> = emptyMap(),
     val summary: BookSummary? = null,
     val stack: List<MemoryPage> = emptyList(),
+    /** 추억 책 표지(두 사람 공유). */
+    val cover: BookCover = BookCover.DEFAULT,
     /** 이미 시작한 만남(진행 중 포함) — 그날의 한 줄을 쓸 수 있는 일정. 일정 id → 카드. */
     val dayLineMeets: Map<String, MeetCard> = emptyMap(),
     /** 추억 위쪽 [+ 그날의 한 줄] 이 여는 일정: 가장 최근에 끝난(진행 중이면 그것) 만남. */
@@ -191,6 +229,8 @@ sealed interface MemoryIntent {
     /** 그날에 사진을 붙인다(줄인 JPEG). 일정에 실려 상대 폰에도 간다. */
     data class AddMeetPhoto(val eventId: String, val jpeg: ByteArray) : MemoryIntent
     data class RemoveMeetPhoto(val eventId: String, val attachmentId: String) : MemoryIntent
+    /** 추억 책 표지를 고른다(두 사람 공유 — 상대 폰의 책도 바뀐다). */
+    data class ChooseCover(val cover: BookCover) : MemoryIntent
 }
 
 /**
@@ -203,6 +243,7 @@ class MemoryViewModel(
     private val events: EventRepository,
     profile: ProfileRepository,
     private val attachments: AttachmentStore,
+    private val covers: BookCoverRepository,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
 
@@ -222,17 +263,32 @@ class MemoryViewModel(
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
         val my = users.firstOrNull { it.id == me }?.nickname?.takeIf { it.isNotBlank() } ?: "나"
         val partner = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.nickname?.takeIf { it.isNotBlank() } ?: "연인"
-        my to partner
+        val soldier = if (users.firstOrNull { it.id == me }?.role == com.sadturtleman.flowershoes.core.model.Role.SOLDIER.name) my else partner
+        Triple(my, partner, soldier)
     }
+
+    private val range = events.observeRange(today.minus(DatePeriod(years = 3)), today.plus(DatePeriod(years = 1)))
+
+    /** 만남이 있던 달마다 그날의 한 줄(EventRepository.observeDayLinesIn — 추억 책이 편지 대신 채운다). */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val monthLines: kotlinx.coroutines.flow.Flow<Map<YearMonth, List<Event>>> = range
+        .map { es -> es.filter { it.deletedAt == null && it.hasDayLine }.map { YearMonth.of(it.start.date) }.distinct().sorted() }
+        .distinctUntilChanged()
+        .flatMapLatest { yms ->
+            if (yms.isEmpty()) flowOf(emptyMap())
+            else combine(yms.map { ym -> events.observeDayLinesIn(ym.year, ym.month).map { ym to it } }) { it.toMap() }
+        }
 
     val state: StateFlow<MemoryState> = combine(
         stack,
         letters.observeInbox(),
-        events.observeRange(today.minus(DatePeriod(years = 3)), today.plus(DatePeriod(years = 1))),
-        combine(names, profile.observeTimelines()) { n, t -> n to t.firstOrNull()?.second },
-        docs,
-    ) { pages, ls, es, (n, timeline), thumbs ->
-        build(pages, ls, es, n.first, n.second, timeline, thumbs)
+        range,
+        combine(names, profile.observeTimelines(), covers.observe()) { n, t, c -> Triple(n, t.firstOrNull()?.second, c) },
+        combine(docs, monthLines) { d, l -> d to l },
+    ) { pages, ls, es, (n, timeline, cover), (thumbs, lines) ->
+        build(pages, ls, es, n.first, n.second, timeline, thumbs, lines).let { st ->
+            st.copy(cover = cover, summary = st.summary?.copy(soldier = n.third))
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryState())
 
     init {
@@ -274,6 +330,7 @@ class MemoryViewModel(
                 _photos.update { it + (id to intent.jpeg) }
                 events.save(e.copy(photoIds = e.photoIds + id))
             }
+            is MemoryIntent.ChooseCover -> viewModelScope.launch { covers.choose(intent.cover) }
             is MemoryIntent.RemoveMeetPhoto -> viewModelScope.launch {
                 val e = events.get(intent.eventId) ?: return@launch
                 events.save(e.copy(photoIds = e.photoIds - intent.attachmentId))
@@ -295,6 +352,7 @@ class MemoryViewModel(
         partner: String,
         timeline: ServiceTimeline?,
         thumbs: Map<String, DrawingDocument?>,
+        lines: Map<YearMonth, List<Event>>,
     ): MemoryState {
         val meetEvents = es.filter { it.deletedAt == null && it.hasDayLine }.sortedBy { it.start }
         val pastMeets = meetEvents.filter { it.end.date <= today }
@@ -349,6 +407,12 @@ class MemoryViewModel(
                 letters = monthLetters,
                 meets = meets,
                 drawings = ls.filter { inMonth(it.date()) }.sumOf { it.drawingCount },
+                dayLines = if (monthLetters.size >= BOOK_SLOTS) emptyList() else lines[ym].orEmpty().flatMap { e ->
+                    val d = e.start.date
+                    e.dayLines.filterValues { it.text.isNotBlank() }.map { (author, line) ->
+                        MonthDayLine(d, "${d.md()} · ${e.type.label()} · ${nameOf(author)}", author == me, line.text)
+                    }
+                },
             )
         }
         val chapters = details.map { m ->
@@ -376,6 +440,10 @@ class MemoryViewModel(
             overnights = pastMeets.count { it.type == EventType.OVERNIGHT },
             vacations = pastMeets.count { it.type == EventType.VACATION },
             busiest = busiest,
+            lastWord = ls.filter { l -> l.blocks.any { it is LetterBlock.Text && it.text.isNotBlank() } }.maxByOrNull { it.visibleAt }?.let { l ->
+                l.blocks.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text.trim() }.trim() to nameOf(l.authorId)
+            },
+            madeOn = today,
             milestones = buildList {
                 timeline?.let { t ->
                     add(t.enlistDate to "입대")

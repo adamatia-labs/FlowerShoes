@@ -1,5 +1,6 @@
 package com.sadturtleman.flowershoes.core.data
 
+import com.sadturtleman.flowershoes.core.model.BookCover
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.model.Letter
@@ -55,6 +56,10 @@ sealed interface OpPayload {
         /** 산 것(lifetime · book). 상대 폰이 함께 쓴다. */
         val perks: List<String> = emptyList(),
     ) : OpPayload
+
+    /** 추억 책 표지(두 사람 공유). 조용한 종류(PROFILE)로 보낸다. 행 LWW(lamport, writerDevice). */
+    @Serializable @SerialName("bookcover")
+    data class BookCoverPut(val cover: BookCover, val lamport: Long, val writerDevice: String) : OpPayload
 
     @Serializable @SerialName("delete")
     data class Delete(val entity: DeletableEntity, val id: String, val lamport: Long, val atMs: Long, val writerDevice: String) : OpPayload

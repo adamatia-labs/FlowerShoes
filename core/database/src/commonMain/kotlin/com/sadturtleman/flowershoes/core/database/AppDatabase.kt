@@ -21,6 +21,7 @@ import kotlinx.coroutines.IO
         DrawingEntity::class, ReceiptEntity::class, AttachmentEntity::class, MemoryEntity::class,
         SyncOpEntity::class, StreamCounterEntity::class, RecvCursorEntity::class, RecvPendingEntity::class,
         PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class, LeaveGrantEntity::class, LetterDraftEntity::class,
+        BookCoverEntity::class,
     ],
     version = AppDatabase.VERSION,
     exportSchema = true,
@@ -29,6 +30,7 @@ import kotlinx.coroutines.IO
     // 7: 휴가 하나의 풀 · 기념일 일정(event.leaveGrantId · couple.anniversary 제거, event.repeatYearly). 출시 전이라 파괴적 이전.
     // 8: 쓰던 편지 여러 통(letter_draft 표, 이 기기에만).
     // 9: 그날의 한 줄(event.meetNotes → event.dayLines). 출시 전이라 파괴적 이전.
+    // 10: 추억 책 표지(book_cover 표, 두 사람이 함께 고른 값). 출시 전이라 파괴적 이전.
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
@@ -48,9 +50,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
     abstract fun syncDao(): SyncDao
     abstract fun letterDraftDao(): LetterDraftDao
+    abstract fun bookCoverDao(): BookCoverDao
 
     companion object {
-        const val VERSION = 9
+        const val VERSION = 10
         const val FILE_NAME = "kkotsin.db"
     }
 }
