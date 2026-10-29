@@ -284,7 +284,7 @@ class LetterViewModel(
                 // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번.
                 ui.value.open?.letter?.id?.let { letters.markRead(ReceiptEntity.HEART, it) }
                 letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
-                bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = ComposeDraft().font, scheduled = false, drawings = 0, photos = 0, reply = true))
+                bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
                 toast("고마워를 보냈어요")
             }
             is LetterIntent.Open -> open(intent.letterId)
@@ -342,7 +342,7 @@ class LetterViewModel(
     /** 혼자 모드(연결 전)면 내 폰에 쌓인 내 편지 수를 남긴다 — 연결하는 순간 한꺼번에 전달되는 양이다. */
     private suspend fun recordSoloQueue(view: String) {
         if (!profile.observeCouple().first()?.partnerUserId.isNullOrBlank()) return
-        bizLogger.record(view, BizEvent.SoloLettersQueued(count = letters.observeInbox().first().count { it.authorId == me }))
+        bizLogger.record(view, BizEvent.SoloLettersQueued(count = letters.countMine()))
     }
 
     private fun open(letterId: String) {

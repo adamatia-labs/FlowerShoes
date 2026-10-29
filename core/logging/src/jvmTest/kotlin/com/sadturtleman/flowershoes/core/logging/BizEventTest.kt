@@ -15,7 +15,7 @@ class BizEventTest {
     @Test
     fun `모든 이벤트 이름은 GA4 한도 안이고 소문자 · 숫자 · 밑줄뿐이다`() {
         samples.forEach { event ->
-            assertTrue(event.name.length <= 40, "${event.name} 이 40자를 넘는다")
+            assertTrue(event.name.length <= Ga4Limits.MAX_EVENT_NAME_LENGTH, "${event.name} 이 너무 길다")
             assertTrue(Regex("[a-z][a-z0-9_]*").matches(event.name), "${event.name} 에 쓸 수 없는 글자가 있다")
         }
     }
@@ -23,7 +23,7 @@ class BizEventTest {
     /** 화면 이름(view_name)이 한 자리를 더 쓴다. */
     @Test
     fun `모든 이벤트의 파라미터는 화면 이름을 더해도 25개 안이다`() {
-        samples.forEach { event -> assertTrue(event.parameters.size + 1 <= 25, "${event.name} 파라미터가 너무 많다") }
+        samples.forEach { event -> assertTrue(event.parameters.size + 1 <= Ga4Limits.MAX_PARAMETERS, "${event.name} 파라미터가 너무 많다") }
     }
 
     @Test
@@ -46,7 +46,7 @@ class BizEventTest {
         val parts = BizEvent.FlagsResolved.split(environment = "prod", assignments = assignments)
 
         assertEquals(3, parts.size)
-        parts.forEach { assertTrue(it.parameters.size + 1 <= 25) }
+        parts.forEach { assertTrue(it.parameters.size + 1 <= Ga4Limits.MAX_PARAMETERS) }
         assertEquals(listOf(1, 2, 3), parts.map { it.parameters["part"] })
         assertTrue(parts.all { it.parameters["environment"] == "prod" })
         assertEquals(assignments, parts.flatMap { it.assignments.entries }.associate { it.key to it.value })

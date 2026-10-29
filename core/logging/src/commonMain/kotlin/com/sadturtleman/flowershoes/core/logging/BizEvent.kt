@@ -68,7 +68,7 @@ sealed interface BizEvent {
 
         companion object {
             /** 한 조각에 싣는 플래그 수. GA4 한도 25 에서 view_name · environment · part 를 뺐다. */
-            const val FLAGS_PER_PART = 22
+            const val FLAGS_PER_PART = Ga4Limits.MAX_PARAMETERS - 3
 
             /** 플래그 수만큼 파라미터가 늘어나므로, GA4 한도를 넘지 않게 [FLAGS_PER_PART] 개씩 나눈다. */
             fun split(environment: String, assignments: Map<String, String>): List<FlagsResolved> =

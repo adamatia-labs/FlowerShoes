@@ -71,6 +71,8 @@ fun MainViewController(
         val settingsPath = requireNotNull(support?.path) + "/kkotsin_device.preferences_pb"
         // Firebase 는 Swift 쪽(KkotsinApp)이 GoogleService-Info.plist 가 있을 때만 configure 한다.
         val firebase = com.sadturtleman.flowershoes.core.firebase.firebaseConfigured()
+        // 디버그는 GA4 자동 수집도 끈다(Info.plist 값과 함께).
+        if (firebase && kotlin.native.Platform.isDebugBinary) com.sadturtleman.flowershoes.core.logging.disableFirebaseAnalyticsCollection()
         val cloud = if (firebase) {
             val t = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
             CloudBackend(
