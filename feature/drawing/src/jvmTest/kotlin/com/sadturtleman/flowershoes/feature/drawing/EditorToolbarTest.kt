@@ -12,11 +12,6 @@ class EditorToolbarTest {
     }
 
     @Test
-    fun `틀 시트에는 없음과 폴라로이드만 나온다`() {
-        assertEquals(listOf("없음", "폴라로이드"), DrawingFrame.entries.map { it.label })
-    }
-
-    @Test
     fun `붓을 고른 채 붓을 한 번 더 누르면 펜 시트가 열린다`() {
         val s = DrawingEditorState().tap(ToolbarItem.BRUSH)
         assertEquals(EditorSheet.PEN, s.sheet)

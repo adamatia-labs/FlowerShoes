@@ -6,9 +6,6 @@ enum class ToolbarItem { BRUSH, ERASER, STICKER, PHOTO, FRAME }
 /** 툴바에서 여는 시트. */
 enum class EditorSheet { PEN, STICKER, PHOTO, FRAME }
 
-/** 틀(액자). 출시에는 지금 있는 것만 — 우표 · 둥근 액자 · 필름은 출시 뒤(#69 결정). */
-enum class DrawingFrame(val label: String) { NONE("없음"), POLAROID("폴라로이드") }
-
 /** 펜 시트 한 칸. [lifetime] 이면 꽃신 평생. */
 data class PenChoice(val tool: EditorTool, val label: String, val lifetime: Boolean)
 

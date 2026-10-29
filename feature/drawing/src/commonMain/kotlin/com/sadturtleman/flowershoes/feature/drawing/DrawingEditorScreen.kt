@@ -556,27 +556,21 @@ private fun PhotoSheet(state: DrawingEditorState, onIntent: (DrawingIntent) -> U
 }
 
 /**
- * 틀(Figma 틀 고르기): 보낼 때 둘러 줄 틀(지금은 없음 · 폴라로이드만) + 따라 그릴 안내선.
+ * 틀(Figma 틀 고르기): 받는 쪽은 그림을 늘 폴라로이드로 보니 틀은 폴라로이드 하나(고른 채로 보여 주기만) + 따라 그릴 안내선.
+ * 액자 고르기는 DrawingMeta 에 틀 필드가 생길 때(출시 뒤).
  */
 @Composable
 private fun FrameSheet(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
     val c = KkTheme.colors
     DrawingSheet("틀", onIntent) {
-        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            DrawingFrame.entries.forEach { f ->
-                val on = state.frame == f
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                    val shape = RoundedCornerShape(KkRadius.lg)
-                    Box(
-                        Modifier.size(56.dp, 64.dp).clip(shape).background(c.canvas)
-                            .then(if (on) Modifier.border(1.5.dp, c.accent, shape) else Modifier)
-                            .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetFrame(f)) }
-                            .semantics { contentDescription = "틀 ${f.label}"; selected = on },
-                        contentAlignment = Alignment.Center,
-                    ) { FrameThumb(f) }
-                    Text(f.label, style = KkTheme.type.caption, color = if (on) c.accent else c.sub)
-                }
-            }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+            val shape = RoundedCornerShape(KkRadius.lg)
+            Box(
+                Modifier.size(56.dp, 64.dp).clip(shape).background(c.canvas).border(1.5.dp, c.accent, shape)
+                    .semantics { contentDescription = "틀 폴라로이드"; selected = true },
+                contentAlignment = Alignment.Center,
+            ) { PolaroidThumb() }
+            Text("폴라로이드", style = KkTheme.type.caption, color = c.accent)
         }
         Text("따라 그리기", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
         Grid(TEMPLATES) { (id, label), modifier ->
@@ -589,24 +583,18 @@ private fun FrameSheet(state: DrawingEditorState, onIntent: (DrawingIntent) -> U
     }
 }
 
-/** 틀 견본: 없음은 점선 칸, 폴라로이드는 흰 틀 + 사진 칸. 폴라로이드 틀은 콘텐츠라 흰색 고정. */
+/** 폴라로이드 견본: 흰 틀 + 사진 칸. 폴라로이드 틀은 콘텐츠라 흰색 고정. */
 @Composable
-private fun FrameThumb(frame: DrawingFrame) {
-    val c = KkTheme.colors
-    when (frame) {
-        DrawingFrame.NONE -> Canvas(Modifier.size(30.dp, 36.dp)) {
-            drawRect(c.sub, style = DrawStroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))))
-        }
-        DrawingFrame.POLAROID -> Box(
-            Modifier.size(32.dp, 40.dp).kkElevation(KkElevation.Low, RoundedCornerShape(0.dp)).background(Color.White).padding(3.dp),
-        ) { Box(Modifier.size(26.dp).background(c.line)) }
-    }
+private fun PolaroidThumb() {
+    Box(
+        Modifier.size(32.dp, 40.dp).kkElevation(KkElevation.Low, RoundedCornerShape(0.dp)).background(Color.White).padding(3.dp),
+    ) { Box(Modifier.size(26.dp).background(KkTheme.colors.line)) }
 }
 
 // ── 보내기 ────────────────────────────────────────────────────────────────
 
 /**
- * 완료 다음(Figma 편지에 붙이기 · 그림만 보내기): 고른 틀로 그림을 보여 주고, 아래 다시 그리기 · 붙이기(보내기).
+ * 완료 다음(Figma 편지에 붙이기 · 그림만 보내기): 받는 쪽처럼 폴라로이드로 그림을 보여 주고, 아래 다시 그리기 · 붙이기(보내기).
  * [forLetter] 면 "편지에는 이렇게 붙어요"(붙이기 → 편지에), 아니면 "그림 한 장 편지"(글 · 위젯 · 예약을 고르고 바로 보내기).
  */
 @Composable
@@ -625,13 +613,8 @@ fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
             val caption = state.caption.trim().ifBlank { null }
-            when (state.frame) {
-                DrawingFrame.POLAROID -> KkPolaroid(Modifier.width(225.dp).padding(top = KkSpacing.sm), tilt = 3f, caption = caption) {
-                    Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { DrawingView(state.preview) }
-                }
-                DrawingFrame.NONE -> Box(
-                    Modifier.fillMaxWidth().kkElevation(KkElevation.Low, RoundedCornerShape(KkRadius.md)).clip(RoundedCornerShape(KkRadius.md)).background(Color.White),
-                ) { DrawingView(state.preview) }
+            KkPolaroid(Modifier.width(225.dp).padding(top = KkSpacing.sm), tilt = 3f, caption = caption) {
+                Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) { DrawingView(state.preview) }
             }
             Text(
                 if (forLetter) "편지에는 이렇게 붙어요" else "그림 한 장 편지",

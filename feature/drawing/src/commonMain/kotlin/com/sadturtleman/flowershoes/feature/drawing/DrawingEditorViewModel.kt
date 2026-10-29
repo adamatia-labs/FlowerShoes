@@ -97,8 +97,6 @@ data class DrawingEditorState(
     val pen: EditorTool = EditorTool.PEN,
     /** 열린 시트. */
     val sheet: EditorSheet? = null,
-    /** 보내기 화면 미리보기의 틀. */
-    val frame: DrawingFrame = DrawingFrame.POLAROID,
     val color: Long = PEN_COLORS[1],
     val brush: BrushSize = BrushSize.M,
     val sticker: String = "img:heart/00",
@@ -138,7 +136,7 @@ sealed interface DrawingIntent {
     /** 툴바 한 칸. */
     data class Tap(val item: ToolbarItem) : DrawingIntent
     data object CloseSheet : DrawingIntent
-    data class SetFrame(val frame: DrawingFrame) : DrawingIntent
+
     data class SetColor(val argb: Long) : DrawingIntent
     data class SetBrush(val brush: BrushSize) : DrawingIntent
     data class SetSticker(val id: String) : DrawingIntent
@@ -263,7 +261,6 @@ class DrawingEditorViewModel(
             is DrawingIntent.SetTool -> _state.update { it.pickTool(intent.tool) }
             is DrawingIntent.Tap -> _state.update { it.tap(intent.item) }
             DrawingIntent.CloseSheet -> _state.update { it.copy(sheet = null) }
-            is DrawingIntent.SetFrame -> _state.update { it.copy(frame = intent.frame) }
             // 색을 고르면 지우개 · 스티커에서 마지막 펜으로.
             is DrawingIntent.SetColor -> _state.update { it.copy(color = intent.argb, tool = if (it.tool.isPen) it.tool else it.pen) }
             is DrawingIntent.SetBrush -> _state.update { it.copy(brush = intent.brush) }
