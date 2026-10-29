@@ -16,3 +16,7 @@ Default vocabulary: needs-triage, needs-info, ready-for-agent, ready-for-human, 
 ### Domain docs
 
 Single-context: one root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Code review standards
+
+Repo rules the Standards review axis checks (analytics events: only `BizEvent`s, no user-entered text, no masking). See `docs/agents/code-review-standards.md`.

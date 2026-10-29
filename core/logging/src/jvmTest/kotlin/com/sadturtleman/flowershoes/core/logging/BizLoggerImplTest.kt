@@ -81,7 +81,7 @@ class BizLoggerImplTest {
         advanceUntilIdle()
 
         assertEquals(
-            mapOf("environment" to "dev", "flag_new_onboarding" to "true"),
+            mapOf("environment" to "dev", "part" to 1, "flag_new_onboarding" to "true"),
             shooter.received.single().event.parameters,
         )
     }

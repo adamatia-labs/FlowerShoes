@@ -285,6 +285,9 @@ class LetterRepository(
 
     suspend fun drawingsOf(letterId: String): List<DrawingEntity> = db.drawingDao().forLetter(letterId)
 
+    /** 내가 쓴 편지 수(예약 편지 포함, 지운 것 빼고). 혼자 모드에서 연결하는 순간 한꺼번에 전달되는 양이다. */
+    suspend fun countMine(): Int = db.letterDao().byAuthor(identity.userId).count { it.deletedAtMs == null }
+
     suspend fun send(letter: Letter, drawings: List<DrawingMeta>): String {
         val kind = when {
             letter.visibleAt > clock.now() -> OpKind.SCHEDULED

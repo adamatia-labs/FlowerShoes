@@ -139,10 +139,10 @@ fun kkotsinModules(
         viewModel { HomeViewModel(get(), get(), get(), get(), get(), get()) }
         viewModel { CalendarViewModel(get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
-        viewModel { LetterViewModel(get(), get(), get(), get(), get()) }
+        viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
         viewModel { MemoryViewModel(get(), get(), get(), get(), clock = get()) }
-        viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
+        viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull(), bizLogger = get()) }
         viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull()) }
     },
 )
