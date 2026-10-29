@@ -40,7 +40,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlin.time.Clock
 import kotlinx.datetime.DatePeriod
@@ -210,7 +209,7 @@ private fun KkTimePanel(input: KkTimeInput, onChange: (KkTimeInput) -> Unit, ok:
                 listOf(false to "오전", true to "오후").forEach { (pm, label) ->
                     val on = input.pm == pm
                     Box(
-                        Modifier.width(64.dp).height(44.dp).clip(RoundedCornerShape(KkRadius.sm)).background(if (on) c.accent else Color.Transparent)
+                        Modifier.width(64.dp).height(48.dp).clip(RoundedCornerShape(KkRadius.sm)).background(if (on) c.accent else Color.Transparent)
                             .clickable(role = Role.RadioButton) { onChange(input.copy(pm = pm)) }.semantics { selected = on },
                         contentAlignment = Alignment.Center,
                     ) { Text(label, style = KkTheme.type.labelBold, color = if (on) c.canvas else c.sub) }
@@ -235,7 +234,7 @@ private fun TimeBox(value: String, label: String, onValue: (String) -> Unit) {
         value = value,
         onValueChange = onValue,
         singleLine = true,
-        textStyle = KkTheme.type.ddayL.copy(color = c.ink, textAlign = TextAlign.Center, fontSize = 48.sp),
+        textStyle = KkTheme.type.ddayM.copy(color = c.ink, textAlign = TextAlign.Center),
         cursorBrush = SolidColor(c.accent),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
         modifier = Modifier.size(104.dp, 94.dp).clip(shape)

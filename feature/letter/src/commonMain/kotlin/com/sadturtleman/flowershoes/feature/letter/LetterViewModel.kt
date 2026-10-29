@@ -378,7 +378,7 @@ class LetterViewModel(
             LetterIntent.NewCompose -> {
                 keeper.flush(ui.value.draft)
                 keeper.startNew()
-                ui.update { it.freshDraft().copy(resumeOffer = true) }
+                ui.update { it.freshDraft().copy(resumeOffer = true, done = null) }
             }
             is LetterIntent.ResumeDraft -> resume(intent.id)
             LetterIntent.DismissResume -> ui.update { it.copy(resumeOffer = false) }
@@ -411,7 +411,12 @@ class LetterViewModel(
                         return@launch
                     }
                     // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번. 답장은 이미 갔으니 기록이 실패해도 되돌리지 않는다.
-                    runCatching { letters.markRead(ReceiptEntity.HEART, open.letter.id) }
+                    try {
+                        letters.markRead(ReceiptEntity.HEART, open.letter.id)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                    }
                     bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
                     toast("${names.first().second}에게 고마워를 보냈어요")
                 }
@@ -432,7 +437,7 @@ class LetterViewModel(
                 bizLogger.record(BizView.DRAWING_SEND, BizEvent.DrawingSent(scheduled = intent.revealAt != null, withCaption = !intent.caption.isNullOrBlank()))
                 recordSoloQueue(BizView.DRAWING_SEND)
                 val partner = state.value.partnerName
-                if (intent.revealAt != null) toast("${intent.revealAt.month.ordinal + 1}월 ${intent.revealAt.day}일 ${intent.revealAt.hour}시에 ${partner}에게 도착해요")
+                if (intent.revealAt != null) toast("${opensAt(intent.revealAt)}에 ${partner}에게 도착해요")
                 else toast("${partner}에게 그림을 보냈어요", openLetterId = letter.id)
             }
             is LetterIntent.Delete -> viewModelScope.launch {
@@ -491,7 +496,11 @@ class LetterViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ui.update { s -> if (keeper.currentId == draftId) s.copy(draft = s.draft.copy(sending = false)) else s }
+                if (keeper.currentId == draftId) {
+                    ui.update { s -> s.copy(draft = s.draft.copy(sending = false)) }
+                    // 보내는 동안엔 저장하지 않았다 — 쓰던 편지로 다시 남긴다.
+                    keeper.edited(ui.value.draft)
+                }
                 toast("보내지 못했어요", kind = LetterToast.Kind.ERROR)
                 return@launch
             }
@@ -500,9 +509,12 @@ class LetterViewModel(
             // 보낸 편지는 쓰던 편지 목록에서 빠진다. 아직 이 편지를 보고 있으면 빈 편지지로.
             val stillHere = keeper.currentId == draftId
             keeper.sent(draftId)
-            val done = if (d.revealAt != null) ComposeDone.Scheduled else sentNote(letter)
-            ui.update { (if (stillHere) it.freshDraft() else it).copy(done = done) }
-            if (d.revealAt != null) toast("${d.revealAt.month.ordinal + 1}월 ${d.revealAt.day}일 ${d.revealAt.hour}시에 도착해요")
+            // 보내는 사이 화면을 나갔거나 다른 편지를 열었으면 보냄 화면은 띄우지 않는다(다음 편지 쓰기를 가로채지 않게).
+            if (stillHere) {
+                val done = if (d.revealAt != null) ComposeDone.Scheduled else sentNote(letter)
+                ui.update { it.freshDraft().copy(done = done) }
+            }
+            if (d.revealAt != null) toast("${opensAt(d.revealAt)}에 도착해요")
         }
     }
 
@@ -513,6 +525,7 @@ class LetterViewModel(
         val alone = solo.first()
         return ComposeDone.Sent(
             line = letter.firstLine(),
+            // 받는 사람 편지함에 보일 봉투 그대로: 보낸 사람(나) 이름 · 시각.
             meta = envelopeMeta(my, mine = false, at = at, now = clock.now().toLocalDateTime(SEOUL)),
             stamp = if (alone) "대기" else stampText(discharge.first(), at.date),
             partner = partner,

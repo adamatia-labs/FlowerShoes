@@ -93,7 +93,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.sadturtleman.flowershoes.core.designsystem.KkScheduleDialogs
 import com.sadturtleman.flowershoes.core.designsystem.KkBanner
-import com.sadturtleman.flowershoes.core.designsystem.KkDialog
 import com.sadturtleman.flowershoes.core.designsystem.KkDialogHost
 import com.sadturtleman.flowershoes.core.designsystem.KkToastType
 import com.sadturtleman.flowershoes.core.designsystem.hhmm
@@ -507,7 +506,7 @@ fun LetterComposeRoute(
         ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
     val lifetimeStore = remember { koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>() }
     var price by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(lifetimeStore) { price = runCatching { lifetimeStore?.price() }.getOrNull() }
+    LaunchedEffect(lifetimeStore) { price = lifetimeStore?.price() }
     val focus = LocalFocusManager.current
     var lifetimeSheet by remember { mutableStateOf(false) }
     var paperSheet by remember { mutableStateOf(false) }
@@ -555,21 +554,18 @@ fun LetterComposeRoute(
         )
         ToastHost(viewModel.toasts, viewModel::toastShown) {}
         if (leaving) {
-            // Figma 편지 쓰기 · 나가기 확인: 지우기 · 저장하고 나가기. 바깥을 누르면 계속 쓴다.
-            KkDialogHost(onDismiss = { leaving = false }) {
-                KkDialog(
-                    title = "쓰던 편지는 임시저장할까요?", body = "",
-                    cancel = "지우기", onCancel = {
-                        leaving = false
-                        viewModel.onIntent(LetterIntent.DeleteDraft(state.draftId))
-                        onClose()
-                    },
-                    confirm = "저장하고 나가기", onConfirm = {
-                        leaving = false
-                        onClose()
-                    },
-                )
-            }
+            LeaveDialog(
+                onDiscard = {
+                    leaving = false
+                    viewModel.onIntent(LetterIntent.DeleteDraft(state.draftId))
+                    onClose()
+                },
+                onSave = {
+                    leaving = false
+                    onClose()
+                },
+                onStay = { leaving = false },
+            )
         }
     }
     val resumable = state.resumable
@@ -668,6 +664,32 @@ fun LetterComposeRoute(
     }
 }
 
+/**
+ * 나가기 확인(Figma 편지 쓰기 · 나가기 확인): 지우기 · 저장하고 나가기. 지우기는 되돌릴 수 없어 취소를 함께 둔다(design.md 확인 창 규칙).
+ */
+@Composable
+private fun LeaveDialog(onDiscard: () -> Unit, onSave: () -> Unit, onStay: () -> Unit) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.xl)
+    KkDialogHost(onDismiss = onStay) {
+        Column(
+            Modifier.width(312.dp).kkElevation(KkElevation.High, shape).clip(shape).background(c.surface)
+                .padding(start = KkSpacing.xxl, end = KkSpacing.xxl, top = KkSpacing.xxl, bottom = KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+        ) {
+            Text("쓰던 편지는 임시저장할까요?", style = KkTheme.type.title, color = c.ink)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, Alignment.End)) {
+                KkButton("지우기", onDiscard, style = KkButtonStyle.Ghost, size = KkButtonSize.M)
+                KkButton("저장하고 나가기", onSave, size = KkButtonSize.M)
+            }
+            Box(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.full)).clickable(role = Role.Button, onClick = onStay),
+                contentAlignment = Alignment.Center,
+            ) { Text("취소", style = KkTheme.type.label, color = c.sub) }
+        }
+    }
+}
+
 /** 스토어 가격을 못 읽었을 때(설정 › 꽃신 평생과 같은 값). */
 private const val LIFETIME_PRICE = "7,900원"
 
@@ -698,7 +720,7 @@ fun LetterComposeScreen(
             trailingText = "임시저장", trailingEnabled = !d.isEmpty && !d.sending, onTrailing = { onIntent(LetterIntent.SaveDraft) },
         )
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.xs)) {
-            PaperCard(d, paper, state.draftThumbs, state.draftPhotos, onIntent, partner = state.partnerName)
+            PaperCard(d, paper, state.draftThumbs, state.draftPhotos, onIntent)
         }
         Column(
             Modifier.fillMaxWidth().padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
@@ -726,18 +748,18 @@ private fun ScheduledChip(at: LocalDateTime, onEdit: () -> Unit, onClear: () -> 
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.full)
     Row(
-        Modifier.clip(shape).background(c.tag).heightIn(min = 40.dp),
+        Modifier.clip(shape).background(c.tag).heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            Modifier.clickable(role = Role.Button, onClick = onEdit).heightIn(min = 40.dp).padding(start = 14.dp, end = KkSpacing.xs),
+            Modifier.clickable(role = Role.Button, onClick = onEdit).heightIn(min = 48.dp).padding(start = 14.dp, end = KkSpacing.xs),
             horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
         ) {
             KkIcon(KkIcons.Clock, tint = c.ink, size = 16.dp)
             Text(arrivalLabel(at), style = KkTheme.type.labelBold, color = c.ink)
         }
         Box(
-            Modifier.size(40.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClear).semantics { contentDescription = "예약 지우기" },
+            Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClear).semantics { contentDescription = "예약 지우기" },
             contentAlignment = Alignment.Center,
         ) { KkIcon(KkIcons.Close, tint = c.sub, size = 10.dp) }
     }
@@ -754,18 +776,18 @@ private fun PaperRow(selected: Paper, onPick: (Paper) -> Unit, onMore: () -> Uni
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xxs), verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("편지지", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(end = KkSpacing.sm))
+        Text("편지지", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(end = KkSpacing.xs))
         shown.forEach { p ->
             Box(
-                Modifier.size(44.dp).clickable(role = Role.RadioButton) { onPick(p) }
+                Modifier.size(48.dp).clickable(role = Role.RadioButton) { onPick(p) }
                     .semantics { this.selected = p == selected; contentDescription = "편지지 ${p.label}" },
                 contentAlignment = Alignment.Center,
             ) { PaperSwatch(p, on = p == selected) }
         }
         Text(
             "+${Paper.entries.count { it.lifetime }} 평생", style = KkTheme.type.caption, color = c.sub,
-            modifier = Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onMore)
-                .padding(horizontal = KkSpacing.xs, vertical = 15.dp),
+            modifier = Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onMore)
+                .padding(vertical = 17.dp),
         )
     }
 }
@@ -882,7 +904,6 @@ private fun PaperCard(
     thumbs: Map<String, DrawingDocument>,
     photos: Map<String, ByteArray>,
     onIntent: (LetterIntent) -> Unit,
-    partner: String = "",
 ) {
     val c = KkTheme.colors
     val look = paper.look()
@@ -948,7 +969,7 @@ private fun PaperCard(
                     editableText = AnnotatedString(field.text)
                 },
                 decorationBox = { inner ->
-                    Box { if (d.text.isEmpty() && partner.isNotEmpty()) Text("${partner}에게…", style = body.copy(color = hint)); inner() }
+                    inner()
                 },
             )
             // 글 속 자리(OBJ) 위에 그림 · 사진을 그린다. 누르면 고른 테두리 + 빼기.
