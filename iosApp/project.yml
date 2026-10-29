@@ -72,6 +72,13 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
         OTHER_LDFLAGS: "$(inherited) -framework ComposeApp"
+      # 디버그는 GA4 자동 수집(first_open · session_start · screen_view)도 끈다(Info.plist 의 FIREBASE_ANALYTICS_COLLECTION_ENABLED).
+      # BizEvent 는 디버그 바이너리면 이미 표준 출력으로만 간다.
+      configs:
+        Debug:
+          KKOTSIN_ANALYTICS_COLLECTION: "NO"
+        Release:
+          KKOTSIN_ANALYTICS_COLLECTION: "YES"
     entitlements:
       path: App/Kkotsin.entitlements
       properties:
@@ -142,6 +149,8 @@ targets:
         KkotsinAppEnv: $(APP_ENV)
         # GA4 가 광고 개인화 신호를 내지 않는다. AdMob 이 AdSupport 를 링크하므로 Core 변형만으로는 막을 수 없다.
         GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS: false
+        # 디버그 구성은 NO(위 configs) — 개발 중의 자동 수집 이벤트가 GA4 지표에 섞이지 않게.
+        FIREBASE_ANALYTICS_COLLECTION_ENABLED: $(KKOTSIN_ANALYTICS_COLLECTION)
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
           - SKAdNetworkIdentifier: 4fzdc2evr5.skadnetwork

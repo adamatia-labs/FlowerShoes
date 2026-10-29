@@ -16,6 +16,10 @@ package com.sadturtleman.flowershoes.core.logging
  *
  * [name] 은 수집 쪽과 맞춘 값이라 한번 정하면 바꾸지 않는다 —
  * 바꾸면 그 시점을 기준으로 지표가 둘로 갈린다. 코드에서 부르는 이름만 바꾼다.
+ *
+ * 값에는 화면 이름 · 선택지(앱이 정한 id) · 숫자 · 참거짓만 싣는다. 사용자가 입력한 글자
+ * (편지 본문 · 제목 · 그림 한 줄 · 닉네임 · 코드)는 어떤 모양으로도 싣지 않고, 그래서 마스킹도 두지 않는다
+ * (docs/agents/code-review-standards.md). GA4 한도는 이름 40자 · 파라미터 25개(view_name 포함)다.
  */
 sealed interface BizEvent {
 
@@ -55,10 +59,23 @@ sealed interface BizEvent {
     data class FlagsResolved(
         val environment: String,
         val assignments: Map<String, String>,
+        /** 플래그가 많아 [split] 으로 나뉘었을 때 몇 번째 조각인가(1부터). */
+        val part: Int = 1,
     ) : BizEvent {
         override val name = "flags_resolved"
         override val parameters: Map<String, Any?> =
-            mapOf("environment" to environment) + assignments.mapKeys { (key, _) -> "flag_$key" }
+            mapOf("environment" to environment, "part" to part) + assignments.mapKeys { (key, _) -> "flag_$key" }
+
+        companion object {
+            /** 한 조각에 싣는 플래그 수. GA4 한도 25 에서 view_name · environment · part 를 뺐다. */
+            const val FLAGS_PER_PART = 22
+
+            /** 플래그 수만큼 파라미터가 늘어나므로, GA4 한도를 넘지 않게 [FLAGS_PER_PART] 개씩 나눈다. */
+            fun split(environment: String, assignments: Map<String, String>): List<FlagsResolved> =
+                assignments.entries.chunked(FLAGS_PER_PART)
+                    .ifEmpty { listOf(emptyList()) }
+                    .mapIndexed { i, chunk -> FlagsResolved(environment, chunk.associate { it.key to it.value }, part = i + 1) }
+        }
     }
 
     /**
@@ -82,4 +99,96 @@ sealed interface BizEvent {
         override val name = "layout_toggle"
         override val parameters: Map<String, Any?> = mapOf("layout" to layout)
     }
+
+    /** 연결 초대(링크 · 코드)를 만들었다. */
+    data object PairingLinkCreated : BizEvent {
+        override val name = "pairing_link_created"
+        override val parameters: Map<String, Any?> = emptyMap()
+    }
+
+    /** 받은 초대를 열어 연결을 수락했다. */
+    data object PairingLinkAccepted : BizEvent {
+        override val name = "pairing_link_accepted"
+        override val parameters: Map<String, Any?> = emptyMap()
+    }
+
+    /**
+     * 두 폰이 연결됐다. 퍼널의 끝이다(연결 완료 커플 수의 기준은 서버 집계이고, 이 이벤트는 기기 쪽 흐름을 본다).
+     *
+     * @param relink 기기 교체로 다시 연결했다(처음 연결이 아니다).
+     */
+    data class PairingLinked(val relink: Boolean) : BizEvent {
+        override val name = "pairing_linked"
+        override val parameters: Map<String, Any?> = mapOf("relink" to relink)
+    }
+
+    /**
+     * 편지를 보냈다. 본문 · 제목은 싣지 않는다 — 고른 것과 개수만.
+     *
+     * @param paper 편지지 id. @param font 글꼴 id. 둘 다 앱이 정한 선택지다.
+     * @param scheduled 예약 공개다. @param reply 받은 편지에서 누른 "고마워" 답장이다.
+     */
+    data class LetterSent(
+        val paper: String,
+        val font: String,
+        val scheduled: Boolean,
+        val drawings: Int,
+        val photos: Int,
+        val reply: Boolean,
+    ) : BizEvent {
+        override val name = "letter_sent"
+        override val parameters: Map<String, Any?> =
+            mapOf("paper" to paper, "font" to font, "scheduled" to scheduled, "drawings" to drawings, "photos" to photos, "reply" to reply)
+    }
+
+    /**
+     * 그림만 보내기로 그림 한 장을 보냈다.
+     *
+     * @param withCaption 한 줄을 붙였다. 그 글자는 싣지 않는다.
+     */
+    data class DrawingSent(val scheduled: Boolean, val withCaption: Boolean) : BizEvent {
+        override val name = "drawing_sent"
+        override val parameters: Map<String, Any?> = mapOf("scheduled" to scheduled, "caption" to withCaption)
+    }
+
+    /**
+     * 혼자 모드(상대 연결 전)에서 편지를 보내 내 폰에 쌓였다.
+     *
+     * @param count 지금까지 쌓인 내 편지 수. 연결하는 순간 한꺼번에 전달되는 양이다("편지 N통 도착").
+     */
+    data class SoloLettersQueued(val count: Int) : BizEvent {
+        override val name = "solo_letters_queued"
+        override val parameters: Map<String, Any?> = mapOf("count" to count)
+    }
+
+    /** 결제 창을 띄웠다. */
+    data class PurchaseStarted(val product: PurchaseProduct) : BizEvent {
+        override val name = "purchase_started"
+        override val parameters: Map<String, Any?> = mapOf("product" to product.id)
+    }
+
+    /** 결제가 끝나 이용권을 받았다. 취소 · 실패 · 구매 복원은 남기지 않는다. */
+    data class PurchaseCompleted(val product: PurchaseProduct) : BizEvent {
+        override val name = "purchase_completed"
+        override val parameters: Map<String, Any?> = mapOf("product" to product.id)
+    }
+}
+
+/** 파는 상품. [id] 는 수집 쪽 값이라 바꾸지 않는다. */
+enum class PurchaseProduct(val id: String) {
+    LIFETIME("lifetime"),
+    MEMORY_BOOK("memory_book"),
+}
+
+/**
+ * 이벤트를 남기는 화면 이름. 이벤트 이름처럼 수집 뒤 지표의 키가 되므로 한 곳에 모은다.
+ * 라우팅 경로 모양을 따른다.
+ */
+object BizView {
+    const val PAIRING = "/pairing"
+    const val LETTER_COMPOSE = "/letter/compose"
+    const val LETTER_READ = "/letter/read"
+    const val DRAWING_SEND = "/drawing/send"
+    const val LIFETIME = "/settings/lifetime"
+    const val MEMORY_BOOK = "/memory/book"
 }

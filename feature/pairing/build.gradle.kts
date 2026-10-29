@@ -27,6 +27,7 @@ kotlin {
             // feature 는 core 만 본다. 다른 feature 로의 이동은 :composeApp 이 콜백으로 잇는다.
             implementation(project(":core:designsystem"))
             implementation(project(":core:data"))
+            implementation(project(":core:logging"))
             implementation(project(":core:auth"))
             implementation(libs.jb.lifecycle.viewmodel.compose)
             implementation(libs.jb.lifecycle.runtime.compose)

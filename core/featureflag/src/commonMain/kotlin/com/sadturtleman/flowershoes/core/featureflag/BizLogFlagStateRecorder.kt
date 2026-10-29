@@ -14,13 +14,9 @@ internal class BizLogFlagStateRecorder(
 ) : FlagStateRecorder {
 
     override fun record(environment: AppEnvironment, assignments: Map<String, String>) {
-        bizLogger.record(
-            viewName = APP_VIEW,
-            event = BizEvent.FlagsResolved(
-                environment = environment.name.lowercase(),
-                assignments = assignments,
-            ),
-        )
+        // 플래그 수만큼 파라미터가 늘어나므로 GA4 한도(25개) 안으로 나눠 남긴다.
+        BizEvent.FlagsResolved.split(environment = environment.name.lowercase(), assignments = assignments)
+            .forEach { bizLogger.record(viewName = APP_VIEW, event = it) }
     }
 
     private companion object {

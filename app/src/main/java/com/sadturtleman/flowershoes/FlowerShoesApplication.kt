@@ -15,6 +15,7 @@ import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.notification.NotificationSync
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
 import com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider
+import com.sadturtleman.flowershoes.core.data.logged
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
 import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
@@ -95,8 +96,9 @@ class FlowerShoesApplication :
                             this@FlowerShoesApplication, BuildConfig.REVENUECAT_API_KEY, get<IdentityHolder>(), BuildConfig.DEBUG,
                         )
                     }
-                    single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>() }
-                    single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book }
+                    // 결제 시작 · 완료 이벤트는 스토어를 감싸 남긴다(PurchaseLogging).
+                    single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().logged(get()) }
+                    single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book.logged(get()) }
                 }
             })
         }
