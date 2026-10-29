@@ -25,7 +25,7 @@ class LeavePoolTest {
     )
 
     @Test
-    fun `전체는 정기휴가와 받은 휴가의 합, 사용은 휴가 일정 일수의 합`() {
+    fun `전체는 정기휴가와 받은 휴가의 합이고 사용은 휴가 일정 일수의 합`() {
         val pool = LeavePool.of(
             Branch.AIR_FORCE,
             grants = listOf(grant("g1", LeaveKind.REWARD, 4, "2026-09-01"), grant("g2", LeaveKind.CONSOLATION, 2, "2026-10-01")),
@@ -59,7 +59,7 @@ class LeavePoolTest {
     }
 
     @Test
-    fun `출처 내역 맨 위는 정기휴가, 받은 휴가는 받은 날 최근 순`() {
+    fun `출처 내역 맨 위는 정기휴가이고 받은 휴가는 받은 날 최근 순`() {
         val pool = LeavePool.of(
             Branch.AIR_FORCE,
             grants = listOf(grant("old", LeaveKind.REWARD, 4, "2026-09-01"), grant("new", LeaveKind.PETITION, 1, "2026-10-01")),
