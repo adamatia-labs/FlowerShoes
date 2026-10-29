@@ -56,7 +56,7 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
     val doc = open.drawings[ref.drawingId]
     val replay = doc?.let { rememberReplayState(it, autoPlay = ref.drawingId in open.firstView) }
     // 읽는 화면은 탭 바 없이 전체(Figma) — 아래 버튼이 제스처 바에 걸리지 않게.
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
         KkTopBar(
             open.drawingTitle, onLeading = { onIntent(LetterIntent.Close) }, leading = KkTopBarLeading.Close,
             modifier = Modifier.padding(horizontal = KkSpacing.lg),
@@ -68,12 +68,12 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
             if (doc == null || replay == null) {
-                Text("그림을 받는 중이에요", style = KkTheme.type.bodyM, color = c.textTertiary, modifier = Modifier.padding(KkSpacing.xxxl))
+                Text("그림을 받는 중이에요", style = KkTheme.type.body, color = c.sub, modifier = Modifier.padding(KkSpacing.xxxl))
                 return@Column
             }
             Text(
                 "${open.sentAt}  · 그리는 과정 ${(replay.durationMs + 999) / 1000}초",
-                style = KkTheme.type.caption, color = c.textTertiary,
+                style = KkTheme.type.caption, color = c.sub,
             )
             val shape = RoundedCornerShape(KkRadius.xl)
             Box(
@@ -83,16 +83,16 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
                 ReplayCanvas(doc, replay, onFinished = { onIntent(LetterIntent.DrawingSeen(ref.drawingId)) })
                 if (replay.playing) {
                     Text(
-                        "탭하면 바로 완성돼요", style = KkTheme.type.caption, color = c.textInverse,
+                        "탭하면 바로 완성돼요", style = KkTheme.type.caption, color = c.canvas,
                         modifier = Modifier.align(Alignment.BottomCenter).clip(RoundedCornerShape(KkRadius.full))
-                            .background(c.bgInverse.copy(alpha = 0.85f)).padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
+                            .background(c.ink.copy(alpha = 0.85f)).padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
                     )
                 }
             }
             ReplayBar(replay)
             if (replay.finished) {
                 open.letter.title?.takeIf { it.isNotBlank() }?.let {
-                    Text("“$it”", style = KkTheme.type.titleS, color = c.textPrimary, textAlign = TextAlign.Center)
+                    Text("“$it”", style = KkTheme.type.labelBold, color = c.ink, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -115,7 +115,7 @@ private fun ReplayBar(state: ReplayState) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.full)
     Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(6.dp),
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -125,25 +125,25 @@ private fun ReplayBar(state: ReplayState) {
             else -> KkIcons.Play
         }
         Box(
-            Modifier.size(40.dp).clip(CircleShape).background(c.bgBrand).clickable(role = Role.Button) { state.toggle() }
+            Modifier.size(40.dp).clip(CircleShape).background(c.accent).clickable(role = Role.Button) { state.toggle() }
                 .semantics { contentDescription = if (state.playing) "멈추기" else if (state.finished) "다시 보기" else "재생" },
             contentAlignment = Alignment.Center,
-        ) { KkIcon(icon, tint = c.textOnBrand, size = 20.dp) }
-        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.bgSubtle)) {
-            Box(Modifier.fillMaxHeight().fillWidth(state.progress.coerceIn(0f, 1f)).clip(RoundedCornerShape(2.dp)).background(c.bgBrand))
+        ) { KkIcon(icon, tint = c.surface, size = 20.dp) }
+        Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.bar)) {
+            Box(Modifier.fillMaxHeight().fillWidth(state.progress.coerceIn(0f, 1f)).clip(RoundedCornerShape(2.dp)).background(c.accent))
         }
         if (state.finished) {
-            Text("다시 보기", style = KkTheme.type.labelS, color = c.textBrand, modifier = Modifier.clickable(role = Role.Button) { state.restart() })
+            Text("다시 보기", style = KkTheme.type.label, color = c.accent, modifier = Modifier.clickable(role = Role.Button) { state.restart() })
         } else {
-            Text("${clock(state.elapsedMs)} / ${clock(state.durationMs)}", style = KkTheme.type.caption, color = c.textSecondary)
+            Text("${clock(state.elapsedMs)} / ${clock(state.durationMs)}", style = KkTheme.type.caption, color = c.sub)
         }
         Box(
-            Modifier.size(40.dp).clip(CircleShape).background(c.bgSubtle)
+            Modifier.size(40.dp).clip(CircleShape).background(c.bar)
                 .clickable(role = Role.Button) { state.speed = when (state.speed) { 1f -> 2f; 2f -> 0.5f; else -> 1f } }
                 .semantics { contentDescription = "속도 ${state.speed}배" },
             contentAlignment = Alignment.Center,
         ) {
-            Text(if (state.speed == 0.5f) "0.5x" else "${state.speed.toInt()}x", style = KkTheme.type.labelS, color = c.textSecondary)
+            Text(if (state.speed == 0.5f) "0.5x" else "${state.speed.toInt()}x", style = KkTheme.type.label, color = c.sub)
         }
     }
 }

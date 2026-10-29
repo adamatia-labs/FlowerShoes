@@ -38,7 +38,7 @@ import com.sadturtleman.flowershoes.MainActivity
 import com.sadturtleman.flowershoes.core.data.MissYouRepository
 import com.sadturtleman.flowershoes.core.designsystem.KkColors
 import com.sadturtleman.flowershoes.core.designsystem.kkColors
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.core.media.DrawingBitmap
 import com.sadturtleman.flowershoes.core.widget.SnapshotStore
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshot
@@ -47,14 +47,14 @@ import org.koin.core.context.GlobalContext
 
 /**
  * 홈 화면 위젯(설계 8장). 위젯은 DB 를 읽지 않고 스냅샷 파일만 읽는다.
- * 색은 기기 테마를 따르고(스냅샷에 테마가 들어 있다), 라이트/다크는 시스템을 따른다. 하트는 어느 테마든 로즈.
+ * 색은 기기 테마를 따르고(스냅샷에 테마가 들어 있다), 라이트/다크는 시스템을 따른다. 보고싶어 위젯만 love 색.
  */
 internal fun snapshotStore(context: Context) =
     SnapshotStore(context.filesDir.resolve("widget/snapshot.json").absolutePath.toPath())
 
-private fun ThemeAccentOf(s: WidgetSnapshot?) = s?.theme?.let { runCatching { ThemeAccent.valueOf(it) }.getOrNull() } ?: ThemeAccent.ROSE
+private fun AppThemeOf(s: WidgetSnapshot?) = AppTheme.from(s?.theme, role = null)
 
-private class Palette(theme: ThemeAccent) {
+private class Palette(theme: AppTheme) {
     val light: KkColors = kkColors(theme, dark = false)
     val dark: KkColors = kkColors(theme, dark = true)
     fun of(pick: (KkColors) -> Color) = ColorProvider(day = pick(light), night = pick(dark))
@@ -64,7 +64,7 @@ private class Palette(theme: ThemeAccent) {
 @Composable
 private fun Card(p: Palette, onClick: androidx.glance.action.Action, content: @Composable () -> Unit) {
     Box(
-        GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(p.of { it.bgSurface }).padding(14.dp).clickable(onClick),
+        GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(p.of { it.surface }).padding(14.dp).clickable(onClick),
         contentAlignment = Alignment.TopStart,
     ) { content() }
 }
@@ -95,12 +95,12 @@ private fun FramedCard(p: Palette, frame: String?, onClick: androidx.glance.acti
 class DdayWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val s = snapshotStore(context).read()
-        val p = Palette(ThemeAccentOf(s))
+        val p = Palette(AppThemeOf(s))
         provideContent {
             GlanceTheme {
                 Card(p, actionStartActivity<MainActivity>()) {
                     Column {
-                        Text("전역까지", style = TextStyle(color = p.of { it.textSecondary }, fontSize = 13.sp))
+                        Text("전역까지", style = TextStyle(color = p.of { it.sub }, fontSize = 13.sp))
                         Spacer(GlanceModifier.height(4.dp))
                         val d = s?.daysLeft
                         Text(
@@ -110,11 +110,11 @@ class DdayWidget : GlanceAppWidget() {
                                 d == 0 -> "D-DAY"
                                 else -> "전역 +${-d}"
                             },
-                            style = TextStyle(color = p.of { it.textPrimary }, fontSize = if (d == null) 14.sp else 34.sp, fontWeight = FontWeight.Bold),
+                            style = TextStyle(color = p.of { it.ink }, fontSize = if (d == null) 14.sp else 34.sp, fontWeight = FontWeight.Bold),
                         )
                         s?.progress?.let {
                             Spacer(GlanceModifier.height(6.dp))
-                            Text("${(it * 1000).toInt() / 10.0}% · ${s.dischargeDate.orEmpty()}", style = TextStyle(color = p.of { c -> c.textMilitary }, fontSize = 12.sp))
+                            Text("${(it * 1000).toInt() / 10.0}% · ${s.dischargeDate.orEmpty()}", style = TextStyle(color = p.of { c -> c.accent }, fontSize = 12.sp))
                         }
                     }
                 }
@@ -132,12 +132,11 @@ class DdayWidgetReceiver : GlanceAppWidgetReceiver() {
 class MissYouWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val s = snapshotStore(context).read()
-        val p = Palette(ThemeAccentOf(s))
+        val p = Palette(AppThemeOf(s))
         provideContent {
             GlanceTheme {
-                // "마음" 요소라 테마와 무관하게 로즈.
                 Box(
-                    GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(p.of { it.heart }).padding(14.dp)
+                    GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(p.of { it.love }).padding(14.dp)
                         .clickable(actionRunCallback<SendMissYouAction>()),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -171,19 +170,19 @@ class SendMissYouAction : ActionCallback {
 class NextMeetingWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val s = snapshotStore(context).read()
-        val p = Palette(ThemeAccentOf(s))
+        val p = Palette(AppThemeOf(s))
         provideContent {
             GlanceTheme {
                 Card(p, actionStartActivity<MainActivity>()) {
                     Column {
-                        Text("다음 만남", style = TextStyle(color = p.of { it.textSecondary }, fontSize = 13.sp))
+                        Text("다음 만남", style = TextStyle(color = p.of { it.sub }, fontSize = 13.sp))
                         Spacer(GlanceModifier.height(4.dp))
                         val days = s?.nextEventDays
                         if (days == null) {
-                            Text("아직 잡힌 일정이 없어요", style = TextStyle(color = p.of { it.textTertiary }, fontSize = 13.sp))
+                            Text("아직 잡힌 일정이 없어요", style = TextStyle(color = p.of { it.sub }, fontSize = 13.sp))
                         } else {
-                            Text(if (days == 0) "오늘" else "D-$days", style = TextStyle(color = p.of { it.textBrand }, fontSize = 30.sp, fontWeight = FontWeight.Bold))
-                            Text(s.nextEventTitle.orEmpty(), style = TextStyle(color = p.of { it.textPrimary }, fontSize = 13.sp), maxLines = 1)
+                            Text(if (days == 0) "오늘" else "D-$days", style = TextStyle(color = p.of { it.accent }, fontSize = 30.sp, fontWeight = FontWeight.Bold))
+                            Text(s.nextEventTitle.orEmpty(), style = TextStyle(color = p.of { it.ink }, fontSize = 13.sp), maxLines = 1)
                         }
                     }
                 }
@@ -202,7 +201,7 @@ class NextMeetingWidgetReceiver : GlanceAppWidgetReceiver() {
 class DrawingWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val s = snapshotStore(context).read()
-        val p = Palette(ThemeAccentOf(s))
+        val p = Palette(AppThemeOf(s))
         // 완성 PNG 가 있으면 그대로, 없으면(옛 그림) 문서를 그 자리에서 그린다.
         val bitmap: Bitmap? = s?.drawingPngPath?.let { android.graphics.BitmapFactory.decodeFile(it) }
             ?: s?.drawingDocPath?.let { DrawingBitmap.render(it, widthPx = 680) }
@@ -216,9 +215,9 @@ class DrawingWidget : GlanceAppWidget() {
                 FramedCard(p, s?.widgetFrame, open) {
                     if (bitmap == null) {
                         Column {
-                            Text("받은 그림", style = TextStyle(color = p.of { it.textSecondary }, fontSize = 13.sp))
+                            Text("받은 그림", style = TextStyle(color = p.of { it.sub }, fontSize = 13.sp))
                             Spacer(GlanceModifier.height(4.dp))
-                            Text("연인이 그림을 보내면 여기에 보여요", style = TextStyle(color = p.of { it.textTertiary }, fontSize = 13.sp))
+                            Text("연인이 그림을 보내면 여기에 보여요", style = TextStyle(color = p.of { it.sub }, fontSize = 13.sp))
                         }
                     } else {
                         Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {

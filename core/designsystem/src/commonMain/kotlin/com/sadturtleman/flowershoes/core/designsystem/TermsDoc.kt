@@ -104,30 +104,30 @@ enum class TermsDoc(
 @Composable
 fun KkTermsScreen(doc: TermsDoc, onClose: () -> Unit) {
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar(doc.title, onLeading = onClose, leading = KkTopBarLeading.Close)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text(doc.header, style = KkTheme.type.caption, color = c.textTertiary)
+            Text(doc.header, style = KkTheme.type.caption, color = c.sub)
             if (doc.table.isNotEmpty()) {
                 val shape = RoundedCornerShape(KkRadius.lg)
-                Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)) {
+                Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
                     doc.table.forEachIndexed { i, row ->
-                        if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.borderDefault))
+                        if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
                         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(row.title, style = KkTheme.type.labelM, color = c.textPrimary)
-                            Text(row.body, style = KkTheme.type.bodyS, color = c.textSecondary)
-                            row.retention?.let { Text(it, style = KkTheme.type.caption, color = c.textBrand) }
+                            Text(row.title, style = KkTheme.type.label, color = c.ink)
+                            Text(row.body, style = KkTheme.type.body, color = c.sub)
+                            row.retention?.let { Text(it, style = KkTheme.type.caption, color = c.accent) }
                         }
                     }
                 }
             }
             doc.sections.forEach { (title, body) ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(title, style = KkTheme.type.titleS, color = c.textPrimary)
-                    Text(body, style = KkTheme.type.bodyS, color = c.textSecondary)
+                    Text(title, style = KkTheme.type.labelBold, color = c.ink)
+                    Text(body, style = KkTheme.type.body, color = c.sub)
                 }
             }
         }

@@ -127,17 +127,17 @@ fun BackupSection(platform: PlatformActions = NoPlatformActions, viewModel: Back
     val c = KkTheme.colors
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     if (!ui.available) {
-        Text("이 플랫폼에서는 아직 백업을 쓸 수 없어요.", style = KkTheme.type.bodyS, color = c.textTertiary)
+        Text("이 플랫폼에서는 아직 백업을 쓸 수 없어요.", style = KkTheme.type.body, color = c.sub)
         return
     }
     KkCard {
-        Text("암호화 백업", style = KkTheme.type.titleS, color = c.textPrimary)
-        Text("백업은 이 폰만 아는 열쇠로 잠가서 올려요. 서버도 열어 볼 수 없어요.", style = KkTheme.type.bodyS, color = c.textSecondary)
-        ui.lastBackupAtMs?.let { Text("마지막 백업 ${kotlin.time.Instant.fromEpochMilliseconds(it)}", style = KkTheme.type.caption, color = c.textTertiary) }
+        Text("암호화 백업", style = KkTheme.type.labelBold, color = c.ink)
+        Text("백업은 이 폰만 아는 열쇠로 잠가서 올려요. 서버도 열어 볼 수 없어요.", style = KkTheme.type.body, color = c.sub)
+        ui.lastBackupAtMs?.let { Text("마지막 백업 ${kotlin.time.Instant.fromEpochMilliseconds(it)}", style = KkTheme.type.caption, color = c.sub) }
         KkSecondaryButton(if (ui.busy) "백업 중…" else "지금 백업", onClick = viewModel::backupNow)
         Text(
             if (ui.showCode) "숨기기" else "복구 코드 보기",
-            style = KkTheme.type.labelM, color = c.textBrand,
+            style = KkTheme.type.label, color = c.accent,
             modifier = Modifier.clickable {
                 if (ui.showCode) viewModel.hideCode()
                 // 복구 코드는 기기 인증 뒤에만 보여 준다.
@@ -145,10 +145,10 @@ fun BackupSection(platform: PlatformActions = NoPlatformActions, viewModel: Back
             }.padding(vertical = KkSpacing.sm),
         )
         if (ui.showCode) {
-            Text(ui.recoveryCode?.let(CrockfordCode::format) ?: "아직 백업하지 않았어요", style = KkTheme.type.titleS, color = c.textBrand)
-            Text("다른 기종으로 바꿀 때 필요해요. 비밀번호 관리자에 저장해 두세요.", style = KkTheme.type.caption, color = c.textTertiary)
+            Text(ui.recoveryCode?.let(CrockfordCode::format) ?: "아직 백업하지 않았어요", style = KkTheme.type.labelBold, color = c.accent)
+            Text("다른 기종으로 바꿀 때 필요해요. 비밀번호 관리자에 저장해 두세요.", style = KkTheme.type.caption, color = c.sub)
         }
-        ui.message?.let { Text(it, style = KkTheme.type.bodyS, color = c.textSecondary) }
+        ui.message?.let { Text(it, style = KkTheme.type.body, color = c.sub) }
     }
 }
 
@@ -234,13 +234,13 @@ fun RestoreRoute(
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(ui) { if (ui == RestoreUi.Complete) onBack() }
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
             when (val s = ui) {
-                RestoreUi.Loading -> Box(Modifier.fillMaxWidth().padding(top = 120.dp), contentAlignment = Alignment.Center) { KkSpinner(c.textBrand, 28.dp) }
+                RestoreUi.Loading -> Box(Modifier.fillMaxWidth().padding(top = 120.dp), contentAlignment = Alignment.Center) { KkSpinner(c.accent, 28.dp) }
                 RestoreUi.Complete -> Header("복원했어요")
                 RestoreUi.Unavailable -> Header("백업에서 복원하기", "이 플랫폼에서는 아직 백업을 쓸 수 없어요.")
                 is RestoreUi.Found -> FoundContent(s.preview, platform.keySyncName)
@@ -259,9 +259,9 @@ fun RestoreRoute(
                 is RestoreUi.NoBackup -> {
                     Header("이 계정에는 백업이 없어요", "처음 쓰는 거라면 바로 시작하면 돼요. 예전에 다른 방법으로 로그인했다면 그 계정에 기록이 있어요.")
                     InfoCard {
-                        Text("지금 로그인한 계정", style = KkTheme.type.caption, color = c.textTertiary)
-                        Text(s.accountLabel, style = KkTheme.type.titleS, color = c.textPrimary)
-                        Text("백업 없음 · 처음 로그인", style = KkTheme.type.bodyS, color = c.textSecondary)
+                        Text("지금 로그인한 계정", style = KkTheme.type.caption, color = c.sub)
+                        Text(s.accountLabel, style = KkTheme.type.labelBold, color = c.ink)
+                        Text("백업 없음 · 처음 로그인", style = KkTheme.type.body, color = c.sub)
                     }
                 }
                 is RestoreUi.Failed -> Header("복원하지 못했어요", s.message)
@@ -296,8 +296,8 @@ fun RestoreRoute(
 
 @Composable
 private fun Header(title: String, body: String? = null) {
-    Text(title, style = KkTheme.type.titleL, color = KkTheme.colors.textPrimary)
-    body?.let { Text(it, style = KkTheme.type.bodyL, color = KkTheme.colors.textSecondary) }
+    Text(title, style = KkTheme.type.title, color = KkTheme.colors.ink)
+    body?.let { Text(it, style = KkTheme.type.body, color = KkTheme.colors.sub) }
 }
 
 /** 흰 카드(반경 12, Elevation/Low, 여백 20). */
@@ -305,7 +305,7 @@ private fun Header(title: String, body: String? = null) {
 private fun InfoCard(spacing: androidx.compose.ui.unit.Dp = 10.dp, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(KkTheme.colors.bgSurface).padding(20.dp),
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(KkTheme.colors.surface).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(spacing),
         content = content,
     )
@@ -317,11 +317,11 @@ private fun FoundContent(preview: BackupPreview, keySyncName: String) {
     val sum = preview.summary
     Header(if (!sum?.myName.isNullOrBlank()) "다시 오셨네요, ${sum?.myName}님" else "다시 오셨네요")
     InfoCard {
-        Text("마지막 백업", style = KkTheme.type.caption, color = c.textTertiary)
-        Text(backupTime(preview.createdAtMs), style = KkTheme.type.titleS, color = c.textPrimary)
+        Text("마지막 백업", style = KkTheme.type.caption, color = c.sub)
+        Text(backupTime(preview.createdAtMs), style = KkTheme.type.labelBold, color = c.ink)
         Text(
             sum?.let { "편지 ${it.letters} · 그림 ${it.drawings} · 사진 ${it.photos} · ${bytesLabel(it.bytes)}" } ?: "열쇠를 찾으면 담긴 내용을 볼 수 있어요",
-            style = KkTheme.type.bodyS, color = c.textSecondary,
+            style = KkTheme.type.body, color = c.sub,
         )
     }
 }
@@ -333,30 +333,30 @@ private fun RestoringContent(s: RestoreUi.Restoring) {
     val started = remember { kotlin.time.Clock.System.now().toEpochMilliseconds() }
     InfoCard(spacing = 14.dp) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("${(s.fraction * 100).toInt()}%", style = KkTheme.type.titleM, color = c.textBrand)
+            Text("${(s.fraction * 100).toInt()}%", style = KkTheme.type.title, color = c.accent)
             // Figma: "약 2분 남음" — 지금까지 걸린 시간으로 어림한다.
             val pct = (s.fraction * 100).toInt()
             val elapsed = kotlin.time.Clock.System.now().toEpochMilliseconds() - started
             val remain = if (pct in 1..99) elapsed * (100 - pct) / pct / 60_000 else null
             Text(
                 when { s.stage == RestoreStage.RELINK -> "곧 다시 시작해요"; remain == null -> "받는 중"; else -> "약 ${maxOf(1, remain)}분 남음" },
-                style = KkTheme.type.caption, color = c.textTertiary,
+                style = KkTheme.type.caption, color = c.sub,
             )
         }
-        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgSubtle)) {
-            Box(Modifier.fillMaxWidth(s.fraction.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(c.bgBrand))
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bar)) {
+            Box(Modifier.fillMaxWidth(s.fraction.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(c.accent))
         }
         fun state(stage: RestoreStage) = when {
-            s.stage.ordinal > stage.ordinal -> "완료" to c.textSecondary
-            s.stage == stage && stage != RestoreStage.RELINK -> "받는 중" to c.textBrand
-            s.stage == stage -> "이어 가는 중" to c.textBrand
-            else -> "대기" to c.textTertiary
+            s.stage.ordinal > stage.ordinal -> "완료" to c.sub
+            s.stage == stage && stage != RestoreStage.RELINK -> "받는 중" to c.accent
+            s.stage == stage -> "이어 가는 중" to c.accent
+            else -> "대기" to c.sub
         }
         listOf("편지 · 일정 · 설정" to RestoreStage.DATA, "그림 · 사진" to RestoreStage.MEDIA, "연인과 다시 연결" to RestoreStage.RELINK).forEach { (label, stage) ->
             val (text, color) = state(stage)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(label, style = KkTheme.type.bodyM, color = c.textPrimary)
-                Text(text, style = KkTheme.type.labelS, color = color)
+                Text(label, style = KkTheme.type.body, color = c.ink)
+                Text(text, style = KkTheme.type.label, color = color)
             }
         }
     }
@@ -383,22 +383,22 @@ internal fun bytesLabel(b: Long): String = when {
 @Composable
 fun RestoreWaitingScreen(partnerName: String, onBrowse: () -> Unit) {
     val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         Column(Modifier.weight(1f).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg), verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
-            Box(Modifier.size(64.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
-                KkIcon(KkIcons.Clock, tint = c.textPrimary)
+            Box(Modifier.size(64.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+                KkIcon(KkIcons.Clock, tint = c.ink)
             }
             Header("거의 다 됐어요")
             InfoCard(spacing = 14.dp) {
                 listOf(
-                    Triple("백업 복원", "완료", c.statusSuccess to c.textSecondary),
-                    Triple("${partnerName} 폰 확인", "기다리는 중", c.bgBrand to c.textBrand),
-                    Triple("편지 · 보고싶어 보내기", "확인 후", c.borderStrong to c.textTertiary),
+                    Triple("백업 복원", "완료", c.success to c.sub),
+                    Triple("${partnerName} 폰 확인", "기다리는 중", c.accent to c.accent),
+                    Triple("편지 · 보고싶어 보내기", "확인 후", c.line to c.sub),
                 ).forEach { (label, state, colors) ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).clip(CircleShape).background(colors.first))
-                        Text(label, style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
-                        Text(state, style = KkTheme.type.labelS, color = colors.second)
+                        Text(label, style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
+                        Text(state, style = KkTheme.type.label, color = colors.second)
                     }
                 }
             }

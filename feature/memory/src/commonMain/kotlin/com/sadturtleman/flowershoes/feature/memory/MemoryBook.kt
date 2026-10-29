@@ -154,7 +154,7 @@ internal fun BookScreen(state: MemoryState, photos: Map<String, ByteArray?>, act
         }
     }
 
-    Box(Modifier.fillMaxSize().background(c.bgCanvas)) {
+    Box(Modifier.fillMaxSize().background(c.canvas)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
             KkTopBar("우리의 책", onLeading = onBack, modifier = Modifier.padding(horizontal = KkSpacing.lg))
             Column(
@@ -167,23 +167,23 @@ internal fun BookScreen(state: MemoryState, photos: Map<String, ByteArray?>, act
                     else sp.forEach { p -> BookPageView(p, state, photos, Modifier.weight(1f)) }
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("‹", style = KkTheme.type.titleL, color = if (spread > 0) c.textSecondary else c.textTertiary,
+                    Text("‹", style = KkTheme.type.title, color = if (spread > 0) c.sub else c.sub,
                         modifier = Modifier.clickable(enabled = spread > 0, role = Role.Button) { spread-- }.padding(KkSpacing.sm))
-                    Text(sp.pageLabel(pages), style = KkTheme.type.labelM, color = c.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-                    Text("›", style = KkTheme.type.titleL, color = if (spread < spreads.size - 1) c.textSecondary else c.textTertiary,
+                    Text(sp.pageLabel(pages), style = KkTheme.type.label, color = c.sub, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                    Text("›", style = KkTheme.type.title, color = if (spread < spreads.size - 1) c.sub else c.sub,
                         modifier = Modifier.clickable(enabled = spread < spreads.size - 1, role = Role.Button) { spread++ }.padding(KkSpacing.sm))
                 }
                 Spacer(Modifier.height(KkSpacing.lg))
                 val shape = RoundedCornerShape(KkRadius.lg)
                 Column(
-                    Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+                    Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
                     verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
                 ) {
-                    Text("PDF로 영구 소장", style = KkTheme.type.titleS, color = c.textPrimary)
+                    Text("PDF로 영구 소장", style = KkTheme.type.labelBold, color = c.ink)
                     listOf("화면용 + 포토북 인쇄용", "${pages.size - 1}쪽 · 8×8인치", "연인도 함께 받아요").forEach { b ->
                         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(6.dp).clip(CircleShape).background(c.bgBrand))
-                            Text(b, style = KkTheme.type.bodyM, color = c.textSecondary)
+                            Box(Modifier.size(6.dp).clip(CircleShape).background(c.accent))
+                            Text(b, style = KkTheme.type.body, color = c.sub)
                         }
                     }
                     val label = when {
@@ -194,13 +194,13 @@ internal fun BookScreen(state: MemoryState, photos: Map<String, ByteArray?>, act
                     KkPrimaryButton(label, { if (owned) make() else buy() }, Modifier.fillMaxWidth(), enabled = capture == null, loading = busy)
                     // 디버그 빌드만: 결제 없이 PDF 를 만들어 본다(만들기 · 공유 흐름 확인용).
                     if (!owned && org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.DevFlags>()?.freeBookPdf == true) {
-                        Text("개발용 · 결제 없이 PDF 만들기", style = KkTheme.type.labelM, color = c.textBrand,
+                        Text("개발용 · 결제 없이 PDF 만들기", style = KkTheme.type.label, color = c.accent,
                             modifier = Modifier.clickable(enabled = capture == null, role = Role.Button) { make() }.padding(vertical = KkSpacing.xs))
                     }
                     // 구매 전 미리보기를 주고, 만들어 받은 뒤에는 청약철회가 제한된다(약관 제8조의3).
-                    Text("구매 전 책 전체를 미리 볼 수 있어요 · PDF 를 받은 뒤에는 환불이 제한돼요", style = KkTheme.type.caption, color = c.textTertiary)
+                    Text("구매 전 책 전체를 미리 볼 수 있어요 · PDF 를 받은 뒤에는 환불이 제한돼요", style = KkTheme.type.caption, color = c.sub)
                 }
-                Text("원본만 받기 · 설정 › 내 기록 내보내기", style = KkTheme.type.caption, color = c.textTertiary, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                Text("원본만 받기 · 설정 › 내 기록 내보내기", style = KkTheme.type.caption, color = c.sub, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             }
         }
         // PDF: 쪽마다 화면 밖에서 한 번 그려 비트맵으로 받는다(그리기는 하되 보이지 않게).

@@ -82,7 +82,7 @@ enum class KkLetterSize(val code: String, val label: String, val factor: Float) 
 /** 글꼴의 FontFamily. 기본은 테마 본문 글꼴(Noto Sans KR). */
 @Composable
 fun KkLetterFont.family(): FontFamily {
-    val res = file ?: return KkTheme.type.bodyL.fontFamily ?: FontFamily.Default
+    val res = file ?: return KkTheme.type.body.fontFamily ?: FontFamily.Default
     val f = Font(res)
     return remember(f) { FontFamily(f) }
 }

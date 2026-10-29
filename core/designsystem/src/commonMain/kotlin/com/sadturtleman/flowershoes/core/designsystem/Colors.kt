@@ -2,184 +2,143 @@ package com.sadturtleman.flowershoes.core.designsystem
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 
 /**
- * Figma 🎨 Foundations 의 원시 팔레트(primitive). 화면 코드는 이것을 직접 쓰지 않고 [KkColors] 를 쓴다.
+ * Figma "Primitives" 컬렉션 중 테마 v2 가 가리키는 값. 화면 코드는 이것을 직접 쓰지 않고 [KkColors] 를 쓴다.
  */
 object Palette {
-    val Rose50 = Color(0xFFFFF2F7)
-    val Rose100 = Color(0xFFFFE0EC)
-    val Rose300 = Color(0xFFFF99BB)
-    val Rose500 = Color(0xFFED4773)
-    val Rose600 = Color(0xFFC72C4D)
-    val Rose700 = Color(0xFFA31A31)
-    val Rose900 = Color(0xFF47070E)
+    val Cream50 = Color(0xFFFFFDF8)
+    val Cream100 = Color(0xFFFBF7F1)
+    val Cream200 = Color(0xFFF7F1E8)
+    val Cream300 = Color(0xFFE4D8C8)
+    val Kraft300 = Color(0xFFD8C1A0)
+    val Kraft700 = Color(0xFF4A3D30)
+    val Tape100 = Color(0xD9EFE3B8)
+    val Tape600 = Color(0xD95E5A3E)
+    val Tape700 = Color(0xD96B6142)
+    val InkBrown100 = Color(0xFFEFE6DA)
+    val InkBrown300 = Color(0xFFB8AB9E)
+    val InkBrown500 = Color(0xFF74665C)
+    val InkBrown900 = Color(0xFF3B302B)
+    val Mocha800 = Color(0xFF3A322C)
+    val Mocha900 = Color(0xFF2A2420)
+    val Mocha950 = Color(0xFF1F1A17)
+    val Rosewood400 = Color(0xFFE07A8F)
+    val Rosewood600 = Color(0xFFB9475E)
+    val Sage300 = Color(0xFFA3B07F)
+    val Sage500 = Color(0xFF7C8B5A)
 
-    val Olive50 = Color(0xFFF7F7EB)
-    val Olive300 = Color(0xFFB3BF77)
-    val Olive500 = Color(0xFF748736)
-    val Olive600 = Color(0xFF566B24)
-    val Olive900 = Color(0xFF182409)
+    val Field50 = Color(0xFFF8F6EE)
+    val Field100 = Color(0xFFF3F2EA)
+    val Field200 = Color(0xFFECEADF)
+    val Field300 = Color(0xFFCFCDBE)
+    val Manila300 = Color(0xFFE3D3A8)
+    val Manila700 = Color(0xFF4A4430)
+    val InkOlive100 = Color(0xFFE6E8DC)
+    val InkOlive300 = Color(0xFFB8BCAA)
+    val InkOlive500 = Color(0xFF62665A)
+    val InkOlive900 = Color(0xFF262B20)
+    val Night800 = Color(0xFF343A2C)
+    val Night900 = Color(0xFF23271E)
+    val Night950 = Color(0xFF191C15)
+    val Moss300 = Color(0xFF9AAE6B)
+    val Moss600 = Color(0xFF55623A)
+    val Stamp400 = Color(0xFFD0705E)
+    val Stamp500 = Color(0xFFB5503D)
+    val Stamp600 = Color(0xFFA8402F)
 
-    val Khaki50 = Color(0xFFF9F4EA)
-    val Khaki600 = Color(0xFF7D5A22)
+    val PaperWhite = Color(0xFFFFFFFF)
 
-    val Navy50 = Color(0xFFEFF3FB)
-    val Navy300 = Color(0xFF93ACE0)
-    val Navy600 = Color(0xFF2E4F99)
-    val Navy900 = Color(0xFF0E1A36)
-
-    val Gray0 = Color(0xFFFFFFFF)
-    val Gray50 = Color(0xFFF7F7F8)
-    val Gray100 = Color(0xFFEFEFF1)
-    val Gray200 = Color(0xFFE1E2E5)
-    val Gray300 = Color(0xFFC9CBD0)
-    val Gray400 = Color(0xFFA2A6AE)
-    val Gray450 = Color(0xFFB5B8BE)
-    val Gray500 = Color(0xFF656A74)
-    val Gray600 = Color(0xFF5A5F69)
-    val Gray700 = Color(0xFF40444C)
-    val Gray800 = Color(0xFF25282D)
-    val Gray900 = Color(0xFF15171A)
-
-    val Sky500 = Color(0xFF3B9BF5)
-    val Violet500 = Color(0xFF8B6CF0)
-    val Amber500 = Color(0xFFF2A93B)
-    val Green500 = Color(0xFF2FB67C)
-    val Danger = Color(0xFFC8343A)
+    val EventVacationL = Color(0xFFC2703D)
+    val EventVacationD = Color(0xFFE39A6A)
+    val EventOvernightL = Color(0xFF6B5BA8)
+    val EventOvernightD = Color(0xFFA397D8)
+    val EventVisitL = Color(0xFF2F7F86)
+    val EventVisitD = Color(0xFF6CC0C6)
+    val EventTrainingL = Color(0xFF55623A)
+    val EventTrainingD = Color(0xFF9AAE6B)
+    val EventDutyL = Color(0xFF6E7262)
+    val EventDutyD = Color(0xFFA9AD9B)
+    val EventAnnivL = Color(0xFFB9475E)
+    val EventAnnivD = Color(0xFFE07A8F)
+    val DangerL = Color(0xFFB3412E)
+    val DangerD = Color(0xFFE8826E)
+    val SuccessL = Color(0xFF4F7A3A)
+    val SuccessD = Color(0xFF93C27A)
 }
 
 /**
- * 의미 색(semantic). Figma 변수 이름과 1:1 이다(bg/brand → [bgBrand]).
- *
- * 테마가 바꾸는 것은 강조색(brand)과 그림자 색, 그리고 올리브 테마의 군 색(카키)뿐이다.
- * "마음" 요소(보고싶어 · 하트)는 [heart] 로 모든 테마에서 로즈 고정이다.
+ * 테마 v2 의미 색. Figma 변수(paper/canvas → [canvas])와 1:1 이고 docs/product/design.md "테마 v2 토큰" 표의 이름을 따른다.
+ * 모드는 [AppTheme](곰신 · 군인) × 라이트 · 다크 4개.
  */
 @Immutable
 data class KkColors(
-    val bgCanvas: Color,
-    val bgSurface: Color,
-    val bgSubtle: Color,
-    val bgBrand: Color,
-    val bgBrandSubtle: Color,
-    val bgMilitary: Color,
-    val bgMilitarySubtle: Color,
-    val bgInverse: Color,
-    val textPrimary: Color,
-    val textSecondary: Color,
-    val textTertiary: Color,
-    val textOnBrand: Color,
-    val textBrand: Color,
-    val textMilitary: Color,
-    val textInverse: Color,
-    val borderDefault: Color,
-    val borderStrong: Color,
-    val borderBrand: Color,
-    val shadowKey: Color,
-    val shadowAmbient: Color,
-    /** 누른 상태(Figma bg/pressed · bg/brand-pressed · bg/brand-subtle-pressed). */
-    val bgPressed: Color,
-    val bgBrandPressed: Color,
-    val bgBrandSubtlePressed: Color,
-    /** 시트 · 다이얼로그처럼 띄운 표면(bg/surface-raised). */
-    val bgSurfaceRaised: Color,
-    /** 포커스 링(border/focus) 과 그 안쪽 틈(shadow/focus-gap). */
-    val borderFocus: Color,
-    val focusGap: Color,
-    val isDark: Boolean,
-) {
-    val heart: Color get() = Palette.Rose600
-    val heartSubtle: Color get() = if (isDark) Palette.Rose900 else Palette.Rose50
-    val textHeart: Color get() = if (isDark) Palette.Rose300 else Palette.Rose600
-
-    val statusSuccess: Color get() = Palette.Green500
-    val statusWarning: Color get() = Palette.Amber500
-    val statusDanger: Color get() = Palette.Danger
-
-    val eventVacation: Color get() = Palette.Sky500
-    val eventOvernight: Color get() = Palette.Violet500
-    val eventVisit: Color get() = Palette.Rose500
-    val eventTraining: Color get() = bgMilitary
-    val eventDuty: Color get() = Palette.Amber500
-}
-
-private data class Accent(
-    val brand: Color,
-    val brandDark: Color,
-    val textBrand: Color,
-    val textBrandDark: Color,
-    val subtle: Color,
-    val subtleDark: Color,
-    val border: Color,
+    /** paper/canvas — 화면 바탕. */
     val canvas: Color,
-    val shadowTint: Color,
+    /** paper/surface — 시트 · 카드 · 입력란. */
+    val surface: Color,
+    /** paper/bar — 탭 바 · 위 막대. */
+    val bar: Color,
+    /** paper/tag — 종이 태그 바탕(위에는 ink 글자만). */
+    val tag: Color,
+    /** paper/tape — 테이프. */
+    val tape: Color,
+    /** ink/primary — 본문 글자. */
+    val ink: Color,
+    /** ink/secondary — 보조 글자. */
+    val sub: Color,
+    /** line/default — 구분선 · 테두리. */
+    val line: Color,
+    /** accent/default — 주 동작. */
+    val accent: Color,
+    /** love/bg · love/on — 보고싶어 버튼에만. */
+    val love: Color,
+    val loveOn: Color,
+    /** stamp/ink — 소인 · 우표. */
+    val stamp: Color,
+    /** deco/plant — 장식 식물. */
+    val plant: Color,
+    /** status/danger · status/success — 오류 · 완료. */
+    val danger: Color,
+    val success: Color,
+    /** event/… — 일정 색(휴가 · 외박 · 면회 · 훈련 · 당직 · 기념일). */
+    val eventVacation: Color,
+    val eventOvernight: Color,
+    val eventVisit: Color,
+    val eventTraining: Color,
+    val eventDuty: Color,
+    val eventAnniversary: Color,
+    val isDark: Boolean,
 )
 
-// 테마 시안 페이지의 값. bgBrand(라이트·다크)와 다크 테두리 일부는 시안 화면에 쓰이지 않아 같은 팔레트 단계로 추정했다.
-private fun accent(theme: ThemeAccent): Accent = when (theme) {
-    ThemeAccent.ROSE -> Accent(
-        Palette.Rose600, Palette.Rose500, Palette.Rose600, Palette.Rose300,
-        Palette.Rose50, Palette.Rose900, Palette.Rose500, Color(0xFFFDF6F7), Color(0xFF4A0F20),
+fun kkColors(theme: AppTheme, dark: Boolean): KkColors = with(Palette) {
+    val gomsin = theme == AppTheme.GOMSIN
+    fun pick(gomsinLight: Color, gomsinDark: Color, soldierLight: Color, soldierDark: Color) =
+        if (gomsin) (if (dark) gomsinDark else gomsinLight) else (if (dark) soldierDark else soldierLight)
+    fun mode(light: Color, darkColor: Color) = if (dark) darkColor else light
+    KkColors(
+        canvas = pick(Cream200, Mocha950, Field200, Night950),
+        surface = pick(Cream50, Mocha900, Field50, Night900),
+        bar = pick(Cream100, Mocha900, Field100, Night900),
+        tag = pick(Kraft300, Kraft700, Manila300, Manila700),
+        tape = pick(Tape100, Tape700, Tape100, Tape600),
+        ink = pick(InkBrown900, InkBrown100, InkOlive900, InkOlive100),
+        sub = pick(InkBrown500, InkBrown300, InkOlive500, InkOlive300),
+        line = pick(Cream300, Mocha800, Field300, Night800),
+        accent = pick(Rosewood600, Rosewood400, Moss600, Moss300),
+        love = pick(Rosewood600, Rosewood600, Stamp600, Stamp500),
+        loveOn = PaperWhite,
+        stamp = pick(Rosewood600, Rosewood400, Stamp600, Stamp400),
+        plant = pick(Sage500, Sage300, Moss600, Moss300),
+        danger = mode(DangerL, DangerD),
+        success = mode(SuccessL, SuccessD),
+        eventVacation = mode(EventVacationL, EventVacationD),
+        eventOvernight = mode(EventOvernightL, EventOvernightD),
+        eventVisit = mode(EventVisitL, EventVisitD),
+        eventTraining = mode(EventTrainingL, EventTrainingD),
+        eventDuty = mode(EventDutyL, EventDutyD),
+        eventAnniversary = mode(EventAnnivL, EventAnnivD),
+        isDark = dark,
     )
-    ThemeAccent.OLIVE -> Accent(
-        Palette.Olive600, Palette.Olive500, Palette.Olive600, Palette.Olive300,
-        Palette.Olive50, Palette.Olive900, Palette.Olive500, Color(0xFFFAF9F3), Color(0xFF2A3B10),
-    )
-    ThemeAccent.NAVY -> Accent(
-        Palette.Navy600, Color(0xFF5A7BC4), Palette.Navy600, Palette.Navy300,
-        Palette.Navy50, Palette.Navy900, Color(0xFF4A6DB8), Color(0xFFF7F8FB), Color(0xFF182B57),
-    )
-    ThemeAccent.MONO -> Accent(
-        Palette.Gray800, Palette.Gray200, Palette.Gray800, Palette.Gray200,
-        Palette.Gray100, Palette.Gray700, Palette.Gray600, Color(0xFFF8F7F4), Palette.Gray900,
-    )
-}
-
-fun kkColors(theme: ThemeAccent, dark: Boolean): KkColors {
-    val a = accent(theme)
-    // 군 색은 기본 올리브, 올리브 테마에서만 카키로 바뀌어 강조색과 겹치지 않는다.
-    val khaki = theme == ThemeAccent.OLIVE
-    return if (!dark) {
-        KkColors(
-            bgCanvas = a.canvas, bgSurface = Palette.Gray0, bgSubtle = Palette.Gray100,
-            bgBrand = a.brand, bgBrandSubtle = a.subtle,
-            bgMilitary = if (khaki) Palette.Khaki600 else Palette.Olive600,
-            bgMilitarySubtle = if (khaki) Palette.Khaki50 else Palette.Olive50,
-            bgInverse = Palette.Gray900,
-            textPrimary = Palette.Gray900, textSecondary = Palette.Gray600, textTertiary = Palette.Gray500,
-            textOnBrand = Palette.Gray0, textBrand = a.textBrand,
-            textMilitary = if (khaki) Palette.Khaki600 else Palette.Olive600,
-            textInverse = Palette.Gray0,
-            borderDefault = Palette.Gray200, borderStrong = Palette.Gray300, borderBrand = a.border,
-            shadowKey = a.shadowTint.copy(alpha = 0x1A / 255f), shadowAmbient = a.shadowTint.copy(alpha = 0x0D / 255f),
-            bgPressed = Palette.Gray200,
-            bgBrandPressed = if (theme == ThemeAccent.ROSE) Palette.Rose700 else lerp(a.brand, Color.Black, 0.18f),
-            bgBrandSubtlePressed = if (theme == ThemeAccent.ROSE) Palette.Rose100 else lerp(a.subtle, a.brand, 0.12f),
-            bgSurfaceRaised = Palette.Gray0,
-            borderFocus = Palette.Rose600, focusGap = Palette.Gray0,
-            isDark = false,
-        )
-    } else {
-        KkColors(
-            bgCanvas = Palette.Gray900, bgSurface = Palette.Gray800, bgSubtle = Palette.Gray700,
-            bgBrand = a.brandDark, bgBrandSubtle = a.subtleDark,
-            bgMilitary = if (khaki) Color(0xFF9C7535) else Palette.Olive600,
-            bgMilitarySubtle = if (khaki) Color(0xFF2B1F0B) else Palette.Olive900,
-            bgInverse = Palette.Gray0,
-            textPrimary = Palette.Gray0, textSecondary = Palette.Gray300, textTertiary = Palette.Gray450,
-            textOnBrand = if (theme == ThemeAccent.MONO) Palette.Gray900 else Palette.Gray0, textBrand = a.textBrandDark,
-            textMilitary = if (khaki) Color(0xFFD9B97A) else Palette.Olive300,
-            textInverse = Palette.Gray900,
-            borderDefault = Palette.Gray700, borderStrong = Palette.Gray500, borderBrand = a.textBrandDark,
-            shadowKey = Color(0x73000000), shadowAmbient = Color(0x4D000000),
-            bgPressed = Palette.Gray700,
-            bgBrandPressed = lerp(a.brandDark, Color.Black, 0.18f),
-            bgBrandSubtlePressed = lerp(a.subtleDark, a.brandDark, 0.18f),
-            bgSurfaceRaised = Palette.Gray700,
-            borderFocus = Palette.Rose300, focusGap = Palette.Gray900,
-            isDark = true,
-        )
-    }
 }

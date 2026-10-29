@@ -270,11 +270,11 @@ fun ReplayPlayer(
         if (!state.playing) {
             Text(
                 "▶",
-                style = KkTheme.type.labelS,
-                color = c.textInverse,
+                style = KkTheme.type.label,
+                color = c.canvas,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(KkSpacing.sm)
                     .clip(RoundedCornerShape(KkRadius.full))
-                    .background(c.bgInverse.copy(alpha = 0.85f))
+                    .background(c.ink.copy(alpha = 0.85f))
                     .clickable(role = Role.Button) { state.restart() }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             )

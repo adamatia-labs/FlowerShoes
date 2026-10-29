@@ -77,7 +77,7 @@ import com.sadturtleman.flowershoes.core.military.ServiceRulesTable
 import com.sadturtleman.flowershoes.core.military.koreanName
 import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.model.Role
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.core.model.koreanName
 import com.sadturtleman.flowershoes.core.model.mood
 import kotlinx.datetime.DatePeriod
@@ -129,7 +129,7 @@ fun OnboardingScreen(
         return
     }
     var sheet by remember { mutableStateOf<ServiceSheet?>(null) }
-    Box(Modifier.fillMaxSize().background(c.bgCanvas)) {
+    Box(Modifier.fillMaxSize().background(c.canvas)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             // Content: 좌우 20 · 위아래 16, 사이 16. 로그인만 가운데 정렬.
             Column(
@@ -153,7 +153,7 @@ fun OnboardingScreen(
                     OnboardingStep.SERVICE -> ServiceContent(state) { sheet = it }
                     OnboardingStep.CONNECT -> {
                         KkStepIndicator(step = state.totalSteps, total = state.totalSteps)
-                        Text("연인과 연결해요", style = KkTheme.type.display, color = c.textPrimary)
+                        Text("연인과 연결해요", style = KkTheme.type.title, color = c.ink)
                         connect { onIntent(OnboardingIntent.StartPairing) }
                     }
                 }
@@ -168,7 +168,7 @@ fun OnboardingScreen(
                         state.providers.forEach { p ->
                             KkSocialButton(p.social(), onClick = { onIntent(OnboardingIntent.SignIn(p)) }, enabled = !state.signingIn)
                         }
-                        state.error?.let { Text(it, style = KkTheme.type.caption, color = c.statusDanger) }
+                        state.error?.let { Text(it, style = KkTheme.type.caption, color = c.danger) }
                     }
                     OnboardingStep.TERMS -> KkPrimaryButton("동의하고 시작하기", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
                     OnboardingStep.CONNECT -> KkButton("혼자 먼저 둘러볼게요", { onIntent(OnboardingIntent.FinishSolo) }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
@@ -196,8 +196,8 @@ private fun AuthProvider.social() = when (this) {
 private fun LoginContent() {
     val c = KkTheme.colors
     KkLogoMark()
-    Text("꽃신", style = KkTheme.type.display, color = c.textBrand)
-    Text("곰신과 군인, 둘만의 전역 달력", style = KkTheme.type.titleM, color = c.textPrimary, textAlign = TextAlign.Center)
+    Text("꽃신", style = KkTheme.type.title, color = c.accent)
+    Text("곰신과 군인, 둘만의 전역 달력", style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
 }
 
 // ── 온보딩 0-1 · 약관 동의 ──
@@ -205,21 +205,21 @@ private fun LoginContent() {
 @Composable
 private fun TermsContent(state: OnboardingState, onIntent: (OnboardingIntent) -> Unit) {
     val c = KkTheme.colors
-    Text("꽃신을 시작하려면\n동의가 필요해요", style = KkTheme.type.titleL, color = c.textPrimary)
+    Text("꽃신을 시작하려면\n동의가 필요해요", style = KkTheme.type.title, color = c.ink)
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
         Modifier
             .fillMaxWidth()
             .kkElevation(KkElevation.Low, shape)
             .clip(shape)
-            .background(c.bgSurface)
+            .background(c.surface)
             .toggleable(value = state.allAgreed, role = A11y.Checkbox) { onIntent(OnboardingIntent.ToggleAll) }
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         KkCheckbox(state.allAgreed)
-        Text("전체 동의", style = KkTheme.type.titleS, color = c.textPrimary, modifier = Modifier.weight(1f))
+        Text("전체 동의", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
     }
     Column(Modifier.fillMaxWidth()) {
         Agreement.entries.forEach { item ->
@@ -233,12 +233,12 @@ private fun TermsContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 KkCheckbox(item in state.agreed)
-                Text(item.label, style = KkTheme.type.bodyM, color = c.textPrimary, modifier = Modifier.weight(1f))
+                Text(item.label, style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
                 Box(
                     Modifier.size(44.dp).then(if (item.doc != null) Modifier.clickable(role = A11y.Button) { onIntent(OnboardingIntent.Read(item.doc)) } else Modifier),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (item.doc != null) KkIcon(KkIcons.ChevronRight, tint = c.textSecondary, contentDescription = "${item.doc.title} 보기")
+                    if (item.doc != null) KkIcon(KkIcons.ChevronRight, tint = c.sub, contentDescription = "${item.doc.title} 보기")
                 }
             }
         }
@@ -258,16 +258,16 @@ private fun RoleContent(state: OnboardingState, onIntent: (OnboardingIntent) -> 
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         KkLogoMark(size = 44.dp)
         Column {
-            Text("꽃신", style = KkTheme.type.titleL, color = c.textBrand)
-            Text("곰신이 꽃신 되는 날까지", style = KkTheme.type.caption, color = c.textSecondary)
+            Text("꽃신", style = KkTheme.type.title, color = c.accent)
+            Text("곰신이 꽃신 되는 날까지", style = KkTheme.type.caption, color = c.sub)
         }
     }
     KkStepIndicator(step = 1, total = state.totalSteps)
-    Text("어느 쪽이신가요?", style = KkTheme.type.display, color = c.textPrimary)
-    RoleCard("곰신이에요", "군대 간 연인을 기다리고 있어요", KkIcons.Heart, c.bgSurface, c.heart, state.role == Role.GOMSIN) {
+    Text("어느 쪽이신가요?", style = KkTheme.type.title, color = c.ink)
+    RoleCard("곰신이에요", "군대 간 연인을 기다리고 있어요", KkIcons.Heart, c.surface, c.stamp, state.role == Role.GOMSIN) {
         onIntent(OnboardingIntent.SelectRole(Role.GOMSIN))
     }
-    RoleCard("군인이에요", "지금 복무 중이에요", KkIcons.Clock, c.bgMilitarySubtle, c.textMilitary, state.role == Role.SOLDIER) {
+    RoleCard("군인이에요", "지금 복무 중이에요", KkIcons.Clock, c.bar, c.accent, state.role == Role.SOLDIER) {
         onIntent(OnboardingIntent.SelectRole(Role.SOLDIER))
     }
 }
@@ -281,8 +281,8 @@ private fun RoleCard(title: String, body: String, icon: KkIcons, iconBg: Color, 
             .fillMaxWidth()
             .kkElevation(KkElevation.Low, shape)
             .clip(shape)
-            .background(if (selected) c.bgBrandSubtle else c.bgSurface)
-            .then(if (selected) Modifier.border(2.dp, c.borderBrand, shape) else Modifier)
+            .background(if (selected) c.bar else c.surface)
+            .then(if (selected) Modifier.border(2.dp, c.accent, shape) else Modifier)
             .clickable(role = A11y.RadioButton, onClick = onClick)
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.xxl),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg),
@@ -292,8 +292,8 @@ private fun RoleCard(title: String, body: String, icon: KkIcons, iconBg: Color, 
             KkIcon(icon, tint = iconTint)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-            Text(title, style = KkTheme.type.titleM, color = c.textPrimary)
-            Text(body, style = KkTheme.type.bodyS, color = c.textSecondary)
+            Text(title, style = KkTheme.type.title, color = c.ink)
+            Text(body, style = KkTheme.type.body, color = c.sub)
         }
     }
 }
@@ -304,10 +304,10 @@ private fun RoleCard(title: String, body: String, icon: KkIcons, iconBg: Color, 
 private fun ThemeContent(state: OnboardingState, onIntent: (OnboardingIntent) -> Unit) {
     val c = KkTheme.colors
     KkStepIndicator(step = 2, total = state.totalSteps)
-    Text("앱 색을 골라 주세요", style = KkTheme.type.titleL, color = c.textPrimary)
-    val recommended = state.role?.let { ThemeAccent.defaultFor(it) }
+    Text("앱 색을 골라 주세요", style = KkTheme.type.title, color = c.ink)
+    val recommended = state.role?.let { AppTheme.defaultFor(it) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ThemeAccent.entries.chunked(2).forEach { row ->
+        AppTheme.entries.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { theme ->
                     ThemeCard(theme, selected = state.theme == theme, recommended = theme == recommended, modifier = Modifier.weight(1f)) {
@@ -320,7 +320,7 @@ private fun ThemeContent(state: OnboardingState, onIntent: (OnboardingIntent) ->
 }
 
 @Composable
-internal fun ThemeCard(theme: ThemeAccent, selected: Boolean, recommended: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) =
+internal fun ThemeCard(theme: AppTheme, selected: Boolean, recommended: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) =
     com.sadturtleman.flowershoes.core.designsystem.KkThemeCard(theme, selected, recommended, modifier, onClick)
 
 // ── 온보딩 2 · 입대일 (+ 군종 · 입대일 시트) ──
@@ -334,7 +334,7 @@ private fun ServiceContent(state: OnboardingState, openSheet: (ServiceSheet) -> 
     val c = KkTheme.colors
     val mine = state.role == Role.SOLDIER
     KkStepIndicator(step = 3, total = 4)
-    Text(if (mine) "언제 입대했나요?" else "연인은 언제 입대했나요?", style = KkTheme.type.display, color = c.textPrimary)
+    Text(if (mine) "언제 입대했나요?" else "연인은 언제 입대했나요?", style = KkTheme.type.title, color = c.ink)
     KkInput(
         value = "${state.branch.koreanName} · ${state.branch.months(state.today)}개월",
         onValueChange = {},
@@ -348,7 +348,7 @@ private fun ServiceContent(state: OnboardingState, openSheet: (ServiceSheet) -> 
         placeholder = "입대일을 골라 주세요",
         onClick = { openSheet(ServiceSheet.DATE) },
     )
-    Text("미리보기", style = KkTheme.type.labelM, color = c.textTertiary)
+    Text("미리보기", style = KkTheme.type.label, color = c.sub)
     val t = state.preview
     KkDdayCard(
         days = t?.let { "D-${it.daysLeft(state.today)}" } ?: "D-?",
@@ -365,7 +365,7 @@ private fun Sheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> 
     Box(
         Modifier
             .fillMaxSize()
-            .background(KkTheme.colors.bgInverse.copy(alpha = 0.45f))
+            .background(KkTheme.colors.ink.copy(alpha = 0.45f))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
         contentAlignment = Alignment.BottomCenter,
     ) {
@@ -400,8 +400,8 @@ private fun DateSheet(state: OnboardingState, onDismiss: () -> Unit, onPick: (Lo
         }
         Text(
             "${pick.month.number}월 ${pick.day}일 입대 → ${t.dischargeDate.year}년 ${t.dischargeDate.month.number}월 ${t.dischargeDate.day}일 전역 (${state.branch.koreanName} ${state.branch.months(pick)}개월)",
-            style = KkTheme.type.bodyS, color = c.textMilitary,
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bgMilitarySubtle).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
+            style = KkTheme.type.body, color = c.accent,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bar).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         )
         KkPrimaryButton("선택 완료", { onPick(pick) })
     }

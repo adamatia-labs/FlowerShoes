@@ -80,7 +80,7 @@ fun HomeScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(c.bgCanvas)
+            .background(c.canvas)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(if (state.linked) KkSpacing.lg else 12.dp),
@@ -104,18 +104,18 @@ private fun Header(state: HomeState, onOpenSettings: () -> Unit) {
         val couple = state.couple
         if (couple != null) {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(couple.first, style = KkTheme.type.titleL, color = c.textPrimary, maxLines = 1)
-                KkHeartIcon(color = c.heart, size = 26.dp)
-                Text(couple.second, style = KkTheme.type.titleL, color = c.textPrimary, maxLines = 1)
+                Text(couple.first, style = KkTheme.type.title, color = c.ink, maxLines = 1)
+                KkHeartIcon(color = c.stamp, size = 26.dp)
+                Text(couple.second, style = KkTheme.type.title, color = c.ink, maxLines = 1)
             }
         } else {
-            Text("홈", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.weight(1f))
+            Text("홈", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(44.dp).clip(CircleShape).clickable(role = A11y.Button, onClick = onOpenSettings).semantics { contentDescription = "설정" },
                 contentAlignment = Alignment.Center,
-            ) { KkIcon(KkIcons.Settings, tint = c.textPrimary) }
+            ) { KkIcon(KkIcons.Settings, tint = c.ink) }
         }
     }
 }
@@ -140,14 +140,14 @@ private fun LinkedHome(state: HomeState, onIntent: (HomeIntent) -> Unit, onOpenC
         state.partner?.let { StatusTile(it, Modifier.weight(1f)) }
         val shape = RoundedCornerShape(KkRadius.xl)
         Box(
-            Modifier.weight(1f).fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+            Modifier.weight(1f).fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
             contentAlignment = Alignment.Center,
         ) {
             KkMissYouButton(state.sentMissYouToday, onClick = { onIntent(HomeIntent.SendMissYou) })
         }
     }
     if (state.scheduled.isNotEmpty()) {
-        Text("오늘 도착할 메시지", style = KkTheme.type.titleS, color = c.textPrimary)
+        Text("오늘 도착할 메시지", style = KkTheme.type.labelBold, color = c.ink)
         state.scheduled.forEach { ScheduledMessage(it) }
     }
 }
@@ -158,25 +158,25 @@ private fun StatusTile(p: PartnerStatus, modifier: Modifier) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.xl)
     Column(
-        modifier.fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.bgSurface).padding(KkSpacing.lg),
+        modifier.fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md, Alignment.CenterVertically),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(32.dp).clip(CircleShape).background(c.bgMilitarySubtle), contentAlignment = Alignment.Center) {
-                Text(p.initial, style = KkTheme.type.labelM, color = c.textMilitary)
+            Box(Modifier.size(32.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+                Text(p.initial, style = KkTheme.type.label, color = c.accent)
             }
             Column {
-                Text(p.name, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1)
-                Text(p.ago ?: "아직 소식 없음", style = KkTheme.type.caption, color = c.textTertiary)
+                Text(p.name, style = KkTheme.type.label, color = c.ink, maxLines = 1)
+                Text(p.ago ?: "아직 소식 없음", style = KkTheme.type.caption, color = c.sub)
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-            Box(Modifier.size(10.dp).clip(CircleShape).background(p.dot?.let { Color(it.toInt()) } ?: c.borderStrong))
-            Text(p.label ?: "상태 없음", style = KkTheme.type.titleM, color = if (p.label != null) c.textPrimary else c.textTertiary, maxLines = 1)
+            Box(Modifier.size(10.dp).clip(CircleShape).background(p.dot?.let { Color(it.toInt()) } ?: c.line))
+            Text(p.label ?: "상태 없음", style = KkTheme.type.title, color = if (p.label != null) c.ink else c.sub, maxLines = 1)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            KkHeartIcon(color = c.heart, size = 13.dp)
-            Text("보고싶어 ${p.missYou}", style = KkTheme.type.labelS, color = c.textBrand)
+            KkHeartIcon(color = c.stamp, size = 13.dp)
+            Text("보고싶어 ${p.missYou}", style = KkTheme.type.label, color = c.accent)
         }
     }
 }
@@ -187,19 +187,19 @@ private fun ScheduledMessage(row: ScheduledRow) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        KkIcon(KkIcons.Clock, tint = c.textBrand)
+        KkIcon(KkIcons.Clock, tint = c.accent)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-            Text(row.time, style = KkTheme.type.labelS, color = c.textBrand)
-            Text(row.message, style = KkTheme.type.bodyM, color = c.textPrimary, maxLines = 2)
+            Text(row.time, style = KkTheme.type.label, color = c.accent)
+            Text(row.message, style = KkTheme.type.body, color = c.ink, maxLines = 2)
         }
         Text(
-            "예약됨", style = KkTheme.type.labelS, color = c.textBrand,
-            modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bgBrandSubtle).padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
+            "예약됨", style = KkTheme.type.label, color = c.accent,
+            modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bar).padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
         )
     }
 }
@@ -212,21 +212,21 @@ private fun GomsinUnlinked(onOpenPairing: () -> Unit, onWriteLetter: () -> Unit,
     InviteCard {
         KkButton("초대 코드 보내기", onOpenPairing, Modifier.fillMaxWidth(), size = KkButtonSize.M)
     }
-    Text("연결 전에 할 수 있어요", style = KkTheme.type.titleM, color = c.textPrimary)
+    Text("연결 전에 할 수 있어요", style = KkTheme.type.title, color = c.ink)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CanDoTile(KkIcons.Mail, "편지 미리 쓰기", "연결되면 한 번에 도착해요", Modifier.weight(1f), onWriteLetter)
         CanDoTile(KkIcons.Calendar, "일정 적어 두기", "수료식 · 첫 면회 · 휴가", Modifier.weight(1f), onOpenCalendar)
     }
-    Text("연결하면 함께 보여요", style = KkTheme.type.titleM, color = c.textPrimary)
+    Text("연결하면 함께 보여요", style = KkTheme.type.title, color = c.ink)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(Triple(KkIcons.Clock, "전역", "D-?"), Triple(KkIcons.Home, "상대 상태", "?"), Triple(KkIcons.Heart, "보고싶어", "?")).forEach { (icon, label, value) ->
             Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(KkRadius.lg)).background(c.bgSubtle).padding(horizontal = 12.dp, vertical = 14.dp),
+                Modifier.weight(1f).clip(RoundedCornerShape(KkRadius.lg)).background(c.bar).padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                KkIcon(icon, tint = c.textSecondary)
-                Text(label, style = KkTheme.type.bodyS, color = c.textSecondary)
-                Text(value, style = KkTheme.type.titleS, color = c.textSecondary)
+                KkIcon(icon, tint = c.sub)
+                Text(label, style = KkTheme.type.body, color = c.sub)
+                Text(value, style = KkTheme.type.labelBold, color = c.sub)
             }
         }
     }
@@ -237,14 +237,14 @@ private fun InviteCard(buttons: @Composable () -> Unit) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).padding(20.dp),
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(48.dp).clip(CircleShape).background(c.heartSubtle), contentAlignment = Alignment.Center) {
-            KkIcon(KkIcons.Heart, tint = c.textPrimary)
+        Box(Modifier.size(48.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+            KkIcon(KkIcons.Heart, tint = c.ink)
         }
-        Text("연인과 연결할까요?", style = KkTheme.type.titleM, color = c.textPrimary, textAlign = TextAlign.Center)
+        Text("연인과 연결할까요?", style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
         buttons()
     }
 }
@@ -254,12 +254,12 @@ private fun CanDoTile(icon: KkIcons, title: String, body: String, modifier: Modi
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface).clickable(role = A11y.Button, onClick = onClick).padding(16.dp),
+        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).clickable(role = A11y.Button, onClick = onClick).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        KkIcon(icon, tint = c.textPrimary)
-        Text(title, style = KkTheme.type.titleS, color = c.textPrimary)
-        Text(body, style = KkTheme.type.caption, color = c.textSecondary)
+        KkIcon(icon, tint = c.ink)
+        Text(title, style = KkTheme.type.labelBold, color = c.ink)
+        Text(body, style = KkTheme.type.caption, color = c.sub)
     }
 }
 
@@ -285,15 +285,15 @@ private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnter
     state.nextLeave?.let { leave ->
         val shape = RoundedCornerShape(KkRadius.lg)
         Row(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
                 .clickable(role = A11y.Button, onClick = onOpenCalendar).padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            KkIcon(KkIcons.Calendar, tint = c.textPrimary)
+            KkIcon(KkIcons.Calendar, tint = c.ink)
             Column {
-                Text(leave.title, style = KkTheme.type.titleS, color = c.textPrimary)
-                Text(leave.detail, style = KkTheme.type.caption, color = c.textSecondary)
+                Text(leave.title, style = KkTheme.type.labelBold, color = c.ink)
+                Text(leave.detail, style = KkTheme.type.caption, color = c.sub)
             }
         }
     }
@@ -304,13 +304,13 @@ private fun StatTile(label: String, value: String, modifier: Modifier, onClick: 
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .then(if (onClick != null) Modifier.clickable(role = A11y.Button, onClick = onClick) else Modifier)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, style = KkTheme.type.caption, color = c.textTertiary)
-        Text(value, style = KkTheme.type.titleS, color = c.textPrimary, maxLines = 1)
+        Text(label, style = KkTheme.type.caption, color = c.sub)
+        Text(value, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
     }
 }
 

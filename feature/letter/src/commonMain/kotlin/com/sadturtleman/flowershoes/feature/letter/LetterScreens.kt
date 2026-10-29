@@ -146,14 +146,14 @@ fun LetterInboxRoute(
 fun LetterInboxScreen(state: LetterState, onIntent: (LetterIntent) -> Unit, onCreate: () -> Unit) {
     val c = KkTheme.colors
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).verticalScroll(rememberScrollState())
+        Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("편지함", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.weight(1f))
+            Text("편지함", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
             Text(
-                "+ 편지 쓰기", style = KkTheme.type.labelM, color = c.textBrand,
+                "+ 편지 쓰기", style = KkTheme.type.label, color = c.accent,
                 modifier = Modifier.clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onCreate)
                     .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
             )
@@ -168,7 +168,7 @@ fun LetterInboxScreen(state: LetterState, onIntent: (LetterIntent) -> Unit, onCr
                 onAction = onCreate,
             )
             state.visibleInbox.isEmpty() -> Text(
-                "이 분류에는 아직 편지가 없어요", style = KkTheme.type.bodyM, color = c.textTertiary,
+                "이 분류에는 아직 편지가 없어요", style = KkTheme.type.body, color = c.sub,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = KkSpacing.xxxl),
             )
             else -> state.visibleInbox.chunked(2).forEach { row ->
@@ -190,29 +190,29 @@ private fun InboxItem(card: LetterCard, modifier: Modifier, onClick: () -> Unit)
     val drawing = card.drawingOnly
     Column(
         modifier.fillMaxHeight().heightIn(min = 220.dp).kkElevation(KkElevation.Mid, shape).clip(shape)
-            .background(if (drawing) c.bgSurface else c.bgMilitarySubtle)
+            .background(if (drawing) c.surface else c.bar)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { if (card.unread) contentDescription = "안 읽은 편지, ${card.title}" }
             .padding(KkSpacing.md),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
         Box(
-            Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(KkRadius.md)).background(if (drawing) c.bgCanvas else c.bgSurface),
+            Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(KkRadius.md)).background(if (drawing) c.canvas else c.surface),
             contentAlignment = Alignment.Center,
         ) {
             val thumb = card.thumb
             when {
                 thumb != null -> Box(Modifier.size(100.dp), contentAlignment = Alignment.Center) { DrawingView(thumb) }
-                drawing -> KkIcon(KkIcons.Heart, tint = c.textBrand, size = 32.dp)
-                else -> LetterLines(c.textMilitary)
+                drawing -> KkIcon(KkIcons.Heart, tint = c.accent, size = 32.dp)
+                else -> LetterLines(c.accent)
             }
         }
         // Figma 최종 정리: 종류 알약 없이 제목 · "10.21 · 지수". 안 읽은 편지만 제목 앞 점.
         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
-            if (card.unread) Box(Modifier.size(6.dp).clip(CircleShape).background(c.heart))
-            Text(card.title, style = KkTheme.type.labelM, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (card.unread) Box(Modifier.size(6.dp).clip(CircleShape).background(c.stamp))
+            Text(card.title, style = KkTheme.type.label, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(card.meta, style = KkTheme.type.caption, color = c.textTertiary, maxLines = 1)
+        Text(card.meta, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
     }
 }
 
@@ -232,12 +232,12 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
     val c = KkTheme.colors
     val paper = Paper.of(open.letter.paper)
     val ink = when {
-        paper == Paper.NIGHT -> c.textInverse
+        paper == Paper.NIGHT -> c.canvas
         paper.lifetime -> Color(0xFF2E2A26)
-        else -> c.textPrimary
+        else -> c.ink
     }
     // 읽는 화면은 탭 바 없이 전체(Figma) — 아래 버튼이 제스처 바에 걸리지 않게.
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
         KkTopBar(
             "편지", onLeading = { onIntent(LetterIntent.Close) },
             trailingText = if (open.mine) "삭제" else null, onTrailing = { onIntent(LetterIntent.Delete(open.letter.id)) },
@@ -250,22 +250,22 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
                 Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(paper.background(c)).padding(KkSpacing.xl),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
             ) {
-                Text(open.meta, style = KkTheme.type.caption, color = if (paper == Paper.NIGHT) c.textInverse.copy(alpha = 0.7f) else c.textTertiary)
-                open.letter.title?.takeIf { it.isNotBlank() }?.let { Text(it, style = KkTheme.type.titleM, color = ink) }
+                Text(open.meta, style = KkTheme.type.caption, color = if (paper == Paper.NIGHT) c.canvas.copy(alpha = 0.7f) else c.sub)
+                open.letter.title?.takeIf { it.isNotBlank() }?.let { Text(it, style = KkTheme.type.title, color = ink) }
                 val font = KkLetterFont.of(open.letter.font)
                 val fontFamily = font.family()
                 open.letter.blocks.forEach { block ->
                     when (block) {
-                        is LetterBlock.Text -> Text(block.text, style = KkTheme.type.bodyM.copy(fontFamily = fontFamily, fontSize = font.size(15f, com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.of(open.letter.font))), color = ink)
+                        is LetterBlock.Text -> Text(block.text, style = KkTheme.type.body.copy(fontFamily = fontFamily, fontSize = font.size(15f, com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.of(open.letter.font))), color = ink)
                         is LetterBlock.DrawingRef -> {
                             val doc = open.drawings[block.drawingId]
                             Box(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(Color.White)
-                                    .border(1.dp, c.borderDefault, RoundedCornerShape(KkRadius.lg)).padding(14.dp),
+                                    .border(1.dp, c.line, RoundedCornerShape(KkRadius.lg)).padding(14.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (doc == null) {
-                                    Text("그림을 받는 중이에요", style = KkTheme.type.bodyS, color = c.textTertiary, modifier = Modifier.padding(KkSpacing.xxl))
+                                    Text("그림을 받는 중이에요", style = KkTheme.type.body, color = c.sub, modifier = Modifier.padding(KkSpacing.xxl))
                                 } else {
                                     ReplayPlayer(
                                         doc,
@@ -286,9 +286,9 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
                                 )
                             } else {
                                 Box(
-                                    Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(KkRadius.lg)).background(c.bgSubtle),
+                                    Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(KkRadius.lg)).background(c.bar),
                                     contentAlignment = Alignment.Center,
-                                ) { Text("사진을 받는 중이에요", style = KkTheme.type.bodyS, color = c.textTertiary) }
+                                ) { Text("사진을 받는 중이에요", style = KkTheme.type.body, color = c.sub) }
                             }
                         }
                     }
@@ -337,7 +337,7 @@ fun LetterComposeRoute(
     var fonts by remember { mutableStateOf(false) }
     var photoSource by remember { mutableStateOf(false) }
     val pickPhoto = photoPicker?.invoke { viewModel.onIntent(LetterIntent.AddPhoto(it)) }
-    Box(Modifier.fillMaxSize().background(c.bgCanvas)) {
+    Box(Modifier.fillMaxSize().background(c.canvas)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = KkSpacing.xl)) {
             KkTopBar("편지 쓰기", onLeading = onClose, leading = KkTopBarLeading.Close, trailingText = "임시저장", onTrailing = { focus.clearFocus(); viewModel.onIntent(LetterIntent.SaveDraft) })
             Column(
@@ -345,8 +345,8 @@ fun LetterComposeRoute(
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                    Text("받는 사람", style = KkTheme.type.labelS, color = c.textTertiary)
-                    KkStatusChip(state.partnerName, selected = false, onClick = {}, dot = c.statusWarning)
+                    Text("받는 사람", style = KkTheme.type.label, color = c.sub)
+                    KkStatusChip(state.partnerName, selected = false, onClick = {}, dot = c.danger)
                 }
                 PaperPicker(paper, lifetimeOn, onLocked = { lockedPaper = it }) { viewModel.onIntent(LetterIntent.ChoosePaper(it)) }
                 PaperCard(d, paper, state.draftThumbs, state.draftPhotos, viewModel::onIntent)
@@ -358,7 +358,7 @@ fun LetterComposeRoute(
                 d.revealAt?.let { at ->
                     Text(
                         "${at.month.ordinal + 1}월 ${at.day}일 ${at.time.hhmm()}에 도착해요 · 그 전에는 상대 화면 어디에도 보이지 않아요",
-                        style = KkTheme.type.caption, color = c.textSecondary,
+                        style = KkTheme.type.caption, color = c.sub,
                     )
                 }
             }
@@ -404,10 +404,10 @@ fun LetterComposeRoute(
         }
         // Figma 편지 쓰기 · 글꼴: 크기 칩 세 개 + 줄마다 "보고 싶은 밤"(그 글꼴) · 이름 · 평생 알약 · 라디오.
         KkModalSheet({ fonts = false }) {
-            Text("글꼴", style = KkTheme.type.titleM, color = c.textPrimary)
+            Text("글꼴", style = KkTheme.type.title, color = c.ink)
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                 com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.entries.forEach { z ->
-                    KkStatusChip(z.label, selected = z == curSize, onClick = { choose(curFont, z) }, dot = if (z == curSize) c.textOnBrand else c.statusWarning)
+                    KkStatusChip(z.label, selected = z == curSize, onClick = { choose(curFont, z) }, dot = if (z == curSize) c.surface else c.danger)
                 }
             }
             Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
@@ -422,12 +422,12 @@ fun LetterComposeRoute(
                             .semantics { selected = on; contentDescription = f.label + (if (f.lifetime) ", 꽃신 평생" else "") + (if (locked) ", 잠김" else "") },
                         horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("보고 싶은 밤", style = KkTheme.type.bodyL.copy(fontFamily = f.family(), fontSize = f.size(17f)), color = c.textPrimary)
-                        Text(f.label, style = KkTheme.type.caption, color = c.textSecondary, modifier = Modifier.weight(1f))
+                        Text("보고 싶은 밤", style = KkTheme.type.body.copy(fontFamily = f.family(), fontSize = f.size(17f)), color = c.ink)
+                        Text(f.label, style = KkTheme.type.caption, color = c.sub, modifier = Modifier.weight(1f))
                         if (f.lifetime) {
                             Text(
-                                "평생", style = KkTheme.type.labelS, color = if (locked) c.textTertiary else c.textBrand,
-                                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bgBrandSubtle).padding(horizontal = KkSpacing.sm, vertical = 2.dp),
+                                "평생", style = KkTheme.type.label, color = if (locked) c.sub else c.accent,
+                                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bar).padding(horizontal = KkSpacing.sm, vertical = 2.dp),
                             )
                         }
                         com.sadturtleman.flowershoes.core.designsystem.KkRadio(on)
@@ -485,8 +485,8 @@ private fun PaperPicker(selected: Paper, lifetimeOn: Boolean, onLocked: (Paper) 
                         .clip(shape).background(p.background(c))
                         .then(
                             when {
-                                on -> Modifier.border(2.dp, c.borderBrand, shape)
-                                bordered -> Modifier.border(1.dp, c.borderDefault, shape)
+                                on -> Modifier.border(2.dp, c.accent, shape)
+                                bordered -> Modifier.border(1.dp, c.line, shape)
                                 else -> Modifier
                             },
                         ),
@@ -494,13 +494,13 @@ private fun PaperPicker(selected: Paper, lifetimeOn: Boolean, onLocked: (Paper) 
                     // 꽃신 평생 편지지: 오른쪽 위 작은 표시(이름은 그대로).
                     if (p.lifetime) {
                         Text(
-                            "평생", style = KkTheme.type.labelS, color = c.textOnBrand,
+                            "평생", style = KkTheme.type.label, color = c.surface,
                             modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).clip(RoundedCornerShape(KkRadius.full))
-                                .background(if (locked) c.textTertiary else c.bgBrand).padding(horizontal = 5.dp, vertical = 1.dp),
+                                .background(if (locked) c.sub else c.accent).padding(horizontal = 5.dp, vertical = 1.dp),
                         )
                     }
                 }
-                Text(p.label, style = KkTheme.type.caption, maxLines = 1, color = if (on) c.textBrand else c.textTertiary)
+                Text(p.label, style = KkTheme.type.caption, maxLines = 1, color = if (on) c.accent else c.sub)
             }
         }
     }
@@ -519,14 +519,14 @@ private fun PaperCard(
     val shape = RoundedCornerShape(KkRadius.lg)
     // 꽃신 평생 편지지는 밝은 종이라 글자는 늘 진한 색(다크 모드에서도).
     val ink = when {
-        paper == Paper.NIGHT -> c.textInverse
+        paper == Paper.NIGHT -> c.canvas
         paper.lifetime -> Color(0xFF2E2A26)
-        else -> c.textPrimary
+        else -> c.ink
     }
     val hint = when {
-        paper == Paper.NIGHT -> c.textInverse.copy(alpha = 0.5f)
+        paper == Paper.NIGHT -> c.canvas.copy(alpha = 0.5f)
         paper.lifetime -> Color(0xFF7A6E60)
-        else -> c.textTertiary
+        else -> c.sub
     }
     Column(
         Modifier.fillMaxWidth().heightIn(min = 341.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(paper.background(c)).padding(KkSpacing.xl),
@@ -535,17 +535,17 @@ private fun PaperCard(
         BasicTextField(
             value = d.title,
             onValueChange = { onIntent(LetterIntent.EditTitle(it)) },
-            textStyle = KkTheme.type.titleM.copy(color = ink),
+            textStyle = KkTheme.type.title.copy(color = ink),
             singleLine = true,
-            cursorBrush = SolidColor(c.bgBrand),
+            cursorBrush = SolidColor(c.accent),
             modifier = Modifier.fillMaxWidth().semantics { contentDescription = "제목" },
             decorationBox = { inner ->
-                Box { if (d.title.isEmpty()) Text("제목", style = KkTheme.type.titleM, color = hint); inner() }
+                Box { if (d.title.isEmpty()) Text("제목", style = KkTheme.type.title, color = hint); inner() }
             },
         )
         val font = KkLetterFont.of(d.font)
         // 글 속 그림이 줄 높이를 키우도록 줄 간격은 글꼴 기본값(고정 줄 높이는 큰 글자를 겹치게 한다).
-        val body = KkTheme.type.bodyM.copy(fontFamily = font.family(), fontSize = font.size(16f, com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.of(d.font)), lineHeight = TextUnit.Unspecified, letterSpacing = 0.sp, color = ink)
+        val body = KkTheme.type.body.copy(fontFamily = font.family(), fontSize = font.size(16f, com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.of(d.font)), lineHeight = TextUnit.Unspecified, letterSpacing = 0.sp, color = ink)
         var field by remember { mutableStateOf(TextFieldValue(d.text, TextRange(d.cursor.coerceIn(0, d.text.length)))) }
         // 그림 · 사진을 넣었거나 임시저장을 불러온 경우처럼 바깥에서 글이 바뀌면 맞춘다.
         // 직접 치는 글은 이 칸이 원본이다 — 화면에 늦게 도착한 옛 상태로 되돌리면 글자가 빠진다.
@@ -564,7 +564,7 @@ private fun PaperCard(
                     onIntent(LetterIntent.EditText(v.text, v.selection.end))
                 },
                 textStyle = body,
-                cursorBrush = SolidColor(c.bgBrand),
+                cursorBrush = SolidColor(c.accent),
                 visualTransformation = objectStyle,
                 onTextLayout = { layout = it },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 256.dp).semantics {
@@ -602,9 +602,9 @@ private fun PaperCard(
                     ) {
                         InlineObject(key, thumbs, photos, Modifier.fillMaxSize())
                         if (selectedObj == index) {
-                            Box(Modifier.fillMaxSize().border(1.5.dp, c.borderBrand))
+                            Box(Modifier.fillMaxSize().border(1.5.dp, c.accent))
                             listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomStart, Alignment.BottomEnd).forEach { a ->
-                                Box(Modifier.align(a).size(8.dp).background(Color.White).border(1.5.dp, c.borderBrand))
+                                Box(Modifier.align(a).size(8.dp).background(Color.White).border(1.5.dp, c.accent))
                             }
                             RemoveBadge { selectedObj = null; onIntent(LetterIntent.RemoveObject(index)) }
                         }
@@ -621,14 +621,14 @@ private fun InlineObject(key: String, thumbs: Map<String, DrawingDocument>, phot
     val c = KkTheme.colors
     if (key.startsWith("d:")) {
         Box(modifier.clip(RoundedCornerShape(KkRadius.sm)).background(Color.White).padding(4.dp), contentAlignment = Alignment.Center) {
-            thumbs[key.removePrefix("d:")]?.let { DrawingView(it) } ?: KkIcon(KkIcons.Pen, tint = c.textTertiary)
+            thumbs[key.removePrefix("d:")]?.let { DrawingView(it) } ?: KkIcon(KkIcons.Pen, tint = c.sub)
         }
     } else {
         val bytes = photos[key.removePrefix("p:")]
         val bitmap = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
-        Box(modifier.clip(RoundedCornerShape(KkRadius.sm)).background(c.bgSubtle), contentAlignment = Alignment.Center) {
+        Box(modifier.clip(RoundedCornerShape(KkRadius.sm)).background(c.bar), contentAlignment = Alignment.Center) {
             if (bitmap != null) Image(bitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            else KkIcon(KkIcons.Photo, tint = c.textSecondary, size = 18.dp)
+            else KkIcon(KkIcons.Photo, tint = c.sub, size = 18.dp)
         }
     }
 }
@@ -665,12 +665,12 @@ private const val PHOTO_WIDEN = 1.5f
 private fun ComposeTools(d: ComposeDraft, canPhoto: Boolean, onDrawing: () -> Unit, onPhoto: () -> Unit, onSticker: () -> Unit, onFont: () -> Unit) {
     val c = KkTheme.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        ToolButton("그림", d.canAddDrawing, onDrawing) { KkIcon(KkIcons.Pen, tint = c.textPrimary) }
-        if (canPhoto) ToolButton("사진", d.canAddPhoto, onPhoto) { KkIcon(KkIcons.Photo, tint = c.textPrimary) }
-        ToolButton("스티커", true, onSticker) { KkIcon(KkIcons.Sticker, tint = c.textPrimary) }
-        ToolButton("글꼴", true, onFont) { Text("T", style = KkTheme.type.titleM, color = c.textPrimary) }
+        ToolButton("그림", d.canAddDrawing, onDrawing) { KkIcon(KkIcons.Pen, tint = c.ink) }
+        if (canPhoto) ToolButton("사진", d.canAddPhoto, onPhoto) { KkIcon(KkIcons.Photo, tint = c.ink) }
+        ToolButton("스티커", true, onSticker) { KkIcon(KkIcons.Sticker, tint = c.ink) }
+        ToolButton("글꼴", true, onFont) { Text("T", style = KkTheme.type.title, color = c.ink) }
         Spacer(Modifier.weight(1f))
-        Text("${d.text.length} / ${ComposeDraft.MAX_CHARS}", style = KkTheme.type.caption, color = c.textTertiary)
+        Text("${d.text.length} / ${ComposeDraft.MAX_CHARS}", style = KkTheme.type.caption, color = c.sub)
     }
 }
 
@@ -688,10 +688,10 @@ private fun ToolButton(label: String, enabled: Boolean, onClick: () -> Unit, con
 private fun BoxScope.RemoveBadge(onClick: () -> Unit) {
     val c = KkTheme.colors
     Box(
-        Modifier.align(Alignment.TopEnd).padding(2.dp).size(20.dp).clip(CircleShape).background(c.bgInverse.copy(alpha = 0.85f))
+        Modifier.align(Alignment.TopEnd).padding(2.dp).size(20.dp).clip(CircleShape).background(c.ink.copy(alpha = 0.85f))
             .clickable(role = Role.Button, onClick = onClick).semantics { contentDescription = "그림 빼기" },
         contentAlignment = Alignment.Center,
-    ) { KkIcon(KkIcons.Close, tint = c.textInverse, size = 12.dp) }
+    ) { KkIcon(KkIcons.Close, tint = c.canvas, size = 12.dp) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -701,7 +701,7 @@ private fun StickerGrid(onPick: (String) -> Unit) {
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         STICKERS.values.forEach { glyph ->
             Box(
-                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bgSubtle).clickable(role = Role.Button) { onPick(glyph) },
+                Modifier.size(56.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar).clickable(role = Role.Button) { onPick(glyph) },
                 contentAlignment = Alignment.Center,
             ) { Text(glyph, fontSize = 28.sp) }
         }
@@ -728,11 +728,11 @@ private fun BoxScope.ToastHost(toasts: SharedFlow<LetterToast>, onShown: () -> U
 }
 
 internal fun Paper.background(c: KkColors): Color = when (this) {
-    Paper.PLAIN -> c.bgSurface
-    Paper.BLOSSOM -> c.bgBrandSubtle
-    Paper.OLIVE -> c.bgMilitarySubtle
-    Paper.GRID -> c.bgSubtle
-    Paper.NIGHT -> c.bgInverse
+    Paper.PLAIN -> c.surface
+    Paper.BLOSSOM -> c.bar
+    Paper.OLIVE -> c.bar
+    Paper.GRID -> c.bar
+    Paper.NIGHT -> c.ink
     // 꽃신 평생 편지지: 테마와 무관한 종이 색(Figma 📖 · 편지지 시안).
     Paper.MANUSCRIPT -> Color(0xFFFFF8EC)
     Paper.KRAFT -> Color(0xFFE9DCC4)
@@ -742,11 +742,11 @@ internal fun Paper.background(c: KkColors): Color = when (this) {
 }
 
 private fun Paper.rule(c: KkColors): Color = when (this) {
-    Paper.PLAIN -> c.borderDefault
-    Paper.BLOSSOM -> c.borderBrand.copy(alpha = 0.35f)
-    Paper.OLIVE -> c.textMilitary.copy(alpha = 0.25f)
-    Paper.GRID -> c.borderDefault
-    Paper.NIGHT -> c.textInverse.copy(alpha = 0.18f)
+    Paper.PLAIN -> c.line
+    Paper.BLOSSOM -> c.accent.copy(alpha = 0.35f)
+    Paper.OLIVE -> c.accent.copy(alpha = 0.25f)
+    Paper.GRID -> c.line
+    Paper.NIGHT -> c.canvas.copy(alpha = 0.18f)
     Paper.MANUSCRIPT -> Color(0x66D9776B)
     Paper.KRAFT -> Color(0xFFCFC3AE)
     Paper.MAIL -> Color(0x55C8463D)

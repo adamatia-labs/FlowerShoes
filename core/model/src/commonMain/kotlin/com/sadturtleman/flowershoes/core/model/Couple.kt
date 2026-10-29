@@ -7,17 +7,21 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class Role { GOMSIN, SOLDIER }
 
-/** 이 기기에만 적용되는 강조색 묶음. 동기화하지 않는다. */
+/** 이 기기에만 적용되는 테마(곰신 · 군인). 동기화하지 않는다. 라이트 · 다크는 따로(설정 › 화면 모드). */
 @Serializable
-enum class ThemeAccent {
-    ROSE, OLIVE, NAVY, MONO;
+enum class AppTheme {
+    GOMSIN, SOLDIER;
 
     companion object {
-        /** 온보딩 테마 단계의 기본 선택. 곰신은 로즈, 군인은 올리브. */
-        fun defaultFor(role: Role): ThemeAccent = when (role) {
-            Role.GOMSIN -> ROSE
-            Role.SOLDIER -> OLIVE
+        /** 역할 기본값. 곰신은 곰신 테마, 군인은 군인 테마. */
+        fun defaultFor(role: Role): AppTheme = when (role) {
+            Role.GOMSIN -> GOMSIN
+            Role.SOLDIER -> SOLDIER
         }
+
+        /** 저장된 값을 읽는다. 없거나 예전 강조색 값(ROSE · OLIVE · NAVY · MONO)이면 역할 기본값, 역할도 없으면 곰신. */
+        fun from(stored: String?, role: Role?): AppTheme =
+            entries.firstOrNull { it.name == stored } ?: role?.let(::defaultFor) ?: GOMSIN
     }
 }
 

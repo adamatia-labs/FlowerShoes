@@ -6,7 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sadturtleman.flowershoes.core.model.Role
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -17,7 +17,7 @@ data class DeviceState(
     val userId: String,
     val deviceId: String,
     val role: Role?,
-    val theme: ThemeAccent,
+    val theme: AppTheme,
     val onboarded: Boolean,
     val keyEpoch: Int,
 )
@@ -34,7 +34,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
             userId = p[USER_ID].orEmpty(),
             deviceId = p[DEVICE_ID].orEmpty(),
             role = p[ROLE]?.let(Role::valueOf),
-            theme = p[THEME]?.let(ThemeAccent::valueOf) ?: ThemeAccent.ROSE,
+            theme = AppTheme.from(p[THEME], p[ROLE]?.let(Role::valueOf)),
             onboarded = p[ONBOARDED] == 1,
             keyEpoch = p[KEY_EPOCH] ?: 0,
         )
@@ -59,11 +59,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setRole(role: Role) = store.edit {
         it[ROLE] = role.name
-        // 테마를 아직 안 골랐으면 역할 기본값을 미리 넣어 둔다(곰신 로즈, 군인 올리브).
-        if (it[THEME] == null) it[THEME] = ThemeAccent.defaultFor(role).name
+        // 테마를 아직 안 골랐으면 역할 기본값을 미리 넣어 둔다(곰신은 곰신 테마, 군인은 군인 테마).
+        if (it[THEME] == null) it[THEME] = AppTheme.defaultFor(role).name
     }
 
-    suspend fun setTheme(theme: ThemeAccent) = store.edit { it[THEME] = theme.name }
+    suspend fun setTheme(theme: AppTheme) = store.edit { it[THEME] = theme.name }
 
     suspend fun setOnboarded() = store.edit { it[ONBOARDED] = 1 }
 

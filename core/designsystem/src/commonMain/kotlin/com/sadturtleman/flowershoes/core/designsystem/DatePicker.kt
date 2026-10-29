@@ -45,12 +45,12 @@ fun KkDatePicker(selected: LocalDate, onSelect: (LocalDate) -> Unit, modifier: M
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             KkIcon(
-                KkIcons.ChevronRight, tint = c.textSecondary, contentDescription = "이전 달",
+                KkIcons.ChevronRight, tint = c.sub, contentDescription = "이전 달",
                 modifier = Modifier.rotate(180f).clickable(role = Role.Button) { month = month.minus(DatePeriod(months = 1)) },
             )
-            Text("${month.year}년 ${month.month.number}월", style = KkTheme.type.titleS, color = c.textPrimary)
+            Text("${month.year}년 ${month.month.number}월", style = KkTheme.type.labelBold, color = c.ink)
             KkIcon(
-                KkIcons.ChevronRight, tint = c.textSecondary, contentDescription = "다음 달",
+                KkIcons.ChevronRight, tint = c.sub, contentDescription = "다음 달",
                 modifier = Modifier.clickable(role = Role.Button) { month = month.plus(DatePeriod(months = 1)) },
             )
         }
@@ -65,7 +65,7 @@ fun KkMonthGrid(month: LocalDate, selected: LocalDate, onPick: (LocalDate) -> Un
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             listOf("일", "월", "화", "수", "목", "금", "토").forEach {
-                Box(Modifier.width(44.dp).height(24.dp), contentAlignment = Alignment.Center) { Text(it, style = KkTheme.type.caption, color = c.textTertiary) }
+                Box(Modifier.width(44.dp).height(24.dp), contentAlignment = Alignment.Center) { Text(it, style = KkTheme.type.caption, color = c.sub) }
             }
         }
         val lead = month.dayOfWeek.isoDayNumber % 7 // 일요일 = 0
@@ -79,12 +79,12 @@ fun KkMonthGrid(month: LocalDate, selected: LocalDate, onPick: (LocalDate) -> Un
                             val date = LocalDate(month.year, month.month, n)
                             val on = date == selected
                             Box(
-                                Modifier.size(36.dp).clip(CircleShape).background(if (on) c.bgBrand else Color.Transparent)
+                                Modifier.size(36.dp).clip(CircleShape).background(if (on) c.accent else Color.Transparent)
                                     .clickable(role = Role.Button) { onPick(date) }
                                     .semantics { contentDescription = "${month.month.number}월 ${n}일" + if (on) ", 선택됨" else "" },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("$n", style = KkTheme.type.labelM, color = if (on) c.textOnBrand else c.textPrimary)
+                                Text("$n", style = KkTheme.type.label, color = if (on) c.surface else c.ink)
                             }
                         }
                     }

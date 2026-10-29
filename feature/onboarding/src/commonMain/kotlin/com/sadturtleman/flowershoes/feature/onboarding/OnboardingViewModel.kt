@@ -15,7 +15,7 @@ import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.Service
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlin.time.Clock
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +50,7 @@ data class OnboardingState(
     /** 약관 보기(온보딩 0-2)가 열려 있으면 그 문서. */
     val reading: TermsDoc? = null,
     val role: Role? = null,
-    val theme: ThemeAccent? = null,
+    val theme: AppTheme? = null,
     val branch: Branch = Branch.ARMY,
     val enlistDate: LocalDate? = null,
     val today: LocalDate,
@@ -92,7 +92,7 @@ sealed interface OnboardingIntent {
     data object ToggleAll : OnboardingIntent
     data class Read(val doc: TermsDoc?) : OnboardingIntent
     data class SelectRole(val role: Role) : OnboardingIntent
-    data class SelectTheme(val theme: ThemeAccent) : OnboardingIntent
+    data class SelectTheme(val theme: AppTheme) : OnboardingIntent
     data class SelectBranch(val branch: Branch) : OnboardingIntent
     data class SetEnlistDate(val date: LocalDate) : OnboardingIntent
     data object Next : OnboardingIntent
@@ -142,7 +142,7 @@ class OnboardingViewModel(
             is OnboardingIntent.Read -> _state.update { it.copy(reading = intent.doc) }
             is OnboardingIntent.SelectRole -> _state.update {
                 // 역할을 바꾸면 테마 기본값도 따라간다(곰신 로즈 · 군인 올리브, 화면에 "추천").
-                it.copy(role = intent.role, theme = ThemeAccent.defaultFor(intent.role), enlistDate = if (intent.role == Role.SOLDIER) it.enlistDate else null)
+                it.copy(role = intent.role, theme = AppTheme.defaultFor(intent.role), enlistDate = if (intent.role == Role.SOLDIER) it.enlistDate else null)
             }
             is OnboardingIntent.SelectTheme -> {
                 _state.update { it.copy(theme = intent.theme) }

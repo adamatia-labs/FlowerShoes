@@ -61,7 +61,7 @@ import androidx.compose.ui.unit.dp
 /** 포커스 링: 키보드 · 스위치 접근 시 3px 로즈 바깥 테두리(color/border/focus). */
 @Composable
 private fun Modifier.focusRing(focused: Boolean, shape: androidx.compose.ui.graphics.Shape): Modifier =
-    if (focused) border(3.dp, KkTheme.colors.borderFocus, shape) else this
+    if (focused) border(3.dp, KkTheme.colors.accent, shape) else this
 
 // ── Button ────────────────────────────────────────────────────────────────
 
@@ -89,14 +89,14 @@ fun KkButton(
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(KkRadius.md)
     val bg = when (style) {
-        KkButtonStyle.Primary -> if (danger) c.statusDanger else if (pressed) c.bgBrandPressed else c.bgBrand
-        KkButtonStyle.Secondary -> if (pressed) c.bgBrandSubtlePressed else c.bgBrandSubtle
-        KkButtonStyle.Ghost -> if (pressed) c.bgPressed else Color.Transparent
+        KkButtonStyle.Primary -> if (danger) c.danger else if (pressed) c.accent else c.accent
+        KkButtonStyle.Secondary -> if (pressed) c.line else c.bar
+        KkButtonStyle.Ghost -> if (pressed) c.line else Color.Transparent
     }
     val fg = when (style) {
-        KkButtonStyle.Primary -> c.textOnBrand
-        KkButtonStyle.Secondary -> c.textBrand
-        KkButtonStyle.Ghost -> c.textPrimary
+        KkButtonStyle.Primary -> c.surface
+        KkButtonStyle.Secondary -> c.accent
+        KkButtonStyle.Ghost -> c.ink
     }
     val elevated = style != KkButtonStyle.Ghost && !pressed && enabled
     Box(
@@ -106,7 +106,7 @@ fun KkButton(
             .then(if (elevated) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
             .clip(shape)
             .background(bg)
-            .then(if (style == KkButtonStyle.Ghost) Modifier.border(1.dp, c.borderStrong, shape) else Modifier)
+            .then(if (style == KkButtonStyle.Ghost) Modifier.border(1.dp, c.line, shape) else Modifier)
             .focusRing(focused, shape)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled && !loading, role = Role.Button, onClick = onClick)
             .padding(horizontal = if (size == KkButtonSize.L) KkSpacing.xxl else KkSpacing.lg),
@@ -115,7 +115,7 @@ fun KkButton(
         if (loading) {
             KkSpinner(fg, if (size == KkButtonSize.L) 20.dp else 16.dp)
         } else {
-            Text(text, style = if (size == KkButtonSize.L) KkTheme.type.titleS else KkTheme.type.labelM, color = fg, maxLines = 1)
+            Text(text, style = if (size == KkButtonSize.L) KkTheme.type.labelBold else KkTheme.type.label, color = fg, maxLines = 1)
         }
     }
 }
@@ -164,7 +164,7 @@ fun KkSocialButton(kind: KkSocial, onClick: () -> Unit, modifier: Modifier = Mod
         verticalAlignment = Alignment.CenterVertically,
     ) {
         KkIcon(kind.logo, tint = null, size = 20.dp)
-        Text(kind.label, style = KkTheme.type.labelM, color = kind.fg)
+        Text(kind.label, style = KkTheme.type.label, color = kind.fg)
     }
 }
 
@@ -189,7 +189,7 @@ fun KkCard(
             .fillMaxWidth()
             .kkElevation(KkElevation.Mid, shape)
             .clip(shape)
-            .background(c.bgSurface)
+            .background(c.surface)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(padding),
         verticalArrangement = Arrangement.spacedBy(spacing),
@@ -215,10 +215,10 @@ fun KkStatusChip(
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(KkRadius.full)
     val bg = when {
-        !enabled -> c.bgSubtle
-        selected -> c.bgBrand
-        pressed -> c.bgPressed
-        else -> c.bgSurface
+        !enabled -> c.bar
+        selected -> c.accent
+        pressed -> c.line
+        else -> c.surface
     }
     Row(
         modifier = modifier
@@ -231,8 +231,8 @@ fun KkStatusChip(
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (dot != null) Box(Modifier.size(8.dp).clip(CircleShape).background(if (selected) c.textOnBrand else dot))
-        Text(label, style = KkTheme.type.labelM, color = if (!enabled) c.textTertiary else if (selected) c.textOnBrand else c.textPrimary)
+        if (dot != null) Box(Modifier.size(8.dp).clip(CircleShape).background(if (selected) c.surface else dot))
+        Text(label, style = KkTheme.type.label, color = if (!enabled) c.sub else if (selected) c.surface else c.ink)
     }
 }
 
@@ -243,13 +243,13 @@ fun KkEventTag(label: String, dot: Color, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(KkRadius.full))
-            .background(c.bgSubtle)
+            .background(c.bar)
             .padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-        Text(label, style = KkTheme.type.labelS, color = c.textSecondary)
+        Text(label, style = KkTheme.type.label, color = c.sub)
     }
 }
 
@@ -259,12 +259,12 @@ fun KkMilitaryBadge(text: String, modifier: Modifier = Modifier) {
     val c = KkTheme.colors
     Text(
         text,
-        style = KkTheme.type.labelS,
-        color = c.textMilitary,
+        style = KkTheme.type.label,
+        color = c.accent,
         textAlign = TextAlign.Center,
         modifier = modifier
             .clip(RoundedCornerShape(KkRadius.full))
-            .background(c.bgMilitarySubtle)
+            .background(c.bar)
             .padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
     )
 }
@@ -295,12 +295,12 @@ fun KkInput(
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(KkRadius.md)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
-        if (label != null) Text(label, style = KkTheme.type.labelS, color = if (enabled) c.textSecondary else c.textTertiary)
+        if (label != null) Text(label, style = KkTheme.type.label, color = if (enabled) c.sub else c.sub)
         val border = when {
-            !enabled -> Modifier.border(1.dp, c.borderDefault, shape)
-            error != null -> Modifier.border(1.5.dp, c.statusDanger, shape)
-            focused -> Modifier.border(1.5.dp, c.borderBrand, shape)
-            else -> Modifier.border(1.dp, c.borderDefault, shape)
+            !enabled -> Modifier.border(1.dp, c.line, shape)
+            error != null -> Modifier.border(1.5.dp, c.danger, shape)
+            focused -> Modifier.border(1.5.dp, c.accent, shape)
+            else -> Modifier.border(1.dp, c.line, shape)
         }
         Row(
             modifier = Modifier
@@ -308,7 +308,7 @@ fun KkInput(
                 .height(48.dp)
                 .then(if (enabled) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
                 .clip(shape)
-                .background(if (enabled) c.bgSurface else c.bgSubtle)
+                .background(if (enabled) c.surface else c.bar)
                 .then(border)
                 .then(if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier)
                 .padding(horizontal = KkSpacing.lg),
@@ -316,15 +316,15 @@ fun KkInput(
         ) {
             Box(Modifier.weight(1f)) {
                 if (onClick != null) {
-                    Text(value.ifEmpty { placeholder }, style = KkTheme.type.bodyL, color = if (value.isEmpty() || !enabled) c.textTertiary else c.textPrimary, maxLines = 1)
+                    Text(value.ifEmpty { placeholder }, style = KkTheme.type.body, color = if (value.isEmpty() || !enabled) c.sub else c.ink, maxLines = 1)
                 } else {
-                    if (value.isEmpty()) Text(placeholder, style = KkTheme.type.bodyL, color = c.textTertiary, maxLines = 1)
+                    if (value.isEmpty()) Text(placeholder, style = KkTheme.type.body, color = c.sub, maxLines = 1)
                     BasicTextField(
                         value = value,
                         onValueChange = onValueChange,
                         enabled = enabled,
-                        textStyle = KkTheme.type.bodyL.copy(color = if (enabled) c.textPrimary else c.textTertiary),
-                        cursorBrush = SolidColor(c.bgBrand),
+                        textStyle = KkTheme.type.body.copy(color = if (enabled) c.ink else c.sub),
+                        cursorBrush = SolidColor(c.accent),
                         singleLine = true,
                         keyboardOptions = keyboardOptions,
                         interactionSource = interaction,
@@ -335,8 +335,8 @@ fun KkInput(
             trailing?.invoke(this)
         }
         when {
-            error != null -> Text(error, style = KkTheme.type.caption, color = c.statusDanger)
-            helper != null -> Text(helper, style = KkTheme.type.caption, color = c.textTertiary)
+            error != null -> Text(error, style = KkTheme.type.caption, color = c.danger)
+            helper != null -> Text(helper, style = KkTheme.type.caption, color = c.sub)
         }
     }
 }
@@ -357,7 +357,7 @@ fun KkSwitch(on: Boolean, modifier: Modifier = Modifier, enabled: Boolean = true
             .size(44.dp, 26.dp)
             .alpha(if (enabled) 1f else 0.4f)
             .clip(RoundedCornerShape(13.dp))
-            .background(if (on) c.bgBrand else c.borderStrong),
+            .background(if (on) c.accent else c.line),
         contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Box(Modifier.padding(horizontal = 3.dp).size(20.dp).clip(CircleShape).background(Color.White))
@@ -372,8 +372,8 @@ fun KkRadio(selected: Boolean, modifier: Modifier = Modifier) {
         modifier
             .size(22.dp)
             .clip(CircleShape)
-            .background(c.bgSurface)
-            .border(if (selected) 6.dp else 1.5.dp, if (selected) c.borderBrand else c.borderStrong, CircleShape),
+            .background(c.surface)
+            .border(if (selected) 6.dp else 1.5.dp, if (selected) c.accent else c.line, CircleShape),
     )
 }
 
@@ -386,10 +386,10 @@ fun KkCheckbox(checked: Boolean, modifier: Modifier = Modifier) {
         modifier
             .size(22.dp)
             .clip(shape)
-            .then(if (checked) Modifier.background(c.bgBrand) else Modifier.background(c.bgSurface).border(1.5.dp, c.borderStrong, shape)),
+            .then(if (checked) Modifier.background(c.accent) else Modifier.background(c.surface).border(1.5.dp, c.line, shape)),
         contentAlignment = Alignment.Center,
     ) {
-        if (checked) KkIcon(KkIcons.Check, tint = c.textOnBrand, size = 10.dp)
+        if (checked) KkIcon(KkIcons.Check, tint = c.surface, size = 10.dp)
     }
 }
 
@@ -411,8 +411,8 @@ fun KkChoice(
             .fillMaxWidth()
             .kkElevation(if (selected) KkElevation.None else KkElevation.Low, shape)
             .clip(shape)
-            .background(if (selected) c.bgBrandSubtle else c.bgSurface)
-            .then(if (selected) Modifier.border(1.5.dp, c.borderBrand, shape) else Modifier)
+            .background(if (selected) c.bar else c.surface)
+            .then(if (selected) Modifier.border(1.5.dp, c.accent, shape) else Modifier)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .padding(KkSpacing.lg),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
@@ -420,8 +420,8 @@ fun KkChoice(
     ) {
         if (radio) KkRadio(selected)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
-            Text(label, style = KkTheme.type.titleS, color = if (selected && !radio) c.textBrand else c.textPrimary)
-            if (description != null) Text(description, style = if (radio) KkTheme.type.caption else KkTheme.type.bodyS, color = c.textSecondary)
+            Text(label, style = KkTheme.type.labelBold, color = if (selected && !radio) c.accent else c.ink)
+            if (description != null) Text(description, style = if (radio) KkTheme.type.caption else KkTheme.type.body, color = c.sub)
         }
     }
 }
@@ -437,7 +437,7 @@ fun KkSegmentedControl(items: List<String>, selected: Int, onSelect: (Int) -> Un
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(KkRadius.md))
-            .background(c.bgSubtle)
+            .background(c.bar)
             .padding(KkSpacing.xxs),
     ) {
         items.forEachIndexed { i, label ->
@@ -449,11 +449,11 @@ fun KkSegmentedControl(items: List<String>, selected: Int, onSelect: (Int) -> Un
                     .height(48.dp)
                     .then(if (active) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
                     .clip(shape)
-                    .then(if (active) Modifier.background(c.bgSurface) else Modifier)
+                    .then(if (active) Modifier.background(c.surface) else Modifier)
                     .clickable(role = Role.Tab) { onSelect(i) },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, style = KkTheme.type.labelM, color = if (active) c.textPrimary else c.textTertiary)
+                Text(label, style = KkTheme.type.label, color = if (active) c.ink else c.sub)
             }
         }
     }
@@ -489,12 +489,12 @@ fun KkTopBar(
             contentAlignment = Alignment.Center,
         ) {
             if (leading == KkTopBarLeading.Back) {
-                KkIcon(KkIcons.Back, tint = c.textPrimary, size = 15.8.dp, modifier = Modifier.width(8.8.dp))
+                KkIcon(KkIcons.Back, tint = c.ink, size = 15.8.dp, modifier = Modifier.width(8.8.dp))
             } else {
-                KkIcon(KkIcons.Close, tint = c.textPrimary, size = 13.8.dp)
+                KkIcon(KkIcons.Close, tint = c.ink, size = 13.8.dp)
             }
         }
-        Text(title, style = KkTheme.type.titleS, color = c.textPrimary, modifier = Modifier.align(Alignment.Center), maxLines = 1)
+        Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.align(Alignment.Center), maxLines = 1)
         Box(Modifier.align(Alignment.CenterEnd)) {
             when {
                 trailingText != null -> Box(
@@ -504,7 +504,7 @@ fun KkTopBar(
                         .padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(trailingText, style = KkTheme.type.labelM, color = if (trailingEnabled) c.textBrand else c.textTertiary)
+                    Text(trailingText, style = KkTheme.type.label, color = if (trailingEnabled) c.accent else c.sub)
                 }
                 trailingButton != null -> KkButton(trailingButton, onTrailing, Modifier.widthIn(min = 72.dp), size = KkButtonSize.M, enabled = trailingEnabled)
             }
@@ -523,14 +523,14 @@ fun KkTabBar(tabs: List<KkTab>, selected: Int, onSelect: (Int) -> Unit, modifier
         modifier
             .fillMaxWidth()
             .kkElevation(KkElevation.Bar, androidx.compose.ui.graphics.RectangleShape)
-            .background(c.bgSurface)
+            .background(c.surface)
             .navigationBarsPadding()
             .padding(start = KkSpacing.xxl, end = KkSpacing.xxl, top = KkSpacing.sm),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         tabs.forEachIndexed { i, tab ->
             val active = i == selected
-            val color = if (active) c.textBrand else c.textTertiary
+            val color = if (active) c.accent else c.sub
             Column(
                 Modifier
                     .width(72.dp)
@@ -541,7 +541,7 @@ fun KkTabBar(tabs: List<KkTab>, selected: Int, onSelect: (Int) -> Unit, modifier
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs, Alignment.CenterVertically),
             ) {
                 KkIcon(tab.icon, tint = color)
-                Text(tab.label, style = KkTheme.type.labelS, color = color)
+                Text(tab.label, style = KkTheme.type.label, color = color)
             }
         }
     }
@@ -554,7 +554,7 @@ fun KkStepIndicator(step: Int, total: Int, modifier: Modifier = Modifier) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
         repeat(total) { i ->
             val done = i < step
-            Box(Modifier.size(if (done) 32.dp else 16.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(if (done) c.bgBrand else c.borderDefault))
+            Box(Modifier.size(if (done) 32.dp else 16.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(if (done) c.accent else c.line))
         }
     }
 }
@@ -576,9 +576,9 @@ fun KkCollapseToggle(expanded: Boolean, onToggle: () -> Unit, modifier: Modifier
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (expanded) expandedLabel else collapsedLabel, style = KkTheme.type.labelS, color = c.textSecondary)
+        Text(if (expanded) expandedLabel else collapsedLabel, style = KkTheme.type.label, color = c.sub)
         Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-            KkIcon(if (expanded) KkIcons.ChevronUp else KkIcons.ChevronDown, tint = c.textSecondary, size = 9.2.dp, modifier = Modifier.height(5.2.dp))
+            KkIcon(if (expanded) KkIcons.ChevronUp else KkIcons.ChevronDown, tint = c.sub, size = 9.2.dp, modifier = Modifier.height(5.2.dp))
         }
     }
 }
@@ -611,10 +611,10 @@ fun KkListRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = KkTheme.type.bodyM, color = labelColor ?: c.textPrimary, modifier = Modifier.weight(1f))
-        if (value != null) Text(value, style = KkTheme.type.bodyS, color = c.textSecondary, maxLines = 1)
+        Text(label, style = KkTheme.type.body, color = labelColor ?: c.ink, modifier = Modifier.weight(1f))
+        if (value != null) Text(value, style = KkTheme.type.body, color = c.sub, maxLines = 1)
         when (trailing) {
-            KkRowTrailing.Chevron -> KkIcon(KkIcons.ChevronRight, tint = c.textSecondary)
+            KkRowTrailing.Chevron -> KkIcon(KkIcons.ChevronRight, tint = c.sub)
             KkRowTrailing.Switch -> KkSwitch(switchOn, enabled = enabled)
             KkRowTrailing.None -> Unit
         }
@@ -633,7 +633,7 @@ fun KkSheetSurface(modifier: Modifier = Modifier, content: @Composable ColumnSco
             .fillMaxWidth()
             .kkElevation(KkElevation.High, shape)
             .clip(shape)
-            .background(c.bgSurfaceRaised)
+            .background(c.surface)
             .navigationBarsPadding()
             .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 36.dp),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
@@ -647,10 +647,10 @@ fun KkSheetHeader(title: String, description: String? = null, modifier: Modifier
     val c = KkTheme.colors
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(40.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(c.borderStrong))
+            Box(Modifier.size(40.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(c.line))
         }
-        Text(title, style = KkTheme.type.titleM, color = c.textPrimary)
-        if (description != null) Text(description, style = KkTheme.type.bodyS, color = c.textSecondary)
+        Text(title, style = KkTheme.type.title, color = c.ink)
+        if (description != null) Text(description, style = KkTheme.type.body, color = c.sub)
     }
 }
 
@@ -663,14 +663,14 @@ fun KkSheetOption(label: String, selected: Boolean, onClick: () -> Unit, modifie
             .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(KkRadius.md))
-            .background(if (selected) c.bgBrandSubtle else c.bgSurface)
+            .background(if (selected) c.bar else c.surface)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = KkTheme.type.bodyL, color = c.textPrimary, modifier = Modifier.weight(1f))
-        if (meta != null) Text(meta, style = KkTheme.type.bodyS, color = c.textSecondary)
+        Text(label, style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
+        if (meta != null) Text(meta, style = KkTheme.type.body, color = c.sub)
         KkRadio(selected)
     }
 }
@@ -689,18 +689,18 @@ fun KkToast(message: String, modifier: Modifier = Modifier, type: KkToastType = 
             .fillMaxWidth()
             .kkElevation(KkElevation.High, shape)
             .clip(shape)
-            .background(c.bgInverse)
+            .background(c.ink)
             .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         when (type) {
-            KkToastType.Default -> KkIcon(KkIcons.ToastInfo, tint = c.textInverse, size = 16.67.dp, modifier = Modifier.padding(1.66.dp))
+            KkToastType.Default -> KkIcon(KkIcons.ToastInfo, tint = c.canvas, size = 16.67.dp, modifier = Modifier.padding(1.66.dp))
             KkToastType.Success -> KkIcon(KkIcons.ToastSuccess, tint = null, size = 16.67.dp, modifier = Modifier.padding(1.66.dp))
             KkToastType.Error -> KkIcon(KkIcons.ToastError, tint = null, size = 16.67.dp, modifier = Modifier.padding(1.66.dp))
         }
-        Text(message, style = KkTheme.type.bodyM, color = c.textInverse, modifier = Modifier.weight(1f))
-        if (action != null) Text(action, style = KkTheme.type.labelM, color = c.textInverse, modifier = Modifier.clickable(onClick = onAction))
+        Text(message, style = KkTheme.type.body, color = c.canvas, modifier = Modifier.weight(1f))
+        if (action != null) Text(action, style = KkTheme.type.label, color = c.canvas, modifier = Modifier.clickable(onClick = onAction))
     }
 }
 
@@ -726,13 +726,13 @@ fun KkDialog(
             .width(312.dp)
             .kkElevation(KkElevation.High, shape)
             .clip(shape)
-            .background(c.bgSurfaceRaised)
+            .background(c.surface)
             .padding(start = KkSpacing.xxl, end = KkSpacing.xxl, top = KkSpacing.xxl, bottom = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
-        Text(title, style = KkTheme.type.titleM, color = c.textPrimary, textAlign = TextAlign.Center)
-        Text(body, style = KkTheme.type.bodyM, color = c.textSecondary, textAlign = TextAlign.Center)
+        Text(title, style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
+        Text(body, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
             KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Ghost)
             KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive)
@@ -772,11 +772,11 @@ fun KkEmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
-        Box(Modifier.size(72.dp).clip(CircleShape).background(c.bgBrandSubtle), contentAlignment = Alignment.Center) {
-            KkIcon(icon, tint = c.textBrand, size = 32.dp)
+        Box(Modifier.size(72.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
+            KkIcon(icon, tint = c.accent, size = 32.dp)
         }
-        Text(title, style = KkTheme.type.titleS, color = c.textPrimary, textAlign = TextAlign.Center)
-        if (description.isNotEmpty()) Text(description, style = KkTheme.type.bodyS, color = c.textSecondary, textAlign = TextAlign.Center)
+        Text(title, style = KkTheme.type.labelBold, color = c.ink, textAlign = TextAlign.Center)
+        if (description.isNotEmpty()) Text(description, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
         if (action != null) KkButton(action, onAction, Modifier.widthIn(min = 120.dp), size = KkButtonSize.M)
     }
 }
@@ -798,23 +798,23 @@ fun KkDdayCard(
     val c = KkTheme.colors
     KkCard(modifier, onClick = onClick, spacing = KkSpacing.md) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(caption, style = KkTheme.type.labelM, color = c.textSecondary)
+            Text(caption, style = KkTheme.type.label, color = c.sub)
             KkMilitaryBadge(rank)
         }
-        Text(days, style = KkTheme.type.dday, color = c.textPrimary)
-        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgSubtle)) {
-            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bgMilitary))
+        Text(days, style = KkTheme.type.ddayM, color = c.ink)
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.bar)) {
+            Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.accent))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(percent, style = KkTheme.type.caption, color = c.textMilitary)
-            Text(date, style = KkTheme.type.caption, color = c.textTertiary)
+            Text(percent, style = KkTheme.type.caption, color = c.accent)
+            Text(date, style = KkTheme.type.caption, color = c.sub)
         }
     }
 }
 
 /**
- * 보고싶어 버튼(112 원). 한 번 누르면 Sent(heart-subtle 배경 · "보냈어요 · N")로 바뀌고 오늘 보낸 횟수가 쌓인다.
- * "마음" 요소라 테마와 무관하게 로즈.
+ * 보고싶어 버튼(112 원). 한 번 누르면 Sent(bar 배경 · "보냈어요 · N")로 바뀌고 오늘 보낸 횟수가 쌓인다.
+ * love · loveOn 은 이 버튼에만 쓴다.
  */
 @Composable
 fun KkMissYouButton(sentToday: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -825,14 +825,14 @@ fun KkMissYouButton(sentToday: Int, onClick: () -> Unit, modifier: Modifier = Mo
             .size(112.dp)
             .kkElevation(if (sent) KkElevation.Low else KkElevation.Mid, CircleShape)
             .clip(CircleShape)
-            .background(if (sent) c.heartSubtle else c.heart)
+            .background(if (sent) c.bar else c.love)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = "보고싶어 보내기, 오늘 ${sentToday}번 보냄" },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(KkSpacing.xs, Alignment.CenterVertically),
     ) {
-        KkIcon(KkIcons.Heart, tint = if (sent) c.textHeart else c.textOnBrand, size = 32.dp)
-        Text(if (sent) "보냈어요 · $sentToday" else "보고싶어", style = KkTheme.type.labelM, color = if (sent) c.textHeart else c.textOnBrand)
+        KkIcon(KkIcons.Heart, tint = if (sent) c.love else c.loveOn, size = 32.dp)
+        Text(if (sent) "보냈어요 · $sentToday" else "보고싶어", style = KkTheme.type.label, color = if (sent) c.love else c.loveOn)
     }
 }
 
@@ -843,15 +843,15 @@ fun KkHeartButton(onClick: () -> Unit, modifier: Modifier = Modifier, label: Str
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(KkRadius.full))
-            .background(c.heart)
+            .background(c.love)
             .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = 48.dp)
             .padding(horizontal = KkSpacing.xl),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
-        KkIcon(KkIcons.Heart, tint = c.textOnBrand, size = 20.dp)
-        Text(label, style = KkTheme.type.labelM, color = c.textOnBrand)
+        KkIcon(KkIcons.Heart, tint = c.loveOn, size = 20.dp)
+        Text(label, style = KkTheme.type.label, color = c.loveOn)
     }
 }
 
@@ -877,8 +877,8 @@ fun KkHeartIcon(color: Color, size: Dp = 20.dp, modifier: Modifier = Modifier) {
 @Composable
 fun KkScreenHeader(title: String, subtitle: String? = null, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-        Text(title, style = KkTheme.type.titleL, color = KkTheme.colors.textPrimary)
-        if (subtitle != null) Text(subtitle, style = KkTheme.type.bodyM, color = KkTheme.colors.textSecondary)
+        Text(title, style = KkTheme.type.title, color = KkTheme.colors.ink)
+        if (subtitle != null) Text(subtitle, style = KkTheme.type.body, color = KkTheme.colors.sub)
     }
 }
 

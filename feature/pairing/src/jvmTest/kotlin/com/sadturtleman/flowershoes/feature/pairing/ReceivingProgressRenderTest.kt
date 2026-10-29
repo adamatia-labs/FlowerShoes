@@ -6,6 +6,7 @@ import androidx.compose.ui.use
 import com.sadturtleman.flowershoes.core.data.sync.PairingState
 import com.sadturtleman.flowershoes.core.data.sync.RelinkCounts
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
 import kotlin.test.Test
@@ -25,13 +26,17 @@ class ReceivingProgressRenderTest {
             received = RelinkCounts(letters = 128, drawings = 2, events = 0),
             receiveStartedMs = System.currentTimeMillis() - 100_000,
         )
-        val png = ImageComposeScene(width = 390 * 3, height = 844 * 3, density = Density(3f)) {
-            KkotsinTheme(accent = com.sadturtleman.flowershoes.core.model.ThemeAccent.ROSE) { ReceivingProgress(ui) }
-        }.use { scene ->
-            scene.render() // 첫 프레임에 글꼴을 불러온다
-            scene.render(1_000_000_000L).encodeToData(EncodedImageFormat.PNG)!!.bytes
+        // 테마 v2 4개 모드(곰신 · 군인 × 라이트 · 다크)로 그린다.
+        for (theme in AppTheme.entries) for (dark in listOf(false, true)) {
+            val png = ImageComposeScene(width = 390 * 3, height = 844 * 3, density = Density(3f)) {
+                KkotsinTheme(theme = theme, dark = dark) { ReceivingProgress(ui) }
+            }.use { scene ->
+                scene.render() // 첫 프레임에 글꼴을 불러온다
+                scene.render(1_000_000_000L).encodeToData(EncodedImageFormat.PNG)!!.bytes
+            }
+            val name = "receiving_progress_${theme.name.lowercase()}_${if (dark) "dark" else "light"}.png"
+            val out = File("build/render/$name").apply { parentFile.mkdirs(); writeBytes(png) }
+            assertTrue(out.length() > 0)
         }
-        val out = File("build/render/receiving_progress.png").apply { parentFile.mkdirs(); writeBytes(png) }
-        assertTrue(out.length() > 0)
     }
 }

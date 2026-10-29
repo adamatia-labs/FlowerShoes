@@ -21,19 +21,15 @@ val EventType.koreanName: String
         EventType.OTHER -> "기타"
     }
 
-val ThemeAccent.koreanName: String
+val AppTheme.koreanName: String
     get() = when (this) {
-        ThemeAccent.ROSE -> "로즈"
-        ThemeAccent.OLIVE -> "올리브"
-        ThemeAccent.NAVY -> "네이비"
-        ThemeAccent.MONO -> "모노"
+        AppTheme.GOMSIN -> "곰신"
+        AppTheme.SOLDIER -> "군인"
     }
 
 /** 테마 카드 설명(온보딩 · 설정 테마). */
-val ThemeAccent.mood: String
+val AppTheme.mood: String
     get() = when (this) {
-        ThemeAccent.ROSE -> "따뜻하고 다정한"
-        ThemeAccent.OLIVE -> "차분한 군복 색"
-        ThemeAccent.NAVY -> "깔끔하고 무난한"
-        ThemeAccent.MONO -> "가장 조용한"
+        AppTheme.GOMSIN -> "편지지 · 말린 꽃 · 크라프트"
+        AppTheme.SOLDIER -> "군사우편 · 카키 · 스텐실"
     }

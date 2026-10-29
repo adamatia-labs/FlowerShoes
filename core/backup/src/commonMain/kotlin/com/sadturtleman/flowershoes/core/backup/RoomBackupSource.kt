@@ -8,7 +8,7 @@ import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.writeBackupSnapshot
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
 import com.sadturtleman.flowershoes.core.model.Role
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.first
@@ -33,7 +33,7 @@ data class BackedUpSettings(
     val cellularBackup: Boolean? = null,
 ) {
     suspend fun applyTo(settings: DeviceSettings) {
-        settings.setTheme(ThemeAccent.valueOf(theme))
+        settings.setTheme(AppTheme.from(theme, role?.let(Role::valueOf)))
         role?.let { settings.setRole(Role.valueOf(it)) }
         notifyPrefs?.let { settings.setNotifyPrefs(it) }
         settings.saveLetterDraft(draft)
@@ -47,7 +47,7 @@ data class BackedUpSettings(
     companion object {
         fun decode(bytes: ByteArray): BackedUpSettings = Json { ignoreUnknownKeys = true }
             .decodeFromString(serializer(), bytes.decodeToString()).also {
-                ThemeAccent.valueOf(it.theme)
+                // 테마는 검사하지 않는다 — 예전 백업의 강조색 값(ROSE …)은 복원할 때 역할 기본값이 된다.
                 it.role?.let(Role::valueOf)
             }
     }

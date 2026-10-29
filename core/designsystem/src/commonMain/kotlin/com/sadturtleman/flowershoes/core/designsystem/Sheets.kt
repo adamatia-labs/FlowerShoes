@@ -45,7 +45,7 @@ import kotlinx.datetime.toLocalDateTime
 fun KkModalSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = KkTheme.colors.bgSurfaceRaised,
+        containerColor = KkTheme.colors.surface,
         dragHandle = null,
         shape = RoundedCornerShape(topStart = KkRadius.xl, topEnd = KkRadius.xl),
     ) {
@@ -83,7 +83,7 @@ fun KkScheduleSheet(
         KkDatePicker(date, { date = it })
         KkSegmentedControl(KK_SEND_TIMES.map { it.hhmm() }, KK_SEND_TIMES.indexOf(time).coerceAtLeast(0), { time = KK_SEND_TIMES[it] })
         val past = at <= now
-        if (past) Text("이미 지난 시각이에요", style = KkTheme.type.bodyS, color = KkTheme.colors.statusDanger)
+        if (past) Text("이미 지난 시각이에요", style = KkTheme.type.body, color = KkTheme.colors.danger)
         KkButton(
             confirmLabel ?: "${date.month.ordinal + 1}월 ${date.day}일 ${time.hhmm()}에 보내기",
             { onPick(at) }, Modifier.fillMaxWidth(), enabled = !past,
@@ -112,12 +112,12 @@ fun KkSlider(value: Float, onValueChange: (Float) -> Unit, valueRange: ClosedFlo
         contentAlignment = Alignment.CenterStart,
     ) {
         val thumb = 20.dp
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.bgSubtle))
-        Box(Modifier.fillMaxWidth(fraction).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.bgBrand))
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.bar))
+        Box(Modifier.fillMaxWidth(fraction).height(4.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
         Box(
             Modifier.offset(x = (maxWidth - thumb) * fraction).size(thumb)
                 .kkElevation(KkElevation.Low, androidx.compose.foundation.shape.CircleShape)
-                .clip(androidx.compose.foundation.shape.CircleShape).background(c.bgBrand),
+                .clip(androidx.compose.foundation.shape.CircleShape).background(c.accent),
         )
     }
 }

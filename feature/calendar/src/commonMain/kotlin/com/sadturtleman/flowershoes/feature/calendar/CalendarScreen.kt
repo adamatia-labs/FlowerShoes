@@ -98,14 +98,14 @@ fun CalendarRoute(viewModel: CalendarViewModel = koinViewModel()) {
 fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
     val c = KkTheme.colors
     Column(
-        Modifier.fillMaxSize().background(c.bgCanvas).verticalScroll(rememberScrollState())
+        Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(if (state.expanded) KkSpacing.sm else KkSpacing.lg),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("캘린더", style = KkTheme.type.titleL, color = c.textPrimary, modifier = Modifier.weight(1f))
+            Text("캘린더", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
             Text(
-                "+ 추가", style = KkTheme.type.labelM, color = c.textBrand,
+                "+ 추가", style = KkTheme.type.label, color = c.accent,
                 modifier = Modifier.clip(RoundedCornerShape(KkRadius.sm))
                     .clickable(role = Role.Button) { onIntent(CalendarIntent.NewEvent(state.selected)) }
                     .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
@@ -124,7 +124,7 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
                 onAction = { onIntent(CalendarIntent.NewEvent(state.selected)) },
             )
             !state.expanded && state.selected == state.today -> {
-                Text("이번 주", style = KkTheme.type.titleS, color = c.textPrimary)
+                Text("이번 주", style = KkTheme.type.labelBold, color = c.ink)
                 if (state.thisWeek.isEmpty()) NoEvents("이번 주에는 일정이 없어요")
                 state.thisWeek.forEach { e -> EventRow(e) { onIntent(CalendarIntent.Edit(e)) } }
                 // 광고 지면(Figma 9): 이번 주 일정 목록 아래 네이티브 배너 1개.
@@ -132,7 +132,7 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
             }
             else -> {
                 val d = state.selected
-                Text("${d.month.number}월 ${d.day}일 (${d.weekdayKo()})", style = KkTheme.type.titleS, color = c.textPrimary)
+                Text("${d.month.number}월 ${d.day}일 (${d.weekdayKo()})", style = KkTheme.type.labelBold, color = c.ink)
                 val list = state.eventsOn(d)
                 if (list.isEmpty()) NoEvents("이 날은 일정이 없어요")
                 list.forEach { e -> EventRow(e) { onIntent(CalendarIntent.Edit(e)) } }
@@ -149,18 +149,18 @@ private fun NextMeet(e: Event, today: LocalDate, compact: Boolean) {
     val c = KkTheme.colors
     val left = today.daysUntil(e.start.date)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.xl)).background(c.bgBrand)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.xl)).background(c.accent)
             .semantics(mergeDescendants = true) {}
             .padding(horizontal = KkSpacing.xl, vertical = if (compact) KkSpacing.lg else KkSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
     ) {
-        Text("다음 만남 · ${e.type.label()}", style = KkTheme.type.labelM, color = c.textOnBrand)
-        Text(if (left > 0) "D-$left" else "D-DAY", style = KkTheme.type.dday, color = c.textOnBrand)
+        Text("다음 만남 · ${e.type.label()}", style = KkTheme.type.label, color = c.surface)
+        Text(if (left > 0) "D-$left" else "D-DAY", style = KkTheme.type.ddayM, color = c.surface)
         val time = e.start.time.takeIf { it != LocalTime(0, 0) }?.let { " ${it.hhmm()}" } ?: ""
         val stay = e.nightsLabel()?.let { " · $it" } ?: ""
         Text(
             "${e.start.date.month.number}월 ${e.start.date.day}일(${e.start.date.weekdayKo()})$time$stay",
-            style = KkTheme.type.bodyS, color = c.textOnBrand,
+            style = KkTheme.type.body, color = c.surface,
         )
     }
 }
@@ -179,15 +179,15 @@ private fun WeekStrip(state: CalendarState, onIntent: (CalendarIntent) -> Unit) 
                 Modifier.width(44.dp)
                     .then(if (on) Modifier else Modifier.kkElevation(KkElevation.Low, shape))
                     .clip(shape)
-                    .background(if (on) c.bgInverse else c.bgSurface)
+                    .background(if (on) c.ink else c.surface)
                     .clickable(role = Role.Button) { onIntent(CalendarIntent.Select(day)) }
                     .semantics { contentDescription = day.a11y(events.size, on) }
                     .padding(horizontal = cellPadding, vertical = KkSpacing.sm),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs),
             ) {
-                Text(day.weekdayKo(), style = KkTheme.type.caption, color = if (on) c.textInverse else c.textTertiary)
-                Text("${day.day}", maxLines = 1, softWrap = false, style = KkTheme.type.labelM, color = if (on) c.textInverse else c.textPrimary)
+                Text(day.weekdayKo(), style = KkTheme.type.caption, color = if (on) c.canvas else c.sub)
+                Text("${day.day}", maxLines = 1, softWrap = false, style = KkTheme.type.label, color = if (on) c.canvas else c.ink)
                 Dots(events)
             }
         }
@@ -200,7 +200,7 @@ private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit) 
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Mid, shape).clip(shape).background(c.bgSurface)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface)
             .monthSwipe(onIntent)
             .padding(horizontal = KkSpacing.md, vertical = KkSpacing.lg),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
@@ -208,7 +208,7 @@ private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit) 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             WEEKDAYS_SUN_FIRST.forEach {
                 Box(Modifier.width(44.dp).heightIn(min = 20.dp), contentAlignment = Alignment.TopCenter) {
-                    Text(it, style = KkTheme.type.caption, color = c.textTertiary)
+                    Text(it, style = KkTheme.type.caption, color = c.sub)
                 }
             }
         }
@@ -232,19 +232,19 @@ private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit) 
                             Box(
                                 Modifier.sizeIn(minWidth = 28.dp, minHeight = 28.dp).clip(CircleShape).background(
                                     when {
-                                        selected -> c.bgBrand
-                                        day == state.today -> c.bgBrandSubtle
+                                        selected -> c.accent
+                                        day == state.today -> c.bar
                                         else -> Color.Transparent
                                     },
                                 ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    "${day.day}", maxLines = 1, softWrap = false, style = KkTheme.type.labelM,
+                                    "${day.day}", maxLines = 1, softWrap = false, style = KkTheme.type.label,
                                     color = when {
-                                        selected -> c.textOnBrand
-                                        day.dayOfWeek == DayOfWeek.SUNDAY -> c.statusDanger
-                                        else -> c.textPrimary
+                                        selected -> c.surface
+                                        day.dayOfWeek == DayOfWeek.SUNDAY -> c.danger
+                                        else -> c.ink
                                     },
                                 )
                             }
@@ -279,7 +279,7 @@ private fun Legend() {
 
 @Composable
 private fun NoEvents(text: String) {
-    Text(text, style = KkTheme.type.bodyM, color = KkTheme.colors.textTertiary, modifier = Modifier.padding(vertical = KkSpacing.sm))
+    Text(text, style = KkTheme.type.body, color = KkTheme.colors.sub, modifier = Modifier.padding(vertical = KkSpacing.sm))
 }
 
 /** 일정 한 줄(Event): 색 막대 · 제목 · 기간 · 종류 태그. */
@@ -288,7 +288,7 @@ private fun EventRow(e: Event, onClick: () -> Unit) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
@@ -297,8 +297,8 @@ private fun EventRow(e: Event, onClick: () -> Unit) {
         Box(Modifier.width(4.dp).height(36.dp).clip(RoundedCornerShape(2.dp)).background(c.eventColor(e.type)))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
             val title = e.title.ifBlank { e.type.label() }
-            Text(e.nightsLabel()?.let { "$title · $it" } ?: title, style = KkTheme.type.bodyM, color = c.textPrimary, maxLines = 1)
-            Text(e.rangeLabel(), style = KkTheme.type.caption, color = c.textTertiary, maxLines = 1)
+            Text(e.nightsLabel()?.let { "$title · $it" } ?: title, style = KkTheme.type.body, color = c.ink, maxLines = 1)
+            Text(e.rangeLabel(), style = KkTheme.type.caption, color = c.sub, maxLines = 1)
         }
         KkEventTag(e.type.label(), c.eventColor(e.type))
     }
@@ -341,7 +341,7 @@ private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
         onDismissRequest = { onIntent(CalendarIntent.CloseDraft) },
         properties = com.sadturtleman.flowershoes.core.designsystem.fullScreenDialogProperties(),
     ) {
-        Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding().imePadding()) {
+        Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().imePadding()) {
             KkTopBar(
                 if (draft.id == null) "일정 추가" else "일정 고치기", onLeading = { onIntent(CalendarIntent.CloseDraft) },
                 leading = KkTopBarLeading.Close,
@@ -357,22 +357,22 @@ private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
                 ) {
                     EDITOR_TYPES.forEach { t ->
                         val on = draft.type == t
-                        KkStatusChip(t.label(), selected = on, onClick = { change(draft.copy(type = t)) }, dot = if (on) Color.White else c.statusWarning)
+                        KkStatusChip(t.label(), selected = on, onClick = { change(draft.copy(type = t)) }, dot = if (on) Color.White else c.danger)
                     }
                 }
                 KkInput(draft.title, { change(draft.copy(title = it)) }, label = "제목", placeholder = "첫 면회")
                 val shape = RoundedCornerShape(KkRadius.lg)
-                Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.bgSurface)) {
+                Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
                     KkListRow("하루 종일", trailing = KkRowTrailing.Switch, switchOn = draft.allDay, onClick = { change(draft.copy(allDay = !draft.allDay)) })
                     fun at(d: LocalDate, t: LocalTime) = "${d.mmdd()} (${d.weekdayKo()})" + if (draft.allDay) "" else " ${t.hhmm()}"
-                    androidx.compose.material3.HorizontalDivider(color = c.borderDefault)
+                    androidx.compose.material3.HorizontalDivider(color = c.line)
                     KkListRow("시작", value = at(draft.start, draft.startTime), onClick = { picking = true })
-                    androidx.compose.material3.HorizontalDivider(color = c.borderDefault)
+                    androidx.compose.material3.HorizontalDivider(color = c.line)
                     KkListRow("끝", value = at(draft.end, draft.endTime), onClick = { picking = false })
-                    androidx.compose.material3.HorizontalDivider(color = c.borderDefault)
+                    androidx.compose.material3.HorizontalDivider(color = c.line)
                     KkListRow("알림", value = if (draft.alarm) "전날 20:00" else "없음", onClick = { alarmSheet = true })
                 }
-                if (!draft.valid) Text("끝나는 때가 시작보다 빨라요", style = KkTheme.type.bodyS, color = c.statusDanger)
+                if (!draft.valid) Text("끝나는 때가 시작보다 빨라요", style = KkTheme.type.body, color = c.danger)
                 KkInput(draft.memo, { change(draft.copy(memo = it)) }, label = "메모", placeholder = "신분증 챙기기")
             }
             Box(Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.sm, bottom = 14.dp)) {
@@ -426,7 +426,7 @@ internal fun KkColors.eventColor(type: EventType): Color = when (type) {
     EventType.VISIT -> eventVisit
     EventType.TRAINING -> eventTraining
     EventType.DUTY -> eventDuty
-    EventType.OTHER -> textTertiary
+    EventType.OTHER -> sub
 }
 
 internal fun EventType.label() = when (this) {

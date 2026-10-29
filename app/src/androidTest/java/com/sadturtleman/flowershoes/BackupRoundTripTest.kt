@@ -12,7 +12,7 @@ import com.sadturtleman.flowershoes.core.data.sync.InMemoryKeyVault
 import com.sadturtleman.flowershoes.core.database.*
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
 import com.sadturtleman.flowershoes.core.model.Role
-import com.sadturtleman.flowershoes.core.model.ThemeAccent
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import okio.Path.Companion.toPath
@@ -40,7 +40,7 @@ class BackupRoundTripTest {
             before.ensureIdentity()
             before.bindAccount("old-account")
             before.setRole(Role.GOMSIN)
-            before.setTheme(ThemeAccent.NAVY)
+            before.setTheme(AppTheme.SOLDIER)
             before.setOnboarded()
             before.setDisplayMode("DARK")
             before.setAutoBackup(false)
@@ -72,7 +72,7 @@ class BackupRoundTripTest {
             assertEquals("saved", newDb.letterDao().allActive().single().id)
             assertEquals(newDeviceId, after.state.first().deviceId)
             assertEquals("current-account", after.state.first().userId)
-            assertEquals(ThemeAccent.NAVY, after.state.first().theme)
+            assertEquals(AppTheme.SOLDIER, after.state.first().theme)
             assertEquals("DARK", after.displayMode.first())
             assertEquals("saved draft", after.letterDraft.first())
             assertFalse(after.autoBackup.first())

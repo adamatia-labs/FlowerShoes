@@ -76,7 +76,7 @@ fun <T> KkPageFlip(
         val k = pageKey(value)
         key(k) {
             holder.SaveableStateProvider(k) {
-                Box(Modifier.fillMaxSize().then(layer).background(KkTheme.colors.bgCanvas)) { content(value) }
+                Box(Modifier.fillMaxSize().then(layer).background(KkTheme.colors.canvas)) { content(value) }
             }
         }
     }
