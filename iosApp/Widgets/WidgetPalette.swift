@@ -69,6 +69,7 @@ struct WidgetPalette {
     func hand(_ size: CGFloat = 21) -> Font { .system(size: size, design: .rounded) }
     static let caption = Font.system(size: 11)
     static let label = Font.system(size: 13, weight: .bold)
+    static let labelMedium = Font.system(size: 13, weight: .medium)
 }
 
 private extension Color {

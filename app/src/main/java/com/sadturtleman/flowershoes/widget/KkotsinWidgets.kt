@@ -61,6 +61,7 @@ import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.core.widget.SnapshotStore
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshot
 import com.sadturtleman.flowershoes.core.widget.WidgetTag
+import com.sadturtleman.flowershoes.core.widget.justSent
 import okio.Path.Companion.toPath
 import org.koin.core.context.GlobalContext
 
@@ -275,10 +276,11 @@ class MissYouWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val s = snapshotStore(context).read()
         val p = WidgetPalette(s)
-        val sent = s?.missYouJustSentAtMs != null
+        val sent = s?.justSent(System.currentTimeMillis()) == true
         provideContent {
             GlanceTheme {
-                Card(p, actionRunCallback<SendMissYouAction>()) {
+                // 연결 전에는 보낼 사람이 없다 — 앱을 연다.
+                Card(p, if (s?.linked == true) actionRunCallback<SendMissYouAction>() else context.openApp()) {
                     Column(GlanceModifier.fillMaxSize()) {
                         s?.partnerName?.let {
                             Caption("${it}에게", p.sub)
@@ -289,7 +291,7 @@ class MissYouWidget : GlanceAppWidget() {
                         Box(GlanceModifier.fillMaxWidth(), contentAlignment = Alignment.Center) { MissYouFab(p, sent) }
                         val foot = when {
                             sent -> "방금 보냈어요"
-                            (s?.missYouSentToday ?: 0) > 0 -> "오늘 ${s!!.missYouSentToday}번 보냈어요"
+                            s != null && s.missYouSentToday > 0 -> "오늘 ${s.missYouSentToday}번 보냈어요"
                             else -> null
                         }
                         foot?.let {
@@ -326,9 +328,9 @@ class NextMeetingWidget : GlanceAppWidget() {
                 Card(p, context.openUri("kkotsin://calendar")) {
                     Column(GlanceModifier.fillMaxSize()) {
                         Caption("다음 만남", p.sub)
-                        val days = s?.nextEventDays ?: return@Column
+                        val value = s?.nextEventValue ?: return@Column
                         Spacer(GlanceModifier.height(8.dp))
-                        Text(if (days == 0) "D-DAY" else "D-$days", style = WidgetType.number(p), maxLines = 1)
+                        Text(value, style = WidgetType.number(p), maxLines = 1)
                         Spacer(GlanceModifier.defaultWeight())
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Dot(p.event(s.nextEventType))
@@ -428,7 +430,7 @@ class OverviewWidget : GlanceAppWidget() {
                                 }
                             }
                             if (s?.linked == true) {
-                                Box(GlanceModifier.clickable(actionRunCallback<SendMissYouAction>())) { MissYouFab(p, s.missYouJustSentAtMs != null) }
+                                Box(GlanceModifier.clickable(actionRunCallback<SendMissYouAction>())) { MissYouFab(p, s.justSent(System.currentTimeMillis())) }
                             }
                         }
                     }

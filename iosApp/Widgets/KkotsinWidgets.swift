@@ -223,7 +223,7 @@ struct SendMissYouIntent: AppIntent {
         try await WidgetSender.sendMissYou()
         // "보냈어요" 상태 · 오늘 보낸 횟수는 앱이 다음에 스냅샷을 다시 쓸 때 DB 기준으로 맞춘다.
         SharedStore.updateSnapshot {
-            $0.missYouSentToday += 1
+            $0.missYouSentToday = ($0.missYouSentToday ?? 0) + 1
             $0.missYouJustSentAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         }
         WidgetCenter.shared.reloadTimelines(ofKind: "missyou")
@@ -240,7 +240,7 @@ struct MissYouWidgetView: View {
         let s = entry.snapshot
         let sent = entry.justSent
         if family == .accessoryCircular {
-            Button(intent: SendMissYouIntent()) {
+            sendButton(s) {
                 ZStack {
                     AccessoryWidgetBackground()
                     VStack(spacing: 2) {
@@ -249,11 +249,10 @@ struct MissYouWidgetView: View {
                     }
                 }
             }
-            .buttonStyle(.plain)
             .containerBackground(.clear, for: .widget)
         } else {
             PaperCard(entry: entry) { p in
-                Button(intent: SendMissYouIntent()) {
+                sendButton(s) {
                     VStack(alignment: .leading, spacing: 6) {
                         if let name = s?.partnerName {
                             Text("\(name)에게").font(WidgetPalette.caption).foregroundStyle(p.sub)
@@ -266,13 +265,22 @@ struct MissYouWidgetView: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
 }
 
 extension MissYouWidgetView {
+    /// 연결 전에는 보낼 사람이 없다 — 누르면 앱이 열린다.
+    @ViewBuilder
+    fileprivate func sendButton<Label: View>(_ s: SharedStore.WidgetSnapshot?, @ViewBuilder label: () -> Label) -> some View {
+        if s?.linked == true {
+            Button(intent: SendMissYouIntent()) { label() }.buttonStyle(.plain)
+        } else {
+            label()
+        }
+    }
+
     fileprivate func footText(_ s: SharedStore.WidgetSnapshot?, sent: Bool) -> String? {
         if sent { return "방금 보냈어요" }
         guard let n = s?.missYouSentToday, n > 0 else { return nil }
@@ -311,7 +319,7 @@ struct DrawingWidgetView: View {
                             Spacer()
                             HStack(spacing: 6) {
                                 Image(systemName: "play.fill").font(.system(size: 9))
-                                Text("그리는 과정 보기").font(.system(size: 13, weight: .medium))
+                                Text("그리는 과정 보기").font(WidgetPalette.labelMedium)
                             }
                             .foregroundStyle(p.ink)
                             .padding(.horizontal, 12).padding(.vertical, 6)
@@ -375,8 +383,8 @@ struct NextMeetingWidgetView: View {
         PaperCard(entry: entry) { p in
             VStack(alignment: .leading, spacing: 8) {
                 Text("다음 만남").font(WidgetPalette.caption).foregroundStyle(p.sub)
-                if let s = entry.snapshot, let d = s.nextEventDays {
-                    Text(d == 0 ? "D-DAY" : "D-\(d)").font(p.number()).foregroundStyle(p.ink)
+                if let s = entry.snapshot, let value = s.nextEventValue {
+                    Text(value).font(p.number()).foregroundStyle(p.ink)
                     Spacer()
                     HStack(spacing: 6) {
                         Dot(color: p.event(s.nextEventType))

@@ -75,7 +75,7 @@ class WidgetSnapshotTest {
         assertEquals(WidgetTag("다음 만남", "D-11"), s.tagMeet)
         assertEquals(WidgetTag("상병 진급 예정", "D-53"), s.tagRank)
         // 작은 다음 만남 위젯: 당직은 만남이 아니다.
-        assertEquals(11, s.nextEventDays)
+        assertEquals("D-11", s.nextEventValue)
         assertEquals("VISIT", s.nextEventType)
         assertEquals("11월 8일 면회", s.nextEventLine)
         assertEquals("일요일 10:00", s.nextEventWhen)
@@ -89,6 +89,9 @@ class WidgetSnapshotTest {
         assertEquals("당직 중", s.partnerStatus)
         assertEquals(0xFF6E7262, s.partnerStatusColor)
         assertEquals("내일 08:00까지", s.partnerStatusUntil)
+
+        // 끝난 상태는 다음 구독 전에도 보이지 않는다.
+        assertNull(widgetSnapshot(gomsin.copy(status = status), "/att".toPath(), Instant.parse("2026-10-29T00:00:00Z")).partnerStatus)
     }
 
     @Test
@@ -114,6 +117,10 @@ class WidgetSnapshotTest {
         val sent = now.toEpochMilliseconds() - 20_000
         assertEquals(sent, snap(gomsin.copy(missYouSentToday = 3, missYouLastSentAtMs = sent)).missYouJustSentAtMs)
         assertNull(snap(gomsin.copy(missYouLastSentAtMs = now.toEpochMilliseconds() - 61_000)).missYouJustSentAtMs)
+        // 스냅샷이 늦게 다시 써져도 위젯은 1분 뒤 기본 상태로 그린다.
+        val s = snap(gomsin.copy(missYouLastSentAtMs = sent))
+        assertEquals(true, s.justSent(now.toEpochMilliseconds()))
+        assertEquals(false, s.justSent(sent + 60_000))
     }
 
     @Test

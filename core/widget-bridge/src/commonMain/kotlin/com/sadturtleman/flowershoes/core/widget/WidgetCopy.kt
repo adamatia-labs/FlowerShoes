@@ -44,7 +44,10 @@ internal data class WidgetInputs(
 )
 
 /** 위젯 "보냈어요" 상태가 보이는 시간. */
-internal const val JUST_SENT_MS = 60_000L
+const val JUST_SENT_MS = 60_000L
+
+/** [nowMs] 에 위젯이 "보냈어요" 상태인지. 스냅샷이 늦게 다시 써져도 1분이 지나면 기본 상태로 그린다. */
+fun WidgetSnapshot.justSent(nowMs: Long): Boolean = missYouJustSentAtMs?.let { nowMs - it in 0 until JUST_SENT_MS } == true
 
 internal fun widgetSnapshot(inputs: WidgetInputs, attachmentsRoot: Path, now: Instant): WidgetSnapshot {
     val today = now.toLocalDateTime(SEOUL).date
@@ -56,6 +59,8 @@ internal fun widgetSnapshot(inputs: WidgetInputs, attachmentsRoot: Path, now: In
     val serving = hero?.serving == true
     val meet = next(EventType.VISIT, EventType.OVERNIGHT, EventType.VACATION)
     val drawing = inputs.drawing
+    // 상태는 구독한 때의 시각으로 걸러 오므로, 끝난 상태는 여기서 한 번 더 뺀다.
+    val status = inputs.status?.takeIf { st -> st.expiresAt.let { it == null || it > now } }
     val letter = letterRow(inputs.letters, partner, partnerName, inputs.readLetterIds, today)
     return WidgetSnapshot(
         theme = inputs.theme,
@@ -71,12 +76,13 @@ internal fun widgetSnapshot(inputs: WidgetInputs, attachmentsRoot: Path, now: In
         tagRank = inputs.timeline?.nextRank(today)?.takeIf { serving }?.let { WidgetTag(it.rank.promotionName, dDay(today, it.from)) },
         partnerName = partnerName,
         partnerStatusCaption = partnerName?.let { "${it.withTopic()} 지금" },
-        partnerStatus = inputs.status?.label,
-        partnerStatusColor = inputs.status?.color,
-        partnerStatusUntil = inputs.status?.let { st ->
+        partnerStatus = status?.label,
+        partnerStatusColor = status?.color,
+        partnerStatusUntil = status?.let { st ->
             st.expiresAt?.let { "${dayClock(it, today)}까지" } ?: "${dayClock(st.createdAt, today)}부터"
         },
         nextEventDays = meet?.let { today.daysUntil(it.start.date) },
+        nextEventValue = meet?.let { dDay(today, it.start.date) },
         nextEventType = meet?.type?.name,
         nextEventLine = meet?.let { "${it.start.date.monthDay()} ${it.title.ifBlank { it.type.koreanLabel() }}" },
         nextEventWhen = meet?.let { e ->

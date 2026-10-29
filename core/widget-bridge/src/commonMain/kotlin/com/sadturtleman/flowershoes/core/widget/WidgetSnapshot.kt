@@ -60,8 +60,9 @@ data class WidgetSnapshot(
     val partnerStatus: String? = null,
     val partnerStatusColor: Long? = null,
     val partnerStatusUntil: String? = null,
-    /** 다음 만남(면회 · 외박 · 휴가 중 가장 가까운 것): "D-11" · 일정 종류 · "11월 8일 면회" · "토요일 10:00". */
+    /** 다음 만남(면회 · 외박 · 휴가 중 가장 가까운 것): 남은 날 · "D-11" · 일정 종류 · "11월 8일 면회" · "토요일 10:00". */
     val nextEventDays: Int? = null,
+    val nextEventValue: String? = null,
     val nextEventType: String? = null,
     val nextEventLine: String? = null,
     val nextEventWhen: String? = null,

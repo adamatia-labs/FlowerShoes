@@ -47,15 +47,17 @@ enum SharedStore {
         var partnerStatusColor: Int64?
         var partnerStatusUntil: String?
         var nextEventDays: Int?
+        var nextEventValue: String?
         var nextEventType: String?
         var nextEventLine: String?
         var nextEventWhen: String?
-        var unreadLetters: Int
+        // v2 에서 생긴 수는 옛 스냅샷에 없을 수 있어 선택값이다(앱이 다시 쓰기 전에도 위젯 · NSE 가 읽히게).
+        var unreadLetters: Int?
         var letterLine: String?
         var letterMeta: String?
         var letterId: String?
         var missYouFromPartnerToday: Int
-        var missYouSentToday: Int
+        var missYouSentToday: Int?
         /// 방금(1분 안) 보낸 보고싶어 시각 — 위젯이 "보냈어요" 상태로 그린다.
         var missYouJustSentAtMs: Int64?
         var linked: Bool
