@@ -109,6 +109,16 @@ data class MonthLetter(
     val thumb: DrawingDocument?,
     /** 그림이 없고 사진만 있으면 첫 사진. */
     val photoId: String?,
+    /** 편지 제목(월 페이지 작은 봉투). */
+    val title: String? = null,
+    /** 받은 편지인데 아직 안 읽음(봉인). */
+    val unread: Boolean = false,
+    /** 봉투 우표 글자([stampText]). */
+    val stamp: String = "",
+    /** 첫 그림 PNG 첨부 id(봉투 미니 폴라로이드). */
+    val drawingPng: String? = null,
+    /** 첫 그림 캡션(폴라로이드 손글씨). */
+    val caption: String? = null,
 )
 
 /** 만남 카드 · 그날의 한 줄(보기 · 쓰기). */
@@ -214,6 +224,8 @@ data class MemoryState(
     val dayLineMeets: Map<String, MeetCard> = emptyMap(),
     /** 추억 위쪽 [+ 그날의 한 줄] 이 여는 일정: 가장 최근에 끝난(진행 중이면 그것) 만남. */
     val latestMeet: String? = null,
+    /** 오늘(ViewModel 시계). 비어 있을 때 이번 달 빈 페이지. */
+    val today: LocalDate? = null,
 ) {
     val empty: Boolean get() = !loading && chapters.none { it.letters + it.meets > 0 }
     val top: MemoryPage? get() = stack.lastOrNull()
@@ -251,7 +263,7 @@ class MemoryViewModel(
     private val me = profile.myUserId()
     private val today = clock.today()
     private val stack = MutableStateFlow<List<MemoryPage>>(emptyList())
-    private val docs = MutableStateFlow<Map<String, DrawingDocument?>>(emptyMap())
+    private val docs = MutableStateFlow<Map<String, FirstDrawing?>>(emptyMap())
 
     /** 그날의 사진 · 편지 사진 원본(첨부 id → JPEG). 화면이 썸네일로 쓴다. */
     private val _photos = MutableStateFlow<Map<String, ByteArray?>>(emptyMap())
@@ -287,9 +299,9 @@ class MemoryViewModel(
         letters.observeInbox(),
         range,
         combine(names, profile.observeTimelines(), covers.observe()) { n, t, c -> Triple(n, t.firstOrNull()?.second, c) },
-        combine(docs, monthLines) { d, l -> d to l },
-    ) { pages, ls, es, (n, timeline, cover), (thumbs, lines) ->
-        build(pages, ls, es, n.first, n.second, timeline, thumbs, lines).let { st ->
+        combine(docs, monthLines, letters.observeReadLetterIds()) { d, l, r -> Triple(d, l, r) },
+    ) { pages, ls, es, (n, timeline, cover), (thumbs, lines, read) ->
+        build(pages, ls, es, n.first, n.second, timeline, thumbs, lines, read).let { st ->
             st.copy(cover = cover, summary = st.summary?.copy(soldier = n.third))
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MemoryState())
@@ -298,7 +310,7 @@ class MemoryViewModel(
         // 사진: 처음 보이는 첨부를 한 번씩 읽어 둔다(상대가 붙인 사진은 받은 뒤에 생긴다 — 없으면 다음에 다시).
         viewModelScope.launch {
             state.collect { st ->
-                val ids = st.months.values.flatMap { m -> m.meets.flatMap { it.photos } + m.letters.mapNotNull { it.photoId } }
+                val ids = st.months.values.flatMap { m -> m.meets.flatMap { it.photos } + m.letters.flatMap { listOfNotNull(it.photoId, it.drawingPng) } }
                 ids.filter { _photos.value[it] == null }.forEach { id ->
                     attachments.read(id)?.let { bytes -> _photos.update { it + (id to bytes) } }
                 }
@@ -341,10 +353,11 @@ class MemoryViewModel(
         }
     }
 
-    private suspend fun firstDrawing(letterId: String): DrawingDocument? {
+    private suspend fun firstDrawing(letterId: String): FirstDrawing? {
         val row = letters.drawingsOf(letterId).minByOrNull { it.orderInLetter } ?: return null
-        val bytes = row.docAttachmentId?.let { attachments.read(it) } ?: return null
-        return (runCatching { DrawingCodec.decode(bytes) }.getOrNull() as? DrawingCodec.Result.Ok)?.document
+        val doc = row.docAttachmentId?.let { attachments.read(it) }
+            ?.let { bytes -> (runCatching { DrawingCodec.decode(bytes) }.getOrNull() as? DrawingCodec.Result.Ok)?.document }
+        return FirstDrawing(doc, row.pngAttachmentId.takeIf { it.isNotBlank() }, row.caption?.takeIf { it.isNotBlank() })
     }
 
     private fun build(
@@ -354,8 +367,9 @@ class MemoryViewModel(
         my: String,
         partner: String,
         timeline: ServiceTimeline?,
-        thumbs: Map<String, DrawingDocument?>,
+        thumbs: Map<String, FirstDrawing?>,
         lines: Map<YearMonth, List<Event>>,
+        read: Set<String>,
     ): MemoryState {
         val meetEvents = es.filter { it.deletedAt == null && it.hasDayLine }.sortedBy { it.start }
         val pastMeets = meetEvents.filter { it.end.date <= today }
@@ -368,7 +382,7 @@ class MemoryViewModel(
         // 책의 첫 장: 입대한 달(복무 정보가 없으면 첫 편지 · 만남의 달). 마지막 장: 이번 달(전역했으면 전역한 달).
         val contentStart = (ls.map { it.date() } + pastMeets.map { it.start.date }).minOrNull()
         val start = timeline?.enlistDate ?: contentStart
-        if (start == null) return MemoryState(loading = false, stack = pages, dayLineMeets = dayLineMeets, latestMeet = latestMeet)
+        if (start == null) return MemoryState(loading = false, stack = pages, dayLineMeets = dayLineMeets, latestMeet = latestMeet, today = today)
         val end = timeline?.dischargeDate?.takeIf { it < today } ?: today
         val firstYm = YearMonth.of(minOf(start, contentStart ?: start))
         val lastYm = YearMonth.of(end)
@@ -389,8 +403,13 @@ class MemoryViewModel(
                 val textOf = { bs: List<LetterBlock> -> bs.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text.trim() }.trim() }
                 MonthLetter(
                     l.id, d, "${d.month.ordinal + 1}.${d.day} · ${nameOf(l.authorId)}", nameOf(l.authorId), l.authorId == me, kind,
-                    text, textOf(l.blocks.take(cut)), textOf(l.blocks.drop(cut)), thumbs[l.id],
+                    text, textOf(l.blocks.take(cut)), textOf(l.blocks.drop(cut)), thumbs[l.id]?.doc,
                     if (l.drawingCount == 0) l.blocks.filterIsInstance<LetterBlock.Photo>().firstOrNull()?.attachmentId else null,
+                    title = l.title?.takeIf { it.isNotBlank() },
+                    unread = l.authorId != me && l.id !in read,
+                    stamp = stampText(d, timeline?.dischargeDate),
+                    drawingPng = thumbs[l.id]?.png,
+                    caption = thumbs[l.id]?.caption,
                 )
             }
             val bars = buildList {
@@ -464,6 +483,7 @@ class MemoryViewModel(
             stack = pages,
             dayLineMeets = dayLineMeets,
             latestMeet = latestMeet,
+            today = today,
         )
     }
 
@@ -490,6 +510,9 @@ class MemoryViewModel(
     private companion object {
     }
 }
+
+/** 편지의 첫 그림: 문서(썸네일) · PNG 첨부 id(봉투 미니 폴라로이드) · 캡션. */
+internal class FirstDrawing(val doc: DrawingDocument?, val png: String?, val caption: String?)
 
 private fun Letter.date(): LocalDate = visibleAt.toLocalDateTime(SEOUL).date
 
