@@ -79,11 +79,13 @@ internal fun SectionHeader(title: String, modifier: Modifier = Modifier, action:
     Row(modifier.fillMaxWidth().heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
         if (action != null) {
-            Text(
-                action, style = KkTheme.type.label, color = c.accent,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onAction)
-                    .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
-            )
+            Box(
+                Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onAction)
+                    .padding(horizontal = KkSpacing.sm),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(action, style = KkTheme.type.label, color = c.accent)
+            }
         }
     }
 }

@@ -57,11 +57,19 @@ data class EventDraft(
     val endAt: LocalDateTime get() = LocalDateTime(if (singleDay) start else end, if (allDay || singleDay) LocalTime(23, 59) else endTime)
     val valid: Boolean get() = endAt >= startAt
 
-    /** 커플 기념일은 설정 › 기념일에서만 지운다(홈 함께한 날 · 100일 알림이 기대고 있다). */
-    val deletable: Boolean get() = id != null && id != Event.COUPLE_ANNIVERSARY_ID
+    /**
+     * 커플 기념일(홈 함께한 날 · 100일 알림이 기대고 있다). 지우기는 설정 › 기념일에서만, 종류 · 매년 반복도 바꾸지 않는다
+     * — 바꾸면 기념일이 사라지는 것과 같다. 날짜 · 제목 · 메모만 고친다.
+     */
+    val coupleAnniversary: Boolean get() = id == Event.COUPLE_ANNIVERSARY_ID
+
+    val deletable: Boolean get() = id != null && !coupleAnniversary
 
     /** 종류 바꾸기: 휴가 · 기념일은 하루 단위라 종일로. */
-    fun withType(t: EventType): EventDraft = copy(type = t, allDay = allDay || t == EventType.VACATION || t == EventType.ANNIVERSARY)
+    fun withType(t: EventType): EventDraft =
+        if (coupleAnniversary) this else copy(type = t, allDay = allDay || t == EventType.VACATION || t == EventType.ANNIVERSARY)
+
+    fun toggleRepeat(): EventDraft = if (coupleAnniversary) this else copy(repeatYearly = !repeatYearly)
 
     /** 휴가면 이 기간을 쓴 뒤 남는 휴가(일정 추가에서 휴가 = 휴가 사용 등록). 아니면 null. */
     fun leaveUse(pool: LeavePool): LeaveUse? {

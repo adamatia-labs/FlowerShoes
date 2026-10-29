@@ -68,4 +68,12 @@ class EventDraftTest {
         assertTrue(EventDraft("b1", EventType.ANNIVERSARY, start = d("2001-11-03"), end = d("2001-11-03")).deletable)
         assertFalse(EventDraft(null, start = d("2001-11-03"), end = d("2001-11-03")).deletable)
     }
+
+    @Test
+    fun `커플 기념일은 종류와 매년 반복을 바꿀 수 없다`() {
+        val couple = EventDraft(Event.COUPLE_ANNIVERSARY_ID, EventType.ANNIVERSARY, start = d("2024-05-18"), end = d("2024-05-18"))
+        assertEquals(EventType.ANNIVERSARY, couple.withType(EventType.VACATION).type)
+        assertTrue(couple.toggleRepeat().repeatYearly)
+        assertFalse(EventDraft("b1", EventType.ANNIVERSARY, start = d("2001-11-03"), end = d("2001-11-03")).toggleRepeat().repeatYearly)
+    }
 }

@@ -210,12 +210,12 @@ private fun LeaveUseScreen(
     val end = LocalDate.parse(to)
     val days = start.daysUntil(end) + 1
     // 넘쳐도 쓴다(결정: 초과 사용 허용) — 남은 휴가가 음수로 빨갛게 보인다.
-    val after = state.pool.remainingAfter(start, end)
+    val use = LeaveUse(days, state.pool.remainingAfter(start, end))
     Screen("휴가 쓰기", KkTopBarLeading.Close, onClose, footer = {
         KkPrimaryButton("${days}일 쓰기", { onRegister(start, end, notify) }, Modifier.fillMaxWidth())
     }) {
         KkInput("${start.md()} – ${end.md()}", {}, label = "기간", onClick = { picking = true })
-        Text("${days}일 사용 · 남은 휴가 ${after}일", style = KkTheme.type.body, color = if (after < 0) c.danger else c.ink)
+        Text(use.label, style = KkTheme.type.body, color = if (use.overdrawn) c.danger else c.ink)
         if (state.partnerName != null) {
             KkStatusChip("${state.partnerName}에게 알리기", selected = notify, onClick = { notify = !notify }, dot = if (notify) Color.White else c.danger)
         }

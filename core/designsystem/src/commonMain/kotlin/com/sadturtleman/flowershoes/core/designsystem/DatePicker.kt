@@ -141,11 +141,11 @@ fun KkDateRangeDialog(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("${month.year}년 ${month.month.number}월", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
                 Box(
-                    Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button) { month = month.minus(DatePeriod(months = 1)) },
+                    Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { month = month.minus(DatePeriod(months = 1)) },
                     contentAlignment = Alignment.Center,
                 ) { KkIcon(KkIcons.ChevronRight, tint = c.ink, contentDescription = "이전 달", modifier = Modifier.rotate(180f)) }
                 Box(
-                    Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button) { month = month.plus(DatePeriod(months = 1)) },
+                    Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { month = month.plus(DatePeriod(months = 1)) },
                     contentAlignment = Alignment.Center,
                 ) { KkIcon(KkIcons.ChevronRight, tint = c.ink, contentDescription = "다음 달") }
             }
@@ -177,10 +177,19 @@ private fun RangeGrid(month: LocalDate, range: KkDateRange, onPick: (LocalDate) 
             Row(Modifier.fillMaxWidth()) {
                 (0 until 7).forEach { col ->
                     val n = week * 7 + col - lead + 1
-                    Box(Modifier.weight(1f).height(44.dp), contentAlignment = Alignment.Center) {
+                    val date = LocalDate(month.year, month.month, n.coerceIn(1, days))
+                    val edge = date == range.start || date == range.end
+                    // 칸 전체(48)가 눌리는 영역.
+                    Box(
+                        Modifier.weight(1f).height(48.dp).then(
+                            if (n in 1..days) {
+                                Modifier.clickable(role = Role.Button) { onPick(date) }
+                                    .semantics { contentDescription = "${month.month.number}월 ${n}일" + if (edge) ", 선택됨" else "" }
+                            } else Modifier,
+                        ),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         if (n in 1..days) {
-                            val date = LocalDate(month.year, month.month, n)
-                            val edge = date == range.start || date == range.end
                             // 띠: 시작은 오른쪽 반, 끝은 왼쪽 반, 사이는 칸 전체.
                             if (range.start != range.end && date >= range.start && date <= range.end) {
                                 Row(Modifier.fillMaxWidth().height(36.dp)) {
@@ -189,9 +198,7 @@ private fun RangeGrid(month: LocalDate, range: KkDateRange, onPick: (LocalDate) 
                                 }
                             }
                             Box(
-                                Modifier.size(36.dp).clip(CircleShape).background(if (edge) c.accent else Color.Transparent)
-                                    .clickable(role = Role.Button) { onPick(date) }
-                                    .semantics { contentDescription = "${month.month.number}월 ${n}일" + if (edge) ", 선택됨" else "" },
+                                Modifier.size(36.dp).clip(CircleShape).background(if (edge) c.accent else Color.Transparent),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text("$n", style = KkTheme.type.label, color = if (edge) c.surface else c.ink)

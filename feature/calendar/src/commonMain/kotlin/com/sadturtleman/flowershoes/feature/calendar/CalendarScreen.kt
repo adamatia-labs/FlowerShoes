@@ -152,7 +152,7 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onO
 private fun LeaveBand(pool: LeavePool, onOpen: () -> Unit) {
     val c = KkTheme.colors
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.sm)).background(c.tag)
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.sm)).background(c.tag)
             .clickable(role = Role.Button, onClick = onOpen)
             .padding(start = 14.dp, end = KkSpacing.sm, top = KkSpacing.sm, bottom = KkSpacing.sm),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -376,7 +376,11 @@ private fun EventEditor(draft: EventDraft, state: CalendarState, onIntent: (Cale
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
             ) {
                 Text("종류", style = KkTheme.type.labelBold, color = c.ink)
-                val types = if (draft.type in EDITOR_TYPES) EDITOR_TYPES else EDITOR_TYPES + draft.type
+                val types = when {
+                    draft.coupleAnniversary -> listOf(EventType.ANNIVERSARY)
+                    draft.type in EDITOR_TYPES -> EDITOR_TYPES
+                    else -> EDITOR_TYPES + draft.type
+                }
                 Column(Modifier.semantics { contentDescription = "일정 종류" }, verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
                     types.chunked(2).forEach { pair ->
                         Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
@@ -390,8 +394,10 @@ private fun EventEditor(draft: EventDraft, state: CalendarState, onIntent: (Cale
                 Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
                     if (anniversary) {
                         KkListRow("날짜", value = draft.start.longDate(), onClick = { picking = true })
-                        androidx.compose.material3.HorizontalDivider(color = c.line)
-                        KkListRow("매년 반복", trailing = KkRowTrailing.Switch, switchOn = draft.repeatYearly, onClick = { change(draft.copy(repeatYearly = !draft.repeatYearly)) })
+                        if (!draft.coupleAnniversary) {
+                            androidx.compose.material3.HorizontalDivider(color = c.line)
+                            KkListRow("매년 반복", trailing = KkRowTrailing.Switch, switchOn = draft.repeatYearly, onClick = { change(draft.toggleRepeat()) })
+                        }
                     } else {
                         KkListRow("하루 종일", trailing = KkRowTrailing.Switch, switchOn = draft.allDay, onClick = { change(draft.copy(allDay = !draft.allDay)) })
                         fun at(d: LocalDate, t: LocalTime) = "${d.mmdd()} (${d.weekdayKo()})" + if (draft.allDay) "" else " ${t.hhmm()}"
@@ -446,12 +452,12 @@ private fun EventEditor(draft: EventDraft, state: CalendarState, onIntent: (Cale
             }
         }
         if (confirmDelete) {
-            // 지우기 확인(Figma 일정 상세 · 삭제 확인). 매년 반복이면 모든 해가 함께 지워진다.
-            val body = when {
-                draft.original?.repeats == true -> "매년 반복되는 날이 모두 지워져요"
-                state.partnerName != null -> "${state.partnerName}의 캘린더에서도 함께 지워져요"
-                else -> "되돌릴 수 없어요"
-            }
+            // 지우기 확인(Figma 일정 상세 · 삭제 확인). 저장된 일정이 매년 반복이면 모든 해가 함께 지워진다
+            // (한 해만 지우기는 아직 없다 — 반복 예외를 담을 칸이 필요하다).
+            val body = listOfNotNull(
+                "매년 반복되는 날이 모두 지워져요".takeIf { draft.original?.repeats == true },
+                state.partnerName?.let { "${it}의 캘린더에서도 함께 지워져요" },
+            ).joinToString("\n").ifEmpty { "되돌릴 수 없어요" }
             KkDialogHost({ confirmDelete = false }) {
                 KkDialog("일정을 지울까요?", body, "지우기", onConfirm = {
                     confirmDelete = false
