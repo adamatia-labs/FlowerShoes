@@ -65,10 +65,6 @@ export function mailFailure(error: unknown): { retry: boolean; code: string } {
   return { retry: true, code: 'SMTP_UNAVAILABLE' };
 }
 
-export function backupWarningId(uid: string, lastSeenMs: number, daysLeft: number): string {
-  return 'backup-' + createHash('sha256').update(JSON.stringify([uid, lastSeenMs, daysLeft])).digest('hex');
-}
-
 export function mailMessageId(projectId: string, documentId: string, from: string): string {
   const hash = createHash('sha256').update(JSON.stringify([projectId, documentId])).digest('hex');
   return `<${hash}@${from.split('@')[1]}>`;

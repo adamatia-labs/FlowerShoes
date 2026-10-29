@@ -47,7 +47,6 @@ kotlin {
             implementation(project(":feature:pairing"))
             api(project(":feature:settings"))
             api(project(":core:widget-bridge"))
-            implementation(project(":core:backup"))
             implementation(project(":core:media"))
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)
@@ -72,7 +71,6 @@ kotlin {
             implementation("com.google.firebase:firebase-common")
             implementation("com.google.firebase:firebase-storage")
             implementation("com.google.firebase:firebase-firestore")
-            implementation(libs.play.services.blockstore)
             implementation(libs.kotlinx.coroutines.play.services)
             // 소셜 로그인
             implementation("com.google.firebase:firebase-auth")

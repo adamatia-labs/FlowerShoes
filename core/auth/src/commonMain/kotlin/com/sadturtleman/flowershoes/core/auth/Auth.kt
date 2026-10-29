@@ -4,8 +4,8 @@ package com.sadturtleman.flowershoes.core.auth
 enum class AuthProvider { KAKAO, APPLE, GOOGLE }
 
 sealed interface SignInResult {
-    /** 로그인됨. [uid] 는 Firebase uid(카카오는 "kakao:{회원번호}"). [hasBackup] 이면 복원 화면으로 간다. */
-    data class Success(val uid: String, val provider: AuthProvider, val hasBackup: Boolean) : SignInResult
+    /** 로그인됨. [uid] 는 Firebase uid(카카오는 "kakao:{회원번호}"). */
+    data class Success(val uid: String, val provider: AuthProvider) : SignInResult
 
     data object Cancelled : SignInResult
 
@@ -13,7 +13,7 @@ sealed interface SignInResult {
 }
 
 /**
- * 로그인. 로그인은 신원 확인과 백업 위치 찾기에만 쓴다 — 로그인 정보로는 데이터를 풀 수 없다(열쇠는 백업 키).
+ * 로그인. 로그인은 신원 확인에만 쓴다 — 로그인 정보로는 데이터를 풀 수 없다(열쇠는 기기 · 커플 키).
  *
  * 카카오: SDK 로그인 → 액세스 토큰을 Cloud Function `kakaoSignIn` 에 보낸다 → 함수가 app_id 를 확인하고
  * 커스텀 토큰을 돌려준다 → signInWithCustomToken. Apple · Google 은 Firebase Auth 기본 제공자다.
@@ -45,11 +45,11 @@ fun authProviderOf(firebaseProviderId: String): AuthProvider? = when (firebasePr
 
 /**
  * Firebase 프로젝트와 각 SDK 키가 연결되기 전에 쓰는 구현. 로그인 없이 이 기기 안에서만 동작한다.
- * uid 는 로컬 id 그대로 두고, 백업은 없는 것으로 본다.
+ * uid 는 로컬 id 그대로 둔다.
  */
 class LocalOnlyAuthGateway(override val providers: List<AuthProvider> = AuthProvider.entries) : AuthGateway {
     override suspend fun signIn(provider: AuthProvider): SignInResult =
-        SignInResult.Success(uid = "", provider = provider, hasBackup = false)
+        SignInResult.Success(uid = "", provider = provider)
 
     override suspend fun signOut() = Unit
 }

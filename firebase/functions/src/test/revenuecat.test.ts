@@ -4,15 +4,14 @@ import { entitlementsFrom, refreshEntitlements, usersOf } from '../revenuecat';
 
 const now = new Date('2026-10-24T00:00:00Z');
 
-test('평생은 책 · 용량 추가 말고 활성 이용권, 만료된 것은 뺀다', () => {
+test('평생은 책 말고 활성 이용권, 만료된 것은 뺀다', () => {
   const body = { subscriber: { entitlements: {
-    lifetime: { expires_date: null },
+    lifetime: { expires_date: '2026-01-01T00:00:00Z' },
     memory_book: { expires_date: null },
-    backup_plus: { expires_date: '2026-01-01T00:00:00Z' },
   } } };
-  assert.deepEqual(entitlementsFrom(body, now), { lifetime: true, book: true, backupPlus: false });
-  assert.deepEqual(entitlementsFrom({ subscriber: { entitlements: { memory_book: {} } } }, now), { lifetime: false, book: true, backupPlus: false });
-  assert.deepEqual(entitlementsFrom({}, now), { lifetime: false, book: false, backupPlus: false });
+  assert.deepEqual(entitlementsFrom(body, now), { lifetime: false, book: true });
+  assert.deepEqual(entitlementsFrom({ subscriber: { entitlements: { lifetime: {}, memory_book: {} } } }, now), { lifetime: true, book: true });
+  assert.deepEqual(entitlementsFrom({}, now), { lifetime: false, book: false });
 });
 
 test('웹훅 사용자: 익명 id 는 빼고 옮겨진 계정도 다시 읽는다', () => {
@@ -41,7 +40,7 @@ test('계정 이전은 두 계정의 현재 권한을 각각 다시 저장한다
   });
   assert.equal(requested.length, 2);
   assert.deepEqual(saved, [
-    { uid: 'old', lifetime: false, book: false, backupPlus: false },
-    { uid: 'new', lifetime: true, book: false, backupPlus: false },
+    { uid: 'old', lifetime: false, book: false },
+    { uid: 'new', lifetime: true, book: false },
   ]);
 });

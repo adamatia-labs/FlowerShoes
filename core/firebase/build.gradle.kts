@@ -25,7 +25,6 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":core:data"))
             implementation(project(":core:auth"))
-            api(project(":core:backup"))
             implementation(libs.gitlive.firebase.firestore)
             implementation(libs.gitlive.firebase.storage)
             implementation(libs.gitlive.firebase.auth)

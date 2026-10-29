@@ -28,7 +28,6 @@ kotlin {
             implementation(project(":core:designsystem"))
             implementation(project(":core:data"))
             implementation(project(":core:auth"))
-            implementation(project(":core:backup"))
             implementation(libs.jb.lifecycle.viewmodel.compose)
             implementation(libs.jb.lifecycle.runtime.compose)
             implementation(libs.koin.compose.viewmodel)

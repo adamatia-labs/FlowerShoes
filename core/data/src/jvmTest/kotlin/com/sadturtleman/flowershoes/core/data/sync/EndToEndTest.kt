@@ -255,8 +255,7 @@ class EndToEndTest {
         val store = androidx.datastore.preferences.core.PreferenceDataStoreFactory.createWithPath { (root / "del-settings.preferences_pb") }
         val settings = com.sadturtleman.flowershoes.core.data.DeviceSettings(store)
         settings.ensureIdentity()
-        var syncedKeyDeleted = false
-        UnlinkService(jisu.db, jisu.vault, settings, cloud).deleteAccount { syncedKeyDeleted = true }
+        UnlinkService(jisu.db, jisu.vault, settings, cloud).deleteAccount()
 
         assertNull(jisu.vault.deviceKeys())
         assertNull(jisu.vault.currentCoupleKey())
@@ -264,7 +263,6 @@ class EndToEndTest {
         assertNull(jisu.db.userDao().get("jisu"))
         assertNull(jisu.db.coupleDao().get())
         assertEquals("", settings.state.first().userId, "다음 실행은 처음 화면부터")
-        assertTrue(syncedKeyDeleted)
         assertEquals(1, cloud.unlinked.size + 0, "연결 해제와 별개로 서버 탈퇴 callable 이 불렸다")
     }
 }

@@ -6,7 +6,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.sadturtleman.flowershoes.app.auth.AuthKeys
 import com.sadturtleman.flowershoes.app.kkotsinAndroidModules
-import com.sadturtleman.flowershoes.core.backup.BackupManager
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import com.sadturtleman.flowershoes.core.crypto.Sodium
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
@@ -93,7 +92,6 @@ class FlowerShoesApplication :
                     }
                     single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>() }
                     single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book }
-                    single<com.sadturtleman.flowershoes.core.data.BackupPlusStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().backupPlus }
                 }
             })
         }
@@ -139,28 +137,7 @@ class FlowerShoesApplication :
      * 안드로이드는 프로세스 종료를 알려주지 않으므로 이것이 우리가 받는 마지막 신호다.
      * 여기서 남은 완성 기록을 모두 쏜다. 그마저 못 하고 죽으면 다음 [onCreate] 가 주워 간다.
      */
-    /**
-     * 자동 백업(설계 7-6): 백그라운드로 갈 때, 마지막 백업에서 30분이 지났으면.
-     * 실패해도 다음 기회에 다시 한다 — 원본은 이 폰의 DB 다.
-     */
-    private fun autoBackup() {
-        val manager = getKoin().getOrNull<BackupManager>() ?: return
-        val prefs = getSharedPreferences("kkotsin_backup", MODE_PRIVATE)
-        val now = System.currentTimeMillis()
-        if (now - prefs.getLong("last", 0L) < 30 * 60 * 1000L) return
-        val settings = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
-        appScope.launch {
-            // 설정 › 백업: 자동 백업을 껐거나, 셀룰러에서 백업하지 않기로 했는데 지금 데이터 요금 망이면 다음 기회에.
-            if (!settings.autoBackup.first()) return@launch
-            val metered = (getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager).isActiveNetworkMetered
-            if (metered && !settings.cellularBackup.first()) return@launch
-            runCatching { manager.backupNow(get<IdentityHolder>().userId) }
-                .onSuccess { prefs.edit().putLong("last", now).apply() }
-        }
-    }
-
     override fun onStop(owner: LifecycleOwner) {
-        autoBackup()
         ttiRecorder.destroy()
         // 아직 나가지 못한 이벤트가 끝나기를 기다린 뒤 접는다.
         bizLogger.destroy()

@@ -29,7 +29,6 @@ struct KkotsinApp: App {
             ? "http://127.0.0.1:5001/demo-kkotsin/asia-northeast3/sendFromWidget"
             : project.map { "https://asia-northeast3-\($0).cloudfunctions.net/sendFromWidget" }
         MainViewControllerKt.setWidgetEndpoint(endpoint: endpoint)
-        _ = BackgroundBackup.shared
     }
 
     var body: some Scene {
@@ -48,8 +47,6 @@ struct KkotsinApp: App {
             // 앞으로 나오면 NSE 대기열 합치기 · 동기화 · 위젯 연결 정보 갱신
             if now == .active {
                 MainViewControllerKt.onForeground()
-            } else if now == .background {
-                BackgroundBackup.shared.start()
             }
         }
     }

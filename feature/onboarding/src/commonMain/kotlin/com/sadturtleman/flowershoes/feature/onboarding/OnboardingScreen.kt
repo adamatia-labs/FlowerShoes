@@ -96,7 +96,6 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun OnboardingRoute(
     onFinished: () -> Unit,
-    onOpenRestore: () -> Unit,
     onOpenPairing: () -> Unit,
     connect: @Composable ColumnScope.(onAdvance: () -> Unit) -> Unit = {},
     viewModel: OnboardingViewModel = koinViewModel(),
@@ -106,7 +105,6 @@ fun OnboardingRoute(
         viewModel.events.collect {
             when (it) {
                 OnboardingEvent.Finished -> onFinished()
-                OnboardingEvent.OpenRestore -> onOpenRestore()
                 OnboardingEvent.OpenPairing -> onOpenPairing()
             }
         }

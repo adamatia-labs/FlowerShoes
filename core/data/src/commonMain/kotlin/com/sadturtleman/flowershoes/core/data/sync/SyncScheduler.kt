@@ -40,8 +40,6 @@ class SyncScheduler(
     private val client: SyncClient,
     /** 상대의 기기 교체 요청을 동기화 때마다 확인해 자동 승인한다(7-3-A). */
     private val approver: RotationApprover? = null,
-    /** 백업 복원 뒤 자동 기기 교체(7-3-A). 동기화 앞에서 한 걸음씩. */
-    private val afterRestore: PostRestoreRotation? = null,
     /** 앱이 살아 있는 동안 우편함 초인종(Firestore 리스너). */
     private val doorbell: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
     private val period: Duration = 1.minutes,
@@ -68,11 +66,6 @@ class SyncScheduler(
         _approved.value = _approved.value.filterNot { it.id == id }
     }
 
-    private val _restoreState = kotlinx.coroutines.flow.MutableStateFlow(RestoreRotationState.NotNeeded)
-
-    /** 화면 안내용: 상대 확인을 기다리는 중이면 "연인 폰에서 확인 중이에요". */
-    val restoreState: kotlinx.coroutines.flow.StateFlow<RestoreRotationState> = _restoreState
-
     /** 자동 승인하지 못한 교체 요청. 화면이 "확인 코드로 직접 확인해 주세요"를 띄운다. */
     var pendingManual: List<Pair<RotationRequest, RotationDecision.NeedsManual>> = emptyList()
         private set
@@ -87,9 +80,6 @@ class SyncScheduler(
     fun requestNow() {
         kicks.trySend(Unit)
     }
-
-    /** Restoring records and keys must not race an inbox import or a rotation request. */
-    suspend fun <T> whileSyncPaused(block: suspend () -> T): T = running.withLock { block() }
 
     @OptIn(FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun start(scope: CoroutineScope): Job = scope.launch {
@@ -124,7 +114,7 @@ class SyncScheduler(
         val report = withTimeoutOrNull(syncTimeout) { syncOnce().also { finished = true } }
         if (!finished) withTimeoutOrNull(5.seconds) { attempt { client.reconnect() } }
         val awaitingAcknowledgement = db.coupleDao().get()?.partnerUserId?.isNotBlank() == true && db.syncDao().streamsWithLog().isNotEmpty()
-        retryNeeded.value = report == null || awaitingAcknowledgement || _restoreState.value == RestoreRotationState.WaitingForPartner
+        retryNeeded.value = report == null || awaitingAcknowledgement
         report
     }
 
@@ -133,7 +123,6 @@ class SyncScheduler(
     } catch (_: Exception) { null }
 
     private suspend fun syncOnce(): SyncReport? {
-        afterRestore?.let { r -> attempt { r.step() }?.let { _restoreState.value = it } }
         val report = attempt { client.syncOnce() }?.also { lastReport = it }
         approver?.let { a ->
             attempt { a.check() }?.let { decisions ->

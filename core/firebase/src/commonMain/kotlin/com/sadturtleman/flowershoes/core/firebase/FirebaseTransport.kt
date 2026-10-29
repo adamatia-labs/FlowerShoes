@@ -194,17 +194,12 @@ class FirestoreTransport(
 
 /**
  * 푸시 토큰을 users/{uid}.fcmTokens 에 둔다. 서버(onInboxCreated)가 여기로 보낸다. 만료된 토큰은 서버가 지운다.
- * 함께 lastSeenAt(마지막 사용)을 남긴다 — 백업 보관 기간(약관 제10조의2)이 여기서부터 센다.
  */
 class PushTokenRegistry(private val db: FirebaseFirestore = Firebase.firestore) {
     suspend fun register(token: String) {
         val uid = Firebase.auth.currentUser?.uid ?: return
         db.collection("users").document(uid).set(
-            mapOf(
-                "fcmTokens" to dev.gitlive.firebase.firestore.FieldValue.arrayUnion(token),
-                "lastSeenAt" to dev.gitlive.firebase.firestore.FieldValue.serverTimestamp,
-                "backupDeletedAt" to dev.gitlive.firebase.firestore.FieldValue.delete,
-            ),
+            mapOf("fcmTokens" to dev.gitlive.firebase.firestore.FieldValue.arrayUnion(token)),
             merge = true,
         )
     }

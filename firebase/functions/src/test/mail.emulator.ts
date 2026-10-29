@@ -23,7 +23,7 @@ let server: SMTPServer;
 const received: string[] = [];
 let rejectCode = 0;
 let authenticated = 0;
-const payload = { to: 'recipient@example.test', message: { subject: 'Local SMTP test', text: 'Backup warning test only.' } };
+const payload = { to: 'recipient@example.test', message: { subject: 'Local SMTP test', text: 'Local SMTP test only.' } };
 
 before(async () => {
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
@@ -91,7 +91,7 @@ test('Firestore → 함수 → TLS 인증 SMTP 실제 수신, 완료 이벤트 �
   await run(ref.id);
   assert.equal(received.length, start + 1);
   assert.match(received.at(-1)!, /To: recipient@example.test/);
-  assert.match(received.at(-1)!, /Backup warning test only/);
+  assert.match(received.at(-1)!, /Local SMTP test only/);
   assert.ok(authenticated > 0);
   assert.equal((await ref.get()).get('delivery.state'), 'SUCCESS');
   assert.equal((await ref.get()).get('delivery.attempts'), 1);
