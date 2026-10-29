@@ -49,9 +49,6 @@ import kotlinx.datetime.toLocalDateTime
 /** 그림 도구. 크레용 · 수채 붓은 꽃신 평생. */
 enum class EditorTool { PEN, HIGHLIGHTER, CRAYON, WATERCOLOR, ERASER, STICKER }
 
-/** 아래 메뉴바(Editor Menu Bar): 펜 · 스티커 · 사진 · 틀. 위 패널 내용만 바뀐다. */
-enum class EditorMenu(val label: String) { PEN("펜"), STICKER("스티커"), PHOTO("사진"), TEMPLATE("틀") }
-
 /** 편집 → 보내기(그림만 보내기). 편지에 넣는 그림은 편집에서 바로 끝난다. */
 enum class EditorStage { EDIT, SEND }
 
@@ -96,7 +93,12 @@ data class DrawingEditorState(
     val live: Stroke? = null,
     val liveEraser: EraserStroke? = null,
     val tool: EditorTool = EditorTool.PEN,
-    val menu: EditorMenu = EditorMenu.PEN,
+    /** 마지막으로 고른 펜(지우개 · 스티커에서 붓을 누르면 이것으로). */
+    val pen: EditorTool = EditorTool.PEN,
+    /** 열린 시트. */
+    val sheet: EditorSheet? = null,
+    /** 보내기 화면 미리보기의 틀. */
+    val frame: DrawingFrame = DrawingFrame.POLAROID,
     val color: Long = PEN_COLORS[1],
     val brush: BrushSize = BrushSize.M,
     val sticker: String = "img:heart/00",
@@ -133,7 +135,10 @@ data class DrawingEditorState(
 sealed interface DrawingIntent {
     data class SetShape(val shape: WidgetShape) : DrawingIntent
     data class SetTool(val tool: EditorTool) : DrawingIntent
-    data class SetMenu(val menu: EditorMenu) : DrawingIntent
+    /** 툴바 한 칸. */
+    data class Tap(val item: ToolbarItem) : DrawingIntent
+    data object CloseSheet : DrawingIntent
+    data class SetFrame(val frame: DrawingFrame) : DrawingIntent
     data class SetColor(val argb: Long) : DrawingIntent
     data class SetBrush(val brush: BrushSize) : DrawingIntent
     data class SetSticker(val id: String) : DrawingIntent
@@ -255,21 +260,14 @@ class DrawingEditorViewModel(
     fun onIntent(intent: DrawingIntent) {
         when (intent) {
             is DrawingIntent.SetShape -> _state.update { if (it.canUndo) it else it.copy(shape = intent.shape) }
-            is DrawingIntent.SetTool -> _state.update { it.copy(tool = intent.tool) }
-            is DrawingIntent.SetMenu -> _state.update {
-                it.copy(
-                    menu = intent.menu,
-                    // 스티커 메뉴에서는 탭이 스티커를 붙인다. 펜 메뉴로 오면 그리던 도구로.
-                    tool = when {
-                        intent.menu == EditorMenu.STICKER -> EditorTool.STICKER
-                        it.tool == EditorTool.STICKER -> EditorTool.PEN
-                        else -> it.tool
-                    },
-                )
-            }
-            is DrawingIntent.SetColor -> _state.update { it.copy(color = intent.argb, tool = if (it.tool == EditorTool.ERASER || it.tool == EditorTool.STICKER) EditorTool.PEN else it.tool) }
+            is DrawingIntent.SetTool -> _state.update { it.pickTool(intent.tool) }
+            is DrawingIntent.Tap -> _state.update { it.tap(intent.item) }
+            DrawingIntent.CloseSheet -> _state.update { it.copy(sheet = null) }
+            is DrawingIntent.SetFrame -> _state.update { it.copy(frame = intent.frame) }
+            // 색을 고르면 지우개 · 스티커에서 마지막 펜으로.
+            is DrawingIntent.SetColor -> _state.update { it.copy(color = intent.argb, tool = if (it.tool == EditorTool.ERASER || it.tool == EditorTool.STICKER) it.pen else it.tool) }
             is DrawingIntent.SetBrush -> _state.update { it.copy(brush = intent.brush) }
-            is DrawingIntent.SetSticker -> _state.update { it.copy(sticker = intent.id, tool = EditorTool.STICKER) }
+            is DrawingIntent.SetSticker -> _state.update { it.pickSticker(intent.id) }
             is DrawingIntent.SetStickerTab -> _state.update { it.copy(stickerTab = intent.index) }
             is DrawingIntent.SetTemplate -> _state.update { s ->
                 val rest = s.elements.filterNot { it is TemplateGuide }
@@ -295,7 +293,7 @@ class DrawingEditorViewModel(
                 s.copy(elements = s.elements + last, redo = s.redo.dropLast(1))
             }
             DrawingIntent.Done -> save { meta -> _events.send(DrawingEvent.Saved(meta)) }
-            DrawingIntent.Next -> _state.update { if (it.canUndo) it.copy(stage = EditorStage.SEND) else it }
+            DrawingIntent.Next -> _state.update { if (it.canUndo) it.copy(stage = EditorStage.SEND, sheet = null) else it }
             DrawingIntent.BackToEdit -> _state.update { it.copy(stage = EditorStage.EDIT) }
             is DrawingIntent.SetReplay -> _state.update { it.copy(replayEnabled = intent.enabled) }
             is DrawingIntent.SetWidget -> _state.update { it.copy(showOnWidget = intent.enabled) }

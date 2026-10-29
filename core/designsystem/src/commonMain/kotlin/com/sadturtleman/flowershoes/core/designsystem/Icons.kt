@@ -54,6 +54,7 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_phone
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_alert
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_export
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_lock
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_frame
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -91,6 +92,7 @@ enum class KkIcons(internal val res: DrawableResource) {
     Lock(Res.drawable.ic_lock),
     Alert(Res.drawable.ic_alert),
     Export(Res.drawable.ic_export),
+    Frame(Res.drawable.ic_frame),
 
     // 컴포넌트 안에서만 쓰는 글리프(크기가 24 가 아니다 — 자리에 맞춰 가운데 둔다)
     Back(Res.drawable.ic_back),

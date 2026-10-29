@@ -108,7 +108,7 @@ data class OpenLetter(
     val mine: Boolean,
     /** 글 없는 그림 한 장(그림만 보내기) — 리플레이 화면으로 연다. */
     val drawingOnly: Boolean = false,
-    /** "민준이 보낸 그림" · "내가 보낸 그림". */
+    /** "민준이 그린 그림" · "내가 그린 그림"(Figma 받은 그림). */
     val drawingTitle: String = "",
     /** "10월 21일 21:05". */
     val sentAt: String = "",
@@ -412,7 +412,7 @@ class LetterViewModel(
                     open = OpenLetter(
                         letter, mine,
                         drawingOnly = drawingOnly,
-                        drawingTitle = if (mine) "내가 보낸 그림" else "${partner.withSubject()} 보낸 그림",
+                        drawingTitle = if (mine) "내가 그린 그림" else "${partner.withSubject()} 그린 그림",
                         sentAt = "${at.month.ordinal + 1}월 ${at.day}일 ${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}",
                         meta = meta, drawings = docs, firstView = first, photos = photos,
                     ),
