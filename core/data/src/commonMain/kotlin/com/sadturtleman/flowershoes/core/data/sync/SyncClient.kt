@@ -320,11 +320,7 @@ class SyncClient(
                 add(OpPayload.LetterPut(l.toModel(), drawings))
             }
         }
-        writer.write(
-            OpKind.SNAPSHOT, "snapshot", "snapshot",
-            localWrite = {},
-            payload = { OpPayload.Snapshot(coversThrough, items) },
-        )
+        writeSnapshotOps("snapshot", coversThrough, items)
     }
 
     /**
@@ -347,7 +343,37 @@ class SyncClient(
             }
         }
         val covers = (db.syncDao().nextSeq(stream) ?: 1L) - 1
-        writer.write(OpKind.SNAPSHOT, "snapshot", "full", localWrite = {}, payload = { OpPayload.Snapshot(covers, items) })
+        writeSnapshotOps("full", covers, items)
+    }
+
+    /**
+     * 스냅샷을 우편함 한 칸(규칙: 암호문 64KB)에 들어가는 조각으로 나눠 쓴다. 조각마다 같은 [coversThrough] 를 싣는다 —
+     * 받는 쪽은 어느 조각이 먼저 와도 그 번호까지 반영한 것으로 보고, 조각 자신의 번호(그 뒤)는 보통 Op 처럼 받는다.
+     * 항목 하나가 한도를 넘으면 혼자 한 조각이 된다(그 조각은 규칙에 막힌다).
+     */
+    private suspend fun writeSnapshotOps(entityId: String, coversThrough: Long, items: List<OpPayload>) {
+        val chunks = mutableListOf<MutableList<OpPayload>>()
+        var size = 0
+        items.forEach { item ->
+            val itemSize = wireSize(item)
+            if (chunks.isEmpty() || size + itemSize > SNAPSHOT_CHUNK_BYTES) {
+                chunks += mutableListOf<OpPayload>()
+                size = 0
+            }
+            chunks.last() += item
+            size += itemSize
+        }
+        if (chunks.isEmpty()) chunks += mutableListOf<OpPayload>() // 빈 스냅샷도 커서는 옮긴다.
+        chunks.forEach { chunk ->
+            writer.write(OpKind.SNAPSHOT, "snapshot", entityId, localWrite = {}, payload = { OpPayload.Snapshot(coversThrough, chunk) })
+        }
+    }
+
+    /** 보낼 때 [uploadBlobs] 가 붙이는 blob 참조(id · 키)까지 셈한 본문 크기. */
+    private fun wireSize(item: OpPayload): Int = OpCodec.encode(item).size + BLOB_REF_BYTES * when (item) {
+        is OpPayload.EventPut -> item.event.photoIds.size
+        is OpPayload.LetterPut -> item.letter.photoCount + item.drawings.sumOf { listOfNotNull(it.docAttachmentId, it.pngAttachmentId, it.photoAttachmentId).size }
+        else -> 0
     }
 
     /** 그림 문서가 가리키는 배경 사진 첨부(스냅샷에서 사진도 함께 보내려고). DB 에 따로 두지 않고 문서에서 읽는다. */
@@ -363,6 +389,14 @@ class SyncClient(
     }
 
     private fun uploadedKey(stream: String) = "uploaded:$stream"
+
+    private companion object {
+        /** 스냅샷 조각 하나의 본문 상한. 우편함 한도(암호문 67,500바이트)에서 lamport · AEAD 덧붙임과 여유를 뺐다. */
+        const val SNAPSHOT_CHUNK_BYTES = 48_000
+
+        /** blob 참조 하나: blob id(36) · base64 키(44) · JSON 이름과 따옴표. */
+        const val BLOB_REF_BYTES = 160
+    }
 }
 
 /** Op 평문 = lamport(8바이트) ‖ 본문. lamport 는 받는 쪽 시계를 맞추는 데 쓴다. */
