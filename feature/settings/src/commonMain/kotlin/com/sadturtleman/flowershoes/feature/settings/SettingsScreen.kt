@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.graphics.Color
-import com.sadturtleman.flowershoes.core.designsystem.KkSecondaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadio
 import com.sadturtleman.flowershoes.core.designsystem.KkTopBarLeading
 import com.sadturtleman.flowershoes.core.designsystem.KkAdSlot
@@ -76,6 +75,8 @@ import com.sadturtleman.flowershoes.core.designsystem.KkTopBar
 import com.sadturtleman.flowershoes.core.designsystem.TermsDoc
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.military.ServiceRulesTable
+import com.sadturtleman.flowershoes.core.military.expectedName
+import com.sadturtleman.flowershoes.core.military.koreanName as rankName
 import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.AppTheme
@@ -124,7 +125,7 @@ object NoPlatformActions : PlatformActions
 
 /** 설정 안의 화면들. 첫 화면은 [MAIN]. */
 enum class SettingsPage {
-    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, WIDGETS, DEVICE, EXPORT,
+    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, NOTIFICATIONS, WIDGETS, DEVICE, EXPORT,
     ACCOUNT, SIGN_IN_METHODS, DELETE_ACCOUNT, UNLINK, TERMS, LICENSES, INQUIRY, INQUIRY_HISTORY,
 }
 
@@ -153,20 +154,21 @@ fun SettingsRoute(
         KkPageFlip(stack.last() to stack.size, pageKey = { it.first }, isForward = { from, to -> to.second >= from.second }) { (page, _) ->
         when (page) {
             SettingsPage.MAIN -> MainPage(state, platform, open, back, onOpenPairing, viewModel)
+            SettingsPage.NOTIFICATIONS -> NotificationsPage(state, platform, viewModel, back)
             SettingsPage.LIFETIME -> LifetimePage(state, viewModel, back)
             SettingsPage.CONNECTION -> ConnectionPage(state, back, onOpenPairing, open)
             SettingsPage.MILITARY -> MilitaryPage(state, viewModel, back)
             SettingsPage.ANNIVERSARY -> AnniversaryPage(state, platform, viewModel, back)
-            SettingsPage.THEME -> ThemePage(state, viewModel, back, open)
+            SettingsPage.THEME -> ThemePage(state, viewModel, back)
             SettingsPage.DISPLAY_MODE -> DisplayModePage(state, viewModel, back)
             SettingsPage.WIDGETS -> WidgetsPage(state, platform, back)
             SettingsPage.DEVICE -> DevicePage(state, platform, viewModel, back, open)
             SettingsPage.EXPORT -> ExportPage(shareFiles, viewModel, back)
             SettingsPage.ACCOUNT -> AccountPage(state, platform, viewModel, back, open)
             SettingsPage.SIGN_IN_METHODS -> SignInMethodsPage(state, viewModel, back)
-            SettingsPage.DELETE_ACCOUNT -> DeleteAccountPage(state, platform, viewModel, shareFiles, back)
+            SettingsPage.DELETE_ACCOUNT -> DeleteAccountPage(state, platform, viewModel, back, open)
             SettingsPage.UNLINK -> UnlinkPage(state, platform, viewModel, shareFiles, back) { onBack() }
-            SettingsPage.TERMS -> TermsPage(state, viewModel, back)
+            SettingsPage.TERMS -> TermsPage(state, viewModel, back, open)
             SettingsPage.LICENSES -> LicensesPage(back)
             SettingsPage.INQUIRY -> InquiryPage(
                 inquiries, platform, photoPicker,
@@ -247,10 +249,10 @@ private fun hm(minute: Int) = "${(minute / 60).toString().padStart(2, '0')}:${(m
 
 /** 꽃신 평생 값(출시 기념가). 결제는 스토어 결제 연결과 함께 열린다. */
 private const val LIFETIME_PRICE = "7,900원"
-private const val LIFETIME_LIST_PRICE = "9,900원"
 
 /**
- * 설정(Figma 최종 정리 › 설정): 프로필 · 꽃신 평생 + 우리 · 앱 · 데이터와 보안 · (광고) · 계정 · 정보.
+ * 설정(Figma 8 · 설정 `376:4461`): 프로필 · 우리 · 꾸미기 · 알림 · 데이터와 보안 · 도움 · 계정 + 광고 칸.
+ * 줄마다 › 는 하위 화면(또는 고르는 시트)을 여는 줄에만 붙는다(design.md).
  */
 @Composable
 private fun MainPage(
@@ -262,88 +264,102 @@ private fun MainPage(
     viewModel: SettingsViewModel,
 ) {
     val c = KkTheme.colors
-    var nameSheet by remember { mutableStateOf(false) }
+    var sheet by remember { mutableStateOf<String?>(null) }
     Page("설정", onBack) {
-        val shape = RoundedCornerShape(KkRadius.lg)
-        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Row(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
-                    .clickable(role = androidx.compose.ui.semantics.Role.Button) { nameSheet = true }.padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(48.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
-                    Text(state.myName.take(1), style = KkTheme.type.labelBold, color = c.accent)
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("${state.myName} · ${if (state.role == Role.SOLDIER) "군인" else "곰신"}", style = KkTheme.type.labelBold, color = c.ink)
-                    Text(
-                        if (state.linked) "${state.partnerName.withAnd()} 연결됨" else "아직 연결 전이에요",
-                        style = KkTheme.type.body, color = c.sub,
-                    )
-                }
-            }
-            // 꽃신 평생(Figma): 프로필 바로 아래 옅은 색 한 줄.
-            val lifetime = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
-            val owned by (lifetime?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
-            Box(Modifier.fillMaxWidth().clip(shape).background(c.line)) {
-                val shared by (org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
-                    ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
-                val value = when {
-                    owned -> "이용 중"
-                    shared -> "${state.partnerName.withAnd()} 함께 이용 중"
-                    else -> "광고 없이 · $LIFETIME_PRICE"
-                }
-                KkListRow("꽃신 평생", value = value, onClick = { open(SettingsPage.LIFETIME) })
-            }
+        Group("프로필") {
+            KkListRow("이름", value = state.myName, onClick = { sheet = "name" })
+            Divider()
+            KkListRow("함께한 날", value = daysTogetherLabel(state.daysTogether), onClick = { sheet = "together" })
         }
         Group("우리") {
             KkListRow("연결 정보", value = if (state.linked) state.partnerName else "연결 전", onClick = { open(SettingsPage.CONNECTION) })
             Divider()
-            KkListRow("군 정보", value = state.timeline?.let { "전역 ${it.dischargeDate.dotted()}" } ?: "입력 전", onClick = { open(SettingsPage.MILITARY) })
+            KkListRow(
+                "군 정보",
+                value = militaryLabel(state.service, state.timeline, Clock.System.now().toLocalDateTime(SEOUL).date),
+                onClick = { open(SettingsPage.MILITARY) },
+            )
             Divider()
             KkListRow("기념일", value = state.anniversary?.dotted() ?: "정하기", onClick = { open(SettingsPage.ANNIVERSARY) })
         }
-        Group("앱") {
+        Group("꾸미기") {
+            val koin = org.koin.compose.getKoin()
+            val owned by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.owned
+                ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
+            val shared by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
+                ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
+            KkListRow("꽃신 평생", value = lifetimeLabel(owned, shared, LIFETIME_PRICE), onClick = { open(SettingsPage.LIFETIME) })
+            Divider()
             KkListRow("테마", value = state.theme.koreanName, onClick = { open(SettingsPage.THEME) })
             Divider()
-            val n = state.notify
-            SwitchRow("알림 받기", n.letters || n.missYou || n.status || n.eventEve || n.anniversary || n.exportReminder) { viewModel.setAllNotify(it, platform) }
+            KkListRow("화면 모드", value = modeLabel(state.displayMode), onClick = { open(SettingsPage.DISPLAY_MODE) })
+            // Figma 메인에는 없지만 위젯 안내 · 그림 위젯 프레임(평생 꾸미기)으로 가는 길이 여기뿐이라 남긴다.
             Divider()
-            SwitchRow("3개월마다 기록 받아 두기", n.exportReminder) { viewModel.setExportReminder(it, platform) }
-            Divider()
-            SwitchRow("이벤트 · 혜택 알림", state.marketing) { viewModel.setMarketing(it) }
-            Divider()
-            KkListRow("위젯 안내", onClick = { open(SettingsPage.WIDGETS) })
+            KkListRow("위젯", onClick = { open(SettingsPage.WIDGETS) })
+        }
+        Group("알림") {
+            KkListRow("알림", value = if (state.notify.notifyMasterOn) "켜짐" else "꺼짐", onClick = { open(SettingsPage.NOTIFICATIONS) })
         }
         Group("데이터와 보안") {
             KkListRow("기기 바꾸기 · 복구", onClick = { open(SettingsPage.DEVICE) })
         }
-        KkAd(KkAdSlot.SETTINGS)
-        Group("계정") {
-            KkListRow("로그인 계정", value = viewModel.providerLabel(state.provider), onClick = { open(SettingsPage.ACCOUNT) })
-            Divider()
-            if (state.linked) {
-                KkListRow("연결 해제", labelColor = c.danger, onClick = { open(SettingsPage.UNLINK) })
-            } else {
-                KkListRow("연인과 연결하기", onClick = onOpenPairing)
-            }
-        }
-        Group("정보") {
+        Group("도움") {
             KkListRow("문의하기", onClick = { open(SettingsPage.INQUIRY) })
             Divider()
-            KkListRow("이용약관 · 개인정보처리방침", onClick = { open(SettingsPage.TERMS) })
-            Divider()
-            KkListRow("오픈소스 라이선스", onClick = { open(SettingsPage.LICENSES) })
+            KkListRow("약관과 라이선스", onClick = { open(SettingsPage.TERMS) })
             Divider()
             KkListRow("버전", value = platform.appVersion, trailing = KkRowTrailing.None)
         }
+        Group("계정") {
+            KkListRow("로그인", value = viewModel.providerLabel(state.provider), onClick = { open(SettingsPage.ACCOUNT) })
+            Divider()
+            if (state.linked) {
+                KkListRow("연결 해제", onClick = { open(SettingsPage.UNLINK) })
+            } else {
+                KkListRow("연인과 연결하기", onClick = onOpenPairing)
+            }
+            Divider()
+            KkListRow("회원 탈퇴", labelColor = c.danger, trailing = KkRowTrailing.None, onClick = { open(SettingsPage.DELETE_ACCOUNT) })
+        }
+        KkAd(KkAdSlot.SETTINGS)
     }
-    if (nameSheet) {
-        var name by remember { mutableStateOf(if (state.myName == "나") "" else state.myName) }
-        KkModalSheet({ nameSheet = false }) {
-            KkSheetHeader("내 이름", "연인 화면에 \"민준 ♥ 지수\"처럼 보여요")
-            KkInput(name, { name = it.take(10) }, placeholder = "이름이나 애칭", helper = "${name.length} / 10")
-            KkPrimaryButton("저장", { viewModel.setNickname(name); nameSheet = false }, Modifier.fillMaxWidth(), enabled = name.isNotBlank())
+    when (sheet) {
+        "name" -> {
+            var name by remember { mutableStateOf(if (state.myName == "나") "" else state.myName) }
+            KkModalSheet({ sheet = null }) {
+                KkSheetHeader("이름")
+                KkInput(name, { name = it.take(NICKNAME_MAX) }, label = "이름", helper = "${name.length} / $NICKNAME_MAX")
+                KkPrimaryButton("저장", { viewModel.setNickname(name); sheet = null }, Modifier.fillMaxWidth(), enabled = name.isNotBlank())
+            }
+        }
+        "together" -> {
+            // 함께한 날의 1일째 = 커플 기념일 일정(anniversary-couple). 기념일 화면과 같은 값이다.
+            var pick by remember { mutableStateOf(state.anniversary ?: state.linkedSince ?: Clock.System.now().toLocalDateTime(SEOUL).date) }
+            KkModalSheet({ sheet = null }) {
+                KkSheetHeader("함께한 날")
+                KkDatePicker(pick, { pick = it })
+                KkPrimaryButton("선택 완료", { viewModel.setAnniversary(pick); sheet = null }, Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+// ── 알림 ─────────────────────────────────────────────────────────────────
+
+/** 알림(Figma 8 · 알림 `378:4951`): 받을 종류 큰 스위치 · 3개월 기록 알림, 꺼지면 배너, 혜택 소식(광고성 정보 수신). */
+@Composable
+private fun NotificationsPage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit) {
+    val n = state.notify
+    Page("알림", onBack) {
+        Group(null) {
+            SwitchRow("편지 · 보고싶어 · 일정 알림", n.notifyMasterOn) { viewModel.setNotifyMaster(it, platform) }
+            Divider()
+            SwitchRow("3개월마다 기록 받아 두기", n.exportReminder) { viewModel.setExportReminder(it, platform) }
+        }
+        // 설명 문장은 지운다(#71 결정, design.md 글 규칙).
+        if (!n.notifyMasterOn) com.sadturtleman.flowershoes.core.designsystem.KkBanner("알림이 꺼져 있어요")
+        Group("혜택 소식") {
+            SwitchRow("광고성 정보 수신", state.marketing) { viewModel.setMarketing(it) }
         }
     }
 }
@@ -351,13 +367,13 @@ private fun MainPage(
 // ── 꽃신 평생 ─────────────────────────────────────────────────────────────
 
 private val LIFETIME_BENEFITS = listOf(
-    "광고 전부 제거",
-    "글꼴 · 편지지 · 펜 · 색 전체",
-    "위젯 꾸미기",
+    "광고 제거",
+    "손글씨 글꼴 · 편지지 전체",
+    "펜 · 색 · 위젯 꾸미기",
 )
 
 /**
- * 꽃신 평생(Figma 최종 정리 › 설정 · 꽃신 평생): 한 번 결제(Android: RevenueCat).
+ * 꽃신 평생(Figma 8 · 꽃신 평생 `377:4834`): 한 번 결제(Android: RevenueCat). 구매 전 · 구매 완료.
  * 결제가 없는 빌드(iOS 아직)에서는 "앱 출시와 함께" 안내만.
  */
 @Composable
@@ -375,7 +391,7 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
         busy = true
         scope.launch {
             when (val r = action(store)) {
-                com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Purchased -> viewModel.notice("꽃신 평생이 열렸어요. 고마워요!")
+                com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Purchased -> Unit // 구매 완료 화면으로 바뀐다.
                 com.sadturtleman.flowershoes.core.data.PurchaseOutcome.NothingToRestore -> viewModel.notice("이 계정으로 산 기록이 없어요")
                 com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Cancelled -> Unit
                 is com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Failed -> viewModel.notice(r.message)
@@ -384,43 +400,43 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
         }
     }
     val price = storePrice ?: LIFETIME_PRICE
-    Page("", onBack, leading = KkTopBarLeading.Close, bottom = {
+    val partner = if (state.linked) state.partnerName else "연인"
+    Page("꽃신 평생", onBack, leading = KkTopBarLeading.Close, bottom = {
         if (owned) {
-            KkPrimaryButton("꽃신 평생 이용 중이에요", {}, Modifier.fillMaxWidth(), enabled = false)
+            KkPrimaryButton("좋아요", onBack, Modifier.fillMaxWidth())
         } else {
-            KkPrimaryButton("${price}에 평생 이용하기", { run { it.buy() } }, Modifier.fillMaxWidth(), loading = busy)
-            KkSecondaryButton("구매 복원", { run { it.restore() } }, enabled = !busy)
+            KkPrimaryButton("${price}으로 평생 쓰기", { run { it.buy() } }, Modifier.fillMaxWidth(), loading = busy)
+            KkButton(
+                "구매 복원", { run { it.restore() } }, Modifier.align(Alignment.CenterHorizontally),
+                style = KkButtonStyle.Ghost, size = com.sadturtleman.flowershoes.core.designsystem.KkButtonSize.M, enabled = !busy,
+            )
         }
     }) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("꽃신 평생", style = KkTheme.type.title, color = c.ink)
-            Text("한 번 결제로 광고 없이, 더 예쁘게", style = KkTheme.type.body, color = c.sub)
-        }
-        val shape = RoundedCornerShape(KkRadius.lg)
-        Column(
-            Modifier.fillMaxWidth().clip(shape).background(c.bar).padding(vertical = KkSpacing.lg),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text("출시 기념", style = KkTheme.type.label, color = c.accent)
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                Text(
-                    LIFETIME_LIST_PRICE, style = KkTheme.type.body.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough),
-                    color = c.sub, modifier = Modifier.padding(bottom = 6.dp),
-                )
-                Text(price, style = KkTheme.type.title, color = c.ink)
+        Box(Modifier.fillMaxWidth().padding(top = KkSpacing.lg), contentAlignment = Alignment.Center) {
+            // 보여 주기만 하는 종이 태그라 살짝 기울인다(design.md).
+            if (owned) {
+                com.sadturtleman.flowershoes.core.designsystem.KkPaperTag("꽃신 평생", "평생 꽃신", valueStyle = com.sadturtleman.flowershoes.core.designsystem.KkPaperTagStyle.Hand, tilt = -3f)
+            } else {
+                com.sadturtleman.flowershoes.core.designsystem.KkPaperTag("한 번만 내면 평생", price, tilt = 2f)
             }
         }
-        Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
-        ) {
-            (LIFETIME_BENEFITS + "${if (state.linked) state.partnerName else "연인"}도 광고 없이 · 꾸미기 함께 (연결된 동안)").forEach { b ->
+        if (owned) {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+                Text("이제 평생 꽃신이에요", style = KkTheme.type.handL, color = c.ink)
+                if (state.linked) Text("$partner 폰에도 함께 적용됐어요", style = KkTheme.type.body, color = c.sub)
+            }
+            return@Page
+        }
+        Text("한 번 사면 평생, 둘이 함께", style = KkTheme.type.handL, color = c.ink, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+            (LIFETIME_BENEFITS + "연결된 ${partner}도 함께").forEach { b ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(5.dp).clip(CircleShape).background(c.accent))
+                    KkIcon(KkIcons.Check, tint = c.accent, size = 16.dp)
                     Text(b, style = KkTheme.type.body, color = c.ink)
                 }
             }
         }
+        Text("구독 아니에요 · 한 번만 결제해요", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.align(Alignment.CenterHorizontally))
     }
 }
 
@@ -484,18 +500,31 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
             return@Page
         }
         val months = ServiceRulesTable.BUNDLED.ruleFor(s.branch, s.enlistDate).serviceMonths
+        val today = Clock.System.now().toLocalDateTime(SEOUL).date
         Group(null) {
-            KkListRow("역할", value = if (state.role == Role.SOLDIER) "군인" else "곰신", trailing = KkRowTrailing.None)
-            Divider()
             KkListRow("군종", value = "${s.branch.koreanName} · ${months}개월", onClick = { sheet = "branch" })
             Divider()
+            t.rankAt(today)?.let {
+                KkListRow("계급", value = it.rank.expectedName, trailing = KkRowTrailing.None)
+                Divider()
+            }
             KkListRow("입대일", value = s.enlistDate.dotted(), onClick = { sheet = "enlist" })
             Divider()
             KkListRow(
-                "전역일", value = t.dischargeDate.dotted(),
+                "전역일", value = "${t.dischargeDate.dotted()} · ${ddayLabel(today, t.dischargeDate)}",
                 trailing = if (t.isOverridden) KkRowTrailing.Chevron else KkRowTrailing.None,
                 onClick = if (t.isOverridden) ({ sheet = "discharge" }) else null,
             )
+        }
+        // 진급일(Figma 8 · 군 정보 · 기본): 이병 다음 계급부터.
+        val promotions = t.ranks.drop(1)
+        if (promotions.isNotEmpty()) {
+            Group("진급일") {
+                promotions.forEachIndexed { i, step ->
+                    if (i > 0) Divider()
+                    KkListRow(step.rank.rankName, value = "${step.from.dotted()} · ${ddayLabel(today, step.from)}", trailing = KkRowTrailing.None)
+                }
+            }
         }
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
             Text("전역일이 달라졌나요?", style = KkTheme.type.label, color = c.sub)
@@ -548,7 +577,7 @@ private fun AnniversaryPage(state: SettingsState, platform: PlatformActions, vie
             onBack()
         }, Modifier.fillMaxWidth())
     }) {
-        KkInput(date?.dotted() ?: "", {}, label = "사귄 날", placeholder = "날짜를 골라 주세요", onClick = { picking = true })
+        KkInput(date?.dotted() ?: "", {}, label = "사귄 날", onClick = { picking = true })
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
             Text("기념일 알림", style = KkTheme.type.label, color = c.sub)
             Group(null) {
@@ -570,9 +599,9 @@ private fun AnniversaryPage(state: SettingsState, platform: PlatformActions, vie
 
 // ── 테마 · 화면 모드 ──────────────────────────────────────────────────────
 
-/** 테마(Figma 7 · 테마): 네 가지 카드 + 화면 모드. */
+/** 테마(Figma 7 · 테마): 테마 카드. 화면 모드는 설정 메인 › 꾸미기에 따로 있다. */
 @Composable
-private fun ThemePage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit, open: (SettingsPage) -> Unit) {
+private fun ThemePage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
     val recommended = state.role?.let { AppTheme.defaultFor(it) }
     Page("테마", onBack) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -583,10 +612,6 @@ private fun ThemePage(state: SettingsState, viewModel: SettingsViewModel, onBack
                     }
                 }
             }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("화면 모드", style = KkTheme.type.label, color = KkTheme.colors.sub)
-            Group(null) { KkListRow("라이트 · 다크", value = modeLabel(state.displayMode), onClick = { open(SettingsPage.DISPLAY_MODE) }) }
         }
     }
 }
@@ -622,7 +647,7 @@ private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun modeLabel(mode: String) = when (mode) {
     "LIGHT" -> "라이트"
     "DARK" -> "다크"
-    else -> "시스템 설정 따름"
+    else -> "시스템 따라"
 }
 
 // ── 위젯 안내 ─────────────────────────────────────────────────────────────
@@ -742,10 +767,9 @@ private val WIDGET_FRAMES: List<Triple<String, String, Color?>> = listOf(
 
 // ── 로그인 계정 · 탈퇴 ────────────────────────────────────────────────────
 
-/** 로그인 계정(Figma 최종 정리 › 설정 · 로그인 계정): 로그인 · 다른 로그인 방법 연결 · 이 폰 + 회원 탈퇴. */
+/** 로그인 계정(Figma 최종 정리 › 설정 · 로그인 계정): 로그인 · 다른 로그인 방법 연결 · 이 폰. 회원 탈퇴는 설정 메인 › 계정(#71). */
 @Composable
 private fun AccountPage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit, open: (SettingsPage) -> Unit) {
-    val c = KkTheme.colors
     val linkable = com.sadturtleman.flowershoes.core.auth.LINKABLE_PROVIDERS.filter { it.name != state.provider }
     Page("로그인 계정", onBack) {
         Group(null) {
@@ -755,7 +779,6 @@ private fun AccountPage(state: SettingsState, platform: PlatformActions, viewMod
             Divider()
             KkListRow("이 폰", value = platform.deviceName.ifBlank { "-" }, trailing = KkRowTrailing.None)
         }
-        Group(null) { KkListRow("회원 탈퇴", labelColor = c.danger, onClick = { open(SettingsPage.DELETE_ACCOUNT) }) }
     }
 }
 
@@ -803,24 +826,24 @@ private fun SignInMethodsPage(state: SettingsState, viewModel: SettingsViewModel
     }
 }
 
-/** 회원 탈퇴(Figma 최종 정리 › 설정 · 회원 탈퇴): 기록 받아 두기 권유 → 지워지는 것 목록 + "탈퇴" 입력 + 탈퇴하기. */
+/** 탈퇴 확인 문구(Figma 8 · 회원 탈퇴). */
+private const val DELETE_CONFIRM = "탈퇴할게요"
+
+/**
+ * 회원 탈퇴(Figma 8 · 회원 탈퇴 `381:5334`): 지워지는 것 목록 + 먼저 내 기록 내보내기 + 확인 문구 입력 + 탈퇴하기.
+ */
 @Composable
 private fun DeleteAccountPage(
     state: SettingsState,
     platform: PlatformActions,
     viewModel: SettingsViewModel,
-    shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?,
     onBack: () -> Unit,
+    open: (SettingsPage) -> Unit,
 ) {
-    var prompting by remember { mutableStateOf(true) }
-    if (prompting) {
-        ExportPromptPage("회원 탈퇴", "탈퇴하기 전에 기록을 받아 두세요", "탈퇴하면 다시 받을 수 없어요", shareFiles, viewModel, onBack) { prompting = false }
-        return
-    }
     val c = KkTheme.colors
     val scope = rememberCoroutineScope()
     var confirm by remember { mutableStateOf("") }
-    val ok = confirm.trim() == "탈퇴"
+    val ok = confirm.trim() == DELETE_CONFIRM
     Page("회원 탈퇴", onBack, bottom = {
         KkButton("탈퇴하기", {
             scope.launch {
@@ -829,24 +852,26 @@ private fun DeleteAccountPage(
             }
         }, Modifier.fillMaxWidth(), danger = true, enabled = ok)
     }) {
-        Text("탈퇴하면 지워지는 것", style = KkTheme.type.title, color = c.ink)
-        val shape = RoundedCornerShape(KkRadius.lg)
-        Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
-        ) {
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+            Text("정말 떠나실 건가요?", style = KkTheme.type.handL, color = c.ink)
+            // 되돌릴 수 없는 일 앞 한 줄 경고(design.md 글 규칙이 허용하는 것).
+            Text("탈퇴하면 아래 기록이 이 폰에서 지워지고 되돌릴 수 없어요.", style = KkTheme.type.body, color = c.sub)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
             listOfNotNull(
+                "내가 쓴 편지 · 그림 · 사진",
+                "일정 · 기념일 · 휴가",
                 if (state.linked) "${state.partnerName.withAnd()}의 연결" else null,
-                "이 폰의 편지 · 그림 · 일정",
-                "꽃신 평생 이용권",
+                "꽃신 평생 (환불되지 않아요)",
             ).forEach { item ->
-                Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(5.dp).clip(CircleShape).background(c.danger))
+                Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
+                    KkIcon(KkIcons.Close, tint = c.danger, size = 16.dp)
                     Text(item, style = KkTheme.type.body, color = c.ink)
                 }
             }
         }
-        KkInput(confirm, { confirm = it }, label = "확인을 위해 \"탈퇴\"를 입력해 주세요", placeholder = "탈퇴")
+        Group(null) { KkListRow("먼저 내 기록 내보내기", onClick = { open(SettingsPage.EXPORT) }) }
+        KkInput(confirm, { confirm = it }, label = "확인 문구", helper = "\"$DELETE_CONFIRM\"라고 똑같이 적어 주세요")
     }
 }
 
@@ -931,17 +956,20 @@ fun PartnerUnlinkedScreen(partnerName: String, onConfirm: (AfterUnlink) -> Unit)
 
 // ── 약관 · 라이선스 ───────────────────────────────────────────────────────
 
-/** 약관 · 정책(Figma 최종 정리 › 설정 · 약관 · 개인정보처리방침): 문서들 + 이벤트 · 혜택 알림 동의 상태. */
+/**
+ * 약관과 라이선스(Figma 8 · 약관 · 개인정보처리방침 + 오픈소스 라이선스, #71 결정으로 한 줄): 문서들 · 광고성 정보 수신 동의 상태
+ * + 오픈소스 라이선스.
+ */
 @Composable
-private fun TermsPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
+private fun TermsPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit, open: (SettingsPage) -> Unit) {
     var doc by remember { mutableStateOf<TermsDoc?>(null) }
     var marketingSheet by remember { mutableStateOf(false) }
-    val open = doc
-    if (open != null) {
-        KkTermsScreen(open) { doc = null }
+    val reading = doc
+    if (reading != null) {
+        KkTermsScreen(reading) { doc = null }
         return
     }
-    Page("약관 · 정책", onBack) {
+    Page("약관과 라이선스", onBack) {
         Group(null) {
             TermsDoc.entries.forEachIndexed { i, d ->
                 if (i > 0) Divider()
@@ -952,10 +980,11 @@ private fun TermsPage(state: SettingsState, viewModel: SettingsViewModel, onBack
                 }
             }
         }
+        Group(null) { KkListRow("오픈소스 라이선스", onClick = { open(SettingsPage.LICENSES) }) }
     }
     if (marketingSheet) {
         KkModalSheet({ marketingSheet = false }) {
-            KkSheetHeader("이벤트 · 혜택 알림", "새 스티커 · 할인 소식을 알림으로 받아요. 언제든 끌 수 있어요")
+            KkSheetHeader("광고성 정보 수신")
             KkChoice("동의함", state.marketing, { viewModel.setMarketing(true); marketingSheet = false }, radio = true)
             KkChoice("동의 안 함", !state.marketing, { viewModel.setMarketing(false); marketingSheet = false }, radio = true)
             KkButton("전문 보기", { marketingSheet = false; doc = TermsDoc.MARKETING }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
