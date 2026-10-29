@@ -79,6 +79,8 @@ data class HomeState(
     val partner: PartnerStatus? = null,
     val sentMissYouToday: Int = 0,
     val scheduled: List<ScheduledRow> = emptyList(),
+    /** 보낸 초대 링크가 아직 유효하다(연결 전 "초대 보냄 · 기다리는 중 · 링크 다시 보내기"). */
+    val invitePending: Boolean = false,
     val dayLine: DayLinePrompt? = null,
 )
 
@@ -98,6 +100,8 @@ class HomeViewModel(
     status: StatusRepository,
     letters: LetterRepository,
     leave: com.sadturtleman.flowershoes.core.data.LeaveRepository? = null,
+    /** 보낸 초대 링크(DeviceSettings.pendingInvite). */
+    pendingInvite: Flow<com.sadturtleman.flowershoes.core.data.sync.PendingInvite?> = flowOf(null),
     private val dayLineCards: DayLineCards? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
@@ -214,6 +218,8 @@ class HomeViewModel(
             },
             dayLine = dayLinePrompt,
         )
+    }.combine(pendingInvite) { s, invite ->
+        s.copy(invitePending = !s.linked && invite != null && invite.expireAtMs > clock.now().toEpochMilliseconds())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 
     fun onIntent(intent: HomeIntent) {

@@ -10,6 +10,7 @@ struct KkotsinApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var phase
     private let signIn = SocialSignIn()
+    private let inviteShare = KakaoInviteShare()
     private let ads = AdBanners()
     private let purchases = LifetimePurchases()
     private let emulatorAuth: Bool
@@ -20,6 +21,8 @@ struct KkotsinApp: App {
         Zstd.shared.codec = SwiftZstd()
         // 위젯 스냅샷이 바뀌면 위젯을 새로 그린다(Kotlin 에서는 WidgetCenter 를 부를 수 없다).
         MainViewControllerKt.setWidgetReloader { WidgetCenter.shared.reloadAllTimelines() }
+        // 초대 링크 보내기: 카카오 피드 템플릿(카카오톡이 없으면 공유 시트).
+        Share_iosKt.setInviteShare(share: inviteShare)
         // GoogleService-Info.plist 가 들어간 빌드에서만 Firebase 를 켠다. 없으면 혼자 모드.
         if !emulatorAuth && Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             FirebaseApp.configure()
@@ -35,8 +38,9 @@ struct KkotsinApp: App {
         WindowGroup {
             ComposeView(signIn: signIn, ads: ads, purchases: purchases, emulatorAuth: emulatorAuth).ignoresSafeArea()
                 .onOpenURL { url in
-                    // 카카오톡 · Google 로그인에서 돌아온 것이면 그쪽이, 아니면 앱 딥링크(kkotsin://)
-                    if url.scheme == "kkotsin" {
+                    // 앱 딥링크(kkotsin://) · 초대 링크(카카오 앱 실행 kakaolink · Universal Link https)는 셸로,
+                    // 카카오톡 · Google 로그인에서 돌아온 것은 그쪽으로.
+                    if url.scheme == "kkotsin" || url.scheme == "https" || url.host == "kakaolink" {
                         DeepLinks.shared.open(uri: url.absoluteString)
                     } else {
                         _ = signIn.handle(url: url)

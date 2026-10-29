@@ -68,6 +68,7 @@ class CloudBackend(
  * [auth] 는 Firebase · 카카오 SDK 가 연결되기 전까지 [LocalOnlyAuthGateway] 다.
  * [cloud] 가 null 이면 혼자 모드만 동작한다(연결 화면이 안내를 보여 준다).
  * [vault] 는 플랫폼 키 보관함(Keystore · Keychain). 붙기 전에는 메모리 보관함이다.
+ * [invite] 는 초대 링크 호스트 · 카카오 템플릿(Android local.properties · iOS Config.xcconfig).
  */
 fun kkotsinModules(
     database: AppDatabase,
@@ -76,9 +77,11 @@ fun kkotsinModules(
     auth: AuthGateway = LocalOnlyAuthGateway(),
     cloud: CloudBackend? = null,
     vault: KeyVault = InMemoryKeyVault(),
+    invite: com.sadturtleman.flowershoes.core.data.sync.InviteConfig = com.sadturtleman.flowershoes.core.data.sync.InviteConfig(),
 ): List<Module> = listOf(
     module {
         single { database }
+        single { invite }
         single { DeviceSettings(settingsStore) }
         single { IdentityHolder() }
         single<Identity> { get<IdentityHolder>() }
@@ -138,13 +141,14 @@ fun kkotsinModules(
     },
     module {
         viewModel { OnboardingViewModel(get(), get(), get()) }
-        viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), dayLineCards = get<DeviceSettings>().dayLineCards) }
+        viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), pendingInvite = get<DeviceSettings>().pendingInvite, dayLineCards = get<DeviceSettings>().dayLineCards) }
         viewModel { CalendarViewModel(get(), get(), get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
         viewModel { MemoryViewModel(get(), get(), get(), get(), get(), clock = get()) }
-        viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull(), bizLogger = get()) }
+        viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull(), get(), get(), bizLogger = get()) }
+        viewModel { com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel(getOrNull(), get(), getOrNull(), get(), bizLogger = get()) }
         viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull()) }
     },
 )

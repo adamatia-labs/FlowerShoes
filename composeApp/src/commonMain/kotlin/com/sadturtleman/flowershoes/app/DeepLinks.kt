@@ -1,10 +1,14 @@
 package com.sadturtleman.flowershoes.app
 
+import com.sadturtleman.flowershoes.core.data.sync.InviteLinks
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** 셸이 여는 화면. 알림 · 위젯 · 푸시의 딥링크(kkotsin://…)를 이것으로 바꾼다. */
+/**
+ * 셸이 여는 화면. 알림 · 위젯 · 푸시의 딥링크(kkotsin://…, 앱 안에서만 쓴다)와
+ * 초대 링크(카카오 앱 실행 `kakao{앱키}://kakaolink?invite=` · 웹 `https://{host}/i/{token}`)를 이것으로 바꾼다.
+ */
 sealed interface DeepLink {
     data object Home : DeepLink
     data object Inbox : DeepLink
@@ -14,8 +18,12 @@ sealed interface DeepLink {
     data class DayLine(val eventId: String) : DeepLink
     data object Pairing : DeepLink
 
+    /** 초대 링크를 열었다 → 받는 쪽 수락 흐름. */
+    data class Invite(val token: String) : DeepLink
+
     companion object {
         fun parse(uri: String): DeepLink? {
+            InviteLinks.tokenFrom(uri)?.let { return Invite(it) }
             if (!uri.startsWith("$SCHEME://")) return null
             val parts = uri.removePrefix("$SCHEME://").trimEnd('/').split('/')
             return when (parts.firstOrNull()) {

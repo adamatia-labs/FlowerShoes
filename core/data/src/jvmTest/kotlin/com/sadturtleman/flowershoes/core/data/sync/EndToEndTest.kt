@@ -139,6 +139,26 @@ class EndToEndTest {
     }
 
     @Test
+    fun `혼자 쓴 편지 · 그림은 연결 뒤 첫 동기화까지 보낼 것으로 남는다`() = runTest {
+        val doc = byteArrayOf(0x4B, 0x4B, 0x44, 1)
+        val attachmentId = jisu.attachments.put(AttachmentKind.DRAWING_DOC, doc)
+        jisu.letters.send(jisu.letters.newLetter(listOf(LetterBlock.Text("처음"))), emptyList())
+        val withDrawing = jisu.letters.newLetter(listOf(LetterBlock.Text("그림도"), LetterBlock.DrawingRef("d1")))
+        jisu.letters.send(withDrawing, listOf(DrawingMeta("d1", 0, "SQUARE", attachmentId, attachmentId, null, true, 4000)))
+        jisu.letters.send(withDrawing, listOf(DrawingMeta("d1", 0, "SQUARE", attachmentId, attachmentId, null, true, 4000)))
+        jisu.profile.saveMe(Role.GOMSIN, "지수")
+
+        val before = jisu.sync.outbox()
+        assertEquals(2, before.letters, "같은 편지를 두 번 고쳐도 한 통")
+        assertEquals(1, before.drawings)
+        assertTrue(before.ops >= 4)
+
+        link()
+        jisu.sync.syncOnce()
+        assertEquals(Outbox(0, 0, 0), jisu.sync.outbox())
+    }
+
+    @Test
     fun `그림 편지가 첨부까지 암호화돼 건너가고 읽음이 돌아온다`() = runTest {
         link()
         val doc = byteArrayOf(0x4B, 0x4B, 0x44, 1, 9, 9, 9)

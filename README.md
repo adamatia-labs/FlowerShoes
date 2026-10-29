@@ -63,6 +63,8 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 KAKAO_NATIVE_APP_KEY=
 GOOGLE_WEB_CLIENT_ID=
 REVENUECAT_API_KEY=
+INVITE_HOST=                      # 초대 링크 · App Links 호스트(Firebase Hosting 사이트). 비면 TODO_HOSTING_SITE.web.app
+KAKAO_INVITE_TEMPLATE_ID=         # 카카오 사용자 정의 피드 템플릿(인자 name · token). 비면 OS 공유 시트
 FIREBASE_EMULATOR_HOST=10.0.2.2   # 로컬 Firebase 에뮬레이터를 쓸 때만(디버그 빌드)
 ```
 

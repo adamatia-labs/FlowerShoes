@@ -29,7 +29,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 
 /**
- * 온보딩 순서(Figma ✅ 최종 화면 · 1 온보딩): 로그인 → 약관 동의 → 역할 → 테마 → 입대일(군인만) → 연결.
+ * 온보딩 순서(Figma ✅ 최종 화면 · 1 온보딩): 로그인 → 약관 동의 → 역할 → 테마 → 입대일(군인만) → 시작 방법(초대 · 혼자).
  * 단계 표시는 역할부터(곰신 3칸 · 군인 4칸). 백업이 있는 계정은 로그인 뒤 바로 복원으로 간다.
  */
 enum class OnboardingStep { LOGIN, TERMS, ROLE, THEME, SERVICE, CONNECT }
@@ -53,6 +53,8 @@ data class OnboardingState(
     val theme: AppTheme? = null,
     val branch: Branch = Branch.ARMY,
     val enlistDate: LocalDate? = null,
+    /** 시작 방법(346:451): 연인 초대하기(기본) · 혼자 먼저 시작하기. */
+    val startWithInvite: Boolean = true,
     val today: LocalDate,
     val error: String? = null,
 ) {
@@ -95,13 +97,14 @@ sealed interface OnboardingIntent {
     data class SelectTheme(val theme: AppTheme) : OnboardingIntent
     data class SelectBranch(val branch: Branch) : OnboardingIntent
     data class SetEnlistDate(val date: LocalDate) : OnboardingIntent
+    data class SelectStart(val invite: Boolean) : OnboardingIntent
     data object Next : OnboardingIntent
     data object Back : OnboardingIntent
 
-    /** "혼자 먼저 둘러볼게요". 연결은 나중에 홈 · 설정에서 한다. */
+    /** 혼자 먼저 시작하기. 연결은 나중에 홈 · 설정에서 한다. */
     data object FinishSolo : OnboardingIntent
 
-    /** 연결 단계에서 상대와 확인 코드(SAS) 비교로 넘어간다. */
+    /** 연인 초대(보내는 쪽) 또는 받은 초대 링크 수락으로 넘어간다. */
     data object StartPairing : OnboardingIntent
 }
 
@@ -144,6 +147,7 @@ class OnboardingViewModel(
             }
             is OnboardingIntent.SelectBranch -> _state.update { it.copy(branch = intent.branch) }
             is OnboardingIntent.SetEnlistDate -> _state.update { it.copy(enlistDate = intent.date) }
+            is OnboardingIntent.SelectStart -> _state.update { it.copy(startWithInvite = intent.invite) }
             OnboardingIntent.Next -> next()
             OnboardingIntent.Back -> _state.update { s ->
                 when {
@@ -175,6 +179,7 @@ class OnboardingViewModel(
     private fun next() {
         val s = _state.value
         if (!s.canProceed) return
+        if (s.step == OnboardingStep.CONNECT) return finish(if (s.startWithInvite) OnboardingEvent.OpenPairing else OnboardingEvent.Finished)
         viewModelScope.launch {
             when (s.step) {
                 OnboardingStep.TERMS -> settings.setMarketingConsent(Agreement.MARKETING in s.agreed)
@@ -194,8 +199,8 @@ class OnboardingViewModel(
             s.enlistDate?.takeIf { role == Role.SOLDIER }?.let { date ->
                 profile.saveService(Service(profile.myUserId(), s.branch, date, ServiceRulesTable.BUNDLED.version))
             }
-            // 연결은 확인 코드(SAS) 비교까지 온보딩 안에서 마친다.
-            // 여기서 먼저 완료 처리하면 셸이 교체되어 OpenPairing 화면이 사라진다.
+            // 초대 화면은 온보딩 위에 뜬다. 여기서 먼저 완료 처리하면 셸이 교체되어 그 화면이 사라진다
+            // — 보내기 · 연결을 마치면 셸이 완료 처리한다.
             if (event == OnboardingEvent.Finished) settings.setOnboarded()
             _events.send(event)
         }
