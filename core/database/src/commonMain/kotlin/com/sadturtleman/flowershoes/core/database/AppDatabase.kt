@@ -20,13 +20,14 @@ import kotlinx.coroutines.IO
         StatusEntity::class, MissYouEntity::class, EventEntity::class, LetterEntity::class,
         DrawingEntity::class, ReceiptEntity::class, AttachmentEntity::class, MemoryEntity::class,
         SyncOpEntity::class, StreamCounterEntity::class, RecvCursorEntity::class, RecvPendingEntity::class,
-        PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class, LeaveGrantEntity::class,
+        PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class, LeaveGrantEntity::class, LetterDraftEntity::class,
     ],
     version = AppDatabase.VERSION,
     exportSchema = true,
     // 2: 휴가 관리(leave_grant 표 · event.leaveGrantId). 3: 편지 글꼴(letter.font). 4: 만남 사진(event.photoIds). 5: 일정 메모(event.memo) · 폰 기종(user.deviceName).
     // 6: 만남 한 줄 메모(event.meetNotes) · 산 것(user.perks — 연결된 상대와 함께 쓰는 꽃신 평생 · 추억 책).
     // 7: 휴가 하나의 풀 · 기념일 일정(event.leaveGrantId · couple.anniversary 제거, event.repeatYearly). 출시 전이라 파괴적 이전.
+    // 8: 쓰던 편지 여러 통(letter_draft 표, 이 기기에만).
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
@@ -45,9 +46,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attachmentDao(): AttachmentDao
     abstract fun memoryDao(): MemoryDao
     abstract fun syncDao(): SyncDao
+    abstract fun letterDraftDao(): LetterDraftDao
 
     companion object {
-        const val VERSION = 7
+        const val VERSION = 8
         const val FILE_NAME = "kkotsin.db"
     }
 }

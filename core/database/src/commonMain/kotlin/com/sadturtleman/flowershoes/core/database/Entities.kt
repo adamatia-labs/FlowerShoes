@@ -218,3 +218,14 @@ data class MetaEntity(
     @PrimaryKey val key: String,
     val value: Long,
 )
+
+/**
+ * 쓰던 편지(임시저장). 이 기기에만 — 동기화하지 않고 복구하지 않는다. 연결 해제 · 탈퇴 때 지운다.
+ * [draftJson] 은 편지 쓰기 화면의 글 · 편지지 · 글꼴 · 첨부 · 예약 시각(:feature:letter 의 ComposeDraft JSON).
+ */
+@Entity(tableName = "letter_draft", indices = [Index("updatedAtMs")])
+data class LetterDraftEntity(
+    @PrimaryKey val id: String,
+    val draftJson: String,
+    val updatedAtMs: Long,
+)

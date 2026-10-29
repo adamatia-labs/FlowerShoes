@@ -94,6 +94,7 @@ fun kkotsinModules(
         single { EventRepository(get(), get(), get(), get()) }
         single { com.sadturtleman.flowershoes.core.data.LeaveRepository(get(), get(), get(), get()) }
         single { LetterRepository(get(), get(), get(), get()) }
+        single<com.sadturtleman.flowershoes.core.data.LetterDraftStore> { com.sadturtleman.flowershoes.core.data.RoomLetterDraftStore(get()) }
         single { MissYouRepository(get(), get(), get(), get()) }
         single { StatusRepository(get(), get(), get(), get()) }
         single { vault }
