@@ -43,9 +43,9 @@ koin = "4.1.1"
 # 첨부 파일 저장(KMP 파일 시스템)
 okio = "3.10.2"
 # Firebase(Firestore · Storage · Auth · Functions) KMP 래퍼
-gitliveFirebase = "2.1.0"
-# GitLive 2.1 은 firebase-*-ktx 를 참조한다 — ktx 가 빠진 BoM 34 가 아니라 33 을 쓴다.
-firebaseBom = "33.16.0"
+gitliveFirebase = "2.7.0"
+# GitLive 2.7 이 묶어 쓰는 BoM 과 맞춘다(2.2 부터 ktx 참조가 빠졌다).
+firebaseBom = "34.18.0"
 # 홈 화면 위젯(Android)
 glance = "1.1.1"
 # 백업 키 동기화(Android)

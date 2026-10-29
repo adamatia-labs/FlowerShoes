@@ -19,7 +19,8 @@ packages:
     from: 0.9.1
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
-    from: 11.0.0
+    # GitLive 2.7 이 빌드한 Firebase iOS SDK(11.8) 이상
+    from: 11.8.0
   # zstd 저장소의 Package.swift(C 모듈 libzstd). 그림 문서 · 백업 압축.
   Zstd:
     url: https://github.com/facebook/zstd
