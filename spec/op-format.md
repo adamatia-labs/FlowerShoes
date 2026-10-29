@@ -58,6 +58,7 @@ i32be keyEpoch
 | `receipt` | 읽음 · 처음 봄 · 하트 | 먼저 온 값 유지 |
 | `service` | 복무 정보 | lamport, 연결 직후엔 군인 입력 우선 |
 | `user` | 역할 · 이름 · 폰 기종 · 산 것 | lamport |
+| `bookcover` | 추억 책 표지 `{ "cover": "FLOWER" \| "MILITARY", "lamport", "writerDevice" }` | 행 LWW(lamport, writerDevice) |
 | `delete` | `EVENT` · `LETTER` · `LEAVE_GRANT` 지우기 | 일정 · 휴가는 LWW tombstone |
 | `snapshot` | 위 항목 묶음 + `coversThrough` | 항목마다 위 규칙 |
 
@@ -76,3 +77,7 @@ i32be keyEpoch
 Room DB 7 과 함께 없앤 것: `t = "anniversary"`(커플 기념일 필드), `event.leaveGrantId`, `LeaveKind.REGULAR`. 출시 전이라 호환을 두지 않는다.
 
 Room DB 9: `event.meetNotes` → `event.dayLines`(같은 모양, 이름만). 옛 이름은 읽지 않는다.
+
+### 추억 책 표지 (`bookcover`)
+
+커플에 하나인 값. 산 사람이 고르고 두 사람이 같은 표지를 쓴다(구매 뒤에도 바꿀 수 있다). 조용한 종류(`profile`)로 보내고, 받는 쪽은 `book_cover` 행 하나를 lamport → writerDevice 순으로 비교해 늦은 쪽을 남긴다. 스냅샷은 내가 마지막으로 고친 값만(`snapshot`), 넘겨주기는 늘 싣는다. 받은 적이 없거나 모르는 표지 이름이면 `MILITARY`. Room DB 10 에서 `book_cover` 표를 더했다.

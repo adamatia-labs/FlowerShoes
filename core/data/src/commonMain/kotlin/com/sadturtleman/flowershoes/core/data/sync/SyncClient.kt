@@ -358,6 +358,7 @@ class SyncClient(
             db.serviceDao().get(com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER)?.let { add(OpPayload.ServicePut(it.toModel())) }
             db.eventDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.EventPut(it.toModel())) }
             db.leaveDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
+            db.bookCoverDao().get()?.takeIf { it.lastWriterDevice == identity.deviceId }?.let { add(it.toPayload()) }
             db.letterDao().byAuthor(identity.userId).forEach { l ->
                 val drawings = db.drawingDao().forLetter(l.id).map {
                     com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs, showOnWidget = it.showOnWidget, photoAttachmentId = photoOf(it.docAttachmentId))
@@ -379,6 +380,7 @@ class SyncClient(
             db.serviceDao().all().forEach { add(OpPayload.ServicePut(it.toModel())) }
             db.eventDao().all().forEach { add(OpPayload.EventPut(it.toModel())) }
             db.leaveDao().all().forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
+            db.bookCoverDao().get()?.let { add(it.toPayload()) }
             db.letterDao().allActive().forEach { l -> add(OpPayload.LetterPut(l.toModel(), drawingMetas(l.id))) }
             db.missYouDao().all().forEach { add(OpPayload.MissYouPut(com.sadturtleman.flowershoes.core.model.MissYou(it.id, it.authorId, kotlin.time.Instant.fromEpochMilliseconds(it.sentAtMs)))) }
             db.receiptDao().all().forEach {
@@ -411,6 +413,9 @@ class SyncClient(
             writer.write(OpKind.SNAPSHOT, "snapshot", entityId, localWrite = {}, payload = { OpPayload.Snapshot(coversThrough, chunk) })
         }
     }
+
+    private fun com.sadturtleman.flowershoes.core.database.BookCoverEntity.toPayload() =
+        OpPayload.BookCoverPut(cover, lamport, lastWriterDevice)
 
     /** 보낼 때 [uploadBlobs] 가 붙이는 blob 참조(id · 키)까지 셈한 본문 크기. */
     private fun wireSize(item: OpPayload): Int = OpCodec.encode(item).size + BLOB_REF_BYTES * when (item) {

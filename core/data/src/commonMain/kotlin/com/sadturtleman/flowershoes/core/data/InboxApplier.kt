@@ -3,6 +3,7 @@ package com.sadturtleman.flowershoes.core.data
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import com.sadturtleman.flowershoes.core.database.BookCoverEntity
 import com.sadturtleman.flowershoes.core.database.DrawingEntity
 import com.sadturtleman.flowershoes.core.database.MemoryEntity
 import com.sadturtleman.flowershoes.core.database.MetaEntity
@@ -131,6 +132,12 @@ class InboxApplier(
                 val local = db.userDao().get(p.userId)
                 if (local == null || p.lamport >= local.nicknameLamport) {
                     db.userDao().upsert(UserEntity(p.userId, p.role, p.nickname, p.lamport, p.deviceName.ifBlank { local?.deviceName }, p.perks.joinToString(",").ifBlank { null }))
+                }
+            }
+            is OpPayload.BookCoverPut -> {
+                val local = db.bookCoverDao().get()
+                if (Lww.incomingWins(local?.let { Versioned(it.lamport, it.lastWriterDevice, false) }, Versioned(p.lamport, p.writerDevice, false))) {
+                    db.bookCoverDao().upsert(BookCoverEntity(cover = com.sadturtleman.flowershoes.core.model.BookCover.from(p.cover).name, lamport = p.lamport, lastWriterDevice = p.writerDevice))
                 }
             }
             is OpPayload.Delete -> delete(p)

@@ -35,5 +35,8 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composeMultiplatform.get()}")
         }
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }
