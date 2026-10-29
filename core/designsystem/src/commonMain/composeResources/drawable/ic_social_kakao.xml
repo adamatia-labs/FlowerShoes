@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 카카오 로그인 버튼 심볼(카카오 디자인 가이드: 말풍선, 검정 90%). -->
+<!-- 카카오 로그인 버튼 심볼(카카오 디자인 가이드: 말풍선, #000000). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="20dp" android:height="20dp"
     android:viewportWidth="18" android:viewportHeight="18">
-    <path android:fillColor="#E6000000" android:pathData="M9 1C4.58 1 1 3.79 1 7.24c0 2.23 1.49 4.19 3.74 5.29-0.16 0.6-0.6 2.2-0.69 2.54-0.11 0.42 0.15 0.42 0.33 0.3 0.13-0.09 2.15-1.46 3.02-2.05 0.52 0.07 1.05 0.11 1.6 0.11 4.42 0 8-2.79 8-6.24C17 3.79 13.42 1 9 1z" />
+    <path android:fillColor="#FF000000" android:pathData="M9 1C4.58 1 1 3.79 1 7.24c0 2.23 1.49 4.19 3.74 5.29-0.16 0.6-0.6 2.2-0.69 2.54-0.11 0.42 0.15 0.42 0.33 0.3 0.13-0.09 2.15-1.46 3.02-2.05 0.52 0.07 1.05 0.11 1.6 0.11 4.42 0 8-2.79 8-6.24C17 3.79 13.42 1 9 1z" />
 </vector>
