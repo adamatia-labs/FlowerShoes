@@ -74,12 +74,10 @@
    - Android는 붙었다: `BackupManager`, `RoomBackupSource`(일관된 SQLite 스냅샷), Firebase Storage 어댑터(서버 설정이 없으면 이 폰 안의 파일 저장소), Block Store 키 동기화, 설정의 지금 백업 · 복구 코드, 복원 화면, 백그라운드 자동 백업. 에뮬레이터에서 백업 → 일정 삭제 → 복원 → 재시작 → 일정이 돌아오는 것을 확인했다.
    - 복원 직후 자동 교체는 끝났다: `PostRestoreRotation` 이 동기화 때마다 요청 → 상대 확인 대기(배너) → finalize → 토큰 재로그인. 남은 것: iOS(iCloud 키체인 · Storage), Block Store 복원 시점 실기기 확인.
 5. **나머지 흐름**
-   - 7-3-B 상대 넘겨주기는 끝났다: `RelinkSession`(커밋 → 공개 → SAS → cutoff → epoch+1 → 공유 데이터 전체 스냅샷), 함수 `onRelinkStep`, 규칙, 연결 · 설정 화면. 남은 것은 넘겨주기 전 기기 생체 인증
+   - 기기 교체는 하나의 흐름이다(#20 · #40): 새 폰 로그인 → `DeviceChangeSession` 요청 → 상대 폰 `DeviceChangeApprover` 승인(cutoff → epoch+1 커플 키를 새 기기 공개키로 봉인 → 공유 데이터 전체 스냅샷) · 거절, 옛 폰 "내가 아니에요"(승인 전 막기). 함수 `onDeviceChangeCreated` · `onDeviceChangeAnswered` · `finalizeDevice`, 규칙 `couples/{c}/deviceChanges`. 넘겨주기(`RelinkSession` · SAS) · 자동 승인(`RotationApprover`)은 지웠다.
    - 탈퇴 화면(서버 callable · 로컬 정리는 있다)
    - 기기 인증은 끝났다(Android): 연결 해제 · 복구 코드 보기 · 연인 폰 교체 받기 앞에 BiometricPrompt(생체 또는 PIN). 화면 잠금이 없는 기기는 경고 후 진행
    - 연결 해제는 끝났다: `UnlinkService`(키 · 동기화 상태 정리, 보관/모두 지우기), 설정 화면, callable `unlinkCouple`
-   - 자동 승인하지 못한 교체 요청(`SyncScheduler.pendingManual`)을 안내하는 화면
-   - 기기 교체 자동 승인은 동기화 루프에 연결돼 있다(`RotationApprover`, Firestore 어댑터 `FirestoreRotation`).
 6. **PNG 렌더러** — Android는 끝났다(`:core:media` `DrawingPng`). 저장할 때 완성 PNG를 만들고, 동기화 · 위젯이 그 PNG를 쓴다. iOS 구현(Compose + Skia)은 macOS 빌드 확인이 남았다.
 8. **iOS**
    - macOS에서 `xcodegen`으로 프로젝트를 만든다.

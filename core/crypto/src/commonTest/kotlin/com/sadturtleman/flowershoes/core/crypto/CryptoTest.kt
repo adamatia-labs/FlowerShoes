@@ -50,16 +50,6 @@ class CryptoTest {
     }
 
     @Test
-    fun `기기 교체 MAC 은 같은 커플 키로만 만들 수 있다`() {
-        val key = CoupleKey.generate(1)
-        val request = "rotate:dev-new:epoch2".encodeToByteArray()
-        val tag = key.mac(request)
-        assertTrue(key.verifyMac(request, tag))
-        assertFalse(CoupleKey.generate(1).verifyMac(request, tag))
-        assertFalse(key.verifyMac("rotate:dev-evil:epoch2".encodeToByteArray(), tag))
-    }
-
-    @Test
     fun `초대 토큰은 128비트 base64url 22자이고 형식이 아니면 거른다`() {
         val token = InviteToken.random()
         assertEquals(22, token.length)

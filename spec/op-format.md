@@ -32,8 +32,7 @@ i32be keyEpoch
 | 초대 토큰 | 16바이트 무작위 → base64url(패딩 없음) 22자. `pairings/{token}` 문서 id · 링크 `/i/{token}` · `kakaolink?invite={token}` |
 | 공개키(`pubKey`) | `base64( signPub(32) ‖ boxPub(32) )` — 초대 · 수락 문서의 한 필드 |
 | 첫 연결 커플 키(epoch 1) | `BLAKE2b-256( P("kkotsin-pair-v1") ‖ P(X25519(내 boxSec, 상대 boxPub)) ‖ P(token) ‖ P(signPub₁) ‖ P(boxPub₁) ‖ P(signPub₂) ‖ P(boxPub₂) )`, 기기 1 · 2 는 boxPub 바이트 오름차순. 벡터 `test-vectors/pairing-v1.json` |
-| 넘겨주기 커밋 · SAS (#40 에서 제거) | 커밋 `BLAKE2b-256( P("kkotsin-commit-v1") ‖ P(boxPub) ‖ P(signPub) ‖ P(nonce) )`, SAS `h = BLAKE2b-128( P("kkotsin-sas-v1") ‖ P(code) ‖ P(signPubA) ‖ P(boxPubA) ‖ P(signPubB) ‖ P(boxPubB) ‖ P(nonceB) )`, 앞 8바이트 big-endian → `>>> 1` → `% 1_000_000`, 6자리 0 채움 |
-| 기기 교체 MAC | `BLAKE2b-256(key = 커플 키)( P("kkotsin-rotation-v1") ‖ P(요청 바이트) )` |
+| 기기 교체 승인 서명 | Ed25519(상대 활성 기기 signSec, `"kkotsin-approval-v1\|{coupleId}\|{requestId}\|{newDeviceId}\|{stream=seq,…}"`), cutoff 는 stream 이름순. `functions/src/sig.ts approvalMessage` 와 같다 |
 | 커플 키 전달 | `crypto_box_seal( i32be epoch ‖ key32, 받는 기기 boxPub )` |
 
 ## 인라인 푸시 페이로드

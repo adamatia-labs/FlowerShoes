@@ -80,9 +80,8 @@ fun MainViewController(
             val t = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
             CloudBackend(
                 mailbox = t, blobs = t, pairing = t,
-                rotation = com.sadturtleman.flowershoes.core.firebase.FirestoreRotation(),
+                deviceChange = com.sadturtleman.flowershoes.core.firebase.FirestoreDeviceChange(),
                 account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(),
-                relink = com.sadturtleman.flowershoes.core.firebase.FirestoreRelink(),
                 notifyPrefs = com.sadturtleman.flowershoes.core.firebase.FirestoreNotifyPrefs(),
                 inquiry = com.sadturtleman.flowershoes.core.firebase.FirestoreInquiry(),
             )

@@ -137,53 +137,54 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // 기기 교체 요청(7-3-A). 대기 기기가 만들고, 상대 활성 기기가 승인을 단다.
-      match /rotations/{rotationId} {
+      // 기기 교체(#20). 새 폰(같은 uid, 대기 기기)이 요청하고, 상대 활성 기기가 승인 · 거절, 요청한 계정이 취소 · 막기.
+      // 상태(status) · second · counts · 활성화는 답을 확인한 함수(onDeviceChangeAnswered)만 바꾼다.
+      match /deviceChanges/{r} {
         allow get, list: if isMember(c);
         allow create: if isMember(c)
+          && request.resource.data.keys().hasOnly(['uid', 'newDeviceId', 'oldDeviceId', 'deviceName', 'provider', 'status', 'createdAt', 'expireAt'])
+          && request.resource.data.keys().hasAll(['uid', 'newDeviceId', 'oldDeviceId', 'deviceName', 'provider', 'status', 'createdAt', 'expireAt'])
           && request.resource.data.uid == request.auth.uid
-          && request.resource.data.keys().hasOnly(['uid', 'newDeviceId', 'oldDeviceId', 'epoch', 'wrappedKey', 'mac', 'sig', 'createdAt', 'deviceName', 'provider']);
+          && request.resource.data.status == 'pending'
+          && request.resource.data.oldDeviceId == myDevice(c)
+          && request.resource.data.newDeviceId is string && request.resource.data.newDeviceId != myDevice(c)
+          // 대기 기기 문서를 먼저 만든다(같은 사람 · pending).
+          && deviceDoc(c, request.resource.data.newDeviceId).uid == request.auth.uid
+          && deviceDoc(c, request.resource.data.newDeviceId).state == 'pending'
+          && request.resource.data.deviceName is string && request.resource.data.deviceName.size() <= 60
+          && request.resource.data.provider is string && request.resource.data.provider.size() <= 20
+          // 24시간 판단을 기기 시계에 맡기지 않는다.
+          && request.resource.data.createdAt == request.time
+          // 7일 이하(기기 시계 오차 1시간 허용).
+          && request.resource.data.expireAt is timestamp
+          && request.resource.data.expireAt < request.time + duration.value(169, 'h');
         allow update, delete: if false;
 
-        match /approval/{approvalId} {
+        function change() {
+          return get(/databases/$(database)/documents/couples/$(c)/deviceChanges/$(r)).data;
+        }
+
+        // 문서 id 가 자리(partner · owner)라 자리마다 한 번만 답한다.
+        match /answer/{who} {
           allow get: if isMember(c);
-          allow create: if isActiveMember(c)
-            && get(/databases/$(database)/documents/couples/$(c)/rotations/$(rotationId)).data.uid != request.auth.uid
-            && request.resource.data.keys().hasOnly(['approverDeviceId', 'cutoff', 'sig', 'at']);
-          allow update, delete: if false;
+          allow create: if isMember(c)
+            && change().status == 'pending'
+            && notExpired(change())
+            && (
+              (who == 'partner'
+                && isActiveMember(c)
+                && change().uid != request.auth.uid
+                && ((request.resource.data.result == 'approve'
+                    && request.resource.data.keys().hasOnly(['result', 'approverDeviceId', 'cutoff', 'sig', 'counts', 'at'])
+                    && request.resource.data.approverDeviceId == myDevice(c))
+                  || (request.resource.data.result == 'reject' && request.resource.data.keys().hasOnly(['result', 'at']))))
+              || (who == 'owner'
+                && change().uid == request.auth.uid
+                && request.resource.data.result in ['cancel', 'block']
+                && request.resource.data.keys().hasOnly(['result', 'at']))
+            );
+          allow list, update, delete: if false;
         }
-      }
-    }
-
-    // ── 상대 폰 넘겨주기(7-3-B): 지수가 코드를 만들고 민준이 입력 ────────────────
-    match /relinks/{code} {
-      allow create: if signedIn()
-        && request.resource.data.uid == request.auth.uid
-        && isActiveMember(request.resource.data.coupleId)
-        && request.resource.data.keys().hasOnly(['uid', 'coupleId', 'expireAt']);
-      allow get: if signedIn() && notExpired(resource.data);
-      allow list, update: if false;
-      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
-
-      match /steps/{name} {
-        function relink() {
-          return get(/databases/$(database)/documents/relinks/$(code)).data;
-        }
-        allow get: if signedIn() && notExpired(relink());
-        allow update, delete: if false;
-        allow create: if signedIn() && notExpired(relink()) && (
-          (name == 'join' && request.resource.data.uid == request.auth.uid && request.resource.data.keys().hasOnly(['uid', 'commit']))
-          || (name == 'inviter' && relink().uid == request.auth.uid)
-          || (name == 'reveal'
-            && get(/databases/$(database)/documents/relinks/$(code)/steps/join).data.uid == request.auth.uid)
-          // 지수: [맞아요, 넘겨줄게요] — 새 커플 키 봉투 · cutoff · 기기 서명. 함수가 서명을 확인하고 활성화한다.
-          || (name == 'confirm-inviter'
-            && relink().uid == request.auth.uid
-            && request.resource.data.keys().hasOnly(['wrappedKey', 'sas', 'cutoff', 'sig', 'newDeviceId', 'epoch']))
-          || (name == 'confirm-joiner'
-            && get(/databases/$(database)/documents/relinks/$(code)/steps/join).data.uid == request.auth.uid
-            && request.resource.data.keys().hasOnly(['sas']))
-        );
       }
     }
 

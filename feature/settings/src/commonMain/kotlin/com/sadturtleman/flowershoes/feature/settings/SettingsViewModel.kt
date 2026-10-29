@@ -156,7 +156,7 @@ class SettingsViewModel(
     /** 탈퇴. 끝나면 설정이 비워져 셸이 처음 화면(로그인)으로 돌아간다. */
     fun deleteAccount() = viewModelScope.launch { unlink.deleteAccount() }
 
-    /** 상대 폰 교체 알림의 "카카오 계정으로 로그인" 문구. */
+    /** 로그인 제공자 이름(로그인 계정 · 기기 교체 "카카오 계정 비밀번호 바꾸기"). */
     fun providerLabel(provider: String?): String = when (provider) {
         "KAKAO" -> "카카오"
         "APPLE" -> "Apple"

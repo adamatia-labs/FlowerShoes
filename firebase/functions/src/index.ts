@@ -6,9 +6,8 @@
 // - onInviteCreated : 새 초대 링크가 생기면 같은 사람의 이전 링크를 지운다
 // - onInviteAccepted : 초대 수락(1회) → 커플 · 기기 등록, 초대 소비, 보낸 사람에게 푸시
 // - invitePage      : Hosting /i/{token} → OG 미리보기 · 스토어 랜딩(GET 은 부작용 없음)
-// - onDeviceCreated : 대기 기기가 생기면 진짜 폰에 "새 기기에서 로그인 시도" 알림
-// - onRotationApproved : 상대 기기의 서명된 승인 → 새 기기 active, 옛 기기 폐기
-// - onRelinkStep    : 상대 폰이 넘겨주기 — 지수 서명 · SAS 확인 → 새 기기 활성화, 옛 기기 폐기
+// - onDeviceChangeCreated  : 새 폰의 기기 교체 요청 → 24시간 표시 · 이전 요청 취소 · 상대에게 "새 폰 맞나요?" · 옛 폰에 "새 폰에서 로그인했어요"
+// - onDeviceChangeAnswered : 상대의 승인(서명 확인 → 새 기기 active, 옛 기기 폐기) · 거절 · 요청한 계정의 취소 · 막기
 // - finalizeDevice  : 새 기기 키로 서명한 챌린지 확인 → 커스텀 토큰 발급 → 옛 세션 폐기
 // - sendFromWidget  : iOS 위젯(App Intent)의 보고싶어. Firebase SDK 없이 서명만으로 받는다
 // - kakaoSignIn     : 카카오 액세스 토큰(app_id 확인) → 커스텀 토큰
@@ -28,6 +27,7 @@ import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from '
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
+import { AnswerSide, answerDecision, blockedPush, isSecondWithin24h, requestPush } from './device-change';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -164,9 +164,9 @@ export const morningDigest = onSchedule({ schedule: 'every 15 minutes', region: 
       if (count > 0) await push(uid, { visible: { title: '꽃신', body: `밤사이 소식 ${count}개` }, data: { kind: 'digest', coupleId } });
     }
   }
-  // 24시간 지난 대기 기기 정리
+  // 기기 교체 요청(7일)보다 오래된 대기 기기 정리
   const stale = await db.collectionGroup('devices').where('state', '==', 'pending')
-    .where('createdAt', '<', Timestamp.fromMillis(Date.now() - 24 * 3600 * 1000)).get();
+    .where('createdAt', '<', Timestamp.fromMillis(Date.now() - 8 * 24 * 3600 * 1000)).get();
   await Promise.all(stale.docs.map((d) => d.ref.delete()));
 });
 
@@ -265,42 +265,94 @@ export const invitePage = onRequest({ region: REGION }, async (req, res) => {
   }));
 });
 
-// ── 기기 교체(7-3-A) ─────────────────────────────────────────────────────
+// ── 기기 교체(#20) ───────────────────────────────────────────────────────
 
-export const onDeviceCreated = onDocumentCreated({ document: 'couples/{c}/devices/{deviceId}', region: REGION }, async (event) => {
-  const d = event.data?.data();
-  if (!d || d.state !== 'pending') return;
-  // 같은 uid 에 대기 기기가 생겼다 → 진짜 폰에 알린다(계정만 털린 경우 알아챌 수 있게).
-  await push(d.uid as string, { visible: { title: '꽃신', body: '새 기기에서 로그인 시도가 있었어요' }, data: { kind: 'device-pending', coupleId: event.params.c } });
+async function nicknameOf(uid: string): Promise<string> {
+  return ((await db.doc(`users/${uid}`).get()).get('nickname') as string | undefined) || '연인';
+}
+
+/**
+ * 새 폰의 요청(규칙이 작성자 · members · 대기 기기 · createdAt = 서버 시각을 막는다).
+ * 같은 사람의 24시간 안 두 번째 요청이면 표시하고, 그 사람의 이전 대기 요청은 취소한다(다시 요청).
+ */
+export const onDeviceChangeCreated = onDocumentCreated({ document: 'couples/{c}/deviceChanges/{r}', region: REGION }, async (event) => {
+  const { c, r } = event.params;
+  const req = event.data?.data();
+  if (!req) return;
+  const couple = await coupleOf(c);
+  const uid = req.uid as string;
+  if (!(uid in couple.members)) return;
+  const createdAtMs = (req.createdAt as Timestamp).toMillis();
+  const others = (await db.collection(`couples/${c}/deviceChanges`).where('uid', '==', uid).get()).docs.filter((d) => d.id !== r);
+  const batch = db.batch();
+  batch.update(event.data!.ref, { second: isSecondWithin24h(uid, createdAtMs, others.map((d) => ({ uid, createdAtMs: (d.get('createdAt') as Timestamp).toMillis() }))) });
+  for (const d of others.filter((o) => o.get('status') === 'pending')) {
+    batch.update(d.ref, { status: 'cancelled', answeredAt: FieldValue.serverTimestamp() });
+    if (d.get('newDeviceId') !== req.newDeviceId) batch.delete(db.doc(`couples/${c}/devices/${d.get('newDeviceId')}`));
+  }
+  await batch.commit();
+  const partner = Object.keys(couple.members).find((u) => u !== uid);
+  const text = requestPush(await nicknameOf(uid));
+  if (partner) await push(partner, { visible: { title: '꽃신', body: text.partner }, data: { kind: 'device-request', coupleId: c, requestId: r } });
+  // 같은 계정(옛 폰). 계정만 털린 경우 알아채고 막을 수 있게.
+  await push(uid, { visible: { title: '꽃신', body: text.owner }, data: { kind: 'device-signed-in', coupleId: c, requestId: r, deviceId: req.newDeviceId } });
 });
 
-export const onRotationApproved = onDocumentCreated(
-  { document: 'couples/{c}/rotations/{r}/approval/{a}', region: REGION },
-  async (event) => {
-    const { c, r } = event.params;
-    const approval = event.data?.data();
-    if (!approval) return;
-    const rotation = (await db.doc(`couples/${c}/rotations/${r}`).get()).data();
-    if (!rotation) return;
-    const approver = await db.doc(`couples/${c}/devices/${approval.approverDeviceId}`).get();
-    // 승인자는 요청자가 아닌 상대의 활성 기기여야 하고, 그 기기 키로 서명했어야 한다.
-    if (!approver.get('active') || approver.get('uid') === rotation.uid) return;
-    const ok = verifyEd25519(
-      approvalMessage(c, r, rotation.newDeviceId, approval.cutoff ?? {}),
-      b64(approval.sig),
-      b64(approver.get('signPub')),
-    );
-    if (!ok) return;
-    const batch = db.batch();
-    batch.update(db.doc(`couples/${c}/devices/${rotation.newDeviceId}`), { state: 'active', active: true });
-    if (rotation.oldDeviceId && rotation.oldDeviceId !== rotation.newDeviceId) {
-      batch.update(db.doc(`couples/${c}/devices/${rotation.oldDeviceId}`), { state: 'revoked', active: false, revokedAt: FieldValue.serverTimestamp(), cutoff: approval.cutoff ?? {} });
+/**
+ * 답(answer/partner · answer/owner, 규칙이 자리 · 1회를 막는다). 승인은 상대 활성 기기의 서명을 확인한 뒤
+ * 새 기기 active · 옛 기기 폐기(cutoff) · members · users/{uid}.deviceId 를 한 번에 바꾼다.
+ * 커플 키 봉투(keys/{새 기기})는 승인한 폰이 먼저 써 둔다.
+ */
+export const onDeviceChangeAnswered = onDocumentCreated({ document: 'couples/{c}/deviceChanges/{r}/answer/{who}', region: REGION }, async (event) => {
+  const { c, r, who } = event.params;
+  const answer = event.data?.data();
+  if (!answer || (who !== 'partner' && who !== 'owner')) return;
+  const ref = db.doc(`couples/${c}/deviceChanges/${r}`);
+  const outcome = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const req = snap.data();
+    let approver: { uid: string; active: boolean } | undefined;
+    let signatureOk = false;
+    if (req && who === 'partner' && answer.result === 'approve') {
+      const device = await tx.get(db.doc(`couples/${c}/devices/${answer.approverDeviceId}`));
+      if (device.exists) {
+        approver = { uid: device.get('uid'), active: device.get('active') === true };
+        signatureOk = verifyEd25519(approvalMessage(c, r, req.newDeviceId, answer.cutoff ?? {}), b64(answer.sig), b64(device.get('signPub')));
+      }
     }
-    batch.update(db.doc(`couples/${c}`), { [`members.${rotation.uid}`]: rotation.newDeviceId });
-    batch.set(db.doc(`users/${rotation.uid}`), { deviceId: rotation.newDeviceId }, { merge: true });
-    await batch.commit();
-  },
-);
+    const state = req && { uid: req.uid as string, newDeviceId: req.newDeviceId as string, status: req.status as string, expireAtMs: (req.expireAt as Timestamp).toMillis() };
+    const result = answerDecision(state, who as AnswerSide, answer, approver, signatureOk, Date.now());
+    if (result === 'ignore' || !req) return { result, req };
+    const now = FieldValue.serverTimestamp();
+    if (result === 'approve') {
+      const couple = (await tx.get(db.doc(`couples/${c}`))).data() as { members: Record<string, string> };
+      const oldDevice = couple.members[req.uid];
+      tx.update(db.doc(`couples/${c}/devices/${req.newDeviceId}`), { state: 'active', active: true });
+      if (oldDevice && oldDevice !== req.newDeviceId) {
+        tx.update(db.doc(`couples/${c}/devices/${oldDevice}`), { state: 'revoked', active: false, revokedAt: now, cutoff: answer.cutoff ?? {} });
+      }
+      tx.update(db.doc(`couples/${c}`), { [`members.${req.uid}`]: req.newDeviceId });
+      tx.set(db.doc(`users/${req.uid}`), { deviceId: req.newDeviceId }, { merge: true });
+      tx.update(ref, { status: 'approved', answeredAt: now, counts: answer.counts ?? {} });
+    } else {
+      // 거절 · 취소 · 막기: 새 기기는 쓸 수 없다(대기 기기 문서를 지운다).
+      tx.delete(db.doc(`couples/${c}/devices/${req.newDeviceId}`));
+      tx.update(ref, { status: result === 'reject' ? 'rejected' : result === 'block' ? 'blocked' : 'cancelled', answeredAt: now });
+    }
+    return { result, req };
+  });
+  const req = outcome.req;
+  if (outcome.result === 'ignore' || !req) return;
+  const data = { kind: `device-${outcome.result}`, coupleId: c, requestId: r };
+  const partner = Object.keys((await coupleOf(c)).members).find((u) => u !== req.uid);
+  // 요청한 계정(새 폰 · 옛 폰)은 화면을 바꾸고, 상대 폰은 승인 화면을 닫는다.
+  await push(req.uid, { data });
+  if (partner && outcome.result === 'block') {
+    await push(partner, { visible: { title: '꽃신', body: blockedPush(await nicknameOf(req.uid)) }, data });
+  } else if (partner && outcome.result === 'cancel') {
+    await push(partner, { data });
+  }
+});
 
 /**
  * 새 기기가 세션을 이어 받는다. revokeRefreshTokens 는 기기를 구분하지 않아 방금 로그인한 새 폰도 끊으므로,
@@ -310,61 +362,17 @@ export const onRotationApproved = onDocumentCreated(
 export const finalizeDevice = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
-  const { coupleId, rotationId, challengeSig } = req.data as { coupleId: string; rotationId: string; challengeSig: string };
-  const rotation = (await db.doc(`couples/${coupleId}/rotations/${rotationId}`).get()).data();
-  if (!rotation || rotation.uid !== uid) throw new HttpsError('permission-denied', '내 교체 요청이 아니다');
-  const device = await db.doc(`couples/${coupleId}/devices/${rotation.newDeviceId}`).get();
+  const { coupleId, requestId, challengeSig } = req.data as { coupleId: string; requestId: string; challengeSig: string };
+  const change = (await db.doc(`couples/${coupleId}/deviceChanges/${requestId}`).get()).data();
+  if (!change || change.uid !== uid) throw new HttpsError('permission-denied', '내 교체 요청이 아니다');
+  const device = await db.doc(`couples/${coupleId}/devices/${change.newDeviceId}`).get();
   if (!device.get('active')) throw new HttpsError('failed-precondition', '상대 폰이 아직 확인하지 않았다');
-  if (!verifyEd25519(finalizeMessage(coupleId, rotationId, uid), b64(challengeSig), b64(device.get('signPub')))) {
+  if (!verifyEd25519(finalizeMessage(coupleId, requestId, uid), b64(challengeSig), b64(device.get('signPub')))) {
     throw new HttpsError('permission-denied', '새 기기 서명이 맞지 않는다');
   }
   const token = await getAuth().createCustomToken(uid);
   await getAuth().revokeRefreshTokens(uid);
   return { token };
-});
-
-// ── 상대 폰이 넘겨주기(7-3-B) ─────────────────────────────────────────────
-
-/**
- * 지수(활성 기기)의 confirm-inviter 와 새 폰의 confirm-joiner 가 모두 있고 SAS 가 같으면:
- * 지수 기기 서명을 확인 → 새 기기 등록 · 활성화, 옛 기기 폐기(cutoff), members 갱신, 새 커플 키 봉투.
- */
-export const onRelinkStep = onDocumentCreated({ document: 'relinks/{code}/steps/{name}', region: REGION }, async (event) => {
-  const { code, name } = event.params;
-  if (!name.startsWith('confirm-')) return;
-  const base = db.doc(`relinks/${code}`);
-  const [relink, join, inviter, reveal, ci, cj] = await Promise.all(
-    ['', '/steps/join', '/steps/inviter', '/steps/reveal', '/steps/confirm-inviter', '/steps/confirm-joiner'].map((p) => db.doc(`relinks/${code}${p}`).get()),
-  );
-  if (![relink, join, inviter, reveal, ci, cj].every((s) => s.exists)) return;
-  if (ci.get('sas') !== cj.get('sas')) {
-    await db.recursiveDelete(base);
-    return;
-  }
-  const coupleId = relink.get('coupleId') as string;
-  const giverDevice = await db.doc(`couples/${coupleId}/devices/${inviter.get('deviceId')}`).get();
-  if (!giverDevice.get('active') || giverDevice.get('uid') !== relink.get('uid')) return;
-  const cutoff = JSON.parse(ci.get('cutoff') as string) as Record<string, number>;
-  const newDeviceId = ci.get('newDeviceId') as string;
-  if (newDeviceId !== reveal.get('deviceId')) return;
-  if (!verifyEd25519(approvalMessage(coupleId, code, newDeviceId, cutoff), b64(ci.get('sig')), b64(giverDevice.get('signPub')))) return;
-
-  const receiverUid = join.get('uid') as string;
-  const couple = await coupleOf(coupleId);
-  const oldDevice = couple.members[receiverUid];
-  const batch = db.batch();
-  batch.set(db.doc(`couples/${coupleId}/devices/${newDeviceId}`), {
-    uid: receiverUid, signPub: reveal.get('signPub'), boxPub: reveal.get('boxPub'), state: 'active', active: true, createdAt: FieldValue.serverTimestamp(),
-  });
-  if (oldDevice && oldDevice !== newDeviceId) {
-    batch.update(db.doc(`couples/${coupleId}/devices/${oldDevice}`), { state: 'revoked', active: false, revokedAt: FieldValue.serverTimestamp(), cutoff });
-  }
-  batch.update(db.doc(`couples/${coupleId}`), { [`members.${receiverUid}`]: newDeviceId });
-  batch.set(db.doc(`couples/${coupleId}/keys/${newDeviceId}`), { wrapped: ci.get('wrappedKey'), epoch: Number(ci.get('epoch')) });
-  batch.set(db.doc(`users/${receiverUid}`), { coupleId, deviceId: newDeviceId }, { merge: true });
-  await batch.commit();
-  await db.recursiveDelete(base);
-  await push(receiverUid, { data: { kind: 'relinked', coupleId } });
 });
 
 // ── iOS 위젯 전송 ─────────────────────────────────────────────────────────

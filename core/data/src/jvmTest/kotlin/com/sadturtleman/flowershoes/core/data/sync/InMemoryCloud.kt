@@ -6,10 +6,7 @@ import com.sadturtleman.flowershoes.core.crypto.Pairing
  * 테스트용 서버. Firestore · Storage · Cloud Function(onInviteAccepted 등) 이 하는 일을 메모리에서 흉내 낸다.
  * [tamper] 로 "서버가 암호문을 바꿔치기하는" 상황도 만든다.
  */
-class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, AccountTransport {
-    /** 넘겨주기(relinks/…)는 초대(pairings/…)와 다른 컬렉션이다. */
-    val relinks = RelinkCloud()
-
+class InMemoryCloud : Mailbox, BlobStore, PairingTransport, AccountTransport {
     private val inbox = mutableMapOf<String, MutableMap<String, MailItem>>() // "{c}/{device}" → opId → item
     private val control = mutableMapOf<String, ControlDoc>()
     private val blobStore = mutableMapOf<String, ByteArray>()
@@ -108,33 +105,111 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
         acceptedPushes += invite.inviterUid
     }
 
-    // RotationTransport — 서버(onRotationApproved · finalizeDevice)와 같은 확인을 한다.
-    private val pendingDevices = mutableMapOf<String, Pair<String, ByteArray>>() // deviceId → (uid, signPub)
-    private val rotationDocs = mutableMapOf<String, MutableList<RotationRequest>>()
-    private val approvals = mutableMapOf<String, RotationApproval>()
+    // 기기 교체 — 함수 onDeviceChangeCreated · onDeviceChangeAnswered · finalizeDevice 와 같은 확인을 한다.
+    private val pendingDevices = mutableMapOf<String, Pair<String, Pairing.PublicKeys>>() // deviceId → (uid, keys)
+    private val changeDocs = mutableMapOf<String, MutableList<DeviceChangeRequest>>()
+    private val keyEnvelopes = mutableMapOf<String, ByteArray>() // "{c}/{device}" → 봉투
 
-    override suspend fun putPendingDevice(coupleId: String, deviceId: String, uid: String, signPub: ByteArray, boxPub: ByteArray) {
-        pendingDevices[deviceId] = uid to signPub
+    /** 함수가 보낸 푸시(uid, 문구). 데이터만 보내는 푸시는 문구가 null. */
+    val pushes = mutableListOf<Pair<String, String?>>()
+
+    /** 지금 시각(요청 만료 · 24시간 판단). 테스트가 앞당긴다. */
+    var nowMs: () -> Long = { kotlin.time.Clock.System.now().toEpochMilliseconds() }
+
+    /** 로그인한 사람마다 다른 창구(규칙 · 함수는 호출한 uid 를 안다). */
+    fun deviceChange(uid: String): DeviceChangeTransport = DeviceChangeCloud(uid)
+
+    fun serverCoupleIdOf(uid: String): String? = coupleDevices.entries.firstOrNull { e -> e.value.any { it.uid == uid } }?.key
+
+    fun changeRequests(coupleId: String): List<DeviceChangeRequest> = changeDocs[coupleId].orEmpty()
+
+    private fun update(coupleId: String, id: String, f: (DeviceChangeRequest) -> DeviceChangeRequest) {
+        val list = changeDocs.getValue(coupleId)
+        val i = list.indexOfFirst { it.id == id }
+        list[i] = f(list[i])
     }
 
-    override suspend fun putRotation(coupleId: String, request: RotationRequest) {
-        rotationDocs.getOrPut(coupleId) { mutableListOf() } += request
-    }
+    private inner class DeviceChangeCloud(private val uid: String) : DeviceChangeTransport {
+        private fun members(c: String) = coupleDevices[c].orEmpty()
 
-    override suspend fun rotations(coupleId: String) = rotationDocs[coupleId].orEmpty()
+        private fun request(c: String, id: String) = checkNotNull(changeDocs[c]?.firstOrNull { it.id == id }) { "요청 없음" }
 
-    override suspend fun putApproval(coupleId: String, rotationId: String, approval: RotationApproval) {
-        approvals["$coupleId/$rotationId"] = approval
-    }
+        override suspend fun serverCoupleId() = coupleDevices.entries.firstOrNull { e -> e.value.any { it.uid == uid } }?.key
 
-    override suspend fun approval(coupleId: String, rotationId: String) = approvals["$coupleId/$rotationId"]
+        override suspend fun currentDevice(coupleId: String, uid: String) = members(coupleId).firstOrNull { it.uid == uid }?.deviceId
 
-    override suspend fun finalize(coupleId: String, rotationId: String, challengeSig: ByteArray): String {
-        val r = rotationDocs[coupleId]?.firstOrNull { it.id == rotationId } ?: error("요청 없음")
-        checkNotNull(approvals["$coupleId/$rotationId"]) { "상대가 아직 확인하지 않았다" }
-        val ok = com.sadturtleman.flowershoes.core.crypto.Signatures.verify(RotationMessages.finalize(coupleId, rotationId, r.uid), challengeSig, r.newSignPub)
-        check(ok) { "새 기기 서명이 맞지 않는다" }
-        return "custom-token-for-${r.uid}"
+        override suspend fun request(coupleId: String, request: DeviceChangeRequest, keys: Pairing.PublicKeys) {
+            check(members(coupleId).any { it.uid == uid } && request.uid == uid) { "규칙: 커플 멤버가 자기 요청만" }
+            check(request.oldDeviceId == currentDevice(coupleId, uid)) { "규칙: oldDeviceId = members[uid]" }
+            pendingDevices.getOrPut(request.newDeviceId) { uid to keys }
+            val list = changeDocs.getOrPut(coupleId) { mutableListOf() }
+            val now = nowMs()
+            // onDeviceChangeCreated: 24시간 안 두 번째 요청 표시, 같은 사람의 이전 대기 요청은 취소.
+            val second = list.any { it.uid == uid && now - it.createdAtMs < 24 * 3600_000L }
+            list.replaceAll { if (it.uid == uid && it.status == DeviceChangeStatus.PENDING) it.copy(status = DeviceChangeStatus.CANCELLED) else it }
+            list += request.copy(createdAtMs = now, second = second)
+            val partner = members(coupleId).first { it.uid != uid }.uid
+            pushes += partner to "새 폰으로 바꿨대요. 맞나요?"
+            pushes += uid to "새 폰에서 로그인했어요"
+        }
+
+        override suspend fun requests(coupleId: String): List<DeviceChangeRequest> {
+            check(members(coupleId).any { it.uid == uid }) { "규칙: 멤버만 읽는다" }
+            return changeDocs[coupleId].orEmpty().toList()
+        }
+
+        override suspend fun deviceKeys(coupleId: String, deviceId: String) =
+            pendingDevices[deviceId]?.second ?: members(coupleId).firstOrNull { it.deviceId == deviceId }?.keys
+
+        override suspend fun approve(coupleId: String, requestId: String, approval: DeviceChangeApproval) {
+            val r = request(coupleId, requestId)
+            val approver = members(coupleId).first { it.uid == uid }
+            check(r.uid != uid && approver.deviceId == approval.approverDeviceId) { "규칙: 상대 활성 기기만 승인" }
+            check(r.status == DeviceChangeStatus.PENDING && r.expireAtMs > nowMs()) { "규칙: 대기 중인 요청만" }
+            keyEnvelopes["$coupleId/${r.newDeviceId}"] = approval.wrappedKey
+            // 함수: 승인 서명 확인 → 새 기기 활성화 · 옛 기기 폐기 · members 갱신.
+            val ok = com.sadturtleman.flowershoes.core.crypto.Signatures.verify(
+                DeviceChangeMessages.approval(coupleId, requestId, r.newDeviceId, approval.cutoff), approval.sig, approver.keys.signPub,
+            )
+            if (!ok) return
+            val (_, keys) = pendingDevices.remove(r.newDeviceId) ?: return
+            coupleDevices[coupleId] = members(coupleId).map { if (it.uid == r.uid) LinkedDevice(r.uid, r.newDeviceId, keys) else it }
+            update(coupleId, requestId) { it.copy(status = DeviceChangeStatus.APPROVED, answeredAtMs = nowMs(), counts = approval.counts) }
+            pushes += r.uid to null
+        }
+
+        override suspend fun reject(coupleId: String, requestId: String) {
+            val r = request(coupleId, requestId)
+            check(r.uid != uid && r.status == DeviceChangeStatus.PENDING) { "규칙: 상대의 대기 요청만" }
+            pendingDevices.remove(r.newDeviceId)
+            update(coupleId, requestId) { it.copy(status = DeviceChangeStatus.REJECTED, answeredAtMs = nowMs()) }
+            pushes += r.uid to null
+        }
+
+        override suspend fun cancel(coupleId: String, requestId: String, block: Boolean) {
+            val r = request(coupleId, requestId)
+            check(r.uid == uid && r.status == DeviceChangeStatus.PENDING) { "규칙: 내 대기 요청만" }
+            pendingDevices.remove(r.newDeviceId)
+            update(coupleId, requestId) { it.copy(status = if (block) DeviceChangeStatus.BLOCKED else DeviceChangeStatus.CANCELLED, answeredAtMs = nowMs()) }
+            val partner = members(coupleId).first { it.uid != uid }.uid
+            pushes += partner to if (block) "새 폰 요청을 막았어요" else null
+        }
+
+        override suspend fun wrappedKey(coupleId: String, deviceId: String): ByteArray? {
+            // 규칙: keys/{d} 는 members[uid] == d 일 때만 읽는다(활성화 뒤).
+            if (currentDevice(coupleId, uid) != deviceId) return null
+            return keyEnvelopes["$coupleId/$deviceId"]
+        }
+
+        override suspend fun partnerDevice(coupleId: String, myUid: String) = members(coupleId).firstOrNull { it.uid != myUid }
+
+        override suspend fun finalize(coupleId: String, requestId: String, challengeSig: ByteArray): String {
+            val r = request(coupleId, requestId)
+            check(r.uid == uid) { "내 요청이 아니다" }
+            val device = checkNotNull(members(coupleId).firstOrNull { it.deviceId == r.newDeviceId }) { "상대 폰이 아직 확인하지 않았다" }
+            check(com.sadturtleman.flowershoes.core.crypto.Signatures.verify(DeviceChangeMessages.finalize(coupleId, requestId, uid), challengeSig, device.keys.signPub)) { "새 기기 서명이 맞지 않는다" }
+            return "custom-token-for-$uid"
+        }
     }
 
     // AccountTransport — 함수 unlinkCouple 처럼 커플의 서버 데이터를 지운다.
@@ -159,42 +234,4 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
         /** storage.rules couples/{c}/…: 10MB. 이보다 작은 것(≤ 675,000)은 Firestore blob 문서에 인라인으로 간다. */
         const val MAX_BLOB = 10 * 1024 * 1024
     }
-}
-
-/** relinks/{code} 와 함수 onRelinkConfirmed(두 확인 · 같은 SAS → 새 기기 활성화 · 키 봉투)를 흉내 낸다. */
-class RelinkCloud : RelinkTransport {
-    private val docs = mutableMapOf<String, Pair<String, String>>() // code → (uid, coupleId)
-    private val steps = mutableMapOf<String, MutableMap<String, Map<String, String>>>()
-    private val active = mutableSetOf<String>()
-    private val keys = mutableMapOf<String, ByteArray>()
-
-    override suspend fun create(code: String, inviterUid: String, coupleId: String) {
-        docs[code] = inviterUid to coupleId
-    }
-
-    override suspend fun coupleId(code: String) = docs[code]?.second
-
-    override suspend fun giverUid(code: String) = docs[code]?.first
-
-    override suspend fun putStep(code: String, name: String, fields: Map<String, String>) {
-        val s = steps.getOrPut(code) { mutableMapOf() }
-        check(name !in s) { "단계는 한 번만 쓴다" }
-        s[name] = fields
-        val ci = s[Steps.CONFIRM_INVITER] ?: return
-        val cj = s[Steps.CONFIRM_JOINER] ?: return
-        if (ci["sas"] != cj["sas"]) return
-        val c = docs.getValue(code).second
-        val newDevice = ci.getValue("newDeviceId")
-        active += "$c/$newDevice"
-        keys["$c/$newDevice"] = ci.getValue("wrappedKey").unb64()
-        // 함수(onRelinkStep)처럼 활성화하자마자 relinks/{code} 를 지운다.
-        docs.remove(code)
-        steps.remove(code)
-    }
-
-    override suspend fun getStep(code: String, name: String) = steps[code]?.get(name)
-
-    override suspend fun activated(coupleId: String, deviceId: String) = "$coupleId/$deviceId" in active
-
-    override suspend fun wrappedKeyFor(coupleId: String, deviceId: String) = keys["$coupleId/$deviceId"]
 }

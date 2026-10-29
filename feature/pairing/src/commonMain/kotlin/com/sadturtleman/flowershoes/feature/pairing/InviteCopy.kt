@@ -22,6 +22,9 @@ internal fun String.withRang(): String = this + if (hasBatchim()) "이랑" else 
 /** "민준이" · "지수가". */
 internal fun String.withSubject(): String = this + if (hasBatchim()) "이" else "가"
 
+/** "민준과" · "지수와". */
+internal fun String.withAnd(): String = this + if (hasBatchim()) "과" else "와"
+
 /** 링크 만료 안내(연인 초대 · 링크 공유): "내일 오전 9:41까지 쓸 수 있어요". */
 internal fun expiryCaption(expireAt: Instant, now: Instant): String {
     val at = expireAt.toLocalDateTime(SEOUL)

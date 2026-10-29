@@ -131,19 +131,12 @@ class CoupleKey(val epoch: Int, internal val bytes: ByteArray) {
 
     fun open(sealed: ByteArray, associatedData: ByteArray): ByteArray = Aead.open(bytes, sealed, associatedData)
 
-    /** 기기 교체 요청에 붙이는 MAC. 이 키를 가진 본인임을 증명한다(계정만 털린 사람은 못 만든다). */
-    fun mac(message: ByteArray): ByteArray = Hash.of(MAC_CONTEXT, message, key = bytes)
-
-    fun verifyMac(message: ByteArray, tag: ByteArray): Boolean = constantTimeEquals(mac(message), tag)
-
     /** 활성 기기 하나에게 이 키를 전달할 봉투. */
     fun wrapFor(recipientBoxPub: ByteArray): ByteArray = sealTo(recipientBoxPub, byteArrayOf(*intBytes(epoch)) + bytes)
 
     fun export(): ByteArray = bytes.copyOf()
 
     companion object {
-        private val MAC_CONTEXT = "kkotsin-rotation-v1".encodeToByteArray()
-
         fun generate(epoch: Int): CoupleKey = CoupleKey(epoch, Sodium.random(Aead.KEY_BYTES))
 
         fun unwrap(keys: DeviceKeys, wrapped: ByteArray): CoupleKey {
@@ -159,10 +152,3 @@ class CoupleKey(val epoch: Int, internal val bytes: ByteArray) {
 internal fun intBytes(n: Int) = byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte())
 
 internal fun longBytes(n: Long) = ByteArray(8) { (n ushr (56 - 8 * it)).toByte() }
-
-internal fun constantTimeEquals(a: ByteArray, b: ByteArray): Boolean {
-    if (a.size != b.size) return false
-    var diff = 0
-    for (i in a.indices) diff = diff or (a[i].toInt() xor b[i].toInt())
-    return diff == 0
-}

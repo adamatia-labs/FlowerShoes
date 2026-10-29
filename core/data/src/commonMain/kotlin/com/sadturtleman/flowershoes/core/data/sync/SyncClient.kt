@@ -39,8 +39,11 @@ data class Outbox(val letters: Int, val drawings: Int, val ops: Int) {
     val isEmpty: Boolean get() = ops == 0
 }
 
-/** 한 번 돌린 결과. 화면 · 로그용. */
-data class SyncReport(val sent: Int = 0, val received: Int = 0, val resent: Int = 0, val snapshot: Boolean = false, val rejected: Int = 0)
+/**
+ * 한 번 돌린 결과. 화면 · 로그용.
+ * [skipped]: 크기 한도(Op 암호문 67.5KB · blob 10MB)를 넘어 건너뛴 항목 수(#20 결정 5). 그 뒤 스트림은 멈추지 않는다.
+ */
+data class SyncReport(val sent: Int = 0, val received: Int = 0, val resent: Int = 0, val snapshot: Boolean = false, val rejected: Int = 0, val skipped: Int = 0)
 
 /**
  * 동기화 한 바퀴(설계 6-2 · 6-3).
@@ -69,8 +72,12 @@ class SyncClient(
 
     suspend fun reconnect() = mailbox.reconnect()
 
+    /** 이번 바퀴에서 한도를 넘어 건너뛴 항목 수. */
+    private var skipped = 0
+
     suspend fun syncOnce(): SyncReport {
         Sodium.init()
+        skipped = 0
         val couple = db.coupleDao().get() ?: return SyncReport()
         if (couple.partnerUserId.isEmpty()) return SyncReport() // 혼자 모드
         val partnerDevice = db.deviceDao().activeFor(couple.partnerUserId) ?: return SyncReport()
@@ -80,7 +87,7 @@ class SyncClient(
         val widgetResent = handleWidgetControl(couple, partnerDevice.id, partnerDevice.signPub)
         val sent = push(couple, partnerDevice.id, myStream.wire) + push(couple, partnerDevice.id, widgetStream)
         publishControl(couple)
-        return SyncReport(sent = sent, received = received.first, rejected = received.second, resent = plan.first + widgetResent, snapshot = plan.second)
+        return SyncReport(sent = sent, received = received.first, rejected = received.second, resent = plan.first + widgetResent, snapshot = plan.second, skipped = skipped)
     }
 
     /** 내 앱 스트림에서 아직 올리지 않은 것. 혼자 모드에서 쓴 것은 연결 뒤 첫 동기화까지 여기 남는다. */
@@ -141,13 +148,19 @@ class SyncClient(
         return pending.size
     }
 
+    /**
+     * 우편함 한 칸(암호문 [MAX_OP_CIPHERTEXT])을 넘는 Op 은 그 번호를 빈 스냅샷으로 채워 보낸다 —
+     * 올리지 못해 그 뒤 스트림 전체가 멈추는 대신 그 항목만 빠진다(#20 결정 5). 상대 커서도 그 번호를 넘어간다.
+     */
     private suspend fun seal(couple: CoupleEntity, op: SyncOpEntity, resend: Boolean): MailItem {
         val key = checkNotNull(vault.currentCoupleKey()) { "커플 키가 없다" }
         val signer = checkNotNull(vault.deviceKeys()) { "기기 키가 없다" }
-        val payload = withBlobs(couple, op.payload)
         val header = OpHeader(op.opId, op.stream, op.seq, key.epoch)
-        val env = OpEnvelope.seal(header, Plain(op.lamport, payload).encode(), key, signer)
-        return MailItem(op.opId, op.kind, identity.deviceId, header.toBytes(), env.ciphertext, env.signature, resend)
+        val env = OpEnvelope.seal(header, Plain(op.lamport, withBlobs(couple, op.payload)).encode(), key, signer)
+        if (env.ciphertext.size <= MAX_OP_CIPHERTEXT) return MailItem(op.opId, op.kind, identity.deviceId, header.toBytes(), env.ciphertext, env.signature, resend)
+        skipped++
+        val empty = OpEnvelope.seal(header, Plain(op.lamport, OpCodec.encode(OpPayload.Snapshot(0, emptyList()))).encode(), key, signer)
+        return MailItem(op.opId, OpKind.SNAPSHOT.wire, identity.deviceId, header.toBytes(), empty.ciphertext, empty.signature, resend)
     }
 
     /** 편지 안 그림 문서를 blob 으로 올리고, blob id · 키를 Op 본문에 적는다(스냅샷 안의 편지도). */
@@ -216,12 +229,17 @@ class SyncClient(
         return true
     }
 
-    /** 첨부 하나를 무작위 키로 암호화해 blob 으로. 돌려주는 값은 (blob id, base64 키). */
+    /** 첨부 하나를 무작위 키로 암호화해 blob 으로. 돌려주는 값은 (blob id, base64 키). 한도([MAX_BLOB_BYTES])를 넘으면 빼고 보낸다. */
     private suspend fun upload(couple: CoupleEntity, attachmentId: String): Pair<String, String>? {
         val bytes = attachments.read(attachmentId) ?: return null
         val blobKey = Sodium.random(Aead.KEY_BYTES)
         val blobId = Uuid.random().toString()
-        blobs.put(couple.id, blobId, Aead.seal(blobKey, bytes))
+        val sealed = Aead.seal(blobKey, bytes)
+        if (sealed.size > MAX_BLOB_BYTES) {
+            skipped++
+            return null
+        }
+        blobs.put(couple.id, blobId, sealed)
         return blobId to blobKey.b64()
     }
 
@@ -359,7 +377,7 @@ class SyncClient(
     /**
      * 스냅샷을 우편함 한 칸(규칙: 암호문 64KB)에 들어가는 조각으로 나눠 쓴다. 조각마다 같은 [coversThrough] 를 싣는다 —
      * 받는 쪽은 어느 조각이 먼저 와도 그 번호까지 반영한 것으로 보고, 조각 자신의 번호(그 뒤)는 보통 Op 처럼 받는다.
-     * 항목 하나가 한도를 넘으면 혼자 한 조각이 된다(그 조각은 규칙에 막힌다).
+     * 항목 하나가 한도를 넘으면 혼자 한 조각이 되고, 보낼 때 건너뛴다([seal]).
      */
     private suspend fun writeSnapshotOps(entityId: String, coversThrough: Long, items: List<OpPayload>) {
         val chunks = mutableListOf<MutableList<OpPayload>>()
@@ -406,6 +424,12 @@ class SyncClient(
 
         /** blob 참조 하나: blob id(36) · base64 키(44) · JSON 이름과 따옴표. */
         const val BLOB_REF_BYTES = 160
+
+        /** firestore.rules 우편함: ct(base64) ≤ 90,000자 = 암호문 67,500바이트. */
+        const val MAX_OP_CIPHERTEXT = 90_000 / 4 * 3
+
+        /** storage.rules couples/{c}/blobs: 암호문 10MB. */
+        const val MAX_BLOB_BYTES = 10 * 1024 * 1024
     }
 }
 
