@@ -24,6 +24,8 @@ kotlin {
 
     sourceSets {
         commonTest.dependencies { implementation(kotlin("test")) }
+        // 로그인 화면 렌더 확인(소셜 버튼을 각 사 가이드와 대조).
+        jvmTest.dependencies { implementation(compose.desktop.currentOs) }
         commonMain.dependencies {
             // feature 는 core 만 본다. 다른 feature 로의 이동은 :composeApp 이 콜백으로 잇는다.
             implementation(project(":core:designsystem"))
