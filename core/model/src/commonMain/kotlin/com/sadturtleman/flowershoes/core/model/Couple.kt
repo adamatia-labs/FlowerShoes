@@ -37,7 +37,7 @@ data class User(
  * 연결된 커플 한 쌍.
  *
  * [keyEpoch] 는 지금 쓰는 커플 키 번호다. 기기가 바뀔 때마다 1씩 오른다.
- * [anniversary] 는 둘 다 고칠 수 있는 값이라 필드 단위 lamport 를 따로 둔다.
+ * 기념일은 여기 없고 기념일 일정([Event.COUPLE_ANNIVERSARY_ID])이다.
  */
 @Serializable
 data class Couple(
@@ -46,8 +46,6 @@ data class Couple(
     val partnerUserId: String,
     val keyEpoch: Int,
     val linkedAt: Instant,
-    val anniversary: kotlinx.datetime.LocalDate? = null,
-    val anniversaryLamport: Long = 0,
 )
 
 /**

@@ -18,6 +18,7 @@ val EventType.koreanName: String
         EventType.VISIT -> "면회"
         EventType.TRAINING -> "훈련"
         EventType.DUTY -> "당직"
+        EventType.ANNIVERSARY -> "기념일"
         EventType.OTHER -> "기타"
     }
 

@@ -138,10 +138,11 @@ class CalendarViewModel(
             }
             CalendarIntent.ToggleExpanded -> ui.update { it.copy(expanded = !it.expanded) }
             is CalendarIntent.NewEvent -> ui.update { it.copy(draft = EventDraft(null, start = intent.on, end = intent.on)) }
-            is CalendarIntent.Edit -> ui.update {
-                val e = intent.event
+            is CalendarIntent.Edit -> viewModelScope.launch {
+                // 매년 반복 기념일은 그 해로 옮겨 놓은 사본이라 원래 날(원래 해)로 고친다.
+                val e = if (intent.event.repeats) events.get(intent.event.id) ?: intent.event else intent.event
                 val allDay = e.start.time == LocalTime(0, 0) && e.end.time.hour == 23 && e.end.time.minute == 59
-                it.copy(draft = EventDraft(e.id, e.type, e.title, e.start.date, e.end.date, e.alarm, allDay, e.start.time, e.end.time, e.memo))
+                ui.update { it.copy(draft = EventDraft(e.id, e.type, e.title, e.start.date, e.end.date, e.alarm, allDay, e.start.time, e.end.time, e.memo)) }
             }
             is CalendarIntent.ChangeDraft -> ui.update { it.copy(draft = intent.draft) }
             CalendarIntent.SaveDraft -> save()
@@ -159,7 +160,7 @@ class CalendarViewModel(
         if (!d.valid) return
         ui.update { it.copy(draft = null) }
         viewModelScope.launch {
-            // 고칠 때는 기존 행(휴가 연결 · 만남 사진 · LWW 값)을 그대로 두고 칸만 바꾼다.
+            // 고칠 때는 기존 행(매년 반복 · 만남 사진 · LWW 값)을 그대로 두고 칸만 바꾼다.
             val old = d.id?.let { events.get(it) }
             val base = old ?: Event(
                 id = events.newId(), type = d.type, title = "", start = d.startAt, end = d.endAt, alarm = d.alarm,

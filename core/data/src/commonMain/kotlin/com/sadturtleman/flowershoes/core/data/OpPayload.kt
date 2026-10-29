@@ -30,7 +30,7 @@ sealed interface OpPayload {
     @Serializable @SerialName("event")
     data class EventPut(val event: Event, val photos: List<PhotoRef> = emptyList()) : OpPayload
 
-    /** 받은 휴가(휴가 관리). 조용한 종류(PROFILE)로 보낸다 — 알림 없이 반영. */
+    /** 받은 휴가(휴가 관리 › 출처 내역). 조용한 종류(PROFILE)로 보낸다 — 알림 없이 반영. */
     @Serializable @SerialName("leave")
     data class LeaveGrantPut(val grant: LeaveGrant) : OpPayload
 
@@ -55,9 +55,6 @@ sealed interface OpPayload {
         /** 산 것(lifetime · book). 상대 폰이 함께 쓴다. */
         val perks: List<String> = emptyList(),
     ) : OpPayload
-
-    @Serializable @SerialName("anniversary")
-    data class AnniversaryPut(val date: String?, val lamport: Long) : OpPayload
 
     @Serializable @SerialName("delete")
     data class Delete(val entity: DeletableEntity, val id: String, val lamport: Long, val atMs: Long, val writerDevice: String) : OpPayload

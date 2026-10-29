@@ -26,6 +26,7 @@ import kotlinx.coroutines.IO
     exportSchema = true,
     // 2: 휴가 관리(leave_grant 표 · event.leaveGrantId). 3: 편지 글꼴(letter.font). 4: 만남 사진(event.photoIds). 5: 일정 메모(event.memo) · 폰 기종(user.deviceName).
     // 6: 만남 한 줄 메모(event.meetNotes) · 산 것(user.perks — 연결된 상대와 함께 쓰는 꽃신 평생 · 추억 책).
+    // 7: 휴가 하나의 풀 · 기념일 일정(event.leaveGrantId · couple.anniversary 제거, event.repeatYearly). 출시 전이라 파괴적 이전.
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
@@ -46,7 +47,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncDao(): SyncDao
 
     companion object {
-        const val VERSION = 6
+        const val VERSION = 7
         const val FILE_NAME = "kkotsin.db"
     }
 }
@@ -57,8 +58,12 @@ expect object AppDatabaseConstructor : RoomDatabaseConstructor<AppDatabase> {
     override fun initialize(): AppDatabase
 }
 
-/** 플랫폼별 빌더에 공통 설정을 얹는다. Android · iOS 가 같은 번들 SQLite 를 쓴다. */
+/**
+ * 플랫폼별 빌더에 공통 설정을 얹는다. Android · iOS 가 같은 번들 SQLite 를 쓴다.
+ * 자동 이전 경로가 없는 버전(출시 전 파괴적 변경)은 표를 지우고 새로 만든다.
+ */
 fun RoomDatabase.Builder<AppDatabase>.buildKkotsin(): AppDatabase = this
     .setDriver(BundledSQLiteDriver())
+    .fallbackToDestructiveMigration(dropAllTables = true)
     .setQueryCoroutineContext(Dispatchers.IO)
     .build()

@@ -9,7 +9,7 @@ import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.StatusRepository
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
-import com.sadturtleman.flowershoes.core.military.annualLeaveDays
+import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.military.expectedName
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
@@ -96,7 +96,7 @@ class HomeViewModel(
 
     private data class People(val linked: Boolean, val partnerId: String?, val myRole: Role, val myName: String, val partnerName: String, val anniversary: LocalDate?, val linkedAt: Long?)
 
-    private val people: Flow<People> = combine(profile.observeCouple(), profile.observeUsers()) { couple, users ->
+    private val people: Flow<People> = combine(profile.observeCouple(), profile.observeUsers(), profile.observeAnniversary()) { couple, users, anniversary ->
         val mine = users.firstOrNull { it.id == me }
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
         val partner = partnerId?.let { id -> users.firstOrNull { it.id == id } }
@@ -107,7 +107,7 @@ class HomeViewModel(
             myRole = myRole,
             myName = mine?.nickname?.takeIf { it.isNotBlank() } ?: "나",
             partnerName = partner?.nickname?.takeIf { it.isNotBlank() } ?: "연인",
-            anniversary = couple?.anniversary?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+            anniversary = anniversary,
             linkedAt = couple?.linkedAtMs?.takeIf { partnerId != null },
         )
     }
@@ -122,17 +122,17 @@ class HomeViewModel(
         events.observeRange(LocalDate(today.year - 2, 1, 1), LocalDate(today.year + 3, 12, 31))
     }.map { list -> list.filter { it.type == EventType.VACATION && it.deletedAt == null } }
 
-    /** 받은 휴가 총 일수(휴가 관리). 아직 하나도 적지 않았으면 null — 군종 기본 연가로 센다. */
-    private val granted: Flow<Int?> = (leave?.observeGrants() ?: flowOf(emptyList())).map { g -> g.takeIf { it.isNotEmpty() }?.sumOf { it.days } }
+    /** 휴가 하나의 풀(휴가 관리와 같은 값). 없으면(미리보기 · 테스트) 군종 정기휴가 − 캘린더 휴가로 센다. */
+    private val pool: Flow<LeavePool?> = leave?.observePool() ?: flowOf(null)
 
     val state: StateFlow<HomeState> = combine(
-        combine(people, profile.observeTimelines(), leaves, granted) { p, t, l, g -> Triple(p, t, l to g) },
+        combine(people, profile.observeTimelines(), leaves, pool) { p, t, l, g -> Triple(p, t, l to g) },
         partnerFeed,
         missYou.observeTodayFrom(me),
         letters.observeMyScheduledToday(),
         clock.ticker(),
     ) { (p, timelines, leaveInfo), (partnerStatus, received), sent, scheduled, now ->
-        val (vacations, grantedDays) = leaveInfo
+        val (vacations, leavePool) = leaveInfo
         val today = now.toLocalDateTime(SEOUL).date
         val pair = timelines.firstOrNull()
         val t = pair?.second
@@ -147,13 +147,13 @@ class HomeViewModel(
                 progress = it.progress(today).toFloat(),
             )
         }
-        // 휴가 관리를 쓰면 받은 휴가에서 쓴 날만, 아니면 캘린더 휴가 전부를 기본 연가에서 뺀다.
-        val usedLeave = vacations.filter { grantedDays == null || it.leaveGrantId != null }.sumOf { it.start.date.daysUntil(it.end.date) + 1 }
+        // 휴가 하나의 풀: 정기(군종) + 받은 휴가 − 휴가 일정 일수. 초과 사용이면 음수.
+        val pool = leavePool ?: LeavePool.of(branch, emptyList(), vacations)
         val soldier = t?.let {
             val next = it.nextRank(today)
             SoldierStats(
                 nextRank = next?.let { n -> "${n.rank.expectedName} · D-${today.daysUntil(n.from)}" },
-                leaveLeft = (grantedDays ?: branch?.annualLeaveDays?.takeIf { d -> d > 0 })?.let { d -> (d - usedLeave).coerceAtLeast(0) },
+                leaveLeft = pool.takeIf { p -> p.total > 0 }?.remaining,
                 servedDay = it.servedDays(today),
             )
         }

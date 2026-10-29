@@ -46,6 +46,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
+import com.sadturtleman.flowershoes.core.logging.BizEvent
+import com.sadturtleman.flowershoes.core.logging.BizLogger
+import com.sadturtleman.flowershoes.core.logging.BizView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.crypto.CrockfordCode
@@ -112,6 +115,7 @@ class PairingViewModel(
     /** 링크 호스트 · 카카오 템플릿(빌드 설정). */
     val config: InviteConfig = InviteConfig(),
     private val profile: ProfileRepository? = null,
+    private val bizLogger: BizLogger,
 ) : ViewModel() {
     private val handoff = LinkHandoff(settings, sync)
 
@@ -141,14 +145,15 @@ class PairingViewModel(
     /** 연인 초대 화면을 열었다: 아직 유효한 내 링크가 있으면 그대로(다시 보내기), 없으면 새로 만든다(이전 링크는 무효). */
     fun open() = run { s ->
         val now = s.poll()
-        if (now is PairingState.Waiting || now is PairingState.Linked) now else s.createLink()
+        if (now is PairingState.Waiting || now is PairingState.Linked) now
+        else s.createLink().also { st -> if (st is PairingState.Waiting) bizLogger.record(BizView.PAIRING, BizEvent.PairingLinkCreated) }
     }
 
-    /** 초대 링크로 들어왔다(딥링크): 보낸 사람을 보여 주고 수락을 기다린다. */
+    /** 초대 링크로 들어왔다(딥링크): 보낸 사람을 보여 주고 수락을 기다린다. 초대는 아직 쓰지 않는다. */
     fun preview(token: String) = run { it.preview(token) }
 
-    /** "수락하고 연결하기". */
-    fun accept(token: String) = run { it.accept(token) }
+    /** "수락하고 연결하기": 여기서 초대를 쓴다. */
+    fun accept(token: String) = run { it.accept(token).also { st -> if (st is PairingState.Accepting || st is PairingState.Linked) bizLogger.record(BizView.PAIRING, BizEvent.PairingLinkAccepted) } }
 
     fun editCode(text: String) = _ui.update { it.copy(codeInput = text.uppercase().take(9)) }
 
@@ -217,6 +222,8 @@ class PairingViewModel(
     }
 
     private suspend fun onLinked() {
+        // 보낸 쪽 처음 연결은 LinkWatchViewModel 이 기록한다(모달과 함께 한 번).
+        bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = relinkMode))
         if (!relinkMode) return handOff()
         settings.setKeyEpoch(1)
         runCatching { sync?.syncOnce() }

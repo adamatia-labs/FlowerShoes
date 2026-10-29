@@ -315,16 +315,14 @@ class SyncClient(
     }
 
     /**
-     * 스냅샷: 지금 DB 상태로 내가 쓴 것 전부(내 정보 · 복무 · 내가 마지막으로 고친 일정 · 내가 쓴 편지).
+     * 스냅샷: 지금 DB 상태로 내가 쓴 것 전부(내 정보 · 복무 · 내가 마지막으로 고친 일정(기념일 포함) · 받은 휴가 · 내가 쓴 편지).
      * 받는 쪽은 lamport 로 병합하고, 이 스트림을 [coversThrough] 까지 반영한 것으로 처리한다.
      */
     suspend fun writeSnapshot(coversThrough: Long) {
-        val couple = db.coupleDao().get()
         val items = buildList<OpPayload> {
             db.userDao().get(identity.userId)?.let { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
             db.serviceDao().get(identity.userId)?.let { add(OpPayload.ServicePut(it.toModel())) }
             db.serviceDao().get(com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER)?.let { add(OpPayload.ServicePut(it.toModel())) }
-            couple?.anniversary?.let { add(OpPayload.AnniversaryPut(it, couple.anniversaryLamport)) }
             db.eventDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.EventPut(it.toModel())) }
             db.leaveDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
             db.letterDao().byAuthor(identity.userId).forEach { l ->
@@ -343,11 +341,9 @@ class SyncClient(
      */
     suspend fun writeFullSnapshot() {
         val stream = myStream.wire
-        val couple = db.coupleDao().get()
         val items = buildList<OpPayload> {
             db.userDao().all().forEach { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
             db.serviceDao().all().forEach { add(OpPayload.ServicePut(it.toModel())) }
-            couple?.anniversary?.let { add(OpPayload.AnniversaryPut(it, couple.anniversaryLamport)) }
             db.eventDao().all().forEach { add(OpPayload.EventPut(it.toModel())) }
             db.leaveDao().all().forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
             db.letterDao().allActive().forEach { l -> add(OpPayload.LetterPut(l.toModel(), drawingMetas(l.id))) }

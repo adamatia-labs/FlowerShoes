@@ -14,8 +14,6 @@ data class CoupleEntity(
     val partnerUserId: String,
     val keyEpoch: Int,
     val linkedAtMs: Long,
-    val anniversary: String?,
-    val anniversaryLamport: Long,
 )
 
 @Entity(tableName = "user")
@@ -82,15 +80,16 @@ data class EventEntity(
     val lamport: Long,
     val lastWriterDevice: String,
     val deletedAtMs: Long?,
-    val leaveGrantId: String? = null,
     /** 만남 사진 첨부 id 들(쉼표로 이음). */
     val photoIds: String? = null,
     val memo: String? = null,
     /** 만남 한 줄 메모(JSON 객체: 사용자 id → 메모). */
     val meetNotes: String? = null,
+    /** 매년 반복(기념일만 뜻이 있다). */
+    val repeatYearly: Boolean = true,
 )
 
-/** 받은 휴가(휴가 관리). 일정과 같은 LWW · tombstone. */
+/** 받은 휴가(휴가 관리 › 출처 내역). 일정과 같은 LWW · tombstone. */
 @Entity(tableName = "leave_grant")
 data class LeaveGrantEntity(
     @PrimaryKey val id: String,

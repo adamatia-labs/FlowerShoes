@@ -9,6 +9,8 @@ import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.sync.Outbox
 import com.sadturtleman.flowershoes.core.data.sync.PairingState
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
+import com.sadturtleman.flowershoes.core.logging.BizEvent
+import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.core.model.AppTheme
 import okio.Path.Companion.toOkioPath
 import org.jetbrains.skia.EncodedImageFormat
@@ -25,6 +27,12 @@ class InviteRenderTest {
         session = null,
         sync = null,
         settings = DeviceSettings(PreferenceDataStoreFactory.createWithPath { File.createTempFile("invite", ".preferences_pb").apply { delete() }.toOkioPath() }),
+        bizLogger = object : BizLogger {
+            override fun init() = Unit
+            override fun makeUUID() = ""
+            override fun record(viewName: String, event: BizEvent) = Unit
+            override fun destroy() = Unit
+        },
     )
     private val waiting = PairingUi(
         available = true,

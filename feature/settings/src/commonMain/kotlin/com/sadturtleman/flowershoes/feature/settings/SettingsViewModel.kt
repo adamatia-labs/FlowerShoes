@@ -65,19 +65,20 @@ class SettingsViewModel(
     private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 2)
     val notices: SharedFlow<String> = _notices
 
-    private val people = combine(profile.observeCouple(), profile.observeUsers()) { couple, users -> couple to users }
+    private val people = combine(profile.observeCouple(), profile.observeUsers(), profile.observeAnniversary()) { couple, users, anniversary ->
+        Triple(couple, users, anniversary)
+    }
 
     val state: StateFlow<SettingsState> = combine(
         combine(settings.state, settings.displayMode, settings.accountProvider) { d, mode, provider -> Triple(d, mode, provider) },
         profile.observeTimelines(),
         people,
         combine(settings.notifyPrefs, settings.marketingConsent) { n, m -> n to m },
-    ) { (d, mode, provider), timelines, (couple, users), (notify, marketing) ->
+    ) { (d, mode, provider), timelines, (couple, users, anniversary), (notify, marketing) ->
         val me = identity.userId
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
         val today = clock.today()
         val since = couple?.linkedAtMs?.takeIf { partnerId != null }?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(SEOUL).date }
-        val anniversary = couple?.anniversary?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         SettingsState(
             theme = d.theme,
             displayMode = mode,

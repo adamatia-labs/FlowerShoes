@@ -54,6 +54,9 @@ import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkToast
 import com.sadturtleman.flowershoes.core.designsystem.KkToastType
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
+import com.sadturtleman.flowershoes.core.logging.BizEvent
+import com.sadturtleman.flowershoes.core.logging.BizLogger
+import com.sadturtleman.flowershoes.core.logging.BizView
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.coroutineScope
@@ -117,11 +120,11 @@ class LinkWatchViewModel(
     private val settings: DeviceSettings,
     private val sync: SyncClient?,
     private val profile: ProfileRepository,
+    private val bizLogger: BizLogger,
 ) : ViewModel() {
     private val handoff = LinkHandoff(settings, sync)
     private val _ui = MutableStateFlow<AfterLinkUi?>(null)
     val ui: StateFlow<AfterLinkUi?> = _ui.asStateFlow()
-    private var handled: String? = null
     private var sending = false
 
     /** 앱이 앞에 있는 동안 부른다. 기다리는 링크가 없거나 결과가 나면 끝난다. */
@@ -143,6 +146,7 @@ class LinkWatchViewModel(
 
     private fun linked(coupleId: String) {
         handled = coupleId
+        bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = false))
         viewModelScope.launch {
             val total = handoff.begin()
             _ui.value = AfterLinkUi(partnerName(), total, total, Clock.System.now().toEpochMilliseconds())
@@ -176,6 +180,12 @@ class LinkWatchViewModel(
 
     private companion object {
         const val POLL_MS = 10_000L
+
+        /**
+         * 모달을 띄운 커플. 세션(PairingSession)은 앱 전체에 하나라 화면이 새로 만들어져도 연결됨을 계속 돌려준다 —
+         * 프로세스 안에서 한 번만 띄우고 한 번만 기록한다.
+         */
+        var handled: String? = null
     }
 }
 

@@ -29,7 +29,7 @@ class SyncSchedulerTest {
         val keys = DeviceKeys.generate()
         vault.putDeviceKeys(keys)
         vault.putCoupleKey(CoupleKey.generate(1))
-        db.coupleDao().upsert(CoupleEntity("couple", "me", "partner", 1, 0, null, 0))
+        db.coupleDao().upsert(CoupleEntity("couple", "me", "partner", 1, 0))
         db.deviceDao().upsert(DeviceEntity("partner-device", "partner", "partner", keys.signPub, keys.boxPub, "ACTIVE", 0, null))
     }
     @AfterTest fun cleanup() { db.close(); FileSystem.SYSTEM.deleteRecursively(root, mustExist = false) }

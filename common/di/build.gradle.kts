@@ -6,7 +6,7 @@ plugins {
 kotlin {
     jvmToolchain(17)
 
-    // 디스패처 한정자. :core:logging · :core:featureflag 가 iOS 에서도 같은 한정자로 IO 를 받는다.
+    // 디스패처 한정자. :core:logging · :core:featureflag · :core:tti 가 iOS 에서도 같은 한정자로 IO 를 받는다.
     // jvm 은 그 모듈들의 테스트용.
     android {
         namespace = "com.sadturtleman.flowershoes.common.di"

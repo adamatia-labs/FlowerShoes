@@ -15,9 +15,11 @@ import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.notification.NotificationSync
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
 import com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider
+import com.sadturtleman.flowershoes.app.purchaseRecorder
+import com.sadturtleman.flowershoes.core.data.logged
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
-import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
+import com.sadturtleman.flowershoes.core.tti.TtiRecorder
 import com.sadturtleman.flowershoes.widget.updateAllWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -100,8 +102,9 @@ class FlowerShoesApplication :
                             this@FlowerShoesApplication, BuildConfig.REVENUECAT_API_KEY, get<IdentityHolder>(), BuildConfig.DEBUG,
                         )
                     }
-                    single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>() }
-                    single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book }
+                    // 결제 시작 · 완료 이벤트는 스토어를 감싸 남긴다(PurchaseLogging).
+                    single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().logged(get<BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.LIFETIME)) }
+                    single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book.logged(get<BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.MEMORY_BOOK)) }
                 }
             })
         }
@@ -120,7 +123,7 @@ class FlowerShoesApplication :
                 androidx.glance.appwidget.GlanceAppWidgetManager(this@FlowerShoesApplication)
                     .getGlanceIds(com.sadturtleman.flowershoes.widget.DrawingWidget::class.java).isNotEmpty()
             }) { updateAllWidgets(this@FlowerShoesApplication) }
-            NotificationSync(get(), get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication), prefs = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs).start(this)
+            NotificationSync(get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication), prefs = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs).start(this)
             // 서버 설정이 있는 빌드에서만 등록돼 있다.
             getKoin().getOrNull<SyncScheduler>()?.start(this)
             registerPushTokenOnSignIn()

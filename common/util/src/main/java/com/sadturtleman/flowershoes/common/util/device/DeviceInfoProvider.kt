@@ -100,7 +100,7 @@ interface DeviceInfoProvider {
     fun getRefreshRate(): Float
 
     /**
-     * 프레임 하나에 허락된 시간(ms). :jank 의 판정 기준선이다.
+     * 프레임 하나에 허락된 시간(ms). :core:jank 의 판정 기준선이다.
      *
      * 60Hz 의 16.7ms 를 상수로 박아 두면 120Hz 기기에서 이미 끊긴 프레임이 정상으로 적힌다.
      * 주사율을 읽지 못했으면 60Hz 로 본다(가장 흔하고, 가장 너그러운 쪽).

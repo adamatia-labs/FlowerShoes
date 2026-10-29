@@ -245,7 +245,7 @@ class RelinkSession(
         val keys = myKeys()
         val now = clock.now().toEpochMilliseconds()
         db.coupleDao().clear()
-        db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, giverUid, key.epoch, now, null, 0))
+        db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, giverUid, key.epoch, now))
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
         db.deviceDao().upsert(DeviceEntity(giverDeviceId, giverUid, giverUid, giverKeys.signPub, giverKeys.boxPub, DeviceState.ACTIVE.name, now, null))
         sync?.syncOnce()
