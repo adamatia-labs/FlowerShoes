@@ -15,6 +15,7 @@ import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.notification.NotificationSync
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
 import com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider
+import com.sadturtleman.flowershoes.app.purchaseRecorder
 import com.sadturtleman.flowershoes.core.data.logged
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
@@ -97,8 +98,8 @@ class FlowerShoesApplication :
                         )
                     }
                     // 결제 시작 · 완료 이벤트는 스토어를 감싸 남긴다(PurchaseLogging).
-                    single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().logged(get()) }
-                    single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book.logged(get()) }
+                    single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().logged(get<BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.LIFETIME)) }
+                    single<com.sadturtleman.flowershoes.core.data.BookStore> { get<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>().book.logged(get<BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.MEMORY_BOOK)) }
                 }
             })
         }

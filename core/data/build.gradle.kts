@@ -31,8 +31,6 @@ kotlin {
             api(project(":core:sync"))
             api(project(":core:military"))
             api(project(":core:crypto"))
-            // 결제 시작 · 완료 이벤트(PurchaseLogging).
-            implementation(project(":core:logging"))
             implementation(libs.androidx.room.runtime)
             // 테스트의 인메모리 DB 도 번들 드라이버를 쓴다.
             implementation(libs.androidx.sqlite.bundled)

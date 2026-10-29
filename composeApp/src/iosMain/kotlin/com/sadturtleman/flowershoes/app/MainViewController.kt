@@ -115,10 +115,10 @@ fun MainViewController(
                     }
                     if (purchases != null) {
                         // 결제 시작 · 완료 이벤트는 스토어를 감싸 남긴다(PurchaseLogging).
-                        single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { IosLifetimeStore(purchases, get()).logged(get()) }
+                        single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { IosLifetimeStore(purchases, get()).logged(get<com.sadturtleman.flowershoes.core.logging.BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.LIFETIME)) }
                         single<com.sadturtleman.flowershoes.core.data.BookStore> {
                             object : com.sadturtleman.flowershoes.core.data.BookStore, com.sadturtleman.flowershoes.core.data.OneTimeProduct by IosProduct(purchases, "memory_book", "memory_book") {}
-                                .logged(get())
+                                .logged(get<com.sadturtleman.flowershoes.core.logging.BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.MEMORY_BOOK))
                         }
                     }
                 },

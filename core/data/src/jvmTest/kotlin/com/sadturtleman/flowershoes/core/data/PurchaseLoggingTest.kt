@@ -1,9 +1,5 @@
 package com.sadturtleman.flowershoes.core.data
 
-import com.sadturtleman.flowershoes.core.logging.BizEvent
-import com.sadturtleman.flowershoes.core.logging.BizLogger
-import com.sadturtleman.flowershoes.core.logging.BizView
-import com.sadturtleman.flowershoes.core.logging.PurchaseProduct
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -15,37 +11,31 @@ class PurchaseLoggingTest {
 
     @Test
     fun `꽃신 평생을 사면 시작과 완료가 남는다`() = runTest {
-        val logger = RecordingBizLogger()
+        val steps = mutableListOf<PurchaseStep>()
 
-        val outcome = FakeLifetime(PurchaseOutcome.Purchased).logged(logger).buy()
+        val outcome = FakeLifetime(PurchaseOutcome.Purchased).logged { steps += it }.buy()
 
         assertEquals(PurchaseOutcome.Purchased, outcome)
-        assertEquals(
-            listOf(
-                BizView.LIFETIME to BizEvent.PurchaseStarted(PurchaseProduct.LIFETIME),
-                BizView.LIFETIME to BizEvent.PurchaseCompleted(PurchaseProduct.LIFETIME),
-            ),
-            logger.recorded,
-        )
+        assertEquals(listOf(PurchaseStep.STARTED, PurchaseStep.COMPLETED), steps)
     }
 
     @Test
     fun `추억 책 결제를 취소하면 시작만 남는다`() = runTest {
-        val logger = RecordingBizLogger()
+        val steps = mutableListOf<PurchaseStep>()
 
-        FakeBook(PurchaseOutcome.Cancelled).logged(logger).buy()
+        FakeBook(PurchaseOutcome.Cancelled).logged { steps += it }.buy()
 
-        assertEquals(listOf<Pair<String, BizEvent>>(BizView.MEMORY_BOOK to BizEvent.PurchaseStarted(PurchaseProduct.MEMORY_BOOK)), logger.recorded)
+        assertEquals(listOf(PurchaseStep.STARTED), steps)
     }
 
     @Test
     fun `구매 복원은 결제 퍼널에 남기지 않는다`() = runTest {
-        val logger = RecordingBizLogger()
+        val steps = mutableListOf<PurchaseStep>()
 
-        FakeLifetime(PurchaseOutcome.Purchased).logged(logger).restore()
-        FakeBook(PurchaseOutcome.Purchased).logged(logger).restore()
+        FakeLifetime(PurchaseOutcome.Purchased).logged { steps += it }.restore()
+        FakeBook(PurchaseOutcome.Purchased).logged { steps += it }.restore()
 
-        assertEquals(emptyList<Pair<String, BizEvent>>(), logger.recorded)
+        assertEquals(emptyList<PurchaseStep>(), steps)
     }
 }
 
@@ -62,14 +52,4 @@ private class FakeBook(private val outcome: PurchaseOutcome) : BookStore {
     override suspend fun price(): String? = null
     override suspend fun buy() = outcome
     override suspend fun restore() = outcome
-}
-
-private class RecordingBizLogger : BizLogger {
-    val recorded = mutableListOf<Pair<String, BizEvent>>()
-    override fun init() = Unit
-    override fun makeUUID() = "u"
-    override fun record(viewName: String, event: BizEvent) {
-        recorded += viewName to event
-    }
-    override fun destroy() = Unit
 }
