@@ -111,7 +111,6 @@ dependencies {
     // 홈 화면 위젯. 위젯은 :core:widget-bridge 가 쓴 스냅샷만 읽는다.
     implementation(project(":core:widget-bridge"))
     implementation(project(":core:notification"))
-    implementation(project(":core:backup"))
     implementation(project(":core:media"))
     // 푸시(초인종). google-services.json 이 있는 빌드에서만 실제로 동작한다.
     implementation(project(":core:firebase"))

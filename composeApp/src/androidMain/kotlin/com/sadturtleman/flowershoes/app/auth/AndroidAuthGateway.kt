@@ -55,7 +55,6 @@ data class AuthKeys(val kakaoNativeAppKey: String, val googleWebClientId: String
 class AndroidAuthGateway(
     private val context: Context,
     private val keys: AuthKeys,
-    private val hasBackup: suspend (uid: String) -> Boolean,
     private val region: String = "asia-northeast3",
 ) : AuthGateway {
 
@@ -76,7 +75,7 @@ class AndroidAuthGateway(
                     ?: return SignInResult.Cancelled
                 AuthProvider.APPLE -> apple(activity)
             }
-            SignInResult.Success(uid, provider, hasBackup = runCatching { hasBackup(uid) }.getOrDefault(false))
+            SignInResult.Success(uid, provider)
         } catch (e: NotConfigured) {
             SignInResult.Failed(e.message ?: "로그인 설정 전이에요")
         } catch (e: Exception) {
@@ -141,7 +140,7 @@ class AndroidAuthGateway(
                 }
                 AuthProvider.KAKAO -> return SignInResult.Failed("카카오는 연결할 수 없어요")
             }
-            SignInResult.Success(user.uid, provider, hasBackup = false)
+            SignInResult.Success(user.uid, provider)
         } catch (e: NotConfigured) {
             SignInResult.Failed(e.message ?: "로그인 설정 전이에요")
         } catch (e: Exception) {

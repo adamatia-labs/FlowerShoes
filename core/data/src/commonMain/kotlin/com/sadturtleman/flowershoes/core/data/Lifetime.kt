@@ -38,8 +38,6 @@ interface LifetimeStore {
  */
 interface BookStore : OneTimeProduct
 
-/** 백업 용량 추가(한 번 결제 3,300원 · +5GB, 수익 모델 확정). 백업은 계정마다라 상대와 나누지 않는다. */
-interface BackupPlusStore : OneTimeProduct
 
 /** 한 번 사는 상품 하나(스토어 결제). */
 interface OneTimeProduct {

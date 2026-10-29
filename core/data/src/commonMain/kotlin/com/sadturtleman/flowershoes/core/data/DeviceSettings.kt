@@ -98,15 +98,6 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setWidgetFrame(frame: String) = store.edit { it[WIDGET_FRAME] = frame }
 
-    /** 설정 › 백업: 자동 백업 · 셀룰러에서도 백업(끄면 Wi-Fi 에서만) · 복구 코드를 확인했는지. */
-    val autoBackup: Flow<Boolean> = store.data.map { (it[AUTO_BACKUP] ?: 1) == 1 }
-    val cellularBackup: Flow<Boolean> = store.data.map { (it[CELLULAR_BACKUP] ?: 0) == 1 }
-    val recoveryCodeSeen: Flow<Boolean> = store.data.map { (it[CODE_SEEN] ?: 0) == 1 }
-
-    suspend fun setAutoBackup(on: Boolean) = store.edit { it[AUTO_BACKUP] = if (on) 1 else 0 }
-    suspend fun setCellularBackup(on: Boolean) = store.edit { it[CELLULAR_BACKUP] = if (on) 1 else 0 }
-    suspend fun setRecoveryCodeSeen() = store.edit { it[CODE_SEEN] = 1 }
-
     /** 추억 › 위젯에 다시 띄우기: 이 그림을 [atMs] 부터 위젯에. 그 뒤에 새 그림이 오면 새 그림이 이긴다. */
     suspend fun pinWidgetDrawing(drawingId: String, atMs: Long) = store.edit { it[WIDGET_PIN] = "$drawingId|$atMs" }
 
@@ -154,11 +145,8 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val WIDGET_TOTALS = stringPreferencesKey("widget_totals")
         val widgetJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val NOTIFY_PREFS = stringPreferencesKey("notify_prefs")
-        val AUTO_BACKUP = intPreferencesKey("auto_backup")
         val DISPLAY_MODE = stringPreferencesKey("display_mode")
         val WIDGET_FRAME = stringPreferencesKey("widget_frame")
-        val CELLULAR_BACKUP = intPreferencesKey("cellular_backup")
-        val CODE_SEEN = intPreferencesKey("recovery_code_seen")
     }
 }
 

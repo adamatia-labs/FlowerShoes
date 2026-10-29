@@ -44,7 +44,6 @@ include(":core:drawing-ui")
 include(":core:firebase")
 include(":core:widget-bridge")
 include(":core:notification")
-include(":core:backup")
 include(":core:media")
 
 // 화면 단위 기능. core 만 의존하고 서로는 모른다.

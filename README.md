@@ -31,12 +31,11 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 | `model` | 도메인 모델 |
 | `military` | 복무 규칙 표 · 전역일 · 진급일 · 호봉 · D-day |
 | `sync` | 스트림 · 커서 · 재전송/floor/스냅샷 판단 · LWW |
-| `crypto` | 기기 키 · 커플 키 · Op 봉투 · SAS · 기기 교체 MAC · 복구 코드 |
+| `crypto` | 기기 키 · 커플 키 · Op 봉투 · SAS · 기기 교체 MAC |
 | `database` | Room KMP 테이블 · DAO · 플랫폼별 빌더 |
 | `data` | Repository · 쓰기+SyncOp 트랜잭션 · 동기화 클라이언트 · 연결 · 기기 교체 |
 | `drawing-engine` · `drawing-ui` | 그림 문서(TLV) · 간소화 · 리플레이 · 렌더러 |
 | `compression` | zstd 압축(그림 문서 · 백업) |
-| `backup` | 암호화 백업 엔진 · 복구 코드 keywrap |
 | `media` | 그림 PNG 렌더러 |
 | `designsystem` | Figma 토큰 4테마 × 라이트/다크 · 컴포넌트 |
 | `auth` · `firebase` | 로그인 계약 · Firestore 전송 어댑터 · 푸시 토큰 |
@@ -74,7 +73,7 @@ FIREBASE_EMULATOR_HOST=10.0.2.2   # 로컬 Firebase 에뮬레이터를 쓸 때�
 core 테스트는 Windows 에서도 `jvmTest` 로 돕니다. iOS 타깃은 macOS 에서만 빌드됩니다.
 
 ```bash
-./gradlew :core:military:jvmTest :core:sync:jvmTest :core:drawing-engine:jvmTest :core:crypto:jvmTest :core:database:jvmTest :core:data:jvmTest :core:notification:jvmTest :core:backup:jvmTest
+./gradlew :core:military:jvmTest :core:sync:jvmTest :core:drawing-engine:jvmTest :core:crypto:jvmTest :core:database:jvmTest :core:data:jvmTest :core:notification:jvmTest
 ```
 
 서버 테스트:

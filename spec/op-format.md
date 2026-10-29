@@ -33,8 +33,6 @@ i32be keyEpoch
 | SAS | `h = BLAKE2b-128( P("kkotsin-sas-v1") ‖ P(code) ‖ P(signPubA) ‖ P(boxPubA) ‖ P(signPubB) ‖ P(boxPubB) ‖ P(nonceB) )`, 앞 8바이트 big-endian → `>>> 1` → `% 1_000_000`, 6자리 0 채움 |
 | 기기 교체 MAC | `BLAKE2b-256(key = 커플 키)( P("kkotsin-rotation-v1") ‖ P(요청 바이트) )` |
 | 커플 키 전달 | `crypto_box_seal( i32be epoch ‖ key32, 받는 기기 boxPub )` |
-| 백업 키 파생 | `BLAKE2b-256(key = BK)( P("kkotsin-bk-v1") ‖ P(용도) )`, 용도 = `data` · `blob-name` |
-| 복구 코드 keywrap | Argon2id13(ops 3, mem 64MiB, salt 16바이트) → XChaCha20-Poly1305, AAD `kkotsin-keywrap-v1` |
 
 ## 인라인 푸시 페이로드
 

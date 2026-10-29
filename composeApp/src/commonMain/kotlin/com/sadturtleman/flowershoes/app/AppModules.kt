@@ -24,7 +24,6 @@ import com.sadturtleman.flowershoes.feature.letter.LetterViewModel
 import com.sadturtleman.flowershoes.feature.memory.MemoryViewModel
 import com.sadturtleman.flowershoes.feature.pairing.PairingViewModel
 import com.sadturtleman.flowershoes.feature.settings.SettingsViewModel
-import com.sadturtleman.flowershoes.feature.settings.BackupViewModel
 import com.sadturtleman.flowershoes.core.data.sync.BlobStore
 import com.sadturtleman.flowershoes.core.data.sync.InMemoryKeyVault
 import com.sadturtleman.flowershoes.core.data.sync.KeyVault
@@ -34,8 +33,6 @@ import com.sadturtleman.flowershoes.core.data.sync.PairingTransport
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.data.sync.RotationApprover
-import com.sadturtleman.flowershoes.core.data.sync.PostRestoreRotation
-import com.sadturtleman.flowershoes.core.data.sync.RotationRequester
 import com.sadturtleman.flowershoes.core.data.sync.RotationTransport
 import com.sadturtleman.flowershoes.core.data.sync.AccountTransport
 import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
@@ -118,16 +115,6 @@ fun kkotsinModules(
             single {
                 val client = get<SyncClient>()
                 val approver = cloud.rotation?.let { RotationApprover(get(), get(), get(), it, drainInbox = { client.syncOnce() }, get()) }
-                val afterRestore = cloud.rotation?.let { t ->
-                    val settings = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
-                    val requester = RotationRequester(get(), get(), get(), t, get(), deviceInfo = {
-                        (getKoin().getOrNull<com.sadturtleman.flowershoes.feature.settings.PlatformActions>()?.deviceName.orEmpty()) to (settings.accountProvider.first().orEmpty())
-                    })
-                    PostRestoreRotation(get(), get(), requester, t, onFinished = { token, epoch ->
-                        settings.setKeyEpoch(epoch)
-                        cloud.account?.signInWithCustomToken(token)
-                    })
-                }
                 val identity = get<com.sadturtleman.flowershoes.core.data.Identity>()
                 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
                 val doorbell = get<AppDatabase>().coupleDao().observe().distinctUntilChangedBy { it?.id }.flatMapLatest { c ->
@@ -137,7 +124,7 @@ fun kkotsinModules(
                     )
                 }
                 val db = get<AppDatabase>()
-                SyncScheduler(get(), client, approver, afterRestore, doorbell, partnerGone = {
+                SyncScheduler(get(), client, approver, doorbell, partnerGone = {
                     val couple = db.coupleDao().get()
                     // 연결돼 있는데 서버의 내 커플 id 가 비었다 = 상대가 해제했다. 다른 커플 id(다시 연결 중)는 해제가 아니다.
                     if (couple == null || couple.partnerUserId.isBlank()) false
@@ -155,8 +142,6 @@ fun kkotsinModules(
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
         viewModel { MemoryViewModel(get(), get(), get(), get(), clock = get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull()) }
-        viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull(), getOrNull()) }
-        viewModel { BackupViewModel(getOrNull(), get()) }
-        viewModel { com.sadturtleman.flowershoes.feature.settings.RestoreViewModel(getOrNull(), get(), get()) }
+        viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull()) }
     },
 )

@@ -43,7 +43,6 @@ object EmulatorFirebase {
  */
 class DevEmailAuthGateway(
     private val deviceTag: () -> String,
-    private val hasBackup: suspend (String) -> Boolean,
     /** 다른 로그인 방법 연결은 실제 제공자 화면이 필요해 Android 구현에 맡긴다. */
     private val linker: AuthGateway? = null,
 ) : AuthGateway {
@@ -55,7 +54,7 @@ class DevEmailAuthGateway(
         val user = runCatching { auth.signInWithEmailAndPassword(email, PASSWORD).await().user }.getOrNull()
             ?: auth.createUserWithEmailAndPassword(email, PASSWORD).await().user
         val uid = checkNotNull(user).uid
-        SignInResult.Success(uid, provider, hasBackup = runCatching { hasBackup(uid) }.getOrDefault(false))
+        SignInResult.Success(uid, provider)
     } catch (e: Exception) {
         SignInResult.Failed("개발용 로그인 실패: ${e.message}")
     }

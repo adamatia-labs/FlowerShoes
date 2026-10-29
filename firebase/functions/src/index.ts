@@ -17,16 +17,14 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
-import { defineBoolean, defineSecret, defineString } from 'firebase-functions/params';
+import { defineSecret, defineString } from 'firebase-functions/params';
 import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { decide, DEFAULT_PREFS, inDigestWindow, INLINE_MAX_BASE64, NotifyPrefs, NotifyState, quietEndUtcMinute } from './policy';
 import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from './sig';
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
-import { DAY_MS, FREE_KEEP_DAYS, retentionAction, WARN_DAYS, warnMessage } from './retention';
 import { refreshEntitlements } from './revenuecat';
-import { backupWarningId } from './mail';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -43,8 +41,6 @@ const APPLE_PRIVATE_KEY = defineString('APPLE_PRIVATE_KEY', { default: '' });
 // RevenueCat: 웹훅 Authorization 헤더 값 · REST 비밀 키(sk_). Secret Manager 에 둔다(firebase functions:secrets:set).
 const REVENUECAT_WEBHOOK_AUTH = defineSecret('REVENUECAT_WEBHOOK_AUTH');
 const REVENUECAT_SECRET_KEY = defineSecret('REVENUECAT_SECRET_KEY');
-// 웹훅과 메일 수신 검증을 마치고 운영자가 명시적으로 켜기 전에는 삭제하지 않는다.
-const BACKUP_RETENTION_ENABLED = defineBoolean('BACKUP_RETENTION_ENABLED', { default: false });
 const appleConfig = (): AppleConfig => ({
   teamId: APPLE_TEAM_ID.value(), keyId: APPLE_KEY_ID.value(), clientId: APPLE_CLIENT_ID.value(), privateKey: APPLE_PRIVATE_KEY.value(),
 });
@@ -403,7 +399,6 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
     const couple = await coupleOf(coupleId).catch(() => null);
     if (couple) await deleteCouple(coupleId, couple.members);
   }
-  await getStorage().bucket().deleteFiles({ prefix: `backups/${uid}/` }).catch(() => undefined);
   if (uid.startsWith('kakao:') && KAKAO_ADMIN_KEY.value()) {
     await fetch('https://kapi.kakao.com/v1/user/unlink', {
       method: 'POST',
@@ -456,48 +451,8 @@ export const appleStoreToken = onCall({ region: REGION }, async (req) => {
 
 
 /**
- * 백업 보관 기간(약관 제10조의2): 매일 새벽, 마지막 사용(users/{uid}.lastSeenAt) 이 오래된 사람에게 30일 · 7일 전 예고를 보내고
- * 기한이 지나면 backups/{uid}/ 를 지운다. 꽃신 평생(entitlements/{uid}.lifetime, RevenueCat 웹훅이 쓴다)은 10년.
- * 기기 안의 기록은 지우지 않는다. 이메일 예고는 메일 발송을 붙이면서 함께 보낸다.
- */
-export const backupRetention = onSchedule({ schedule: 'every day 04:00', region: REGION, timeZone: 'Asia/Seoul' }, async () => {
-  if (!BACKUP_RETENTION_ENABLED.value()) return;
-  const now = Date.now();
-  const cutoff = Timestamp.fromMillis(now - (FREE_KEEP_DAYS - Math.max(...WARN_DAYS)) * DAY_MS);
-  const users = await db.collection('users').where('lastSeenAt', '<=', cutoff).get();
-  for (const user of users.docs) {
-    const uid = user.id;
-    if (user.get('backupDeletedAt')) continue;
-    const lastSeen = (user.get('lastSeenAt') as Timestamp).toMillis();
-    const ent = await db.doc(`entitlements/${uid}`).get();
-    const lifetime = ent.get('lifetime') === true;
-    // 예고 기록은 같은 lastSeenAt 동안만 유효하다(앱을 쓰면 새로 센다).
-    const warnedFor = user.get('retentionWarnedFor') as number | undefined;
-    const warned = warnedFor === lastSeen ? ((user.get('retentionWarned') as number[] | undefined) ?? []) : [];
-    const action = retentionAction(lastSeen, lifetime, now, warned);
-    if (action.type === 'warn') {
-      const msg = warnMessage(action.daysLeft);
-      await push(uid, { visible: msg, data: { kind: 'backupExpiry', daysLeft: String(action.daysLeft) } });
-      // 서버 전용 mail 문서를 자체 관리하는 onMailCreated 함수가 보낸다.
-      const email = await getAuth().getUser(uid).then((u) => u.email).catch(() => undefined);
-      if (email) {
-        const ref = db.doc(`mail/${backupWarningId(uid, lastSeen, action.daysLeft)}`);
-        await db.runTransaction(async (tx) => {
-          if ((await tx.get(ref)).exists) return;
-          tx.create(ref, { to: email, message: { subject: msg.title, text: msg.body }, createdAt: FieldValue.serverTimestamp() });
-        });
-      }
-      await user.ref.set({ retentionWarnedFor: lastSeen, retentionWarned: [...warned, action.daysLeft] }, { merge: true });
-    } else if (action.type === 'delete') {
-      await getStorage().bucket().deleteFiles({ prefix: `backups/${uid}/` }).catch(() => undefined);
-      await user.ref.set({ backupDeletedAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
-  }
-});
-
-/**
  * RevenueCat 웹훅(대시보드 › Integrations › Webhooks, Authorization 헤더 = REVENUECAT_WEBHOOK_AUTH).
- * 알림이 온 사용자의 이용권을 REST API 로 다시 읽어 entitlements/{uid} 에 쓴다 — backupRetention 이 평생 10년을 여기서 본다.
+ * 알림이 온 사용자의 이용권을 REST API 로 다시 읽어 entitlements/{uid} 에 쓴다.
  */
 export const revenuecatWebhook = onRequest({ region: REGION, secrets: [REVENUECAT_WEBHOOK_AUTH, REVENUECAT_SECRET_KEY] }, async (req, res) => {
   const auth = REVENUECAT_WEBHOOK_AUTH.value();

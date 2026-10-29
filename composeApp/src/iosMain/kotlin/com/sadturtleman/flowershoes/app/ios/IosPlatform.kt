@@ -57,11 +57,6 @@ fun appGroupRoot(): Path {
 
 /** 기기 인증: LAContext .deviceOwnerAuthentication(Face ID · Touch ID, 없으면 기기 암호). */
 class IosPlatformActions : PlatformActions {
-    override suspend fun deleteSyncedBackupKey() {
-        org.koin.mp.KoinPlatform.getKoin().getOrNull<com.sadturtleman.flowershoes.core.backup.BackupManager>()?.deleteSyncedKey()
-    }
-    override val keySyncName: String get() = "iCloud 키체인"
-
     override val deviceName: String get() = platform.UIKit.UIDevice.currentDevice.model
 
     override val osVersion: String get() = "iOS ${platform.UIKit.UIDevice.currentDevice.systemVersion}"

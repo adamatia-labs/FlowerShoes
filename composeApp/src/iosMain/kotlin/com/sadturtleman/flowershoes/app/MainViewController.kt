@@ -91,30 +91,12 @@ fun MainViewController(
                     auth = if (cloud != null && emulatorAuth && kotlin.native.Platform.isDebugBinary) {
                         EmulatorAuthGateway()
                     } else if (cloud != null && signInUi != null) {
-                        com.sadturtleman.flowershoes.core.firebase.FirebaseAuthGateway(signInUi, hasBackup = { com.sadturtleman.flowershoes.core.firebase.hasCloudBackup(it) })
+                        com.sadturtleman.flowershoes.core.firebase.FirebaseAuthGateway(signInUi)
                     } else {
                         com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway()
                     },
                     vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
                 ) + org.koin.dsl.module {
-                    single<com.sadturtleman.flowershoes.core.backup.BackupKeySync> {
-                        com.sadturtleman.flowershoes.core.backup.ICloudBackupKeySync { get<com.sadturtleman.flowershoes.core.data.Identity>().userId }
-                    }
-                    single {
-                        val temporary = (requireNotNull(support?.path) + "/db/backup-work").toPath()
-                        com.sadturtleman.flowershoes.core.backup.BackupManager(
-                            storage = if (firebase) com.sadturtleman.flowershoes.core.firebase.IosBackupStorage()
-                                else com.sadturtleman.flowershoes.core.backup.FileBackupStorage((requireNotNull(support?.path) + "/db/backup-local").toPath()),
-                            source = com.sadturtleman.flowershoes.core.backup.RoomBackupSource(get(), get(), get(), get(), temporary),
-                            vault = get(),
-                            // Local emulator QA must never put fake-account keys into the user's iCloud.
-                            keySync = if (emulatorAuth) null else get(),
-                            applier = com.sadturtleman.flowershoes.core.backup.RoomRestoreApplier(get(), get(), get(), get(), temporary,
-                                openBackup = { com.sadturtleman.flowershoes.core.database.backupDatabaseBuilder(it).buildKkotsin() },
-                                scheduler = { getOrNull() }),
-                            appSchemaVersion = com.sadturtleman.flowershoes.core.database.AppDatabase.VERSION,
-                        )
-                    }
                     if (kotlin.native.Platform.isDebugBinary) {
                         single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
                     }
@@ -131,9 +113,6 @@ fun MainViewController(
                         single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { IosLifetimeStore(purchases, get()) }
                         single<com.sadturtleman.flowershoes.core.data.BookStore> {
                             object : com.sadturtleman.flowershoes.core.data.BookStore, com.sadturtleman.flowershoes.core.data.OneTimeProduct by IosProduct(purchases, "memory_book", "memory_book") {}
-                        }
-                        single<com.sadturtleman.flowershoes.core.data.BackupPlusStore> {
-                            object : com.sadturtleman.flowershoes.core.data.BackupPlusStore, com.sadturtleman.flowershoes.core.data.OneTimeProduct by IosProduct(purchases, "backup_plus", "backup_plus") {}
                         }
                     }
                 },

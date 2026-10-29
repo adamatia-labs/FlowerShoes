@@ -112,7 +112,7 @@ targets:
         # 그림 보내기: 카메라로 찍어 배경으로 · 완성 그림을 사진첩에 저장
         NSCameraUsageDescription: 그림 배경으로 쓸 사진을 찍어요.
         NSPhotoLibraryAddUsageDescription: 그린 그림을 사진첩에 저장해요.
-        NSFaceIDUsageDescription: 복구 코드와 계정 작업 전에 본인인지 확인해요.
+        NSFaceIDUsageDescription: 계정 작업 전에 본인인지 확인해요.
         NSUserTrackingUsageDescription: 맞춤 광고를 제공하기 위해 기기 식별자를 사용해요.
         # Compose Multiplatform: 120Hz 화면에서 프레임 제한을 풀어야 한다(없으면 시작 시 검사에서 멈춘다).
         CADisableMinimumFrameDurationOnPhone: true

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { backupWarningId, Delivery, deliverMail, MAIL_LEASE_MS, mailFailure, mailMessageId, MailStore, MAX_MAIL_ATTEMPTS, nextMailClaim, parseMail } from '../mail';
+import { Delivery, deliverMail, MAIL_LEASE_MS, mailFailure, mailMessageId, MailStore, MAX_MAIL_ATTEMPTS, nextMailClaim, parseMail } from '../mail';
 import { smtpOptions } from '../mail-smtp';
 
 const message = { to: 'recipient@example.test', message: { subject: '백업 안내', text: '앱을 열면 계속 보관돼요.' } };
@@ -109,10 +109,7 @@ test('메일: SMTP 수락 뒤 상태 저장 실패는 성공으로 보고하지 
   assert.equal(m.state().state, 'PROCESSING');
 });
 
-test('메일: 경고 ID와 Message-ID는 같은 요청에서 고정되고 다른 기간/프로젝트와 구별된다', () => {
-  assert.equal(backupWarningId('uid', 1, 7), backupWarningId('uid', 1, 7));
-  assert.notEqual(backupWarningId('uid', 1, 7), backupWarningId('uid', 2, 7));
-  assert.notEqual(backupWarningId('uid', 1, 7), backupWarningId('uid', 1, 30));
+test('메일: Message-ID는 같은 요청에서 고정되고 다른 프로젝트와 구별된다', () => {
   assert.equal(mailMessageId('p1', 'doc', 'a@example.test'), mailMessageId('p1', 'doc', 'a@example.test'));
   assert.notEqual(mailMessageId('p1', 'doc', 'a@example.test'), mailMessageId('p2', 'doc', 'a@example.test'));
 });

@@ -91,24 +91,4 @@ class CryptoTest {
         assertEquals(code, CrockfordCode.normalize(code.lowercase()))
         assertEquals("ABCD-EFGH", CrockfordCode.format("ABCDEFGH"))
     }
-
-    @Test
-    fun `복구 코드로 감싼 백업 키는 그 코드로만 풀린다`() {
-        val bk = BackupKey.generate()
-        val code = RecoveryCode.generate()
-        val wrap = RecoveryCode.wrap(code, bk)
-        // 사용자가 소문자 · 하이픈으로 입력해도 된다.
-        val restored = RecoveryCode.unwrap(CrockfordCode.format(code).lowercase(), wrap)
-        assertContentEquals(bk.export(), restored.export())
-        assertFailsWith<CryptoException> { RecoveryCode.unwrap(RecoveryCode.generate(), wrap) }
-    }
-
-    @Test
-    fun `blob 이름은 백업 키마다 다르고 내용 해시를 드러내지 않는다`() {
-        val sha = ByteArray(32) { it.toByte() }
-        val a = BackupKey.generate()
-        assertEquals(a.blobName(sha), a.blobName(sha))
-        assertNotEquals(a.blobName(sha), BackupKey.generate().blobName(sha))
-        assertEquals(64, a.blobName(sha).length)
-    }
 }

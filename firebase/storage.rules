@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// 꽃신 Storage 규칙. 첨부는 무작위 키로 암호화된 덩어리, 백업은 백업 키(BK)로 암호화된 덩어리다.
+// 꽃신 Storage 규칙. 첨부는 무작위 키로 암호화된 덩어리다.
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -18,12 +18,6 @@ service firebase.storage {
       allow read, delete: if isMember(c);
       allow create: if isMember(c) && request.resource.size <= 10 * 1024 * 1024;
       allow update: if false;
-    }
-
-    // 암호화 백업. 본인만.
-    match /backups/{uid}/{allPaths=**} {
-      allow read, delete: if signedIn() && request.auth.uid == uid;
-      allow create, update: if signedIn() && request.auth.uid == uid && request.resource.size <= 50 * 1024 * 1024;
     }
   }
 }

@@ -25,9 +25,7 @@ internal class EmulatorAuthGateway : AuthGateway {
             auth.signInWithEmailAndPassword(email, "kkotsin-local-test").user
         }.getOrNull() ?: auth.createUserWithEmailAndPassword(email, "kkotsin-local-test").user
         val uid = checkNotNull(user).uid
-        SignInResult.Success(uid, provider, hasBackup = runCatching {
-            com.sadturtleman.flowershoes.core.firebase.hasCloudBackup(uid)
-        }.getOrDefault(false))
+        SignInResult.Success(uid, provider)
     } catch (e: Exception) {
         SignInResult.Failed("로컬 에뮬레이터 로그인 실패: ${e.message}")
     }
