@@ -324,7 +324,7 @@ class MemoryViewModel(
                     val to = minOf(e.end.date, ym.first.plus(DatePeriod(days = ym.length - 1)))
                     if (from <= to) add(MonthBar(from.day, to.day, e.type.label() + if (e.end.date > e.start.date) " · ${e.start.date.daysUntil(e.end.date) + 1}일" else "", e.type.bar()))
                 }
-                timeline?.ranks?.drop(1)?.filter { inMonth(it.from) }?.forEach { add(MonthBar(it.from.day, it.from.day, "${it.rank.koreanName} 진급", BarKind.RANK)) }
+                timeline?.ranks?.drop(1)?.filter { inMonth(it.from) }?.forEach { add(MonthBar(it.from.day, it.from.day, "${it.rank.koreanName} 진급 예정", BarKind.RANK)) }
             }
             val meets = pastMeets.filter { inMonth(it.start.date) }.map { e -> meetCard(e, e.id == firstVisit, my, partner) }
             MonthDetail(

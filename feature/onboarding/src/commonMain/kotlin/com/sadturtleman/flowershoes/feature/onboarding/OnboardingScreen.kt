@@ -73,8 +73,9 @@ import com.sadturtleman.flowershoes.core.designsystem.KkTopBar
 import com.sadturtleman.flowershoes.core.designsystem.KkTopBarLeading
 import com.sadturtleman.flowershoes.core.designsystem.kkColors
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
+import com.sadturtleman.flowershoes.core.military.Rank
 import com.sadturtleman.flowershoes.core.military.ServiceRulesTable
-import com.sadturtleman.flowershoes.core.military.koreanName
+import com.sadturtleman.flowershoes.core.military.expectedName
 import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.AppTheme
@@ -350,7 +351,7 @@ private fun ServiceContent(state: OnboardingState, openSheet: (ServiceSheet) -> 
     val t = state.preview
     KkDdayCard(
         days = t?.let { "D-${it.daysLeft(state.today)}" } ?: "D-?",
-        rank = "${t?.rankAt(state.today)?.rank?.koreanName ?: "이병"} · ${state.branch.koreanName}",
+        rank = "${(t?.rankAt(state.today)?.rank ?: Rank.PRIVATE).expectedName} · ${state.branch.koreanName}",
         percent = "복무 ${t?.let { ((it.progress(state.today).coerceIn(0.0, 1.0) * 1000).toInt() / 10.0) } ?: 0.0}%",
         date = t?.let { "${it.dischargeDate.dotted()} 전역" } ?: "입대일을 고르면 보여요",
         progress = t?.progress(state.today)?.toFloat() ?: 0f,
