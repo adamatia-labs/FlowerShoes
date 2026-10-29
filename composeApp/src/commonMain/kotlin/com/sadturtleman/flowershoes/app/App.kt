@@ -408,7 +408,10 @@ private fun MainShell() {
         val linking = linkWatch.ui.collectAsState().value?.phase.let {
             it == com.sadturtleman.flowershoes.feature.pairing.AfterLinkUi.Phase.MODAL || it == com.sadturtleman.flowershoes.feature.pairing.AfterLinkUi.Phase.SENDING
         }
-        if (tab == Tab.HOME && !linking) bookPromo?.let { promo ->
+        // 겹치는 덮개 순서: 연결 모달 · 보내는 중 > 편지 도착 창 > 책 권유.
+        val arrivals = koinViewModel<com.sadturtleman.flowershoes.feature.pairing.SoloArrivalViewModel>()
+        val arriving = arrivals.arrived.collectAsState().value != null
+        if (tab == Tab.HOME && !linking && !arriving) bookPromo?.let { promo ->
             val day by promo.day.collectAsState(initial = null)
             day?.let { d ->
                 val memoryState by memory.state.collectAsState()
@@ -426,7 +429,9 @@ private fun MainShell() {
             }
         }
         // 보낸 초대가 수락됐다 → 연결 모달 · 편지 보내는 중 · 다 보냄 토스트.
-        com.sadturtleman.flowershoes.feature.pairing.LinkWatcher(linkWatch)
+com.sadturtleman.flowershoes.feature.pairing.LinkWatcher(linkWatch)
+        // 처음 연결 뒤 상대가 혼자 쓴 편지가 들어왔다 → "훈련소 동안 쓴 편지 N통 도착". 연결 모달 · 보내는 중 화면 뒤에.
+        if (!linking) com.sadturtleman.flowershoes.feature.pairing.SoloArrivals(onOpenLetters = { tab = Tab.LETTER }, viewModel = arrivals)
         }
         }
     }

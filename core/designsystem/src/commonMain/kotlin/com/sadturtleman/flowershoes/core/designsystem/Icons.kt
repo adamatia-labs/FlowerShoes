@@ -88,8 +88,6 @@ enum class KkIcons(internal val res: DrawableResource) {
     Plus(Res.drawable.ic_plus),
     Phone(Res.drawable.ic_phone),
     Lock(Res.drawable.ic_lock),
-
-    /** 원 안 느낌표(28 · 배너는 22 로 줄여 쓴다). */
     Alert(Res.drawable.ic_alert),
 
     // 컴포넌트 안에서만 쓰는 글리프(크기가 24 가 아니다 — 자리에 맞춰 가운데 둔다)

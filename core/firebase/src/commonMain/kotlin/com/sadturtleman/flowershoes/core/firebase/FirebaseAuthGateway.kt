@@ -53,16 +53,18 @@ class FirebaseAuthGateway(
     override val providers: List<AuthProvider> = AuthProvider.entries
 
     @Serializable
-    private data class KakaoResult(val token: String)
+    private data class KakaoResult(val token: String, val name: String? = null)
 
     override suspend fun signIn(provider: AuthProvider): SignInResult = try {
+        var name: String? = null
         val uid = when (provider) {
             AuthProvider.KAKAO -> {
                 if (!ui.kakaoConfigured) return SignInResult.Failed("카카오 로그인 설정 전이에요")
                 val t = await(ui::kakao).token ?: return SignInResult.Cancelled
-                val custom = Firebase.functions(region).httpsCallable("kakaoSignIn")
-                    .invoke(mapOf("accessToken" to t)).data(KakaoResult.serializer()).token
-                Firebase.auth.signInWithCustomToken(custom).user?.uid
+                val result = Firebase.functions(region).httpsCallable("kakaoSignIn")
+                    .invoke(mapOf("accessToken" to t)).data(KakaoResult.serializer())
+                name = result.name
+                Firebase.auth.signInWithCustomToken(result.token).user?.uid
             }
             AuthProvider.APPLE -> {
                 val t = await(ui::apple)
@@ -80,7 +82,7 @@ class FirebaseAuthGateway(
                 Firebase.auth.signInWithCredential(GoogleAuthProvider.credential(idToken, null)).user?.uid
             }
         } ?: return SignInResult.Failed("로그인하지 못했어요")
-        SignInResult.Success(uid, provider)
+        SignInResult.Success(uid, provider, (name ?: Firebase.auth.currentUser?.displayName)?.takeIf { it.isNotBlank() })
     } catch (e: ProviderFailed) {
         SignInResult.Failed(e.message ?: "로그인하지 못했어요")
     } catch (e: Exception) {

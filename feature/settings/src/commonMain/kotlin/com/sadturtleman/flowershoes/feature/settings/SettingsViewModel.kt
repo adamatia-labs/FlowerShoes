@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.Identity
+import com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER
 import com.sadturtleman.flowershoes.core.data.NotificationPrefs
 import com.sadturtleman.flowershoes.core.data.NotifyPrefsTransport
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
@@ -11,6 +12,7 @@ import com.sadturtleman.flowershoes.core.data.SEOUL
 import com.sadturtleman.flowershoes.core.data.sync.AfterUnlink
 import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
 import com.sadturtleman.flowershoes.core.data.today
+import com.sadturtleman.flowershoes.core.military.ServiceRulesTable
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.model.Role
@@ -110,10 +112,23 @@ class SettingsViewModel(
 
     fun setAnniversary(date: LocalDate?) = viewModelScope.launch { profile.setAnniversary(date) }
 
-    /** 군종 · 입대일 고치기(공유 데이터, LWW — 연인 폰에도 같이 바뀐다). */
+    /**
+     * 군종 · 입대일 고치기(공유 데이터, LWW — 연인 폰에도 같이 바뀐다).
+     * 아직 없으면(곰신이 온보딩에서 "나중에 넣을게요") 입대일을 고를 때 새로 만든다: 군인 것 자리는 군인 uid,
+     * 연결 전 곰신이면 [PENDING_SOLDIER].
+     */
     fun updateService(branch: Branch? = null, enlist: LocalDate? = null) {
-        val s = state.value.service ?: return
-        viewModelScope.launch { profile.saveService(s.copy(branch = branch ?: s.branch, enlistDate = enlist ?: s.enlistDate)) }
+        val s = state.value.service
+        viewModelScope.launch {
+            if (s != null) {
+                profile.saveService(s.copy(branch = branch ?: s.branch, enlistDate = enlist ?: s.enlistDate))
+                return@launch
+            }
+            val date = enlist ?: return@launch
+            val owner = if (state.value.role == Role.SOLDIER) identity.userId
+            else profile.observePartnerId().first()?.takeIf { it.isNotBlank() } ?: PENDING_SOLDIER
+            profile.saveService(Service(owner, branch ?: Branch.ARMY, date, ServiceRulesTable.BUNDLED.version))
+        }
     }
 
     /** 조기 전역 · 연장 같은 사용자 수정값. null 이면 규칙으로 계산한 날로 돌아간다. */
