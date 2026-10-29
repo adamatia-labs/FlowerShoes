@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -140,31 +141,57 @@ fun KkSecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
 fun KkGhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
     KkButton(text, onClick, modifier.fillMaxWidth(), KkButtonStyle.Ghost, KkButtonSize.L, enabled)
 
-/** 소셜 로그인 버튼(각 회사 지침 색). 로고 자리는 공식 에셋으로 교체한다. */
-enum class KkSocial(val label: String, val bg: Color, val fg: Color, val border: Color?, internal val logo: KkIcons) {
-    Kakao("카카오로 계속하기", Color(0xFFFEE500), Color(0xD9000000), null, KkIcons.SocialKakao),
-    Apple("Apple로 계속하기", Color.Black, Color.White, null, KkIcons.SocialApple),
-    Google("Google로 계속하기", Color.White, Color(0xFF1F1F1F), Color(0xFF747775), KkIcons.SocialGoogle),
+/** 소셜 버튼 한 벌의 색. [logoTint] 가 null 이면 로고 고유색(카카오 말풍선 · Google 4색 G). */
+class KkSocialColors(val bg: Color, val fg: Color, val border: Color? = null, val logoTint: Color? = null)
+
+/**
+ * 소셜 로그인 버튼. 브랜드 색은 토큰 규칙의 예외로, 각 사 가이드 값을 그대로 쓴다.
+ * - 카카오(카카오 로그인 디자인 가이드): #FEE500 · 검정 말풍선 · 검정 85% "카카오 로그인". 다크 모드 변형 없음.
+ * - Apple(HIG Sign in with Apple): 밝은 바탕엔 검정, 어두운 바탕엔 흰 버튼. 로고와 글자는 같은 색.
+ * - Google(Sign-In 브랜딩 가이드): Light 흰 바탕 · #747775 1 테두리 · #1F1F1F, Dark #131314 · #8E918F · #E3E3E3. 4색 G.
+ */
+enum class KkSocial(val label: String, internal val logo: KkIcons, private val light: KkSocialColors, private val dark: KkSocialColors = light) {
+    Kakao("카카오 로그인", KkIcons.SocialKakao, KkSocialColors(Color(0xFFFEE500), Color(0xD9000000))),
+    Apple(
+        "Apple로 계속하기", KkIcons.SocialApple,
+        light = KkSocialColors(Color.Black, Color.White, logoTint = Color.White),
+        dark = KkSocialColors(Color.White, Color.Black, logoTint = Color.Black),
+    ),
+    Google(
+        "Google로 계속하기", KkIcons.SocialGoogle,
+        light = KkSocialColors(Color.White, Color(0xFF1F1F1F), Color(0xFF747775)),
+        dark = KkSocialColors(Color(0xFF131314), Color(0xFFE3E3E3), Color(0xFF8E918F)),
+    ),
+    ;
+
+    fun colors(dark: Boolean): KkSocialColors = if (dark) this.dark else light
 }
 
+/**
+ * 같은 크기로 세로로 쌓는다(Apple: 다른 로그인 버튼보다 작지 않게, Google: 비슷한 크기 · 무게).
+ * 반경 12 는 카카오 가이드 값이고, 반경을 정하지 않은 Apple · Google 도 같이 맞춘다.
+ * 로고 + 글자는 가운데 묶음, 로고와 글자 사이 12 · 좌우 최소 16(Google iOS 값, Android 10 · 12 보다 넉넉).
+ * 글자는 OS 기본 글꼴(카카오 · Apple 권장) 14 Medium(Google 값, 카카오의 "버튼 높이 1/3 이하"도 만족).
+ */
 @Composable
 fun KkSocialButton(kind: KkSocial, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    val shape = RoundedCornerShape(KkRadius.md)
+    val colors = kind.colors(KkTheme.colors.isDark)
+    val shape = RoundedCornerShape(KkRadius.lg)
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
             .alpha(if (enabled) 1f else 0.4f)
             .clip(shape)
-            .background(kind.bg)
-            .then(kind.border?.let { Modifier.border(1.dp, it, shape) } ?: Modifier)
+            .background(colors.bg)
+            .then(colors.border?.let { Modifier.border(1.dp, it, shape) } ?: Modifier)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        KkIcon(kind.logo, tint = null, size = 20.dp)
-        Text(kind.label, style = KkTheme.type.label, color = kind.fg)
+        KkIcon(kind.logo, tint = colors.logoTint, size = 20.dp)
+        Text(kind.label, style = KkTheme.type.label.copy(fontFamily = FontFamily.Default), color = colors.fg, maxLines = 1)
     }
 }
 

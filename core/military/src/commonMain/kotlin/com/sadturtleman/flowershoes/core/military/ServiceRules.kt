@@ -58,18 +58,19 @@ data class ServiceRulesTable(
         /**
          * 앱에 들어가는 기본 표.
          *
-         * 2018년 복무기간 단축이 끝난 뒤의 기간이다. 출시 전에 병무청 공지와 다시 대조할 것 —
-         * 틀려도 사용자가 전역일을 직접 고칠 수 있지만(dischargeOverride), 기본값이 맞아야 한다.
+         * 2018년 복무기간 단축이 끝난 뒤의 기간이다. 2026-10 병무청 · 국방부 공지와 대조했다
+         * (version 2: 공군 22 → 21개월). 틀려도 사용자가 전역일을 직접 고칠 수 있지만(dischargeOverride),
+         * 기본값이 맞아야 한다.
          */
         val BUNDLED: ServiceRulesTable = parse(
             """
             {
-              "version": 1,
+              "version": 2,
               "rules": [
                 { "branch": "ARMY",           "effectiveFrom": "2020-06-16", "serviceMonths": 18, "rankMonths": [2, 6, 6] },
                 { "branch": "MARINE",         "effectiveFrom": "2020-06-16", "serviceMonths": 18, "rankMonths": [2, 6, 6] },
                 { "branch": "NAVY",           "effectiveFrom": "2020-06-16", "serviceMonths": 20, "rankMonths": [2, 6, 6] },
-                { "branch": "AIR_FORCE",      "effectiveFrom": "2020-06-16", "serviceMonths": 22, "rankMonths": [2, 6, 6] },
+                { "branch": "AIR_FORCE",      "effectiveFrom": "2020-06-16", "serviceMonths": 21, "rankMonths": [2, 6, 6] },
                 { "branch": "SOCIAL_SERVICE", "effectiveFrom": "2020-06-16", "serviceMonths": 21 }
               ]
             }
