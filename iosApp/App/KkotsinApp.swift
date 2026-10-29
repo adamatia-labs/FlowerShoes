@@ -44,11 +44,11 @@ struct KkotsinApp: App {
                 }
         }
         .onChange(of: phase) { _, now in
-            // 앞으로 나오면 NSE 대기열 합치기 · 동기화 · 위젯 연결 정보 갱신
+            // 앞으로 나오면 기록기 다시 열기 · 프레임 계측 켜기, NSE 대기열 합치기 · 동기화 · 위젯 연결 정보 갱신
             if now == .active {
                 MainViewControllerKt.onForeground()
             } else if now == .background {
-                // 종료 직전의 마지막 신호 — 남은 이벤트를 보내고 기록기를 접는다.
+                // 종료 직전의 마지막 신호 — 남은 이벤트를 보내고 기록기를 접는다. 프레임 계측도 멈춘다.
                 MainViewControllerKt.onBackground()
             }
         }

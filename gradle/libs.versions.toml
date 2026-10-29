@@ -101,10 +101,10 @@ androidx-paging-compose = { group = "androidx.paging", name = "paging-compose", 
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 
-# 프레임 드랍 계측 (:jank:presentation)
+# 프레임 드랍 계측 (:core:jank 의 androidMain)
 androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-performance", version.ref = "jankStats" }
 
-# TTI 측정 기록 저장 (:tti:data)
+# 로컬 DB (:core:database · :core:tti)
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }

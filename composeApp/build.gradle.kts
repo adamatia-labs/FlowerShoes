@@ -51,6 +51,9 @@ kotlin {
             // 비즈니스 이벤트 로깅(GA4) · 피처 플래그(Remote Config). iOS 는 MainViewController 가 조립하고 수명을 잡는다.
             implementation(project(":core:logging"))
             implementation(project(":core:featureflag"))
+            // 화면 진입 시간(TTI) · 프레임 드랍(jank) helper 를 공유 화면이 쓴다. iOS 는 MainViewController 가 jank 만 조립한다(화면별 TTI 는 Android 만).
+            implementation(project(":core:tti"))
+            implementation(project(":core:jank"))
             implementation(project(":common:di"))
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.koin.core)

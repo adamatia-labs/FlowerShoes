@@ -17,7 +17,7 @@ import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
 import com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
-import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
+import com.sadturtleman.flowershoes.core.tti.TtiRecorder
 import com.sadturtleman.flowershoes.widget.updateAllWidgets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob

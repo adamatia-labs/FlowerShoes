@@ -11,10 +11,9 @@ import com.sadturtleman.flowershoes.core.featureflag.featureFlagModule
 import com.sadturtleman.flowershoes.core.logging.bizLogModule
 import com.sadturtleman.flowershoes.core.logging.firebaseAnalyticsSink
 import com.sadturtleman.flowershoes.feature.settings.PlatformActions
-import com.sadturtleman.flowershoes.jank.data.jankDataModule
-import com.sadturtleman.flowershoes.tti.data.ttiDataModule
-import com.sadturtleman.flowershoes.tti.domain.PrintTtiShooter
-import com.sadturtleman.flowershoes.tti.domain.TtiShooter
+import com.sadturtleman.flowershoes.core.jank.jankModule
+import com.sadturtleman.flowershoes.core.tti.ttiDatabaseBuilder
+import com.sadturtleman.flowershoes.core.tti.ttiModule
 import com.sadturtleman.flowershoes.widget.AndroidPlatformActions
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -30,15 +29,14 @@ fun telemetryModules(context: Context, firebase: Boolean): List<Module> = listOf
     coroutineModule,
     dataStoreModule,
     deviceInfoModule,
-    ttiDataModule,
-    jankDataModule,
+    ttiModule { ttiDatabaseBuilder(context) },
+    // 디버그 빌드만 프레임 통계를 Logcat 으로 흘린다.
+    jankModule(debug = BuildConfig.DEBUG),
     // 디버그 기록은 GA4 에 보내지 않는다.
     bizLogModule { if (firebase && !BuildConfig.DEBUG) firebaseAnalyticsSink() else null },
     featureFlagModule(AppEnvironment.of(BuildConfig.APP_ENV)) { if (firebase) FirebaseRemoteConfigSource() else null },
     module {
         single { AppBuildVariant(buildType = BuildConfig.BUILD_TYPE, flavor = BuildConfig.FLAVOR) }
-        // 전송할 수집 서버가 없어 표준 출력으로 흘린다.
-        single<TtiShooter> { PrintTtiShooter() }
         single<PlatformActions> { AndroidPlatformActions(context) }
     },
 )
