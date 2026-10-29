@@ -1,10 +1,10 @@
 package com.sadturtleman.flowershoes.core.database
 
-import androidx.room.AutoMigration
 import androidx.room.ConstructedBy
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
+import androidx.room.migration.Migration
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -25,13 +25,9 @@ import kotlinx.coroutines.IO
     ],
     version = AppDatabase.VERSION,
     exportSchema = true,
-    // 2: 휴가 관리(leave_grant 표 · event.leaveGrantId). 3: 편지 글꼴(letter.font). 4: 만남 사진(event.photoIds). 5: 일정 메모(event.memo) · 폰 기종(user.deviceName).
-    // 6: 만남 한 줄 메모(event.meetNotes) · 산 것(user.perks — 연결된 상대와 함께 쓰는 꽃신 평생 · 추억 책).
-    // 7: 휴가 하나의 풀 · 기념일 일정(event.leaveGrantId · couple.anniversary 제거, event.repeatYearly). 출시 전이라 파괴적 이전.
-    // 8: 쓰던 편지 여러 통(letter_draft 표, 이 기기에만).
-    // 9: 그날의 한 줄(event.meetNotes → event.dayLines). 출시 전이라 파괴적 이전.
-    // 10: 추억 책 표지(book_cover 표, 두 사람이 함께 고른 값). 출시 전이라 파괴적 이전.
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
+    // 1: 출시 기준. 출시 전 변경(옛 2~10)은 이 버전 하나로 합쳤다.
+    // 이제부터 스키마를 바꾸면 버전을 올리고 autoMigrations 에 AutoMigration 을 넣거나 MIGRATIONS 에 Migration 을 넣는다(MigrationTest 가 확인한다).
+    autoMigrations = [],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -53,8 +49,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookCoverDao(): BookCoverDao
 
     companion object {
-        const val VERSION = 10
+        const val VERSION = 1
         const val FILE_NAME = "kkotsin.db"
+
+        /** 표를 고치는 수동 이전. 자동으로 못 하는 변경(이름 바꾸기 · 값 옮기기)만 여기 둔다. */
+        val MIGRATIONS: List<Migration> = emptyList()
     }
 }
 
@@ -66,10 +65,10 @@ expect object AppDatabaseConstructor : RoomDatabaseConstructor<AppDatabase> {
 
 /**
  * 플랫폼별 빌더에 공통 설정을 얹는다. Android · iOS 가 같은 번들 SQLite 를 쓴다.
- * 자동 이전 경로가 없는 버전(출시 전 파괴적 변경)은 표를 지우고 새로 만든다.
+ * 파괴적 폴백은 두지 않는다 — 이전 경로가 빠지면 사용자 데이터를 지우는 대신 열리지 않는다.
  */
 fun RoomDatabase.Builder<AppDatabase>.buildKkotsin(): AppDatabase = this
     .setDriver(BundledSQLiteDriver())
-    .fallbackToDestructiveMigration(dropAllTables = true)
+    .addMigrations(*AppDatabase.MIGRATIONS.toTypedArray())
     .setQueryCoroutineContext(Dispatchers.IO)
     .build()

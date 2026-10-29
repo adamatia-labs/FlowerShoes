@@ -13,3 +13,14 @@
 - 이벤트 이름 · 화면 이름은 수집 뒤 지표의 키다. 한번 나간 이름은 바꾸지 않는다.
 - 디버그 빌드는 GA4 로 아무것도 보내지 않는다(BizEvent 는 표준 출력, 자동 수집은 Android `firebase_analytics_collection_enabled` · iOS `FIREBASE_ANALYTICS_COLLECTION_ENABLED` 로 끈다).
 - 수집 항목이 바뀌면 개인정보 문서(`core/designsystem` 의 `TermsDoc.PRIVACY`)도 같은 PR 에서 고친다.
+
+## 로컬 DB 스키마(Room)
+
+**스키마를 바꾸면 버전을 올리고 `AutoMigration` 또는 `Migration` + 테스트를 함께 넣는다. 파괴적 폴백 금지.**
+
+- 대상: `core/database` 의 `AppDatabase`(kkotsin.db), `core/tti` 의 `TtiDatabase`(tti.db). 둘 다 출시 기준이 버전 1 이다.
+- Entity · `@Database` 의 표 · 열 · 인덱스 · 외래 키가 바뀌면 `VERSION` 을 1 올린다. 같은 PR 에 새 `schemas/<패키지.클래스>/<버전>.json` 을 커밋한다. 옛 버전 JSON 은 지우지 않는다(`MigrationTest` 가 버전마다 있는지 본다).
+- 이전 경로: Room 이 알아서 할 수 있는 변경(표 · 열 추가, 기본값 있는 열)은 `@Database(autoMigrations = [AutoMigration(from = n, to = n + 1)])`. 이름 바꾸기 · 지우기는 `AutoMigrationSpec`(`@RenameColumn` · `@DeleteColumn` …). 값을 옮기거나 다시 계산해야 하면 `Migration` 을 써서 `AppDatabase.MIGRATIONS`(`TtiDatabase.MIGRATIONS`)에 더한다. 빌더는 이 목록만 붙인다.
+- 테스트: `MigrationTest`(`TtiMigrationTest`) 가 `MigrationTestHelper` 로 옛 버전마다 DB 를 만들어 현재 버전까지 이전하고 스키마를 검증한다. 값을 옮기는 `Migration` 이면 옛 버전에 행을 넣고 이전 뒤 값이 맞는지 보는 테스트를 같은 파일에 더한다.
+- `fallbackToDestructiveMigration*` 은 어떤 형태로도 넣지 않는다(다운그레이드용 포함). 경로가 빠졌을 때 표를 지우면 사용자 데이터가 사라진다 — 열리지 않는 편이 낫다.
+- CI `Room` 이 `jvmTest` 뒤 스키마 JSON 이 커밋과 다르면 실패한다. 버전을 안 올리고 스키마만 바꾸면 같은 버전 JSON 이 덮어써져서 여기서 걸린다.
