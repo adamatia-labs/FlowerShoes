@@ -808,6 +808,37 @@ fun KkEmptyState(
     }
 }
 
+// ── Banner ────────────────────────────────────────────────────────────────
+
+/**
+ * 안내 띠(Figma Banner): paper/tag 바탕 · 알림 아이콘 · 제목(굵게) + 한 줄 · 오른쪽 텍스트 동작.
+ * 화면 위쪽에서 꼭 알아야 할 것 하나(입대 전 연결 · 동기화 · 오프라인)에만 쓴다.
+ */
+@Composable
+fun KkBanner(title: String, body: String, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.lg)
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 60.dp).clip(shape).background(c.tag)
+            .padding(start = KkSpacing.lg, end = if (action != null) KkSpacing.xxs else KkSpacing.lg),
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        KkIcon(KkIcons.Alert, tint = c.ink, size = 22.dp)
+        Column(Modifier.weight(1f).padding(vertical = KkSpacing.md), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
+            Text(title, style = KkTheme.type.labelBold, color = c.ink)
+            Text(body, style = KkTheme.type.caption, color = c.sub)
+        }
+        if (action != null) {
+            Text(
+                action, style = KkTheme.type.labelBold, color = c.accent,
+                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).clickable(role = Role.Button, onClick = onAction)
+                    .heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 15.dp),
+            )
+        }
+    }
+}
+
 // ── Domain components ─────────────────────────────────────────────────────
 
 /** 전역 D-day 카드(홈 상단). 진행 막대 = 복무 진행률. */

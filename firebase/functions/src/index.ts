@@ -28,6 +28,7 @@ import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from '
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
+import { kakaoNickname } from './kakao';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -420,7 +421,10 @@ export const kakaoSignIn = onCall({ region: REGION }, async (req) => {
   const info = (await r.json()) as { id: number; app_id: number; expires_in: number };
   if (String(info.app_id) !== KAKAO_APP_ID.value()) throw new HttpsError('permission-denied', '다른 앱에서 발급된 토큰이다');
   if (info.expires_in <= 0) throw new HttpsError('unauthenticated', '만료된 토큰이다');
-  return { token: await getAuth().createCustomToken(`kakao:${info.id}`) };
+  // 닉네임은 처음 내 이름으로만 쓴다 — 못 받아도 로그인은 그대로.
+  const me = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: `Bearer ${accessToken}` } })
+    .then((res) => (res.ok ? res.json() : null)).catch(() => null);
+  return { token: await getAuth().createCustomToken(`kakao:${info.id}`), name: kakaoNickname(me) ?? null };
 });
 
 // ── 연결 해제 · 탈퇴 ──────────────────────────────────────────────────────

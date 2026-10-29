@@ -405,6 +405,8 @@ private fun MainShell() {
         }
         // 보낸 초대가 수락됐다 → 연결 모달 · 편지 보내는 중 · 다 보냄 토스트.
         com.sadturtleman.flowershoes.feature.pairing.LinkWatcher()
+        // 처음 연결 뒤 상대가 혼자 쓴 편지가 들어왔다 → "훈련소 동안 쓴 편지 N통 도착".
+        com.sadturtleman.flowershoes.feature.pairing.SoloArrivals(onOpenLetters = { tab = Tab.LETTER })
         }
         }
     }

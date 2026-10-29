@@ -75,6 +75,8 @@ import kotlinx.coroutines.launch
 class LinkHandoff(private val settings: DeviceSettings, private val sync: SyncClient?) {
     suspend fun begin(): Outbox {
         settings.setKeyEpoch(1)
+        // 상대가 혼자 쓴 편지가 들어오면 "훈련소 동안 쓴 편지 N통 도착"([SoloArrivals]).
+        settings.setSoloArrivalWatch(true)
         return runCatching { sync?.outbox() }.getOrNull() ?: Outbox(0, 0, 0)
     }
 

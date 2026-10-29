@@ -48,7 +48,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
+import com.sadturtleman.flowershoes.core.designsystem.KkBanner
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import com.sadturtleman.flowershoes.core.designsystem.KkGhostButton
 import com.sadturtleman.flowershoes.core.designsystem.KkChoice
 import com.sadturtleman.flowershoes.core.designsystem.KkCheckbox
 import com.sadturtleman.flowershoes.core.designsystem.KkDdayCard
@@ -153,8 +155,9 @@ fun OnboardingScreen(
                     OnboardingStep.THEME -> ThemeContent(state, onIntent)
                     OnboardingStep.SERVICE -> ServiceContent(state) { sheet = it }
                     OnboardingStep.CONNECT -> {
-                        // 시작 방법(346:457): 연인 초대하기 · 혼자 먼저 시작하기.
+                        // 시작 방법(346:457): 연인 초대하기 · 혼자 먼저 시작하기. 입대일이 아직이면 안내 띠(346:487).
                         KkStepIndicator(step = state.totalSteps, total = state.totalSteps)
+                        if (state.beforeEnlistment) KkBanner("입대 전에 같이 연결해 두세요", "훈련소에선 폰을 쓸 수 없어요")
                         Text("어떻게 시작할까요?", style = KkTheme.type.title, color = c.ink)
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             KkChoice("연인 초대하기", state.startWithInvite, { onIntent(OnboardingIntent.SelectStart(true)) })
@@ -176,6 +179,11 @@ fun OnboardingScreen(
                         state.error?.let { Text(it, style = KkTheme.type.caption, color = c.danger) }
                     }
                     OnboardingStep.TERMS -> KkPrimaryButton("동의하고 시작하기", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
+                    OnboardingStep.SERVICE -> {
+                        KkPrimaryButton("다음", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
+                        // 곰신은 연인 입대일을 몰라도 시작한다(345:642).
+                        if (state.role == Role.GOMSIN) KkGhostButton("나중에 넣을게요", { onIntent(OnboardingIntent.SkipService) })
+                    }
                     else -> KkPrimaryButton("다음", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
                 }
             }
@@ -337,19 +345,18 @@ private fun Branch.months(today: LocalDate) = ServiceRulesTable.BUNDLED.ruleFor(
 private fun ServiceContent(state: OnboardingState, openSheet: (ServiceSheet) -> Unit) {
     val c = KkTheme.colors
     val mine = state.role == Role.SOLDIER
-    KkStepIndicator(step = 3, total = 4)
-    Text(if (mine) "언제 입대했나요?" else "연인은 언제 입대했나요?", style = KkTheme.type.title, color = c.ink)
+    KkStepIndicator(step = 3, total = state.totalSteps)
+    Text(if (mine) "언제 입대했나요?" else "연인의 복무 정보를 알려 주세요", style = KkTheme.type.title, color = c.ink)
     KkInput(
         value = "${state.branch.koreanName} · ${state.branch.months(state.today)}개월",
         onValueChange = {},
-        label = "군종",
+        label = if (mine) "군종" else "연인의 군종",
         onClick = { openSheet(ServiceSheet.BRANCH) },
     )
     KkInput(
         value = state.enlistDate?.dotted() ?: "",
         onValueChange = {},
-        label = "입대일",
-        placeholder = "입대일을 골라 주세요",
+        label = if (mine) "입대일" else "연인의 입대일",
         onClick = { openSheet(ServiceSheet.DATE) },
     )
     Text("미리보기", style = KkTheme.type.label, color = c.sub)

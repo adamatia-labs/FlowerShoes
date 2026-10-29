@@ -32,7 +32,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sadturtleman.flowershoes.core.designsystem.KkBanner
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
 import com.sadturtleman.flowershoes.core.designsystem.KkDdayCard
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
@@ -49,6 +51,7 @@ import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * 홈(Figma 2 · 홈). 연결 뒤(52:86) · 연결 전 곰신(70:629) · 연결 전 군인(137:1428) 세 모양.
+ * 연결 전이어도 D-day 는 혼자 계산해 보여 주고, 입대일 전이면 연결을 강하게 권한다(홈 · 입대 전 350:972).
  * [onOpenPairing] 초대 링크 보내기 · 다시 보내기, [onWriteLetter] 편지 미리 쓰기, [onOpenCalendar] 일정,
  * [onOpenDayLine] 그날의 한 줄 쓰기(일정 id).
  */
@@ -92,12 +95,12 @@ fun HomeScreen(
             state.loading -> Unit
             state.linked -> LinkedHome(state, onIntent, onOpenCalendar, dayLine)
             state.role == Role.SOLDIER -> {
-                SoldierUnlinked(state, onOpenPairing, onOpenCalendar, onOpenLeave)
+                SoldierUnlinked(state, onOpenPairing, onOpenCalendar, onOpenLeave, onOpenSettings)
                 dayLine()
             }
             else -> {
                 dayLine()
-                GomsinUnlinked(state.invitePending, onOpenPairing, onWriteLetter, onOpenCalendar)
+                GomsinUnlinked(state, onOpenPairing, onWriteLetter, onOpenCalendar, onOpenSettings)
             }
         }
     }
@@ -128,14 +131,30 @@ private fun Header(state: HomeState, onOpenSettings: () -> Unit) {
     }
 }
 
+/** 입대일이 없으면(곰신이 "나중에 넣을게요") 누르면 설정으로 — 군 정보에서 넣는다. */
 @Composable
-private fun Dday(state: HomeState, onOpenCalendar: () -> Unit) {
+private fun Dday(state: HomeState, onOpenCalendar: () -> Unit, onOpenSettings: () -> Unit = onOpenCalendar) {
     val d = state.dday
     if (d != null) {
-        KkDdayCard(d.days, d.rank, d.percent, d.date, d.progress, onClick = onOpenCalendar)
+        KkDdayCard(d.days, d.rank, d.percent, d.date, d.progress, caption = d.caption, onClick = onOpenCalendar)
     } else {
-        KkDdayCard("D-?", "입대일 입력 전", "복무 0%", "설정에서 입대일을 넣어 주세요", 0f, onClick = onOpenCalendar)
+        KkDdayCard("D-?", "입대일 입력 전", "복무 0%", "설정에서 입대일을 넣어 주세요", 0f, onClick = onOpenSettings)
     }
+}
+
+/** 입대일 전 안내 띠(홈 · 입대 전 350:972). D-day 위에 놓는다. */
+@Composable
+private fun EnlistBanner(state: HomeState, onOpenPairing: () -> Unit) {
+    if (state.enlistNudge) KkBanner("입대 전에 같이 연결해 두세요", "입대하면 연락이 어려워져요", action = "초대", onAction = onOpenPairing)
+}
+
+/**
+ * 연결 권유. 입대일 전이면 큰 초대 버튼(350:972), 아니면 평소 카드. 초대를 이미 보냈으면 상태 줄([Invite]).
+ */
+@Composable
+private fun Connect(state: HomeState, onOpenPairing: () -> Unit) {
+    if (state.enlistNudge && !state.invitePending) KkPrimaryButton("연인 초대하기", onOpenPairing, Modifier.fillMaxWidth())
+    else Invite(state.invitePending, onOpenPairing)
 }
 
 // ── 연결 뒤(52:86) ──
@@ -236,9 +255,11 @@ private fun ScheduledMessage(row: ScheduledRow) {
 // ── 연결 전 · 곰신(70:629) ──
 
 @Composable
-private fun GomsinUnlinked(invitePending: Boolean, onOpenPairing: () -> Unit, onWriteLetter: () -> Unit, onOpenCalendar: () -> Unit) {
+private fun GomsinUnlinked(state: HomeState, onOpenPairing: () -> Unit, onWriteLetter: () -> Unit, onOpenCalendar: () -> Unit, onOpenSettings: () -> Unit) {
     val c = KkTheme.colors
-    Invite(invitePending, onOpenPairing)
+    EnlistBanner(state, onOpenPairing)
+    Dday(state, onOpenCalendar, onOpenSettings)
+    Connect(state, onOpenPairing)
     Text("연결 전에 할 수 있어요", style = KkTheme.type.title, color = c.ink)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         CanDoTile(KkIcons.Mail, "편지 미리 쓰기", "연결되면 한 번에 도착해요", Modifier.weight(1f), onWriteLetter)
@@ -246,7 +267,7 @@ private fun GomsinUnlinked(invitePending: Boolean, onOpenPairing: () -> Unit, on
     }
     Text("연결하면 함께 보여요", style = KkTheme.type.title, color = c.ink)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(Triple(KkIcons.Clock, "전역", "D-?"), Triple(KkIcons.Home, "상대 상태", "?"), Triple(KkIcons.Heart, "보고싶어", "?")).forEach { (icon, label, value) ->
+        listOf(Triple(KkIcons.Home, "상대 상태", "?"), Triple(KkIcons.Heart, "보고싶어", "?")).forEach { (icon, label, value) ->
             Column(
                 Modifier.weight(1f).clip(RoundedCornerShape(KkRadius.lg)).background(c.line).padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -319,9 +340,10 @@ private fun CanDoTile(icon: KkIcons, title: String, body: String, modifier: Modi
 // ── 연결 전 · 군인(137:1428) ──
 
 @Composable
-private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onOpenCalendar: () -> Unit, onOpenLeave: () -> Unit) {
+private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onOpenCalendar: () -> Unit, onOpenLeave: () -> Unit, onOpenSettings: () -> Unit) {
     val c = KkTheme.colors
-    Dday(state, onOpenCalendar)
+    EnlistBanner(state, onOpenPairing)
+    Dday(state, onOpenCalendar, onOpenSettings)
     state.soldier?.let { s ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile("다음 진급", s.nextRank ?: "—", Modifier.weight(1f))
@@ -329,7 +351,7 @@ private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onOpenC
             StatTile("복무", "${s.servedDay}일째", Modifier.weight(1f))
         }
     }
-    Invite(state.invitePending, onOpenPairing)
+    Connect(state, onOpenPairing)
     state.nextLeave?.let { leave ->
         val shape = RoundedCornerShape(KkRadius.lg)
         Row(

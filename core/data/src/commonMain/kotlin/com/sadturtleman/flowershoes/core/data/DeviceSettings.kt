@@ -139,6 +139,14 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         }
     }
 
+    /**
+     * 처음 연결 직후 "훈련소 동안 쓴 편지 N통 도착"을 기다리는 중(이 기기에만). 첫 연결이 켜고, 띄우면 끈다 —
+     * 다시 연결(새 폰)은 켜지 않아 넘겨받은 옛 편지로 뜨지 않는다.
+     */
+    val soloArrivalWatch: Flow<Boolean> = store.data.map { it[SOLO_ARRIVAL] == 1 }
+
+    suspend fun setSoloArrivalWatch(on: Boolean) = store.edit { if (on) it[SOLO_ARRIVAL] = 1 else it.remove(SOLO_ARRIVAL) }
+
     /** 홈의 그날의 한 줄 카드를 닫은 일정(이 기기에만). 카드는 사흘이면 어차피 사라지니 최근 것만 둔다. */
     val dayLineCards: DayLineCards = object : DayLineCards {
         override val dismissed: Flow<Set<String>> = store.data.map { p -> p[DAYLINE_DISMISSED]?.split('|')?.filter { it.isNotEmpty() }?.toSet().orEmpty() }
@@ -172,6 +180,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val WIDGET_FRAME = stringPreferencesKey("widget_frame")
         val PENDING_INVITE = stringPreferencesKey("pending_invite")
         val DAYLINE_DISMISSED = stringPreferencesKey("dayline_dismissed")
+        val SOLO_ARRIVAL = intPreferencesKey("solo_arrival_watch")
         const val DAYLINE_KEEP = 20
     }
 }

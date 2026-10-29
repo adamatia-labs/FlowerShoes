@@ -11,6 +11,8 @@ import com.sadturtleman.flowershoes.core.data.StatusRepository
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.military.LeavePool
+import com.sadturtleman.flowershoes.core.military.ServiceTimeline
+import com.sadturtleman.flowershoes.core.model.Branch
 import com.sadturtleman.flowershoes.core.military.expectedName
 import com.sadturtleman.flowershoes.core.model.DayLine
 import com.sadturtleman.flowershoes.core.model.Event
@@ -42,13 +44,14 @@ import kotlinx.datetime.daysUntil
 import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 
-/** D-day 카드(Figma D-day Card)에 넣을 글자. 계산은 :core:military 가 끝낸다. */
+/** D-day 카드(Figma D-day Card)에 넣을 글자. 계산은 :core:military 가 끝낸다. 입대 전이면 [caption] "입대까지". */
 data class DdayCard(
     val days: String,
     val rank: String,
     val percent: String,
     val date: String,
     val progress: Float,
+    val caption: String = "전역까지",
 )
 
 /** 군인 홈의 세 칸(다음 진급 · 남은 휴가 · 복무). */
@@ -81,6 +84,8 @@ data class HomeState(
     val scheduled: List<ScheduledRow> = emptyList(),
     /** 보낸 초대 링크가 아직 유효하다(연결 전 "초대 보냄 · 기다리는 중 · 링크 다시 보내기"). */
     val invitePending: Boolean = false,
+    /** 연결 전인데 입대일이 아직 오지 않았다(홈 · 입대 전 350:972): "입대 전에 같이 연결해 두세요" + 초대. */
+    val enlistNudge: Boolean = false,
     val dayLine: DayLinePrompt? = null,
 )
 
@@ -160,19 +165,12 @@ class HomeViewModel(
         val pair = timelines.firstOrNull()
         val t = pair?.second
         val branch = pair?.first?.branch
-        val dday = t?.let {
-            val left = it.daysLeft(today)
-            DdayCard(
-                days = when { left > 0 -> "D-$left"; left == 0 -> "D-DAY"; else -> "전역 +${-left}" },
-                rank = listOfNotNull(it.rankAt(today)?.rank?.expectedName, branch?.koreanName).joinToString(" · "),
-                percent = "복무 ${(it.progress(today).coerceIn(0.0, 1.0) * 1000).toInt() / 10.0}%",
-                date = "${it.dischargeDate.dotted()} 전역",
-                progress = it.progress(today).toFloat(),
-            )
-        }
+        // 혼자 모드에서도 같은 계산: 곰신이 넣어 둔 연인 입대일(PENDING_SOLDIER)도 timelines 에 있다.
+        val dday = t?.let { ddayCard(it, branch, today) }
         // 휴가 하나의 풀: 정기(군종) + 받은 휴가 − 휴가 일정 일수. 초과 사용이면 음수.
         val pool = leavePool ?: LeavePool.of(branch, emptyList(), vacations)
-        val soldier = t?.let {
+        // 입대 전에는 진급 · 휴가 · 복무 일수가 아직 없다.
+        val soldier = t?.takeIf { it.enlistDate <= today }?.let {
             val next = it.nextRank(today)
             SoldierStats(
                 nextRank = next?.let { n -> "${n.rank.expectedName} · D-${today.daysUntil(n.from)}" },
@@ -217,6 +215,7 @@ class HomeViewModel(
                 )
             },
             dayLine = dayLinePrompt,
+            enlistNudge = needsEnlistNudge(p.linked, t, today),
         )
     }.combine(pendingInvite) { s, invite ->
         s.copy(invitePending = !s.linked && invite != null && invite.expireAtMs > clock.now().toEpochMilliseconds())
@@ -229,6 +228,33 @@ class HomeViewModel(
         }
     }
 }
+
+/** D-day 카드 글자. 입대일 전이면 입대까지 세고(350:972), 그 뒤로는 전역까지. */
+internal fun ddayCard(t: ServiceTimeline, branch: Branch?, today: LocalDate): DdayCard {
+    val toEnlist = today.daysUntil(t.enlistDate)
+    if (toEnlist > 0) {
+        return DdayCard(
+            days = "D-$toEnlist",
+            rank = branch?.koreanName.orEmpty(),
+            percent = "",
+            date = "입대 ${t.enlistDate.dotted()} (${weekday(t.enlistDate)})",
+            progress = 0f,
+            caption = "입대까지",
+        )
+    }
+    val left = t.daysLeft(today)
+    return DdayCard(
+        days = when { left > 0 -> "D-$left"; left == 0 -> "D-DAY"; else -> "전역 +${-left}" },
+        rank = listOfNotNull(t.rankAt(today)?.rank?.expectedName, branch?.koreanName).joinToString(" · "),
+        percent = "복무 ${(t.progress(today).coerceIn(0.0, 1.0) * 1000).toInt() / 10.0}%",
+        date = "${t.dischargeDate.dotted()} 전역",
+        progress = t.progress(today).toFloat(),
+    )
+}
+
+/** 연결 전이고 입대일이 아직이면 홈에서 연결을 강하게 권한다(planning §3 영장 → 입대 전). */
+internal fun needsEnlistNudge(linked: Boolean, timeline: ServiceTimeline?, today: LocalDate): Boolean =
+    !linked && timeline != null && timeline.enlistDate > today
 
 internal fun weekday(d: LocalDate) = listOf("월", "화", "수", "목", "금", "토", "일")[d.dayOfWeek.ordinal]
 
