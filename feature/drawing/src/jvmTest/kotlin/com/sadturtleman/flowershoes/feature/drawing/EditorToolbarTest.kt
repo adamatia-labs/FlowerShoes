@@ -67,4 +67,12 @@ class EditorToolbarTest {
         val s = DrawingEditorState().tap(ToolbarItem.BRUSH).pickTool(EditorTool.ERASER)
         assertEquals(ToolbarItem.ERASER, s.toolbar)
     }
+
+    @Test
+    fun `사진 시트가 열려 있으면 사진 칸에만 판이 깔린다`() {
+        val s = DrawingEditorState().tap(ToolbarItem.PHOTO)
+        assertEquals(listOf(ToolbarItem.PHOTO), ToolbarItem.entries.filter { s.highlighted(it) })
+        val closed = s.copy(sheet = null)
+        assertEquals(listOf(ToolbarItem.BRUSH), ToolbarItem.entries.filter { closed.highlighted(it) })
+    }
 }

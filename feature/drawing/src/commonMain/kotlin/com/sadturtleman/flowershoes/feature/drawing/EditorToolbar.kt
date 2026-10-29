@@ -41,9 +41,19 @@ fun DrawingEditorState.tap(item: ToolbarItem): DrawingEditorState = when (item) 
     ToolbarItem.FRAME -> copy(sheet = EditorSheet.FRAME)
 }
 
+/** 획을 긋는 펜(지우개 · 스티커가 아닌 것). */
+val EditorTool.isPen: Boolean get() = this != EditorTool.ERASER && this != EditorTool.STICKER
+
+/** 툴바 칸에 판을 깔지: 사진 · 틀은 시트가 열려 있을 때, 나머지는 고른 도구(사진 · 틀 시트가 덮고 있지 않을 때). */
+fun DrawingEditorState.highlighted(item: ToolbarItem): Boolean = when (item) {
+    ToolbarItem.PHOTO -> sheet == EditorSheet.PHOTO
+    ToolbarItem.FRAME -> sheet == EditorSheet.FRAME
+    else -> item == toolbar && sheet != EditorSheet.PHOTO && sheet != EditorSheet.FRAME
+}
+
 /** 펜 시트에서 도구 고르기. 지우개가 아닌 펜은 "마지막 펜"으로 기억한다. */
 fun DrawingEditorState.pickTool(t: EditorTool): DrawingEditorState =
-    copy(tool = t, pen = if (t == EditorTool.ERASER || t == EditorTool.STICKER) pen else t)
+    copy(tool = t, pen = if (t.isPen) t else pen)
 
 /** 스티커 고르기: 시트를 닫아 캔버스를 눌러 붙일 수 있게. */
 fun DrawingEditorState.pickSticker(id: String): DrawingEditorState =

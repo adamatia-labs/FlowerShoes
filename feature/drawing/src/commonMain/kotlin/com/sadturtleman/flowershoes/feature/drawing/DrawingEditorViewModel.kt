@@ -265,7 +265,7 @@ class DrawingEditorViewModel(
             DrawingIntent.CloseSheet -> _state.update { it.copy(sheet = null) }
             is DrawingIntent.SetFrame -> _state.update { it.copy(frame = intent.frame) }
             // 색을 고르면 지우개 · 스티커에서 마지막 펜으로.
-            is DrawingIntent.SetColor -> _state.update { it.copy(color = intent.argb, tool = if (it.tool == EditorTool.ERASER || it.tool == EditorTool.STICKER) it.pen else it.tool) }
+            is DrawingIntent.SetColor -> _state.update { it.copy(color = intent.argb, tool = if (it.tool.isPen) it.tool else it.pen) }
             is DrawingIntent.SetBrush -> _state.update { it.copy(brush = intent.brush) }
             is DrawingIntent.SetSticker -> _state.update { it.pickSticker(intent.id) }
             is DrawingIntent.SetStickerTab -> _state.update { it.copy(stickerTab = intent.index) }

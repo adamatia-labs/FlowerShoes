@@ -279,13 +279,7 @@ private fun Toolbar(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit
             Modifier.fillMaxWidth().height(79.dp).padding(start = 14.dp, end = KkSpacing.lg, top = 12.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            val selected = state.toolbar
-            val open = state.sheet
-            fun on(item: ToolbarItem) = when (item) {
-                ToolbarItem.PHOTO -> open == EditorSheet.PHOTO
-                ToolbarItem.FRAME -> open == EditorSheet.FRAME
-                else -> item == selected && open != EditorSheet.PHOTO && open != EditorSheet.FRAME
-            }
+            fun on(item: ToolbarItem) = state.highlighted(item)
             ToolbarButton(KkIcons.Brush, "붓", on(ToolbarItem.BRUSH), dot = Color(state.color.toInt())) { onIntent(DrawingIntent.Tap(ToolbarItem.BRUSH)) }
             ToolbarButton(KkIcons.Eraser, "지우개", on(ToolbarItem.ERASER)) { onIntent(DrawingIntent.Tap(ToolbarItem.ERASER)) }
             ToolbarButton(KkIcons.Sticker, "스티커", on(ToolbarItem.STICKER)) { onIntent(DrawingIntent.Tap(ToolbarItem.STICKER)) }
@@ -315,7 +309,7 @@ private fun ToolbarButton(icon: KkIcons, label: String, on: Boolean, enabled: Bo
 
 // ── 시트 ──────────────────────────────────────────────────────────────────
 
-/** Figma Sheet Header: 손잡이 + 제목(Label/Bold) + 닫기. */
+/** Figma Sheet Header(341:957): 손잡이 36 + 제목(Label/Bold) + 닫기. [KkSheetHeader](손잡이 40 · Title/M · 설명)와 모양이 달라 따로 둔다. */
 @Composable
 private fun SheetTitle(title: String, onClose: () -> Unit) {
     val c = KkTheme.colors
@@ -644,7 +638,7 @@ fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
                 style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
             if (!forLetter) {
-                KkInput(state.caption, { onIntent(DrawingIntent.SetCaption(it)) }, label = "함께 보낼 글", placeholder = "오늘 당직 힘내", helper = "${state.caption.length} / 40")
+                KkInput(state.caption, { onIntent(DrawingIntent.SetCaption(it)) }, label = "함께 보낼 글", helper = "${state.caption.length} / 40")
             }
             @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
             androidx.compose.foundation.layout.FlowRow(
