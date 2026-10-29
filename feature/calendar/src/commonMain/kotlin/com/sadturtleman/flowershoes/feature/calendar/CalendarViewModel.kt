@@ -3,18 +3,23 @@ package com.sadturtleman.flowershoes.feature.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.EventRepository
+import com.sadturtleman.flowershoes.core.data.LeaveRepository
+import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
+import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import kotlin.time.Clock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -41,10 +46,34 @@ data class EventDraft(
     val startTime: LocalTime = LocalTime(9, 0),
     val endTime: LocalTime = LocalTime(18, 0),
     val memo: String = "",
+    /** 매년 반복(기념일만, 기본 켬). */
+    val repeatYearly: Boolean = true,
+    /** 고치는 중인 원래 일정(원래 날 그대로). 휴가 일정이면 그 일수를 돌려받고 센다. */
+    val original: Event? = null,
 ) {
-    val startAt: LocalDateTime get() = LocalDateTime(start, if (allDay) LocalTime(0, 0) else startTime)
-    val endAt: LocalDateTime get() = LocalDateTime(end, if (allDay) LocalTime(23, 59) else endTime)
+    /** 기념일은 하루짜리 종일 일정이다(날짜 하나만 고른다). */
+    private val singleDay: Boolean get() = type == EventType.ANNIVERSARY
+    val startAt: LocalDateTime get() = LocalDateTime(start, if (allDay || singleDay) LocalTime(0, 0) else startTime)
+    val endAt: LocalDateTime get() = LocalDateTime(if (singleDay) start else end, if (allDay || singleDay) LocalTime(23, 59) else endTime)
     val valid: Boolean get() = endAt >= startAt
+
+    /** 커플 기념일은 설정 › 기념일에서만 지운다(홈 함께한 날 · 100일 알림이 기대고 있다). */
+    val deletable: Boolean get() = id != null && id != Event.COUPLE_ANNIVERSARY_ID
+
+    /** 종류 바꾸기: 휴가 · 기념일은 하루 단위라 종일로. */
+    fun withType(t: EventType): EventDraft = copy(type = t, allDay = allDay || t == EventType.VACATION || t == EventType.ANNIVERSARY)
+
+    /** 휴가면 이 기간을 쓴 뒤 남는 휴가(일정 추가에서 휴가 = 휴가 사용 등록). 아니면 null. */
+    fun leaveUse(pool: LeavePool): LeaveUse? {
+        if (type != EventType.VACATION) return null
+        return LeaveUse(start.daysUntil(end) + 1, pool.remainingAfter(start, end, replacing = original))
+    }
+}
+
+/** "5일 사용 · 남은 휴가 13일". 넘치면 [overdrawn] — 막지 않고 빨갛게 보인다. */
+data class LeaveUse(val days: Int, val remainingAfter: Int) {
+    val overdrawn: Boolean get() = remainingAfter < 0
+    val label: String get() = "${days}일 사용 · 남은 휴가 ${remainingAfter}일"
 }
 
 data class CalendarState(
@@ -56,6 +85,10 @@ data class CalendarState(
     /** 오늘부터 1년(진행 중인 것 포함): 다음 만남 · 이번 주 목록. */
     val upcoming: List<Event> = emptyList(),
     val draft: EventDraft? = null,
+    /** 휴가 하나의 풀(맨 위 휴가 요약 띠 · 일정 추가 › 휴가). 읽기 전에는 null. */
+    val pool: LeavePool? = null,
+    /** 연결된 연인 이름(일정 지우기 확인 창). 혼자 모드면 null. */
+    val partnerName: String? = null,
 ) {
     /** 달력 칸: 앞뒤 달 날짜를 채워 일요일 시작 6주 이하로. */
     val cells: List<LocalDate>
@@ -109,8 +142,17 @@ sealed interface CalendarIntent {
 @OptIn(ExperimentalCoroutinesApi::class)
 class CalendarViewModel(
     private val events: EventRepository,
+    leave: LeaveRepository? = null,
+    profile: ProfileRepository? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
+
+    private val partner: Flow<String?> = profile?.let { p ->
+        combine(p.observeCouple(), p.observeUsers()) { couple, users ->
+            val id = couple?.partnerUserId?.takeIf { it.isNotBlank() } ?: return@combine null
+            users.firstOrNull { it.id == id }?.nickname?.takeIf { it.isNotBlank() } ?: "연인"
+        }
+    } ?: flowOf(null)
 
     private val ui = MutableStateFlow(
         clock.today().let { CalendarState(month = LocalDate(it.year, it.month, 1), selected = it) },
@@ -124,7 +166,11 @@ class CalendarViewModel(
         clock.ticker().map { clock.today() }.distinctUntilChanged().flatMapLatest { today ->
             events.observeRange(today, today.plus(1, DateTimeUnit.YEAR)).map { today to it }
         },
-    ) { s, list, (today, upcoming) -> s.copy(monthEvents = list, today = today, upcoming = upcoming) }
+        leave?.observePool() ?: flowOf(null),
+        partner,
+    ) { s, list, (today, upcoming), pool, partnerName ->
+        s.copy(monthEvents = list, today = today, upcoming = upcoming, pool = pool, partnerName = partnerName)
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ui.value)
 
     fun onIntent(intent: CalendarIntent) {
@@ -142,12 +188,14 @@ class CalendarViewModel(
                 // 매년 반복 기념일은 그 해로 옮겨 놓은 사본이라 원래 날(원래 해)로 고친다.
                 val e = if (intent.event.repeats) events.get(intent.event.id) ?: intent.event else intent.event
                 val allDay = e.start.time == LocalTime(0, 0) && e.end.time.hour == 23 && e.end.time.minute == 59
-                ui.update { it.copy(draft = EventDraft(e.id, e.type, e.title, e.start.date, e.end.date, e.alarm, allDay, e.start.time, e.end.time, e.memo)) }
+                ui.update { it.copy(draft = EventDraft(
+                    e.id, e.type, e.title, e.start.date, e.end.date, e.alarm, allDay, e.start.time, e.end.time, e.memo, e.repeatYearly, original = e,
+                )) }
             }
             is CalendarIntent.ChangeDraft -> ui.update { it.copy(draft = intent.draft) }
             CalendarIntent.SaveDraft -> save()
             CalendarIntent.DeleteDraft -> {
-                val id = ui.value.draft?.id
+                val id = ui.value.draft?.takeIf { it.deletable }?.id
                 ui.update { it.copy(draft = null) }
                 if (id != null) viewModelScope.launch { events.delete(id) }
             }
@@ -169,7 +217,7 @@ class CalendarViewModel(
             events.save(
                 base.copy(
                     type = d.type, title = d.title.trim(), start = d.startAt, end = d.endAt, alarm = d.alarm,
-                    memo = d.memo.trim(), updatedAt = clock.now(),
+                    memo = d.memo.trim(), repeatYearly = d.repeatYearly, updatedAt = clock.now(),
                 ),
             )
         }

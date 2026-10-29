@@ -76,4 +76,18 @@ class LeavePoolTest {
         assertEquals(3, pool.total)
         assertEquals(listOf("g1"), pool.sources.map { (it as LeaveSource.Granted).grant.id })
     }
+
+    @Test
+    fun `기간을 고르면 그만큼 쓴 뒤 남은 휴가를 미리 센다`() {
+        val v1 = event("v1", EventType.VACATION, "2026-11-13", "2026-11-16")
+        val pool = LeavePool.of(Branch.AIR_FORCE, emptyList(), listOf(v1)) // 28 - 4 = 24
+        assertEquals(19, pool.remainingAfter(LocalDate.parse("2026-12-01"), LocalDate.parse("2026-12-05")))
+        // 이미 잡은 휴가 일정을 고치면 원래 일수는 돌려받고 새 기간만큼 쓴다.
+        assertEquals(22, pool.remainingAfter(LocalDate.parse("2026-11-13"), LocalDate.parse("2026-11-18"), replacing = v1))
+        // 휴가가 아니던 일정을 휴가로 바꾸면 돌려받을 일수가 없다.
+        val o1 = event("o1", EventType.OVERNIGHT, "2026-12-01", "2026-12-02")
+        assertEquals(22, pool.remainingAfter(LocalDate.parse("2026-12-01"), LocalDate.parse("2026-12-02"), replacing = o1))
+        // 넘쳐도 막지 않는다 — 음수.
+        assertEquals(-6, pool.remainingAfter(LocalDate.parse("2027-01-01"), LocalDate.parse("2027-01-30")))
+    }
 }
