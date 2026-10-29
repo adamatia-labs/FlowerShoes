@@ -9,6 +9,9 @@ import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.SEOUL
 import com.sadturtleman.flowershoes.core.drawing.DrawingCodec
+import com.sadturtleman.flowershoes.core.logging.BizEvent
+import com.sadturtleman.flowershoes.core.logging.BizLogger
+import com.sadturtleman.flowershoes.core.logging.BizView
 import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.LetterBlock
@@ -170,9 +173,10 @@ sealed interface LetterIntent {
 class LetterViewModel(
     private val letters: LetterRepository,
     private val attachments: AttachmentStore,
-    profile: ProfileRepository,
+    private val profile: ProfileRepository,
     private val settings: DeviceSettings,
     private val clock: Clock = Clock.System,
+    private val bizLogger: BizLogger,
 ) : ViewModel() {
 
     private val me = profile.myUserId()
@@ -280,6 +284,7 @@ class LetterViewModel(
                 // 하트: 이 편지에 고마워를 눌렀다(추억 타임라인의 ♥ 수). 한 사람에 한 번.
                 ui.value.open?.letter?.id?.let { letters.markRead(ReceiptEntity.HEART, it) }
                 letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
+                bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
                 toast("고마워를 보냈어요")
             }
             is LetterIntent.Open -> open(intent.letterId)
@@ -291,6 +296,8 @@ class LetterViewModel(
                 val visibleAt = intent.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
                 val letter = letters.newLetter(listOf(LetterBlock.DrawingRef(intent.meta.id)), paper = Paper.PLAIN.id, title = intent.caption, visibleAt = visibleAt)
                 letters.send(letter, listOf(intent.meta))
+                bizLogger.record(BizView.DRAWING_SEND, BizEvent.DrawingSent(scheduled = intent.revealAt != null, withCaption = !intent.caption.isNullOrBlank()))
+                recordSoloQueue(BizView.DRAWING_SEND)
                 val partner = state.value.partnerName
                 if (intent.revealAt != null) toast("${intent.revealAt.month.ordinal + 1}월 ${intent.revealAt.day}일 ${intent.revealAt.hour}시에 ${partner}에게 도착해요")
                 else toast("${partner}에게 그림을 보냈어요", openLetterId = letter.id)
@@ -324,10 +331,18 @@ class LetterViewModel(
             val visibleAt = d.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
             val font = d.font.takeIf { it != com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id }
             letters.send(letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font), d.drawings)
+            bizLogger.record(BizView.LETTER_COMPOSE, BizEvent.LetterSent(paper = d.paper, font = d.font, scheduled = d.revealAt != null, drawings = d.drawings.size, photos = d.photos.size, reply = false))
+            recordSoloQueue(BizView.LETTER_COMPOSE)
             settings.saveLetterDraft(null)
             ui.update { it.copy(draft = ComposeDraft(), draftThumbs = emptyMap(), draftPhotos = emptyMap()) }
             if (d.revealAt != null) toast("${d.revealAt.month.ordinal + 1}월 ${d.revealAt.day}일 ${d.revealAt.hour}시에 도착해요")
         }
+    }
+
+    /** 혼자 모드(연결 전)면 내 폰에 쌓인 내 편지 수를 남긴다 — 연결하는 순간 한꺼번에 전달되는 양이다. */
+    private suspend fun recordSoloQueue(view: String) {
+        if (!profile.observeCouple().first()?.partnerUserId.isNullOrBlank()) return
+        bizLogger.record(view, BizEvent.SoloLettersQueued(count = letters.countMine()))
     }
 
     private fun open(letterId: String) {

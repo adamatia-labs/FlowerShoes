@@ -46,6 +46,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
+import com.sadturtleman.flowershoes.core.logging.BizEvent
+import com.sadturtleman.flowershoes.core.logging.BizLogger
+import com.sadturtleman.flowershoes.core.logging.BizView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.crypto.CrockfordCode
@@ -98,6 +101,7 @@ class PairingViewModel(
     private val settings: DeviceSettings,
     /** 상대 폰이 넘겨주기(7-3-B). */
     private val relink: RelinkSession? = null,
+    private val bizLogger: BizLogger,
 ) : ViewModel() {
 
     private var relinkMode = false
@@ -124,10 +128,10 @@ class PairingViewModel(
     private var polling: Job? = null
 
     /** 새 초대 링크를 만든다(이전 링크는 무효). */
-    fun create() = run { it.createLink() }
+    fun create() = run { it.createLink().also { st -> if (st is PairingState.Waiting) bizLogger.record(BizView.PAIRING, BizEvent.PairingLinkCreated) } }
 
     /** 초대 링크로 들어왔다(딥링크). */
-    fun accept(token: String) = run { it.accept(token) }
+    fun accept(token: String) = run { it.accept(token).also { st -> if (st is PairingState.Accepting || st is PairingState.Linked) bizLogger.record(BizView.PAIRING, BizEvent.PairingLinkAccepted) } }
 
     fun editCode(text: String) = _ui.update { it.copy(codeInput = text.uppercase().take(9)) }
 
@@ -187,6 +191,7 @@ class PairingViewModel(
     }
 
     private suspend fun onLinked() {
+        bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = relinkMode))
         settings.setKeyEpoch(1)
         // 혼자 모드에서 쌓인 내 데이터가 첫 동기화로 넘어간다.
         runCatching { sync?.syncOnce() }
