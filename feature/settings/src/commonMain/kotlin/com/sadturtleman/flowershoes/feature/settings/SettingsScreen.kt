@@ -10,6 +10,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.graphics.Color
 import com.sadturtleman.flowershoes.core.designsystem.KkRadio
+import com.sadturtleman.flowershoes.core.designsystem.KkBanner
+import com.sadturtleman.flowershoes.core.designsystem.KkPaperTag
+import com.sadturtleman.flowershoes.core.designsystem.KkPaperTagStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkTopBarLeading
 import com.sadturtleman.flowershoes.core.designsystem.KkAdSlot
 import com.sadturtleman.flowershoes.core.designsystem.KkAd
@@ -252,7 +255,7 @@ private const val LIFETIME_PRICE = "7,900원"
 
 /**
  * 설정(Figma 8 · 설정 `376:4461`): 프로필 · 우리 · 꾸미기 · 알림 · 데이터와 보안 · 도움 · 계정 + 광고 칸.
- * 줄마다 › 는 하위 화면(또는 고르는 시트)을 여는 줄에만 붙는다(design.md).
+ * › 는 Figma List Group 규칙대로: 누르면 무언가 열리는 줄(이름 · 함께한 날 시트 포함)에만, 위험 줄(회원 탈퇴)과 값 줄엔 없다.
  */
 @Composable
 private fun MainPage(
@@ -276,7 +279,7 @@ private fun MainPage(
             Divider()
             KkListRow(
                 "군 정보",
-                value = militaryLabel(state.service, state.timeline, Clock.System.now().toLocalDateTime(SEOUL).date),
+                value = state.today?.let { militaryLabel(state.service, state.timeline, it) }.orEmpty(),
                 onClick = { open(SettingsPage.MILITARY) },
             )
             Divider()
@@ -357,7 +360,7 @@ private fun NotificationsPage(state: SettingsState, platform: PlatformActions, v
             SwitchRow("3개월마다 기록 받아 두기", n.exportReminder) { viewModel.setExportReminder(it, platform) }
         }
         // 설명 문장은 지운다(#71 결정, design.md 글 규칙).
-        if (!n.notifyMasterOn) com.sadturtleman.flowershoes.core.designsystem.KkBanner("알림이 꺼져 있어요")
+        if (!n.notifyMasterOn) KkBanner("알림이 꺼져 있어요")
         Group("혜택 소식") {
             SwitchRow("광고성 정보 수신", state.marketing) { viewModel.setMarketing(it) }
         }
@@ -415,9 +418,9 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
         Box(Modifier.fillMaxWidth().padding(top = KkSpacing.lg), contentAlignment = Alignment.Center) {
             // 보여 주기만 하는 종이 태그라 살짝 기울인다(design.md).
             if (owned) {
-                com.sadturtleman.flowershoes.core.designsystem.KkPaperTag("꽃신 평생", "평생 꽃신", valueStyle = com.sadturtleman.flowershoes.core.designsystem.KkPaperTagStyle.Hand, tilt = -3f)
+                KkPaperTag("꽃신 평생", "평생 꽃신", valueStyle = KkPaperTagStyle.Hand, tilt = -3f)
             } else {
-                com.sadturtleman.flowershoes.core.designsystem.KkPaperTag("한 번만 내면 평생", price, tilt = 2f)
+                KkPaperTag("한 번만 내면 평생", price, tilt = 2f)
             }
         }
         if (owned) {
@@ -500,7 +503,7 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
             return@Page
         }
         val months = ServiceRulesTable.BUNDLED.ruleFor(s.branch, s.enlistDate).serviceMonths
-        val today = Clock.System.now().toLocalDateTime(SEOUL).date
+        val today = state.today ?: s.enlistDate
         Group(null) {
             KkListRow("군종", value = "${s.branch.koreanName} · ${months}개월", onClick = { sheet = "branch" })
             Divider()

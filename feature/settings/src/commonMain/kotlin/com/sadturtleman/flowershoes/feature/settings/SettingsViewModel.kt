@@ -50,6 +50,8 @@ data class SettingsState(
     val timeline: ServiceTimeline? = null,
     val provider: String? = null,
     val notify: NotificationPrefs = NotificationPrefs(),
+    /** 서울 기준 오늘(계급 · D-day 계산). ViewModel 시계에서 온다. */
+    val today: LocalDate? = null,
 )
 
 /**
@@ -97,6 +99,7 @@ class SettingsViewModel(
             timeline = timelines.firstOrNull()?.second,
             provider = provider,
             notify = notify,
+            today = today,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
 
