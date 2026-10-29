@@ -3,5 +3,11 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application
         android:networkSecurityConfig="@xml/network_security_debug"
-        tools:replace="android:networkSecurityConfig" />
+        tools:replace="android:networkSecurityConfig">
+        <!-- 디버그는 GA4 자동 수집(first_open · session_start · screen_view)도 끈다. BizEvent 는 이미 표준 출력으로만 간다. -->
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false"
+            tools:replace="android:value" />
+    </application>
 </manifest>

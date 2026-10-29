@@ -70,7 +70,7 @@ enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.de
 }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, COMPOSE, DRAW_FOR_LETTER, SETTINGS, LEAVE }
+private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, COMPOSE, DRAW_FOR_LETTER, DRAW, DRAFTS, SETTINGS, LEAVE }
 
 @Composable
 fun KkotsinApp() {
@@ -152,6 +152,11 @@ private fun MainShell() {
     val memory = koinViewModel<com.sadturtleman.flowershoes.feature.memory.MemoryViewModel>()
     val memoryDetail = memory.state.collectAsState().value.stack.isNotEmpty()
     val fileShare = rememberFileShare()
+    // 편지 쓰기를 새로 연다 — 쓰던 편지가 있으면 편지 쓰기 화면이 "이어 쓸까요?" 를 묻는다.
+    val writeLetter = {
+        letters.onIntent(LetterIntent.NewCompose)
+        overlay = Overlay.COMPOSE
+    }
     val bookStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookStore>()
 
     // 이 폰 기종을 내 정보에 싣는다(연인의 설정 › 연결 정보).
@@ -209,9 +214,8 @@ private fun MainShell() {
                 onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
                 onClose = { overlay = null },
                 photoPicker = { rememberPhotoPicker(it) },
-                // 잠긴 편지지 → 설정 › 꽃신 평생(편지는 임시저장이 남아 있다).
+                // 잠긴 편지지 → 설정 › 꽃신 평생(쓰던 편지는 화면을 나갈 때 저장된다).
                 onOpenLifetime = {
-                    letters.onIntent(LetterIntent.SaveDraft)
                     settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.LIFETIME
                     overlay = Overlay.SETTINGS
                 },
@@ -227,6 +231,31 @@ private fun MainShell() {
                     overlay = Overlay.COMPOSE
                 },
                 onClose = { overlay = Overlay.COMPOSE },
+            )
+        }
+        // 그림만 보내기(편지 탭 쓰기 메뉴 › 그림 그리기 · 받은 그림 › 답장 그리기): 그림 한 장짜리 편지.
+        Overlay.DRAW -> {
+            DrawingEditorRoute(
+                photoPicker = { rememberPhotoPicker(it) },
+                saveImage = imageSaver,
+                forLetter = false,
+                onSaved = { overlay = null },
+                onSend = { meta, caption, revealAt ->
+                    letters.onIntent(LetterIntent.SendDrawing(meta, caption, revealAt))
+                    overlay = null
+                    tab = Tab.LETTER
+                },
+                onClose = { overlay = null },
+            )
+        }
+        Overlay.DRAFTS -> {
+            com.sadturtleman.flowershoes.feature.letter.LetterDraftsRoute(
+                onBack = { overlay = null },
+                onResume = {
+                    letters.onIntent(LetterIntent.ResumeDraft(it))
+                    overlay = Overlay.COMPOSE
+                },
+                viewModel = letters,
             )
         }
         Overlay.PAIRING -> {
@@ -298,20 +327,22 @@ private fun MainShell() {
                         onOpenPairing = { overlay = Overlay.PAIRING },
                         onOpenCalendar = { tab = Tab.CALENDAR },
                         onOpenSettings = { overlay = Overlay.SETTINGS },
-                        onWriteLetter = { overlay = Overlay.COMPOSE },
+                        onWriteLetter = writeLetter,
                         onOpenLeave = { tab = Tab.CALENDAR; overlay = Overlay.LEAVE },
                     )
                     Tab.CALENDAR -> CalendarRoute(onOpenLeave = { overlay = Overlay.LEAVE }, viewModel = calendar)
                     Tab.LETTER -> LetterInboxRoute(
-                        // Figma 최종 정리: 만들기 시트 없이 바로 편지 쓰기(그림은 편지 안에서).
-                        onCreate = { overlay = Overlay.COMPOSE },
+                        onWriteLetter = writeLetter,
+                        onDraw = { overlay = Overlay.DRAW },
+                        onOpenDrafts = { overlay = Overlay.DRAFTS },
                         onReply = {
                             letters.onIntent(LetterIntent.Close)
-                            overlay = Overlay.COMPOSE
+                            writeLetter()
                         },
+                        // 받은 그림 › 답장 그리기: 바로 그림판.
                         onReplyDrawing = {
                             letters.onIntent(LetterIntent.Close)
-                            overlay = Overlay.COMPOSE
+                            overlay = Overlay.DRAW
                         },
                         viewModel = letters,
                     )
@@ -320,7 +351,7 @@ private fun MainShell() {
                             letters.onIntent(LetterIntent.Open(it))
                             tab = Tab.LETTER
                         },
-                        onWriteLetter = { overlay = Overlay.COMPOSE },
+                        onWriteLetter = writeLetter,
                         photoPicker = { rememberPhotoPicker(it) },
                         book = com.sadturtleman.flowershoes.feature.memory.MemoryBookActions(
                             bookStore, ::newBookPdf, fileShare,

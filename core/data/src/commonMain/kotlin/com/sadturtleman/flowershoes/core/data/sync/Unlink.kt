@@ -80,7 +80,8 @@ class UnlinkService(
     }
 
     private companion object {
-        val SYNC_TABLES = listOf("sync_op", "stream_counter", "recv_cursor", "recv_pending", "peer_cursor", "revoked_device", "device")
+        // 쓰던 편지(letter_draft)도 어느 쪽이든 지운다 — 그 사람에게 쓰던 글이다(planning §8).
+        val SYNC_TABLES = listOf("sync_op", "stream_counter", "recv_cursor", "recv_pending", "peer_cursor", "revoked_device", "device", "letter_draft")
         val SHARED_TABLES = listOf("letter", "drawing", "receipt", "event", "leave_grant", "miss_you", "status", "memory", "attachment")
 
         /** 탈퇴 때만: 내 정보 · 복무 · 시계까지. 연결 해제는 내 D-day 를 남긴다. */

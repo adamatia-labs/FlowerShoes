@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeUIViewController
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.sadturtleman.flowershoes.core.data.logged
 import com.sadturtleman.flowershoes.core.database.buildKkotsin
 import com.sadturtleman.flowershoes.core.database.databaseBuilder
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -73,6 +74,8 @@ fun MainViewController(
         val settingsPath = requireNotNull(support?.path) + "/kkotsin_device.preferences_pb"
         // Firebase 는 Swift 쪽(KkotsinApp)이 GoogleService-Info.plist 가 있을 때만 configure 한다.
         val firebase = com.sadturtleman.flowershoes.core.firebase.firebaseConfigured()
+        // 디버그는 GA4 자동 수집도 끈다(Info.plist 값과 함께).
+        if (firebase && kotlin.native.Platform.isDebugBinary) com.sadturtleman.flowershoes.core.logging.disableFirebaseAnalyticsCollection()
         val cloud = if (firebase) {
             val t = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
             CloudBackend(
@@ -114,9 +117,11 @@ fun MainViewController(
                         )
                     }
                     if (purchases != null) {
-                        single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { IosLifetimeStore(purchases, get()) }
+                        // 결제 시작 · 완료 이벤트는 스토어를 감싸 남긴다(PurchaseLogging).
+                        single<com.sadturtleman.flowershoes.core.data.LifetimeStore> { IosLifetimeStore(purchases, get()).logged(get<com.sadturtleman.flowershoes.core.logging.BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.LIFETIME)) }
                         single<com.sadturtleman.flowershoes.core.data.BookStore> {
                             object : com.sadturtleman.flowershoes.core.data.BookStore, com.sadturtleman.flowershoes.core.data.OneTimeProduct by IosProduct(purchases, "memory_book", "memory_book") {}
+                                .logged(get<com.sadturtleman.flowershoes.core.logging.BizLogger>().purchaseRecorder(com.sadturtleman.flowershoes.core.logging.PurchaseProduct.MEMORY_BOOK))
                         }
                     }
                 },

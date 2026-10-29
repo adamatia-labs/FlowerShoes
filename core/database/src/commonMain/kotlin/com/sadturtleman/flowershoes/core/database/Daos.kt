@@ -341,3 +341,15 @@ interface SyncDao {
     @Upsert
     suspend fun setMeta(meta: MetaEntity)
 }
+
+@Dao
+interface LetterDraftDao {
+    @Query("SELECT * FROM letter_draft ORDER BY updatedAtMs DESC")
+    fun observeAll(): Flow<List<LetterDraftEntity>>
+
+    @Upsert
+    suspend fun upsert(draft: LetterDraftEntity)
+
+    @Query("DELETE FROM letter_draft WHERE id = :id")
+    suspend fun delete(id: String)
+}

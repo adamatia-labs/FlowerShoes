@@ -87,7 +87,12 @@ import com.sadturtleman.flowershoes.core.designsystem.KkColors
 import com.sadturtleman.flowershoes.core.designsystem.KkDatePicker
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkEmptyState
+import com.sadturtleman.flowershoes.core.designsystem.KkMenu
+import com.sadturtleman.flowershoes.core.designsystem.KkMenuItem
 import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.sadturtleman.flowershoes.core.designsystem.KkScheduleSheet
 import com.sadturtleman.flowershoes.core.designsystem.KkToastType
 import com.sadturtleman.flowershoes.core.designsystem.hhmm
@@ -120,12 +125,17 @@ import org.koin.compose.viewmodel.koinViewModel
 
 // ── 편지함 ────────────────────────────────────────────────────────────────
 
-/** 편지함(Figma 4 · 편지함 / 빈 편지함). 편지를 열면 같은 자리에서 읽기로 바뀐다. */
+/**
+ * 편지함(Figma 4 · 편지함 / 빈 편지함). 편지를 열면 같은 자리에서 읽기로 바뀐다.
+ * 편지 쓰기 버튼은 "편지 쓰기 / 그림 그리기" 메뉴를 연다(그림만 그려도 그림 한 장짜리 편지).
+ */
 @Composable
 fun LetterInboxRoute(
-    onCreate: () -> Unit,
+    onWriteLetter: () -> Unit,
+    onDraw: () -> Unit,
+    onOpenDrafts: () -> Unit,
     onReply: () -> Unit,
-    onReplyDrawing: () -> Unit = onReply,
+    onReplyDrawing: () -> Unit = onDraw,
     viewModel: LetterViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -135,7 +145,7 @@ fun LetterInboxRoute(
             when {
                 open != null && open.drawingOnly -> DrawingLetterScreen(open, viewModel::onIntent, onReplyDrawing)
                 open != null -> LetterReadScreen(open, viewModel::onIntent, onReply)
-                else -> LetterInboxScreen(state, viewModel::onIntent, onCreate)
+                else -> LetterInboxScreen(state, viewModel::onIntent, onWriteLetter, onDraw, onOpenDrafts)
             }
         }
         ToastHost(viewModel.toasts, viewModel::toastShown) { viewModel.onIntent(LetterIntent.Open(it)) }
@@ -143,8 +153,15 @@ fun LetterInboxRoute(
 }
 
 @Composable
-fun LetterInboxScreen(state: LetterState, onIntent: (LetterIntent) -> Unit, onCreate: () -> Unit) {
+fun LetterInboxScreen(
+    state: LetterState,
+    onIntent: (LetterIntent) -> Unit,
+    onWriteLetter: () -> Unit,
+    onDraw: () -> Unit,
+    onOpenDrafts: () -> Unit,
+) {
     val c = KkTheme.colors
+    var writeMenu by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
@@ -152,20 +169,31 @@ fun LetterInboxScreen(state: LetterState, onIntent: (LetterIntent) -> Unit, onCr
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("편지함", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
-            Text(
-                "+ 편지 쓰기", style = KkTheme.type.label, color = c.accent,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button, onClick = onCreate)
-                    .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
-            )
+            Box {
+                Row(
+                    Modifier.clip(RoundedCornerShape(KkRadius.sm)).clickable(role = Role.Button) { writeMenu = true }
+                        .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    KkIcon(KkIcons.Pen, tint = c.accent, size = 16.dp)
+                    Text("편지 쓰기", style = KkTheme.type.label, color = c.accent)
+                }
+                KkMenu(
+                    writeMenu, { writeMenu = false },
+                    listOf(KkMenuItem("편지 쓰기", KkIcons.Note, onWriteLetter), KkMenuItem("그림 그리기", KkIcons.Brush, onDraw)),
+                )
+            }
         }
         KkSegmentedControl(LetterFilter.entries.map { it.label }, state.filter.ordinal, { onIntent(LetterIntent.Filter(LetterFilter.entries[it])) })
+        if (state.drafts.isNotEmpty()) DraftRow(state.drafts, onOpenDrafts)
         when {
             state.inbox.isEmpty() -> KkEmptyState(
                 title = "아직 주고받은 편지가 없어요",
                 description = "오늘 하루를 그림 한 장이나 짧은 편지로 보내 보세요",
                 icon = KkIcons.Mail,
                 action = "만들기",
-                onAction = onCreate,
+                onAction = { writeMenu = true },
             )
             state.visibleInbox.isEmpty() -> Text(
                 "이 분류에는 아직 편지가 없어요", style = KkTheme.type.body, color = c.sub,
@@ -337,9 +365,12 @@ fun LetterComposeRoute(
     var fonts by remember { mutableStateOf(false) }
     var photoSource by remember { mutableStateOf(false) }
     val pickPhoto = photoPicker?.invoke { viewModel.onIntent(LetterIntent.AddPhoto(it)) }
+    // 쓰던 글은 멈추고 2초 뒤 · 화면을 나갈 때(닫기 · 그림판 · 앱 전환) 이 기기에 저장한다.
+    DisposableEffect(viewModel) { onDispose { viewModel.onIntent(LetterIntent.LeaveCompose) } }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onIntent(LetterIntent.LeaveCompose) }
     Box(Modifier.fillMaxSize().background(c.canvas)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = KkSpacing.xl)) {
-            KkTopBar("편지 쓰기", onLeading = onClose, leading = KkTopBarLeading.Close, trailingText = "임시저장", onTrailing = { focus.clearFocus(); viewModel.onIntent(LetterIntent.SaveDraft) })
+            KkTopBar("편지 쓰기", onLeading = onClose, leading = KkTopBarLeading.Close)
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = KkSpacing.sm),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
@@ -372,6 +403,14 @@ fun LetterComposeRoute(
             }
         }
         ToastHost(viewModel.toasts, viewModel::toastShown) {}
+    }
+    val resumable = state.resumable
+    if (resumable.isNotEmpty()) {
+        ResumeDraftSheet(
+            resumable,
+            onResume = { viewModel.onIntent(LetterIntent.ResumeDraft(it)) },
+            onNew = { viewModel.onIntent(LetterIntent.DismissResume) },
+        )
     }
     if (scheduling) {
         KkScheduleSheet(
@@ -547,7 +586,7 @@ private fun PaperCard(
         // 글 속 그림이 줄 높이를 키우도록 줄 간격은 글꼴 기본값(고정 줄 높이는 큰 글자를 겹치게 한다).
         val body = KkTheme.type.body.copy(fontFamily = font.family(), fontSize = font.size(16f, com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.of(d.font)), lineHeight = TextUnit.Unspecified, letterSpacing = 0.sp, color = ink)
         var field by remember { mutableStateOf(TextFieldValue(d.text, TextRange(d.cursor.coerceIn(0, d.text.length)))) }
-        // 그림 · 사진을 넣었거나 임시저장을 불러온 경우처럼 바깥에서 글이 바뀌면 맞춘다.
+        // 그림 · 사진을 넣었거나 쓰던 편지를 불러온 경우처럼 바깥에서 글이 바뀌면 맞춘다.
         // 직접 치는 글은 이 칸이 원본이다 — 화면에 늦게 도착한 옛 상태로 되돌리면 글자가 빠진다.
         LaunchedEffect(d.rev) {
             if (field.text != d.text) field = TextFieldValue(d.text, TextRange(d.cursor.coerceIn(0, d.text.length)))
