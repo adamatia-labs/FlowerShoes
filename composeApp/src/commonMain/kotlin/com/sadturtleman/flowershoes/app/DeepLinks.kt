@@ -47,6 +47,9 @@ sealed interface DeepLink {
         }
 
         const val SCHEME = "kkotsin"
+
+        /** 설정 › 문의하기([Inquiry]). */
+        const val INQUIRY_URI = "$SCHEME://settings/inquiry"
     }
 }
 

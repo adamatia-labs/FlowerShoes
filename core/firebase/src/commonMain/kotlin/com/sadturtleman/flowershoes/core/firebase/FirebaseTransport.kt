@@ -88,9 +88,12 @@ class FirestoreTransport(
         }
     }
 
-    /** Firestore 오류는 상태 이름(UNAVAILABLE · PERMISSION_DENIED …)을 서버 오류 화면의 코드로 쓴다. */
+    /**
+     * 서버 쪽 Firestore 상태만 서버 오류 화면에 올린다(상태 이름이 곧 코드).
+     * PERMISSION_DENIED 같은 것은 기기 승인 대기 창에서 늘 나오는 실패라 빼 둔다.
+     */
     override fun errorCode(error: Throwable): String? =
-        (error as? dev.gitlive.firebase.firestore.FirebaseFirestoreException)?.code?.name
+        (error as? dev.gitlive.firebase.firestore.FirebaseFirestoreException)?.code?.name?.takeIf { it in SERVER_FAULTS }
 
     override suspend fun fetch(coupleId: String, myDevice: String): List<MailItem> {
         val now = clock.now().toEpochMilliseconds()
@@ -149,7 +152,12 @@ class FirestoreTransport(
 
     private fun storageBlob(coupleId: String, blobId: String) = Firebase.storage.reference.child("couples/$coupleId/blobs/$blobId")
 
-    private companion object { const val STORAGE_BLOB = "storage:v1" }
+    private companion object {
+        const val STORAGE_BLOB = "storage:v1"
+
+        /** 서버가 답하지 않거나 서버 안에서 잘못된 상태(gRPC 상태 이름). */
+        val SERVER_FAULTS = setOf("UNAVAILABLE", "DEADLINE_EXCEEDED", "INTERNAL", "UNKNOWN", "RESOURCE_EXHAUSTED", "DATA_LOSS")
+    }
 
     // ── PairingTransport ──
 

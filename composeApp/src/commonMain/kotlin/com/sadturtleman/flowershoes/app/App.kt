@@ -118,18 +118,21 @@ fun KkotsinApp() {
             val gate = rememberAppGate()
             Box(Modifier.fillMaxSize()) {
                 // 업데이트 필요 · 점검 중은 앱 자체를 그리지 않는다 — 연결 모달 · 편지 도착 창 · 책 권유까지 모두 막힌다.
-                when {
-                    gate.state is AppGate.UpdateRequired -> {
+                when (val g = gate.state) {
+                    is AppGate.UpdateRequired -> {
                         val uri = LocalUriHandler.current
-                        UpdateRequiredScreen((gate.state as AppGate.UpdateRequired).minVersion) { runCatching { uri.openUri(storeUrl) } }
+                        UpdateRequiredScreen(g.minVersion) { runCatching { uri.openUri(storeUrl) } }
                     }
-                    gate.state == AppGate.Maintenance -> MaintenanceScreen(gate.recheck)
-                    current == null || gate.holdSplash -> SplashScreen()
-                    !current.onboarded -> OnboardingFlow()
-                    else -> MainShell()
+                    AppGate.Maintenance -> MaintenanceScreen(gate.recheck)
+                    else -> {
+                        when {
+                            current == null || gate.holdSplash -> ShellSplash()
+                            !current.onboarded -> OnboardingFlow()
+                            else -> MainShell()
+                        }
+                        if (current != null && !gate.holdSplash) ConnectionStates(onboarded = current.onboarded)
+                    }
                 }
-                val blocked = gate.state is AppGate.UpdateRequired || gate.state == AppGate.Maintenance
-                if (!blocked && current != null && !gate.holdSplash) ConnectionStates(onboarded = current.onboarded)
             }
         }
     }
@@ -151,8 +154,15 @@ private fun rememberAppGate(): GateUi {
     var state by remember { mutableStateOf<AppGate?>(if (flags == null) AppGate.Open else null) }
     var waited by remember { mutableStateOf(flags == null) }
     val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val check: () -> Unit = remember(flags, version) {
-        { if (flags != null) scope.launch { state = flags.appGate(version) } }
+        {
+            // 늦게 끝난 옛 판단이 새 판단을 덮지 않게 앞의 것을 거둔다.
+            if (flags != null) {
+                checking?.cancel()
+                checking = scope.launch { state = flags.appGate(version) }
+            }
+        }
     }
     LaunchedEffect(Unit) {
         delay(GATE_SPLASH_WAIT)
@@ -169,7 +179,7 @@ private fun rememberAppGate(): GateUi {
 private val GATE_SPLASH_WAIT = 2.seconds
 
 /**
- * 네트워크 없음 · 서버 오류(#72). 앱 위에 덮어 띄우지만 막지는 않는다 — 뒤로 가기로 닫으면
+ * 네트워크 없음 · 서버 오류(#72). 앱 위에 덮어 띄우지만 막지는 않는다 — 뒤로 가기나 다시 시도로 닫으면
  * 같은 끊김 · 같은 실패가 이어지는 동안 다시 뜨지 않고, 다시 연결되거나 동기화가 성공하면 저절로 사라진다.
  * 덮개(연결 모달 · 편지 도착 창 · 책 권유)는 아래에 그대로 둔다.
  */
@@ -180,26 +190,37 @@ private fun ConnectionStates(onboarded: Boolean) {
     val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
     val scope = rememberCoroutineScope()
     var offlineClosed by remember { mutableStateOf(false) }
+    // 마지막으로 다시 연결된 때. 끊겨 있던 동안의 실패는 오프라인 탓이라 서버 오류로 보이지 않는다.
+    var onlineSince by remember { mutableStateOf<kotlin.time.Instant?>(null) }
     // 닫은 서버 오류(그 실패가 시작된 때). 실패가 끝나고 새로 시작되면 시각이 달라 다시 뜬다.
     var closedSince by remember { mutableStateOf<kotlin.time.Instant?>(null) }
     var retrying by remember { mutableStateOf(false) }
-    LaunchedEffect(online) { if (online) offlineClosed = false }
+    var wasOffline by remember { mutableStateOf(false) }
+    LaunchedEffect(online) {
+        if (online) {
+            offlineClosed = false
+            if (wasOffline) onlineSince = kotlin.time.Clock.System.now()
+        }
+        wasOffline = !online
+    }
     if (!online) {
         if (!offlineClosed) {
             BackHandler { offlineClosed = true }
-            OfflineScreen(onRetry = { scheduler?.requestNow() })
+            // 다시 시도: 화면을 닫고 동기화를 한 번 부른다(iOS 에는 뒤로 가기 버튼이 없다). 써 둔 것은 연결되면 나간다.
+            OfflineScreen(onRetry = {
+                offlineClosed = true
+                scheduler?.requestNow()
+            })
         }
         return
     }
     // 서버 오류는 동기화가 도는 화면(연결 뒤 셸)에서만. 실패는 동기화가 이미 잡고 있는 것을 그대로 보인다.
     if (scheduler == null || !onboarded) return
     val failure = scheduler.failure.collectAsState().value ?: return
-    if (failure.since == closedSince) return
+    if (failure.since == closedSince || onlineSince?.let { failure.last < it } == true) return
     BackHandler { closedSince = failure.since }
-    val time = failure.since.toLocalDateTime(TimeZone.currentSystemDefault()).time
-    val clock = "${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}"
     ServerErrorScreen(
-        detail = failure.code?.let { "오류 코드 $it · $clock" } ?: clock,
+        detail = failure.detail(),
         retrying = retrying,
         onRetry = {
             if (!retrying) scope.launch {
@@ -209,9 +230,16 @@ private fun ConnectionStates(onboarded: Boolean) {
         },
         onContact = {
             closedSince = failure.since
-            DeepLinks.open("${DeepLink.SCHEME}://settings/inquiry")
+            DeepLinks.open(DeepLink.INQUIRY_URI)
         },
     )
+}
+
+/** "오류 코드 UNAVAILABLE · 10:42"(Figma). 시간 초과처럼 코드가 없으면 시각만. */
+private fun com.sadturtleman.flowershoes.core.data.sync.SyncFailure.detail(): String {
+    val time = since.toLocalDateTime(TimeZone.currentSystemDefault()).time
+    val clock = "${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}"
+    return code?.let { "오류 코드 $it · $clock" } ?: clock
 }
 
 @OptIn(ExperimentalComposeUiApi::class)

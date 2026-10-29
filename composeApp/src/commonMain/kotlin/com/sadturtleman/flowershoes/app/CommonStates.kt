@@ -2,7 +2,6 @@ package com.sadturtleman.flowershoes.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -19,11 +18,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,7 +40,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 
 /** 앱 시작(385:5348). 신원 · 앱 막기 판단을 읽는 동안. 시스템 스플래시(Android SplashScreen · iOS 실행 화면) 다음에 이어진다. */
 @Composable
-internal fun SplashScreen() {
+internal fun ShellSplash() {
     val c = KkTheme.colors
     val t = KkTheme.type
     StateFrame(footer = {
@@ -57,8 +56,8 @@ internal fun SplashScreen() {
 }
 
 /**
- * 네트워크 없음(385:5360). 막지 않는다 — 뒤로 가기로 닫고 앱을 그대로 쓸 수 있다(써 둔 것은 폰에 남는다).
- * 다시 연결되면 저절로 사라진다. [onRetry] 는 동기화를 한 번 부른다.
+ * 네트워크 없음(385:5360). 막지 않는다 — 뒤로 가기 · 다시 시도로 닫고 앱을 그대로 쓸 수 있다(써 둔 것은 폰에 남는다).
+ * 다시 연결되면 저절로 사라진다.
  */
 @Composable
 internal fun OfflineScreen(onRetry: () -> Unit) {
@@ -101,7 +100,8 @@ internal fun UpdateRequiredScreen(minVersion: String, onUpdate: () -> Unit) {
 }
 
 /**
- * 점검 중(385:5403). 모든 화면을 막는다. 리모트는 켜고 끄는 값만 주므로(#72 결정) 시간 · 남은 시간 줄과 공지 보기는 없다.
+ * 점검 중(385:5403). 모든 화면을 막는다. 리모트는 켜고 끄는 값만 주므로(#72 결정) 시간 · 남은 시간 줄 · 공지 보기는 없고,
+ * 그 자리에 다시 시도(Text 버튼)를 둔다.
  * [onRetry] 는 판단을 다시 읽는다 — 점검이 끝났으면 바로 열린다.
  */
 @Composable
@@ -110,7 +110,6 @@ internal fun MaintenanceScreen(onRetry: () -> Unit) {
     StateFrame(actions = { TextAction("다시 시도", onRetry) }) {
         KkIcon(KkIcons.Gear, tint = c.sub, size = 56.dp)
         StateTitle("잠시 점검 중이에요")
-        StateBody("편지와 사진은 폰에 그대로 있어요.")
     }
 }
 
@@ -129,7 +128,8 @@ private fun StateFrame(
 ) {
     Box(
         Modifier.fillMaxSize().background(KkTheme.colors.canvas)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            // 아래 화면으로 터치가 새지 않게 먹는다(clickable 은 화면 전체를 버튼으로 읽히게 해 쓰지 않는다).
+            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } }
             .statusBarsPadding().navigationBarsPadding(),
     ) {
         Column(
