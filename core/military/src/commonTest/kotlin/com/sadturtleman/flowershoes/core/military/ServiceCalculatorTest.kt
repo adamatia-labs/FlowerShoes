@@ -36,7 +36,21 @@ class ServiceCalculatorTest {
     @Test
     fun `군종마다 복무 기간이 다르다`() {
         assertEquals(LocalDate.parse("2025-09-14"), calculator.timeline(service(Branch.NAVY, "2024-01-15")).dischargeDate)
-        assertEquals(LocalDate.parse("2025-11-14"), calculator.timeline(service(Branch.AIR_FORCE, "2024-01-15")).dischargeDate)
+        assertEquals(LocalDate.parse("2025-10-14"), calculator.timeline(service(Branch.AIR_FORCE, "2024-01-15")).dischargeDate)
+    }
+
+    @Test
+    fun `공군은 21개월 복무하고 병장으로 7개월째에 전역한다`() {
+        // 국방부 조견표: 공군 21개월(2021-12-14 단축 완료). 병장 기간 = 21 − (2 + 6 + 6) = 7개월.
+        val t = calculator.timeline(service(Branch.AIR_FORCE, "2024-01-15"))
+        assertEquals(LocalDate.parse("2025-10-14"), t.dischargeDate)
+        assertEquals(
+            listOf("2024-01-15", "2024-03-01", "2024-09-01", "2025-03-01").map(LocalDate::parse),
+            t.ranks.map { it.from },
+        )
+        assertEquals(Rank.SERGEANT, t.rankAt(t.dischargeDate)?.rank)
+        // 진급한 달을 1호봉으로 치므로 병장 3월 ~ 10월 = 8호봉에서 전역한다(22개월이면 9호봉).
+        assertEquals(8, t.payStep(t.dischargeDate))
     }
 
     @Test
@@ -85,7 +99,7 @@ class ServiceCalculatorTest {
     @Test
     fun `시행일 이후 규칙 중 가장 최근 것을 쓴다`() {
         val table = ServiceRulesTable(
-            version = 2,
+            version = 3,
             rules = listOf(
                 ServiceRule(Branch.ARMY, LocalDate.parse("2020-06-16"), 18, listOf(2, 6, 6)),
                 ServiceRule(Branch.ARMY, LocalDate.parse("2027-01-01"), 15, listOf(2, 5, 5)),
@@ -93,7 +107,7 @@ class ServiceCalculatorTest {
         )
         assertEquals(18, table.ruleFor(Branch.ARMY, LocalDate.parse("2026-12-31")).serviceMonths)
         assertEquals(15, table.ruleFor(Branch.ARMY, LocalDate.parse("2027-01-01")).serviceMonths)
-        assertEquals(2, ServiceRulesTable.BUNDLED.newer(table).version)
-        assertEquals(1, ServiceRulesTable.BUNDLED.newer(ServiceRulesTable.BUNDLED.copy(version = 0)).version)
+        assertEquals(3, ServiceRulesTable.BUNDLED.newer(table).version)
+        assertEquals(2, ServiceRulesTable.BUNDLED.newer(ServiceRulesTable.BUNDLED.copy(version = 0)).version)
     }
 }
