@@ -137,7 +137,7 @@ class InboxApplier(
             is OpPayload.BookCoverPut -> {
                 val local = db.bookCoverDao().get()
                 if (Lww.incomingWins(local?.let { Versioned(it.lamport, it.lastWriterDevice, false) }, Versioned(p.lamport, p.writerDevice, false))) {
-                    db.bookCoverDao().upsert(BookCoverEntity(cover = p.cover.name, lamport = p.lamport, lastWriterDevice = p.writerDevice))
+                    db.bookCoverDao().upsert(BookCoverEntity(cover = com.sadturtleman.flowershoes.core.model.BookCover.from(p.cover).name, lamport = p.lamport, lastWriterDevice = p.writerDevice))
                 }
             }
             is OpPayload.Delete -> delete(p)

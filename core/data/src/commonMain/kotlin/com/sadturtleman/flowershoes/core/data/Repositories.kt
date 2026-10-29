@@ -426,7 +426,7 @@ class BookCoverRepository(
         writer.write(
             OpKind.PROFILE, "book_cover", "book",
             localWrite = { lamport -> db.bookCoverDao().upsert(BookCoverEntity(cover = cover.name, lamport = lamport, lastWriterDevice = identity.deviceId)) },
-            payload = { lamport -> OpPayload.BookCoverPut(cover, lamport, identity.deviceId) },
+            payload = { lamport -> OpPayload.BookCoverPut(cover.name, lamport, identity.deviceId) },
         )
     }
 }

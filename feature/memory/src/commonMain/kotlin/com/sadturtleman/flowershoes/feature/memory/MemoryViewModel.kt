@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -263,11 +264,13 @@ class MemoryViewModel(
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
         val my = users.firstOrNull { it.id == me }?.nickname?.takeIf { it.isNotBlank() } ?: "나"
         val partner = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.nickname?.takeIf { it.isNotBlank() } ?: "연인"
-        val soldier = if (users.firstOrNull { it.id == me }?.role == com.sadturtleman.flowershoes.core.model.Role.SOLDIER.name) my else partner
+        val myRole = users.firstOrNull { it.id == me }?.role?.let { r -> com.sadturtleman.flowershoes.core.model.Role.entries.firstOrNull { it.name == r } }
+        val soldier = if (myRole == com.sadturtleman.flowershoes.core.model.Role.SOLDIER) my else partner
         Triple(my, partner, soldier)
     }
 
     private val range = events.observeRange(today.minus(DatePeriod(years = 3)), today.plus(DatePeriod(years = 1)))
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     /** 만남이 있던 달마다 그날의 한 줄(EventRepository.observeDayLinesIn — 추억 책이 편지 대신 채운다). */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -530,9 +533,13 @@ internal fun ordinalKo(n: Int): String {
 }
 
 /** 이름 + 주격 조사("민준이" · "지수가"). "나" 는 "내가". */
-internal fun String.subject(): String {
-    if (this == "나") return "내가"
-    val last = lastOrNull() ?: return this
-    val batchim = last in '가'..'힣' && (last - '가') % 28 != 0
-    return this + if (batchim) "이" else "가"
-}
+internal fun String.subject(): String = if (this == "나") "내가" else this + if (endsWithBatchim()) "이" else "가"
+
+/** "지수와" · "민준과". */
+internal fun String.and(): String = this + if (endsWithBatchim()) "과" else "와"
+
+/** 부르는 말("민준아" · "지수야"). */
+internal fun String.vocative(): String = this + if (endsWithBatchim()) "아" else "야"
+
+/** 마지막 글자가 받침 있는 한글인지. */
+private fun String.endsWithBatchim(): Boolean = lastOrNull()?.let { it in '가'..'힣' && (it - '가') % 28 != 0 } == true

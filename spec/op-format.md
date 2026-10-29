@@ -81,4 +81,4 @@ Room DB 9: `event.meetNotes` → `event.dayLines`(같은 모양, 이름만). 옛
 
 ### 추억 책 표지 (`bookcover`)
 
-커플에 하나인 값. 산 사람이 고르고 두 사람이 같은 표지를 쓴다(구매 뒤에도 바꿀 수 있다). 조용한 종류(`profile`)로 보내고, 받는 쪽은 `book_cover` 행 하나를 lamport → writerDevice 순으로 비교해 늦은 쪽을 남긴다. 스냅샷은 내가 마지막으로 고친 값만(`snapshot`), 넘겨주기는 늘 싣는다. 받은 적이 없으면 `MILITARY`. Room DB 10 에서 `book_cover` 표를 더했다.
+커플에 하나인 값. 산 사람이 고르고 두 사람이 같은 표지를 쓴다(구매 뒤에도 바꿀 수 있다). 조용한 종류(`profile`)로 보내고, 받는 쪽은 `book_cover` 행 하나를 lamport → writerDevice 순으로 비교해 늦은 쪽을 남긴다. 스냅샷은 내가 마지막으로 고친 값만(`snapshot`), 넘겨주기는 늘 싣는다. 받은 적이 없거나 모르는 표지 이름이면 `MILITARY`. Room DB 10 에서 `book_cover` 표를 더했다.

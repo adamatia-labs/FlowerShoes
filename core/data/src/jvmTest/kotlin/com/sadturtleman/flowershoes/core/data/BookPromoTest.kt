@@ -20,9 +20,15 @@ class BookPromoTest {
     }
 
     @Test
-    fun `D-30 을 놓쳤으면 전역 전날까지 한 번 띄운다`() {
-        assertEquals(BookPromoDay.D30, day("2028-02-10"))
-        assertNull(day("2028-02-10", seen = BookPromoSeen(d30 = true)))
+    fun `D-30 을 놓쳤으면 D-8 까지 한 번 띄운다`() {
+        assertEquals(BookPromoDay.D30, day("2028-02-11"))
+        assertNull(day("2028-02-11", seen = BookPromoSeen(d30 = true)))
+    }
+
+    @Test
+    fun `전역 한 주 안쪽에는 D-30 팝업을 띄우지 않는다`() {
+        assertNull(day("2028-02-12"))
+        assertNull(day("2028-02-18"))
     }
 
     @Test

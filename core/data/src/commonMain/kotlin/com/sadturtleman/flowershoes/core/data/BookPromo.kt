@@ -21,11 +21,14 @@ interface BookPromoStore {
     suspend fun never()
 }
 
-/** D-30 팝업은 그날을 놓쳐도 전역 전날까지 한 번 띄운다(그 달에 앱을 열면 본다). */
-private const val D30_DAYS = 30
+/** D-30 팝업을 띄우는 첫날(D-30). */
+private const val D30_FIRST = 30
+
+/** D-30 팝업을 놓쳤을 때 띄우는 마지막 날(D-8). 전역일 팝업과 한 주 넘게 떨어뜨린다. */
+private const val D30_LAST = 8
 
 /**
- * 오늘 띄울 권유 팝업(#23 결정 3 · 4). 전역 D-30(놓쳤으면 전역 전날까지) · 전역일에 각 한 번, 각자 폰.
+ * 오늘 띄울 권유 팝업(#23 결정 3 · 4). 전역 D-30(그날 앱을 안 열었으면 D-8 까지) · 전역일에 각 한 번, 각자 폰.
  * 이미 산 커플(둘 중 한 명이 샀으면 둘 다)과 "다시 보지 않기" 뒤, 전역 다음 날부터는 띄우지 않는다.
  */
 fun bookPromoDay(today: LocalDate, discharge: LocalDate?, owned: Boolean, seen: BookPromoSeen): BookPromoDay? {
@@ -33,7 +36,7 @@ fun bookPromoDay(today: LocalDate, discharge: LocalDate?, owned: Boolean, seen: 
     val left = today.daysUntil(discharge)
     return when {
         left == 0 && !seen.discharge -> BookPromoDay.DISCHARGE
-        left in 1..D30_DAYS && !seen.d30 -> BookPromoDay.D30
+        left in D30_LAST..D30_FIRST && !seen.d30 -> BookPromoDay.D30
         else -> null
     }
 }

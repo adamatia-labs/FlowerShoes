@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -163,13 +165,18 @@ internal fun BookScreen(
         capture = 0
     }
 
+    /** 사기 전에 고른 표지는 결제가 끝나야 두 사람의 표지가 된다(산 사람이 고른다). */
     fun buy(cover: BookCover) {
         if (store == null) { onNotice("결제는 앱 출시와 함께 열려요"); return }
         if (busy) return
         busy = true
         scope.launch {
             when (val r = store.buy()) {
-                PurchaseOutcome.Purchased -> { onNotice("추억 책이 열렸어요. PDF 를 만들게요"); make(cover) }
+                PurchaseOutcome.Purchased -> {
+                    onChooseCover(cover)
+                    onNotice("추억 책이 열렸어요. PDF 를 만들게요")
+                    make(cover)
+                }
                 PurchaseOutcome.NothingToRestore, PurchaseOutcome.Cancelled -> Unit
                 is PurchaseOutcome.Failed -> onNotice(r.message)
             }
@@ -184,9 +191,11 @@ internal fun BookScreen(
                 state, owned, price ?: BOOK_PRICE, busy = busy || capture != null,
                 onClose = { picking = false },
                 onConfirm = { cover ->
-                    onChooseCover(cover)
                     picking = false
-                    if (owned) make(cover) else buy(cover)
+                    if (owned) {
+                        onChooseCover(cover)
+                        make(cover)
+                    } else buy(cover)
                 },
             )
         } else Column(Modifier.fillMaxSize().navigationBarsPadding()) {
@@ -229,7 +238,7 @@ internal fun BookScreen(
                     KkPrimaryButton(label, { if (owned) make(state.cover) else picking = true }, Modifier.fillMaxWidth(), enabled = capture == null, loading = busy)
                     if (owned) {
                         Text("표지 바꾸기", style = KkTheme.type.label, color = c.accent,
-                            modifier = Modifier.clickable(enabled = capture == null, role = Role.Button) { picking = true }.padding(vertical = KkSpacing.xs))
+                            modifier = Modifier.heightIn(min = 48.dp).clickable(enabled = capture == null, role = Role.Button) { picking = true }.wrapContentSize(Alignment.CenterStart))
                     }
                     // 디버그 빌드만: 결제 없이 PDF 를 만들어 본다(만들기 · 공유 흐름 확인용).
                     if (!owned && org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.DevFlags>()?.freeBookPdf == true) {
@@ -280,7 +289,7 @@ private fun CoverPicker(state: MemoryState, owned: Boolean, price: String, busy:
                 BookCoverArt(
                     cover, state.summary,
                     Modifier.weight(1f).rotate(if (cover == BookCover.FLOWER) 2f else -1.5f)
-                        .shadow(6.dp, RoundedCornerShape(0.dp)).clickable(role = Role.RadioButton) { selected = cover },
+                        .shadow(6.dp, RoundedCornerShape(0.dp)).selectable(selected = cover == selected, role = Role.RadioButton) { selected = cover },
                 )
             }
         }
@@ -306,7 +315,7 @@ private fun CoverOption(label: String, selected: Boolean, modifier: Modifier, on
     Row(
         modifier.height(60.dp).clip(shape).background(c.surface)
             .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.line, shape)
-            .clickable(role = Role.RadioButton, onClick = onClick).padding(KkSpacing.lg),
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick).padding(KkSpacing.lg),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f), maxLines = 1)
@@ -350,6 +359,14 @@ private val FLOWER_RULE = Color(0xFFE3C1BD)
 private val FLOWER_MARGIN = Color(0xFFD9898F)
 private val FLOWER_INK = Color(0xFFB9475E)
 private val FLOWER_HAND = Color(0xFF4A3530)
+
+/** 표지마다 다른 것: 종이 · 손글씨 · 큰 숫자 · 소인 색과 소인 글. */
+private class CoverStyle(val paper: Color, val hand: Color, val number: Color, val stamp: Color, val stampText: String)
+
+private val BookCover.style: CoverStyle get() = when (this) {
+    BookCover.FLOWER -> CoverStyle(FLOWER_PAPER, FLOWER_HAND, FLOWER_INK, FLOWER_INK, "꽃신 우편")
+    BookCover.MILITARY -> CoverStyle(MILITARY_PAPER, INK, NUMBER, MILITARY_INK, "군사우편")
+}
 
 /** 오른쪽 쪽의 편지 카드 바탕: 내 편지 · 상대 편지. */
 private val CARD_MINE = Color(0xFFF5E4E2)
@@ -444,24 +461,24 @@ private fun Postmark(s: BookScale, x: Number, y: Number, size: Number, ink: Colo
 @Composable
 fun BookCoverArt(cover: BookCover, summary: BookSummary?, modifier: Modifier = Modifier) {
     val fonts = bookFonts()
-    BoxWithConstraints(modifier.aspectRatio(1f).background(if (cover == BookCover.FLOWER) FLOWER_PAPER else MILITARY_PAPER).clipToBounds()) {
+    val style = cover.style
+    BoxWithConstraints(modifier.aspectRatio(1f).background(style.paper).clipToBounds()) {
         val s = BookScale(maxWidth, fonts, LocalDensity.current.fontScale)
         val made = summary?.madeOn?.dot().orEmpty()
         when (cover) {
             BookCover.FLOWER -> {
                 repeat(10) { i -> At(s, 56, 167 + i * 61, 689, 3) { Box(Modifier.fillMaxSize().background(FLOWER_RULE)) } }
                 At(s, 100, 0, 5, 800) { Box(Modifier.fillMaxSize().background(FLOWER_MARGIN)) }
-                Postmark(s, 502, 83, 206, FLOWER_INK, "꽃신 우편", made)
             }
             BookCover.MILITARY -> {
                 At(s, 0, 0, 800, 48) { AirmailStripe(Modifier.fillMaxSize(), MILITARY_PAPER) }
                 At(s, 0, 752, 800, 48) { AirmailStripe(Modifier.fillMaxSize(), MILITARY_PAPER) }
-                Postmark(s, 502, 83, 206, MILITARY_INK, "군사우편", made)
             }
         }
+        Postmark(s, 502, 83, 206, style.stamp, style.stampText, made)
         if (summary != null) {
-            At(s, 111, 320, 640) { Text("${summary.my.and()} ${summary.partner}의", style = s.hand(74, if (cover == BookCover.FLOWER) FLOWER_HAND else INK), maxLines = 1) }
-            At(s, 111, 405, 680) { Text("${summary.days ?: 0}일", style = s.number(178, if (cover == BookCover.FLOWER) FLOWER_INK else NUMBER), maxLines = 1) }
+            At(s, 111, 320, 640) { Text("${summary.my.and()} ${summary.partner}의", style = s.hand(74, style.hand), maxLines = 1) }
+            At(s, 111, 405, 680) { Text("${summary.days ?: 0}일", style = s.number(178, style.number), maxLines = 1) }
             At(s, 111, 640, 640) { Text(summary.period(), style = s.body(34, MUTED), maxLines = 1) }
         }
     }
@@ -556,8 +573,8 @@ private fun LastPage(state: MemoryState, s: BookScale) {
         At(s, 0, 500, 800) { Text(d.dot(), style = s.number(110, NUMBER), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
         At(s, 0, 640, 800) { Text("전역", style = s.hand(52, INK), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
     }
-    val flower = state.cover == BookCover.FLOWER
-    Postmark(s, 600, 620, 150, if (flower) FLOWER_INK else MILITARY_INK, if (flower) "꽃신 우편" else "군사우편", sum.madeOn?.dot().orEmpty())
+    val style = state.cover.style
+    Postmark(s, 600, 620, 150, style.stamp, style.stampText, sum.madeOn?.dot().orEmpty())
 }
 
 @Composable
@@ -570,17 +587,3 @@ private fun Art(l: MonthLetter, photos: Map<String, ByteArray?>, modifier: Modif
 }
 
 private fun kotlinx.datetime.LocalDate.dot() = "$year.${(month.ordinal + 1).toString().padStart(2, '0')}.${day.toString().padStart(2, '0')}"
-
-/** "지수와" · "민준과". */
-internal fun String.and(): String {
-    val last = lastOrNull() ?: return this
-    val batchim = last in '가'..'힣' && (last - '가') % 28 != 0
-    return this + if (batchim) "과" else "와"
-}
-
-/** 부르는 말("민준아" · "지수야"). */
-internal fun String.vocative(): String {
-    val last = lastOrNull() ?: return this
-    val batchim = last in '가'..'힣' && (last - '가') % 28 != 0
-    return this + if (batchim) "아" else "야"
-}

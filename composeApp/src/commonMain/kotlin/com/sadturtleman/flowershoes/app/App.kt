@@ -383,6 +383,7 @@ private fun MainShell() {
             val day by promo.day.collectAsState(initial = null)
             day?.let { d ->
                 val memoryState by memory.state.collectAsState()
+                BackHandler { promoScope.launch { promo.close(d) } }
                 com.sadturtleman.flowershoes.feature.memory.BookPromoPopup(
                     memoryState.cover, memoryState.summary,
                     onOpenBook = {

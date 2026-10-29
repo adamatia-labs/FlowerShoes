@@ -368,7 +368,7 @@ class SyncClient(
     }
 
     private fun com.sadturtleman.flowershoes.core.database.BookCoverEntity.toPayload() =
-        OpPayload.BookCoverPut(com.sadturtleman.flowershoes.core.model.BookCover.from(cover), lamport, lastWriterDevice)
+        OpPayload.BookCoverPut(cover, lamport, lastWriterDevice)
 
     /** 보낼 때 [uploadBlobs] 가 붙이는 blob 참조(id · 키)까지 셈한 본문 크기. */
     private fun wireSize(item: OpPayload): Int = OpCodec.encode(item).size + BLOB_REF_BYTES * when (item) {

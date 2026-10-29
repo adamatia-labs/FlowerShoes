@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,7 +62,7 @@ fun BookPromoPopup(cover: BookCover, summary: BookSummary?, onOpenBook: () -> Un
                 Text("추억 책으로 남겨 볼까요?", style = KkTheme.type.title, color = c.ink)
                 Text(
                     "추억 책 보기 ›", style = KkTheme.type.labelBold, color = c.accent,
-                    modifier = Modifier.clickable(role = Role.Button, onClick = onOpenBook).padding(KkSpacing.xs),
+                    modifier = Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onOpenBook).padding(horizontal = KkSpacing.md).wrapContentSize(),
                 )
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
