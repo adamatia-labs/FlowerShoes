@@ -5,11 +5,12 @@ name: Room
 
 on:
   push:
-    branches: [develop, main, 'feature/**', 'chore/**']
+    branches: [develop, main, 'feature/**']
     paths:
       - 'core/database/**'
       - 'core/tti/**'
       - 'core/model/**'
+      - 'common/**'
       - 'gradle/**'
       - '*.gradle.kts'
       - '.github/workflows/room.yml'
@@ -19,6 +20,7 @@ on:
       - 'core/database/**'
       - 'core/tti/**'
       - 'core/model/**'
+      - 'common/**'
       - 'gradle/**'
       - '*.gradle.kts'
       - '.github/workflows/room.yml'

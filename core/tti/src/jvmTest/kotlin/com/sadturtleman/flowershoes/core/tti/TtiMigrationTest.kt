@@ -44,6 +44,7 @@ class TtiMigrationTest {
         assertEquals(emptyList<Int>(), missing)
     }
 
+    /** 버전 1 에서는 돌 것이 없다. 버전을 올리는 순간부터 옛 버전마다 경로를 요구한다. */
     @Test
     fun `옛 버전마다 현재 버전으로 오는 이전 경로가 있다`() {
         (1 until TtiDatabase.VERSION).forEach { from ->
@@ -84,7 +85,10 @@ class TtiMigrationTest {
             database.close()
         }
         BundledSQLiteDriver().open(file.toString()).use { connection ->
-            connection.prepare("SELECT v FROM keep").use { assertTrue(it.step()); assertEquals("data", it.getText(0)) }
+            connection.prepare("SELECT v FROM keep").use {
+                assertTrue(it.step())
+                assertEquals("data", it.getText(0))
+            }
         }
     }
 }
