@@ -149,7 +149,7 @@ class SettingsViewModel(
     /** 알림 받기(설정 › 앱): Figma 최종 정리는 켜기/끄기 하나 — 받을 종류를 한꺼번에 바꾼다. */
     fun setAllNotify(on: Boolean, platform: PlatformActions) {
         val n = state.value.notify
-        setNotify(n.copy(letters = on, missYou = on, status = on, eventEve = on, anniversary = on), platform)
+        setNotify(n.copy(letters = on, missYou = on, status = on, eventEve = on, anniversary = on, exportReminder = on), platform)
     }
 
     fun setAnniversaryAlerts(hundreds: Boolean, years: Boolean, platform: PlatformActions) {

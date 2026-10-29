@@ -194,11 +194,12 @@ fun onForeground() {
                 koin.get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().ensureIdentity(),
             )
             koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()?.start(appScope)
+            val device = koin.get<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
             com.sadturtleman.flowershoes.core.notification.NotificationSync(
                 koin.get(), koin.get(), koin.get(),
                 com.sadturtleman.flowershoes.app.ios.IosNotificationScheduler(),
-                prefs = koin.get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs,
-                exports = koin.get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().exportHistory,
+                prefs = device.notifyPrefs,
+                exports = device.exportHistory,
             ).start(appScope)
             val store = koin.get<com.sadturtleman.flowershoes.core.widget.SnapshotStore>()
             koin.get<com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher>().start(appScope) {

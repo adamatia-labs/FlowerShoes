@@ -307,7 +307,7 @@ private fun MainPage(
             KkListRow("테마", value = state.theme.koreanName, onClick = { open(SettingsPage.THEME) })
             Divider()
             val n = state.notify
-            SwitchRow("알림 받기", n.letters || n.missYou || n.status || n.eventEve || n.anniversary) { viewModel.setAllNotify(it, platform) }
+            SwitchRow("알림 받기", n.letters || n.missYou || n.status || n.eventEve || n.anniversary || n.exportReminder) { viewModel.setAllNotify(it, platform) }
             Divider()
             SwitchRow("3개월마다 기록 받아 두기", n.exportReminder) { viewModel.setExportReminder(it, platform) }
             Divider()
@@ -1020,7 +1020,7 @@ private fun DevicePage(state: SettingsState, platform: PlatformActions, viewMode
     Page("기기 바꾸기 · 복구", onBack) {
         val shape = RoundedCornerShape(KkRadius.lg)
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("폰을 바꾸거나 잃어버리면", style = KkTheme.type.caption, color = c.sub)
+            Text("폰을 바꾸거나 잃어버리면", style = KkTheme.type.label, color = c.sub)
             Column(
                 Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.xl),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
@@ -1036,7 +1036,7 @@ private fun DevicePage(state: SettingsState, platform: PlatformActions, viewMode
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("돌아오는 것", style = KkTheme.type.caption, color = c.sub)
+            Text("돌아오는 것", style = KkTheme.type.label, color = c.sub)
             Column(
                 Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.xl),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.md),

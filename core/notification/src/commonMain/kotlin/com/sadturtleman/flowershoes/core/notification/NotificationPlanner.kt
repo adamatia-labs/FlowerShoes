@@ -157,11 +157,12 @@ class NotificationPlanner(private val budget: Int = 50) {
 
         exports?.let { h ->
             val since = (h.lastExportAtMs ?: h.firstRunAtMs)?.let { Instant.fromEpochMilliseconds(it).toLocalDate() } ?: return@let
+            fun at(months: Int) = LocalDateTime(since.plus(DatePeriod(months = months)), LocalTime(10, 0)).toInstant(SEOUL)
             var months = EXPORT_EVERY_MONTHS
-            while (LocalDateTime(since.plus(DatePeriod(months = months)), LocalTime(10, 0)).toInstant(SEOUL) <= now) months += EXPORT_EVERY_MONTHS
+            while (at(months) <= now) months += EXPORT_EVERY_MONTHS
             out += LocalNotification(
                 id = "export-reminder",
-                at = LocalDateTime(since.plus(DatePeriod(months = months)), LocalTime(10, 0)).toInstant(SEOUL),
+                at = at(months),
                 title = "내 기록 받아 두기",
                 body = if (h.lastExportAtMs != null) "마지막으로 내보낸 지 ${months}개월이 지났어요" else "아직 내 기록을 내보낸 적이 없어요",
                 deepLink = "kkotsin://settings/device",
