@@ -28,6 +28,7 @@ import kotlinx.coroutines.IO
     // 6: 만남 한 줄 메모(event.meetNotes) · 산 것(user.perks — 연결된 상대와 함께 쓰는 꽃신 평생 · 추억 책).
     // 7: 휴가 하나의 풀 · 기념일 일정(event.leaveGrantId · couple.anniversary 제거, event.repeatYearly). 출시 전이라 파괴적 이전.
     // 8: 쓰던 편지 여러 통(letter_draft 표, 이 기기에만).
+    // 9: 그날의 한 줄(event.meetNotes → event.dayLines). 출시 전이라 파괴적 이전.
     autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
@@ -49,7 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun letterDraftDao(): LetterDraftDao
 
     companion object {
-        const val VERSION = 8
+        const val VERSION = 9
         const val FILE_NAME = "kkotsin.db"
     }
 }

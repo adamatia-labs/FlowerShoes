@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
@@ -60,7 +62,6 @@ import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
 import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
-import com.sadturtleman.flowershoes.core.designsystem.KkSecondaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
@@ -70,13 +71,13 @@ import com.sadturtleman.flowershoes.core.designsystem.KkTopBarLeading
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.drawingui.DrawingView
-import com.sadturtleman.flowershoes.core.model.MeetNote
+import com.sadturtleman.flowershoes.core.model.DayLine
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * 추억(Figma 5 · 추억): 우리의 책 · 비어 있음 · 한 달 · 책으로 보기 · 만남 상세 · 만남 남기기.
+ * 추억(Figma 6 · 추억): 우리의 책 · 비어 있음 · 한 달 · 책으로 보기 · 그날의 한 줄(보기 · 쓰기).
  * [book] 은 책으로 보기의 PDF 결제 · 만들기(플랫폼). 없으면 미리보기만 보인다.
  */
 @Composable
@@ -89,7 +90,7 @@ fun MemoryRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val photos by viewModel.photos.collectAsStateWithLifecycle()
-    // 만남 사진 + 칸: 어느 만남에 붙일지 기억해 두고 사진을 고른다.
+    // 그날의 사진 + 칸: 어느 만남에 붙일지 기억해 두고 사진을 고른다.
     var photoFor by remember { mutableStateOf<String?>(null) }
     var removing by remember { mutableStateOf<Pair<String, String>?>(null) }
     val pick = photoPicker?.invoke { bytes -> photoFor?.let { viewModel.onIntent(MemoryIntent.AddMeetPhoto(it, bytes)) } }
@@ -104,8 +105,8 @@ fun MemoryRoute(
             when (page) {
                 null -> MemoryScreen(state, photos, onIntent, onWriteLetter)
                 is MemoryPage.Month -> state.months[page.ym]?.let { MonthScreen(it, photos, onIntent, onOpenLetter) }
-                is MemoryPage.Meet -> state.meet(page.eventId)?.let { MeetDetailScreen(it, photos, onIntent, addPhoto) { id -> removing = page.eventId to id } }
-                is MemoryPage.Note -> state.meet(page.eventId)?.let { MeetNoteScreen(it, photos, onIntent, addPhoto) }
+                is MemoryPage.Meet -> state.meet(page.eventId)?.let { MeetDetailScreen(it, photos, onIntent) { id -> removing = page.eventId to id } }
+                is MemoryPage.DayLine -> state.meet(page.eventId)?.let { DayLineWriteScreen(it, photos, onIntent, addPhoto) }
                 MemoryPage.Book -> BookScreen(state, photos, book, onBack = { onIntent(MemoryIntent.Back) }, onNotice = { notice = it })
             }
         }
@@ -132,6 +133,7 @@ fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: 
             Text("추억", style = KkTheme.type.title, color = c.ink)
         }
         if (state.loading) return@Column
+        state.latestMeet?.let { id -> DayLineButton { onIntent(MemoryIntent.Open(MemoryPage.DayLine(id))) } }
         if (state.empty) {
             BookCard(null) {}
             Column(Modifier.fillMaxWidth().padding(vertical = 80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
@@ -146,6 +148,21 @@ fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: 
             ChapterRow(ch, state.months[ch.ym], photos) { onIntent(MemoryIntent.Open(MemoryPage.Month(ch.ym))) }
         }
         Spacer(Modifier.height(KkSpacing.lg))
+    }
+}
+
+/** 추억 위쪽 [+ 그날의 한 줄](Figma 추억 · 목록): 가장 최근 만남의 그날의 한 줄 쓰기. */
+@Composable
+private fun DayLineButton(onClick: () -> Unit) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.full)
+    Row(
+        Modifier.fillMaxWidth().height(48.dp).clip(shape).background(c.surface).border(1.dp, c.line, shape)
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = KkSpacing.lg),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        KkIcon(KkIcons.Plus, tint = c.accent, size = 18.dp)
+        Text("그날의 한 줄", style = KkTheme.type.labelBold, color = c.ink)
     }
 }
 
@@ -413,109 +430,161 @@ internal fun BarKind.color(): Color = KkTheme.colors.let {
     }
 }
 
-// ── 만남 ─────────────────────────────────────────────────────────────────
+// ── 그날의 한 줄 ─────────────────────────────────────────────────────────
 
-/** 만남 상세(Figma): 태그 · 시간, 사진 그리드, 둘의 한 줄 메모, [사진 추가] [메모 쓰기]. */
+/**
+ * 그날의 한 줄 · 보기(Figma 6 · 추억): 만남 꼬리표 · 둘의 한 줄(쓴 사람 것만) · 사진 폴라로이드. [수정] 은 쓰기 화면.
+ * 사진을 누르면 빼기.
+ */
 @Composable
 private fun MeetDetailScreen(
     meet: MeetCard,
     photos: Map<String, ByteArray?>,
     onIntent: (MemoryIntent) -> Unit,
-    addPhoto: ((String) -> Unit)?,
     onRemovePhoto: (String) -> Unit,
 ) {
     val c = KkTheme.colors
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
-        KkTopBar(meet.title, onLeading = { onIntent(MemoryIntent.Back) }, modifier = Modifier.padding(horizontal = KkSpacing.lg))
+        KkTopBar(
+            meet.title, onLeading = { onIntent(MemoryIntent.Back) }, modifier = Modifier.padding(horizontal = KkSpacing.lg),
+            trailingText = "수정", onTrailing = { onIntent(MemoryIntent.Open(MemoryPage.DayLine(meet.eventId))) },
+        )
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.md),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                Pill(meet.tag, c.bar, c.accent)
-                Text(meet.time, style = KkTheme.type.body, color = c.sub)
+            MeetTag(meet)
+            meet.notes.forEachIndexed { i, (who, text) ->
+                LineNote("${who}의 한 줄", text, if (i % 2 == 0) -1.2f else 1.2f)
             }
-            PhotoGrid(meet.photos.ifEmpty { listOf("", "", "", "") }, photos) { id -> if (id.isNotEmpty()) onRemovePhoto(id) }
-            val shape = RoundedCornerShape(KkRadius.lg)
-            Column(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
-                verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
-            ) {
-                if (meet.notes.isEmpty()) Text("아직 남긴 한 줄이 없어요", style = KkTheme.type.body, color = c.sub)
-                meet.notes.forEach { (who, text) ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-                        Text(who, style = KkTheme.type.label, color = c.sub, modifier = Modifier.width(40.dp))
-                        Text(text, style = KkTheme.type.body, color = c.ink)
+            if (meet.notes.isEmpty()) {
+                KkButton("그날의 한 줄 남기기", { onIntent(MemoryIntent.Open(MemoryPage.DayLine(meet.eventId))) }, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary)
+            }
+            meet.photos.chunked(2).forEachIndexed { row, pair ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.xl)) {
+                    pair.forEachIndexed { i, id ->
+                        Polaroid(photos[id], if ((row + i) % 2 == 0) 3f else -3f, Modifier.weight(1f).clickable(role = Role.Button) { onRemovePhoto(id) }.semantics { contentDescription = "사진" })
                     }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-        }
-        Row(Modifier.fillMaxWidth().padding(KkSpacing.xl), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkSecondaryButton("사진 추가", { addPhoto?.invoke(meet.eventId) }, Modifier.weight(1f), enabled = addPhoto != null)
-            KkPrimaryButton(if (meet.myNote.isBlank()) "메모 쓰기" else "메모 고치기", { onIntent(MemoryIntent.Open(MemoryPage.Note(meet.eventId))) }, Modifier.weight(1f))
         }
     }
 }
 
-/** 사진 두 칸 그리드. 빈 문자열은 빈 칸(자리표시). 누르면 [onClick]. */
+/** 만남 꼬리표(종이 태그, 보여 주기만): 날짜 · 제목 · 시간 · 사진 수. */
 @Composable
-private fun PhotoGrid(ids: List<String>, photos: Map<String, ByteArray?>, onClick: (String) -> Unit) {
+private fun MeetTag(meet: MeetCard) {
     val c = KkTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-        ids.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                row.forEach { id ->
-                    Box(
-                        Modifier.weight(1f).aspectRatio(4f / 3f).clip(RoundedCornerShape(KkRadius.md)).background(c.line)
-                            .then(if (id.isNotEmpty()) Modifier.clickable(role = Role.Button) { onClick(id) }.semantics { contentDescription = "만남 사진" } else Modifier),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (id.isEmpty()) KkIcon(KkIcons.Album, tint = c.sub) else PhotoImage(photos[id], Modifier.fillMaxSize())
-                    }
-                }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
+    val shape = RoundedCornerShape(KkRadius.sm)
+    Box(Modifier.fillMaxWidth().rotate(1f)) {
+        Row(
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.tag).padding(horizontal = 12.dp, vertical = KkSpacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(c.canvas))
+            Box(Modifier.width(1.dp).height(68.dp).background(c.line))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(meet.date.md(), style = KkTheme.type.ddayS, color = c.stamp)
+                Text(meet.title, style = KkTheme.type.labelBold, color = c.ink)
+                Text(listOfNotNull(meet.time, "사진 ${meet.photos.size}".takeIf { meet.photos.isNotEmpty() }).joinToString(" · "), style = KkTheme.type.caption, color = c.sub)
             }
         }
+        Tape(Modifier.align(Alignment.TopEnd).padding(end = 28.dp).offset(y = (-10).dp).rotate(-4f))
     }
 }
 
-/** 만남 남기기("오늘 어땠어요?", Figma): 사진 고르기 + 한 줄 메모(40자) + [저장] [다음에]. */
+/** 한 줄 쪽지(보여 주기만): "지수의 한 줄 · 32/40" + 손글씨. */
 @Composable
-private fun MeetNoteScreen(meet: MeetCard, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, addPhoto: ((String) -> Unit)?) {
+private fun LineNote(label: String, text: String, tilt: Float) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.sm)
+    Box(Modifier.fillMaxWidth().padding(horizontal = 6.dp).rotate(tilt)) {
+        Column(
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
+                .padding(start = KkSpacing.lg, end = KkSpacing.lg, top = 12.dp, bottom = KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
+                Text("${text.length}/${DayLine.MAX_CHARS}", style = KkTheme.type.caption, color = c.sub)
+            }
+            Text(text, style = KkTheme.type.handLetter, color = c.ink)
+        }
+        Tape(Modifier.align(Alignment.TopCenter).offset(y = (-8).dp))
+    }
+}
+
+/** 마스킹 테이프(Figma Tape: 56×16, 반투명). */
+@Composable
+private fun Tape(modifier: Modifier = Modifier) {
+    Box(modifier.size(56.dp, 16.dp).background(KkTheme.colors.tape))
+}
+
+/** 폴라로이드(사진은 콘텐츠라 흰 틀 그대로). 위에 테이프. */
+@Composable
+private fun Polaroid(bytes: ByteArray?, tilt: Float, modifier: Modifier = Modifier) {
+    Box(modifier.rotate(tilt)) {
+        Box(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, RoundedCornerShape(0.dp)).background(Color.White).padding(start = 5.dp, end = 5.dp, top = 5.dp, bottom = 24.dp)) {
+            PhotoImage(bytes, Modifier.fillMaxWidth().aspectRatio(1f))
+        }
+        Box(Modifier.align(Alignment.TopCenter).offset(y = (-5).dp).rotate(4f).size(35.dp, 10.dp).background(KkTheme.colors.tape))
+    }
+}
+
+/**
+ * 그날의 한 줄 · 쓰기(Figma 6 · 추억): 일정 · 날짜(읽기만) · 내 한 줄(40자) · 사진(둘이 합쳐 10) · [남기기].
+ * 상대 칸은 두지 않는다(상대가 쓰면 보기 화면에 나온다).
+ */
+@Composable
+private fun DayLineWriteScreen(meet: MeetCard, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, addPhoto: ((String) -> Unit)?) {
     val c = KkTheme.colors
     var text by remember(meet.eventId) { mutableStateOf(meet.myNote) }
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
-        KkTopBar("오늘 어땠어요?", onLeading = { onIntent(MemoryIntent.Back) }, leading = KkTopBarLeading.Close, modifier = Modifier.padding(horizontal = KkSpacing.lg))
+        KkTopBar("그날의 한 줄", onLeading = { onIntent(MemoryIntent.Back) }, leading = KkTopBarLeading.Close, modifier = Modifier.padding(horizontal = KkSpacing.lg))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
         ) {
+            KkInput(meet.title, {}, label = "일정", enabled = false)
+            KkInput(meet.dateLabel, {}, label = "날짜", enabled = false)
+            KkInput(
+                text, { if (it.length <= DayLine.MAX_CHARS) text = it }, label = "내 한 줄",
+                helper = "${text.length} / ${DayLine.MAX_CHARS}",
+            )
+            Text("사진", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                Pill(meet.tag, c.bar, c.accent)
-                Text("${meet.title} · ${meet.date.md()} (${weekday(meet.date)})", style = KkTheme.type.labelBold, color = c.ink)
-            }
-            Text("사진", style = KkTheme.type.label, color = c.sub)
-            Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                meet.photos.takeLast(3).forEach { id -> PhotoImage(photos[id], Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md))) }
-                if (addPhoto != null) {
-                    Box(
-                        Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md)).border(1.dp, c.line, RoundedCornerShape(KkRadius.md))
-                            .clickable(role = Role.Button) { addPhoto(meet.eventId) }.semantics { contentDescription = "사진 추가" },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("+", style = KkTheme.type.title, color = c.sub) }
+                meet.photos.takeLast(2).forEachIndexed { i, id -> Polaroid(photos[id], if (i % 2 == 0) 2f else -2f, Modifier.width(93.dp)) }
+                if (addPhoto != null && meet.photos.size < MAX_PHOTOS) {
+                    Column(
+                        Modifier.size(if (meet.photos.isEmpty()) 96.dp else 80.dp, 96.dp).clip(RoundedCornerShape(KkRadius.sm)).dashedBorder(c.line, KkRadius.sm)
+                            .clickable(role = Role.Button) { addPhoto(meet.eventId) },
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                    ) {
+                        KkIcon(KkIcons.Plus, tint = c.sub)
+                        Text(
+                            if (meet.photos.isEmpty()) "사진 추가" else "${meet.photos.size} / $MAX_PHOTOS",
+                            style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.sm),
+                        )
+                    }
                 }
             }
-            KkInput(
-                text, { if (it.length <= MeetNote.MAX_CHARS) text = it }, label = "한 줄 메모", placeholder = "드디어 얼굴 봤다",
-                helper = "${text.length} / ${MeetNote.MAX_CHARS}",
-            )
         }
-        Column(Modifier.fillMaxWidth().padding(KkSpacing.xl), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkPrimaryButton("저장", { onIntent(MemoryIntent.SaveNote(meet.eventId, text)) }, Modifier.fillMaxWidth())
-            KkSecondaryButton("다음에", { onIntent(MemoryIntent.Back) }, Modifier.fillMaxWidth())
-        }
+        KkPrimaryButton("남기기", { onIntent(MemoryIntent.SaveDayLine(meet.eventId, text)) }, Modifier.padding(KkSpacing.xl))
     }
 }
+
+/** 점선 테두리(사진 추가 칸). */
+private fun Modifier.dashedBorder(color: Color, radius: androidx.compose.ui.unit.Dp): Modifier = drawBehind {
+    val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+        width = 1.dp.toPx(),
+        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())),
+    )
+    drawRoundRect(color, cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx()), style = stroke)
+}
+
+/** 그날의 사진(둘이 합쳐). */
+private const val MAX_PHOTOS = 10
 
 // ── 공용 ─────────────────────────────────────────────────────────────────
 

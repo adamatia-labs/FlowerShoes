@@ -30,7 +30,7 @@ import kotlinx.serialization.json.Json
 
 private val letterJson = Json { ignoreUnknownKeys = true }
 private val blocksSerializer = ListSerializer(LetterBlock.serializer())
-private val notesSerializer = MapSerializer(String.serializer(), com.sadturtleman.flowershoes.core.model.MeetNote.serializer())
+private val dayLinesSerializer = MapSerializer(String.serializer(), com.sadturtleman.flowershoes.core.model.DayLine.serializer())
 
 internal fun Instant.ms(): Long = toEpochMilliseconds()
 internal fun Long.instant(): Instant = Instant.fromEpochMilliseconds(this)
@@ -43,13 +43,13 @@ fun ServiceEntity.toModel() = Service(
 fun Event.toEntity() = EventEntity(
     id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(),
     photoIds.takeIf { it.isNotEmpty() }?.joinToString(","), memo.ifBlank { null },
-    meetNotes.takeIf { it.isNotEmpty() }?.let { letterJson.encodeToString(notesSerializer, it) }, repeatYearly,
+    dayLines.takeIf { it.isNotEmpty() }?.let { letterJson.encodeToString(dayLinesSerializer, it) }, repeatYearly,
 )
 fun EventEntity.toModel() = Event(
     id, EventType.valueOf(type), title, LocalDateTime.parse(start), LocalDateTime.parse(end), alarm,
     updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(),
     photoIds?.split(',')?.filter { it.isNotBlank() }.orEmpty(), memo.orEmpty(),
-    meetNotes?.let { runCatching { letterJson.decodeFromString(notesSerializer, it) }.getOrNull() }.orEmpty(), repeatYearly,
+    dayLines?.let { runCatching { letterJson.decodeFromString(dayLinesSerializer, it) }.getOrNull() }.orEmpty(), repeatYearly,
 )
 
 fun LeaveGrant.toEntity() = LeaveGrantEntity(

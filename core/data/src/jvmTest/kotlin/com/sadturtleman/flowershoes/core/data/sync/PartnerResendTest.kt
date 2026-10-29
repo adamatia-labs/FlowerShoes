@@ -28,7 +28,7 @@ import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.model.LeaveKind
 import com.sadturtleman.flowershoes.core.model.LetterBlock
-import com.sadturtleman.flowershoes.core.model.MeetNote
+import com.sadturtleman.flowershoes.core.model.DayLine
 import com.sadturtleman.flowershoes.core.model.ReceiptEntity
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.Service
@@ -160,14 +160,14 @@ class PartnerResendTest {
         val meet = Event(
             id = "e1", type = EventType.VISIT, title = "면회", start = LocalDateTime(2026, 10, 3, 10, 0), end = LocalDateTime(2026, 10, 3, 16, 0),
             alarm = true, updatedAt = Clock.System.now(), lamport = 0, lastWriterDevice = "", memo = "도시락 챙기기",
-            meetNotes = mapOf("jisu" to MeetNote("벌써 보고 싶다", 1_000)),
+            dayLines = mapOf("jisu" to DayLine("벌써 보고 싶다", 1_000)),
         )
         jisu.events.save(meet)
         settle()
         val meetPhoto = bytes(200_000, 4)
         val meetPhotoId = minjun.attachments.put(AttachmentKind.PHOTO, meetPhoto)
         val received = assertNotNull(minjun.events.get("e1"))
-        minjun.events.save(received.copy(photoIds = listOf(meetPhotoId), meetNotes = received.meetNotes + ("minjun" to MeetNote("또 와 줘", 2_000))))
+        minjun.events.save(received.copy(photoIds = listOf(meetPhotoId), dayLines = received.dayLines + ("minjun" to DayLine("또 와 줘", 2_000))))
 
         // 보고싶어 · 읽음
         repeat(2) { jisu.missYou.send() }
@@ -205,7 +205,7 @@ class PartnerResendTest {
         // 일정: 메모 · 그날의 한 줄(둘 다) · 사진
         val e1 = assertNotNull(b.events.get("e1"))
         assertEquals("도시락 챙기기", e1.memo)
-        assertEquals(mapOf("jisu" to MeetNote("벌써 보고 싶다", 1_000), "minjun" to MeetNote("또 와 줘", 2_000)), e1.meetNotes)
+        assertEquals(mapOf("jisu" to DayLine("벌써 보고 싶다", 1_000), "minjun" to DayLine("또 와 줘", 2_000)), e1.dayLines)
         assertEquals(listOf(meetPhotoId), e1.photoIds)
 
         // 휴가: 받은 휴가와 휴가 일정 → 같은 풀(육군 24 + 포상 4, 4일 사용)

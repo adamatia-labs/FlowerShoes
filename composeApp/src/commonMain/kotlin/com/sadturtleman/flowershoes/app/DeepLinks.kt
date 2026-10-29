@@ -10,6 +10,8 @@ sealed interface DeepLink {
     data object Inbox : DeepLink
     data class Letter(val id: String) : DeepLink
     data class Calendar(val date: String?) : DeepLink
+    /** 그날의 한 줄 쓰기(일정이 끝난 다음 날 알림). */
+    data class DayLine(val eventId: String) : DeepLink
     data object Pairing : DeepLink
 
     companion object {
@@ -21,6 +23,7 @@ sealed interface DeepLink {
                 "inbox" -> Inbox
                 "letter" -> parts.getOrNull(1)?.let(::Letter)
                 "calendar" -> Calendar(parts.getOrNull(1))
+                "dayline" -> parts.getOrNull(1)?.let(::DayLine)
                 "pairing" -> Pairing
                 else -> null
             }

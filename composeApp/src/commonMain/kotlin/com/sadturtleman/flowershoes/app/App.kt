@@ -160,6 +160,13 @@ private fun MainShell() {
         overlay = Overlay.COMPOSE
     }
     val bookStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookStore>()
+    // 그날의 한 줄 쓰기(다음 날 알림 · 홈 카드 · 일정 상세): 추억 탭 위에 쓰기 화면을 연다.
+    val openDayLine = { eventId: String ->
+        overlay = null
+        letters.onIntent(LetterIntent.Close)
+        tab = Tab.MEMORY
+        memory.onIntent(com.sadturtleman.flowershoes.feature.memory.MemoryIntent.Open(com.sadturtleman.flowershoes.feature.memory.MemoryPage.DayLine(eventId)))
+    }
 
     // 이 폰 기종을 내 정보에 싣는다(연인의 설정 › 연결 정보).
     val koin = getKoin()
@@ -194,6 +201,7 @@ private fun MainShell() {
                 overlay = null
                 tab = Tab.CALENDAR
             }
+            is DeepLink.DayLine -> openDayLine(l.eventId)
             DeepLink.Pairing -> overlay = Overlay.PAIRING
         }
         DeepLinks.consumed()
@@ -332,8 +340,9 @@ private fun MainShell() {
                         onOpenSettings = { overlay = Overlay.SETTINGS },
                         onWriteLetter = writeLetter,
                         onOpenLeave = { leaveFromSettings = false; overlay = Overlay.LEAVE },
+                        onOpenDayLine = openDayLine,
                     )
-                    Tab.CALENDAR -> CalendarRoute(viewModel = calendar)
+                    Tab.CALENDAR -> CalendarRoute(onWriteDayLine = openDayLine, viewModel = calendar)
                     Tab.LETTER -> LetterInboxRoute(
                         onWriteLetter = writeLetter,
                         onDraw = { overlay = Overlay.DRAW },
@@ -365,7 +374,7 @@ private fun MainShell() {
                 }
                 }
             }
-            // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 만남 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
+            // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 그날의 한 줄 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
             val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
             if (!reading) BottomBar(tab, onSelect = { tab = it })
         }

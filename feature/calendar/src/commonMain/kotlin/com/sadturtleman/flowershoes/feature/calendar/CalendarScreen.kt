@@ -81,13 +81,14 @@ import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
+import com.sadturtleman.flowershoes.core.model.hasDayLine
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
-fun CalendarRoute(viewModel: CalendarViewModel = koinViewModel()) {
+fun CalendarRoute(onWriteDayLine: (String) -> Unit = {}, viewModel: CalendarViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    CalendarScreen(state, viewModel::onIntent)
+    CalendarScreen(state, viewModel::onIntent, onWriteDayLine)
 }
 
 /**
@@ -95,7 +96,7 @@ fun CalendarRoute(viewModel: CalendarViewModel = koinViewModel()) {
  * 일정이 하나도 없으면 빈 화면(Empty State). 달은 달력을 옆으로 밀어 넘긴다.
  */
 @Composable
-fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
+fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onWriteDayLine: (String) -> Unit = {}) {
     val c = KkTheme.colors
     Column(
         Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
@@ -140,7 +141,11 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
         }
         Spacer(Modifier.height(KkSpacing.lg))
     }
-    state.draft?.let { EventEditor(it, onIntent) }
+    state.draft?.let { d ->
+        // 그날의 한 줄 남기기: 저장된 면회 · 외박 · 휴가가 시작했으면(지난 일정도 언제든).
+        val dayLine = d.id?.takeIf { d.type.hasDayLine && d.start <= state.today }
+        EventEditor(d, onIntent, dayLine?.let { id -> { onIntent(CalendarIntent.CloseDraft); onWriteDayLine(id) } })
+    }
 }
 
 /** 다음 만남 카드(Next Meet): "다음 만남 · 외박" / D-3 / "10월 24일(토) 09:00 · 1박 2일". */
@@ -332,7 +337,7 @@ private val EDITOR_MINUTES = listOf(0, 10, 20, 30, 40, 50)
  * 종류 칩 → 제목 → [하루 종일 · 시작 · 끝 · 알림] 카드 → 메모 → 저장.
  */
 @Composable
-private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
+private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit, onWriteDayLine: (() -> Unit)?) {
     val c = KkTheme.colors
     var picking by remember { mutableStateOf<Boolean?>(null) } // true = 시작, false = 끝
     var alarmSheet by remember { mutableStateOf(false) }
@@ -374,6 +379,7 @@ private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
                 }
                 if (!draft.valid) Text("끝나는 때가 시작보다 빨라요", style = KkTheme.type.body, color = c.danger)
                 KkInput(draft.memo, { change(draft.copy(memo = it)) }, label = "메모", placeholder = "신분증 챙기기")
+                if (onWriteDayLine != null) KkButton("그날의 한 줄 남기기", onWriteDayLine, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary)
             }
             Box(Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.sm, bottom = 14.dp)) {
                 KkPrimaryButton("저장", onClick = { onIntent(CalendarIntent.SaveDraft) }, enabled = draft.valid, modifier = Modifier.fillMaxWidth())
