@@ -45,12 +45,13 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
  * 상대 폰 재전송(기획 §5 · §9-6): 민준이 폰을 잃어버렸다. 지수 폰(A)에 있는 공유 데이터 전부가
- * 넘겨주기 뒤 새 폰(B)으로 와야 한다 — 편지 · 일정(메모 · 그날의 한 줄) · 휴가 · 기념일 · 프로필 · 보고싶어 ·
+ * 기기 교체 승인 뒤 새 폰(B)으로 와야 한다 — 편지 · 일정(메모 · 그날의 한 줄) · 휴가 · 기념일 · 프로필 · 보고싶어 ·
  * 읽음 · 사진 · 그림 · 추억. 민준 폰에만 있던 원본(그림 · 사진)도 지수 폰이 받아 둔 사본으로 다시 온다.
  *
  * [InMemoryCloud] 는 실제 규칙의 크기 한계(우편함 64KB · Storage 10MB)를 그대로 건다.
@@ -76,7 +77,8 @@ class PartnerResendTest {
         val leaves = LeaveRepository(db, writer, identity)
         val pairing = PairingSession(db, identity, vault, cloud)
         val sync = SyncClient(db, identity, vault, cloud, cloud, attachments, InboxApplier(db), writer)
-        val relink = RelinkSession(db, identity, vault, cloud.relinks, sync)
+        val change = DeviceChangeSession(db, identity, vault, cloud.deviceChange(userId))
+        val approver = DeviceChangeApprover(db, identity, vault, cloud.deviceChange(userId), sync)
     }
 
     private lateinit var jisu: Phone
@@ -103,17 +105,16 @@ class PartnerResendTest {
         jisu.sync.syncOnce()
     }
 
-    /** 민준의 새 폰: 같은 계정, 빈 DB, 새 기기 키. 지수 폰이 넘겨주고 새 폰이 한 번 동기화한다. */
+    /** 지수 폰이 민준 새 폰의 요청을 승인했을 때 건너뛴 항목 수. */
+    private var skipped = 0
+
+    /** 민준의 새 폰: 같은 계정, 빈 DB, 새 기기 키. 지수 폰이 승인하고 새 폰이 한 번 동기화한다. */
     private suspend fun handOverToNewPhone(): Phone {
         val newPhone = Phone("minjun", "dev-b2")
-        val code = assertIs<RelinkState.ShowCode>(jisu.relink.offer()).code
-        assertIs<RelinkState.WaitingPartner>(newPhone.relink.accept(code))
-        jisu.relink.poll()
-        newPhone.relink.poll()
-        jisu.relink.poll()
-        newPhone.relink.confirm()
-        assertIs<RelinkState.Linked>(jisu.relink.confirm())
-        assertIs<RelinkState.Linked>(newPhone.relink.poll())
+        assertIs<DeviceChangeState.Waiting>(newPhone.change.request())
+        val ask = assertIs<DeviceChangePrompt.Approve>(jisu.approver.prompts().single())
+        skipped = assertIs<ApproveResult.Approved>(jisu.approver.approve(ask.request)).skipped
+        assertIs<DeviceChangeState.Linked>(newPhone.change.poll())
         newPhone.sync.syncOnce()
         return newPhone
     }
@@ -253,5 +254,44 @@ class PartnerResendTest {
         val b = handOverToNewPhone()
 
         assertEquals(sent.map { it.id }.toSet(), b.letters.observeInbox().first().map { it.id }.toSet())
+    }
+
+    @Test
+    fun `우편함 한 칸을 넘는 편지 하나는 건너뛰고 그 뒤 편지는 온다`() = runTest {
+        link()
+        // 압축 · 반복으로 줄지 않는 70KB 글: 암호문이 우편함 한 칸(67.5KB)을 넘는다.
+        val huge = minjun.letters.newLetter(listOf(LetterBlock.Text(kotlin.io.encoding.Base64.encode(bytes(54_000, 7)))))
+        minjun.letters.send(huge, emptyList())
+        val after = minjun.letters.newLetter(listOf(LetterBlock.Text("다음 편지")))
+        minjun.letters.send(after, emptyList())
+
+        val report = minjun.sync.syncOnce()
+        jisu.sync.syncOnce()
+
+        assertEquals(1, report.skipped)
+        assertEquals(setOf(after.id), jisu.letters.observeInbox().first().map { it.id }.toSet())
+        // 상대 커서가 그 번호를 넘어가 재전송 · 스냅샷으로 다시 막히지 않는다.
+        settle()
+        val later = minjun.letters.newLetter(listOf(LetterBlock.Text("또 다음")))
+        minjun.letters.send(later, emptyList())
+        settle()
+        assertEquals(setOf(after.id, later.id), jisu.letters.observeInbox().first().map { it.id }.toSet())
+    }
+
+    @Test
+    fun `기기 교체 스냅샷에서 한도를 넘는 사진은 건너뛰고 나머지는 오며 개수를 알린다`() = runTest {
+        link()
+        val bigId = jisu.attachments.put(AttachmentKind.PHOTO, bytes(10 * 1024 * 1024 + 1, 8))
+        val withBig = jisu.letters.newLetter(listOf(LetterBlock.Text("큰 사진"), LetterBlock.Photo(bigId)))
+        val normal = jisu.letters.newLetter(listOf(LetterBlock.Text("보통 편지")))
+        // 지수 폰에만 있는 편지(아직 보내지 않았다) — 기기 교체 스냅샷으로 처음 간다.
+        jisu.letters.send(withBig, emptyList())
+        jisu.letters.send(normal, emptyList())
+
+        val b = handOverToNewPhone()
+
+        assertTrue(skipped >= 1)
+        assertEquals(setOf(withBig.id, normal.id), b.letters.observeInbox().first().map { it.id }.toSet())
+        assertEquals(null, b.attachments.read(bigId))
     }
 }

@@ -36,6 +36,8 @@ class AndroidKeyVault(context: Context) : KeyVault {
         val boxPub: String? = null,
         val deviceSecret: String? = null,
         val coupleKeys: Map<Int, String> = emptyMap(),
+        /** 기기 교체 승인 중인 새 커플 키(#20). */
+        val pendingApproval: StoredApproval? = null,
     )
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -80,7 +82,13 @@ class AndroidKeyVault(context: Context) : KeyVault {
         save(s.copy(coupleKeys = s.coupleKeys.filterKeys { it >= epoch }))
     }
 
-    override suspend fun clearCoupleKeys() = lock.withLock { save(load().copy(coupleKeys = emptyMap())) }
+    override suspend fun pendingApproval(): PendingApproval? = lock.withLock { load().pendingApproval?.toModel() }
+
+    override suspend fun putPendingApproval(approval: PendingApproval?) = lock.withLock {
+        save(load().copy(pendingApproval = approval?.let(StoredApproval::of)))
+    }
+
+    override suspend fun clearCoupleKeys() = lock.withLock { save(load().copy(coupleKeys = emptyMap(), pendingApproval = null)) }
 
     override suspend fun clearAll() = lock.withLock {
         withContext(Dispatchers.IO) { file.delete() }

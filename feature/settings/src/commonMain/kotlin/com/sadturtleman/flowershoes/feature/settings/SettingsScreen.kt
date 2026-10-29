@@ -132,7 +132,6 @@ enum class SettingsPage {
 fun SettingsRoute(
     platform: PlatformActions,
     onOpenPairing: () -> Unit,
-    onHandOver: () -> Unit = {},
     onBack: () -> Unit,
     startAt: SettingsPage = SettingsPage.MAIN,
     photoPicker: (@Composable (onPicked: (ByteArray) -> Unit) -> ((fromCamera: Boolean) -> Unit))? = null,
@@ -153,9 +152,9 @@ fun SettingsRoute(
         // 깊이가 같거나 깊어지면 앞으로 넘기고, 얕아지면 뒤로 넘긴다.
         KkPageFlip(stack.last() to stack.size, pageKey = { it.first }, isForward = { from, to -> to.second >= from.second }) { (page, _) ->
         when (page) {
-            SettingsPage.MAIN -> MainPage(state, platform, open, back, onOpenPairing, onHandOver, viewModel)
+            SettingsPage.MAIN -> MainPage(state, platform, open, back, onOpenPairing, viewModel)
             SettingsPage.LIFETIME -> LifetimePage(state, viewModel, back)
-            SettingsPage.CONNECTION -> ConnectionPage(state, platform, viewModel, back, onOpenPairing, onHandOver, open)
+            SettingsPage.CONNECTION -> ConnectionPage(state, back, onOpenPairing, open)
             SettingsPage.MILITARY -> MilitaryPage(state, viewModel, back)
             SettingsPage.ANNIVERSARY -> AnniversaryPage(state, platform, viewModel, back)
             SettingsPage.THEME -> ThemePage(state, viewModel, back, open)
@@ -241,18 +240,6 @@ internal fun String.withSubject(): String {
     return this + if (batchim) "이" else "가"
 }
 
-/** "오늘 21:40" · "어제 08:10" · "10.21 21:40". */
-fun relativeTime(ms: Long): String {
-    val at = Instant.fromEpochMilliseconds(ms).toLocalDateTime(SEOUL)
-    val today = Clock.System.now().toLocalDateTime(SEOUL).date
-    val hm = "${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}"
-    return when (at.date.daysUntil(today)) {
-        0 -> "오늘 $hm"
-        1 -> "어제 $hm"
-        else -> "${at.month.number}.${at.day} $hm"
-    }
-}
-
 private fun hm(minute: Int) = "${(minute / 60).toString().padStart(2, '0')}:${(minute % 60).toString().padStart(2, '0')}"
 
 // ── 설정(첫 화면) ─────────────────────────────────────────────────────────
@@ -271,11 +258,9 @@ private fun MainPage(
     open: (SettingsPage) -> Unit,
     onBack: () -> Unit,
     onOpenPairing: () -> Unit,
-    onHandOver: () -> Unit,
     viewModel: SettingsViewModel,
 ) {
     val c = KkTheme.colors
-    val scope = rememberCoroutineScope()
     var nameSheet by remember { mutableStateOf(false) }
     Page("설정", onBack) {
         val shape = RoundedCornerShape(KkRadius.lg)
@@ -334,9 +319,8 @@ private fun MainPage(
         Group("계정") {
             KkListRow("로그인 계정", value = viewModel.providerLabel(state.provider), onClick = { open(SettingsPage.ACCOUNT) })
             Divider()
+            // 기기 바꾸기 · 복구(#29)는 이 묶음에 들어온다. 새 폰은 로그인하면 기기 교체 요청으로 연결된다(#20).
             if (state.linked) {
-                KkListRow("상대 폰 교체 받기", onClick = { handOver(scope, platform, viewModel, onHandOver) })
-                Divider()
                 KkListRow("연결 해제", labelColor = c.danger, onClick = { open(SettingsPage.UNLINK) })
             } else {
                 KkListRow("연인과 연결하기", onClick = onOpenPairing)
@@ -359,14 +343,6 @@ private fun MainPage(
             KkInput(name, { name = it.take(10) }, placeholder = "이름이나 애칭", helper = "${name.length} / 10")
             KkPrimaryButton("저장", { viewModel.setNickname(name); nameSheet = false }, Modifier.fillMaxWidth(), enabled = name.isNotBlank())
         }
-    }
-}
-
-/** 상대 폰 교체 받기: 넘겨주기 전 본인 확인. */
-private fun handOver(scope: kotlinx.coroutines.CoroutineScope, platform: PlatformActions, viewModel: SettingsViewModel, onHandOver: () -> Unit) {
-    scope.launch {
-        if (platform.authenticate("데이터를 넘겨주려면 본인 확인이 필요해요") != DeviceAuth.Failed) onHandOver()
-        else viewModel.notice("본인 확인을 하지 못했어요")
     }
 }
 
@@ -449,19 +425,15 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
 
 // ── 연결 정보 ─────────────────────────────────────────────────────────────
 
-/** 연결 정보(Figma 최종 정리 › 설정 · 연결 정보): 연인 카드 · 연결한 날 · 연인 폰 + 교체 받기 · 연결 해제. */
+/** 연결 정보(Figma 최종 정리 › 설정 · 연결 정보): 연인 카드 · 연결한 날 · 연인 폰 + 연결 해제. */
 @Composable
 private fun ConnectionPage(
     state: SettingsState,
-    platform: PlatformActions,
-    viewModel: SettingsViewModel,
     onBack: () -> Unit,
     onOpenPairing: () -> Unit,
-    onHandOver: () -> Unit,
     open: (SettingsPage) -> Unit,
 ) {
     val c = KkTheme.colors
-    val scope = rememberCoroutineScope()
     Page("연결 정보", onBack) {
         if (!state.linked) {
             Group(null) { KkListRow("연인", value = "연결 전", trailing = KkRowTrailing.None) }
@@ -485,8 +457,6 @@ private fun ConnectionPage(
             KkListRow("${state.partnerName} 폰", value = state.partnerDevice ?: "-", trailing = KkRowTrailing.None)
         }
         Group(null) {
-            KkListRow("상대 폰 교체 받기", onClick = { handOver(scope, platform, viewModel, onHandOver) })
-            Divider()
             KkListRow("연결 해제", labelColor = c.danger, onClick = { open(SettingsPage.UNLINK) })
         }
     }
@@ -932,34 +902,6 @@ fun PartnerUnlinkedScreen(partnerName: String, onConfirm: (AfterUnlink) -> Unit)
             KkChoice("모두 지우기", !keep, { keep = false }, radio = true)
         }
         KkPrimaryButton("확인", { onConfirm(if (keep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE) }, Modifier.fillMaxWidth().padding(vertical = KkSpacing.lg))
-    }
-}
-
-/**
- * 상대가 새 폰으로 바꿨을 때(Figma 6 · 기기 교체 · 상대 폰 알림). 자동으로 확인한 뒤 한 번 알려 준다.
- * "내가 모르는 일이에요"는 연결 해제로 이어진다.
- */
-@Composable
-fun PartnerDeviceChangedScreen(partnerName: String, deviceName: String, at: String, providerLabel: String?, onAcknowledge: () -> Unit, onUnknown: () -> Unit) {
-    val c = KkTheme.colors
-    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xl)) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.xxl), verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
-            Box(Modifier.size(56.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) { KkIcon(KkIcons.Home, tint = c.ink) }
-            Text("${partnerName.withSubject()} 새 폰으로 바꿨어요", style = KkTheme.type.title, color = c.ink)
-            val shape = RoundedCornerShape(KkRadius.lg)
-            Column(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
-            ) {
-                Text("새 기기", style = KkTheme.type.caption, color = c.sub)
-                Text(listOf(deviceName.ifBlank { "새 폰" }, at).joinToString(" · "), style = KkTheme.type.labelBold, color = c.ink)
-                providerLabel?.let { Text("$it 계정으로 로그인", style = KkTheme.type.caption, color = c.sub) }
-            }
-        }
-        Column(Modifier.padding(vertical = KkSpacing.lg), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkPrimaryButton("확인했어요", onAcknowledge, Modifier.fillMaxWidth())
-            KkButton("내가 모르는 일이에요", onUnknown, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
-        }
     }
 }
 

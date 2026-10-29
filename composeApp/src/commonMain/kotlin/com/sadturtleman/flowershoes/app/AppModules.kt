@@ -32,12 +32,11 @@ import com.sadturtleman.flowershoes.core.data.sync.PairingSession
 import com.sadturtleman.flowershoes.core.data.sync.PairingTransport
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
-import com.sadturtleman.flowershoes.core.data.sync.RotationApprover
-import com.sadturtleman.flowershoes.core.data.sync.RotationTransport
+import com.sadturtleman.flowershoes.core.data.sync.DeviceChangeApprover
+import com.sadturtleman.flowershoes.core.data.sync.DeviceChangeSession
+import com.sadturtleman.flowershoes.core.data.sync.DeviceChangeTransport
 import com.sadturtleman.flowershoes.core.data.sync.AccountTransport
 import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
-import com.sadturtleman.flowershoes.core.data.sync.RelinkSession
-import com.sadturtleman.flowershoes.core.data.sync.RelinkTransport
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.flatMapLatest
@@ -55,9 +54,8 @@ class CloudBackend(
     val mailbox: Mailbox,
     val blobs: BlobStore,
     val pairing: PairingTransport,
-    val rotation: RotationTransport? = null,
+    val deviceChange: DeviceChangeTransport? = null,
     val account: AccountTransport? = null,
-    val relink: RelinkTransport? = null,
     val notifyPrefs: com.sadturtleman.flowershoes.core.data.NotifyPrefsTransport? = null,
     val inquiry: com.sadturtleman.flowershoes.core.data.InquiryTransport? = null,
 )
@@ -108,25 +106,30 @@ fun kkotsinModules(
         if (cloud != null) {
             single { PairingSession(get(), get(), get(), cloud.pairing, get(), get<DeviceSettings>().pendingInvites) }
             single { SyncClient(get(), get(), get(), cloud.mailbox, cloud.blobs, get(), get(), get(), get()) }
-            cloud.relink?.let { r ->
+            cloud.deviceChange?.let { t ->
                 single {
                     val settings = get<DeviceSettings>()
-                    RelinkSession(get(), get(), get(), r, get(), get(), deviceInfo = {
-                        (getKoin().getOrNull<com.sadturtleman.flowershoes.feature.settings.PlatformActions>()?.deviceName.orEmpty()) to (settings.accountProvider.first().orEmpty())
-                    })
+                    DeviceChangeSession(
+                        get(), get(), get(), t, get(),
+                        deviceInfo = {
+                            (getKoin().getOrNull<com.sadturtleman.flowershoes.feature.settings.PlatformActions>()?.deviceName.orEmpty()) to (settings.accountProvider.first().orEmpty())
+                        },
+                        signIn = { token -> cloud.account?.signInWithCustomToken(token) },
+                    )
                 }
+                single { DeviceChangeApprover(get(), get(), get(), t, get(), get()) }
             }
             cloud.notifyPrefs?.let { t -> single { t } }
             cloud.inquiry?.let { t -> single { t } }
             single {
                 val client = get<SyncClient>()
-                val approver = cloud.rotation?.let { RotationApprover(get(), get(), get(), it, drainInbox = { client.syncOnce() }, get()) }
+                val approver = getOrNull<DeviceChangeApprover>()
                 val identity = get<com.sadturtleman.flowershoes.core.data.Identity>()
                 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
                 val doorbell = get<AppDatabase>().coupleDao().observe().distinctUntilChangedBy { it?.id }.flatMapLatest { c ->
                     if (c == null) kotlinx.coroutines.flow.emptyFlow() else merge(
                         cloud.mailbox.rings(c.id, identity.deviceId),
-                        cloud.rotation?.changes(c.id) ?: kotlinx.coroutines.flow.emptyFlow(),
+                        cloud.deviceChange?.changes(c.id) ?: kotlinx.coroutines.flow.emptyFlow(),
                     )
                 }
                 val db = get<AppDatabase>()
@@ -140,14 +143,15 @@ fun kkotsinModules(
         }
     },
     module {
-        viewModel { OnboardingViewModel(get(), get(), get()) }
+        viewModel { OnboardingViewModel(get(), get(), get(), linkedElsewhere = { getOrNull<DeviceChangeSession>()?.linkedElsewhere() != null }) }
         viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), pendingInvite = get<DeviceSettings>().pendingInvite, dayLineCards = get<DeviceSettings>().dayLineCards) }
         viewModel { CalendarViewModel(get(), get(), get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
         viewModel { MemoryViewModel(get(), get(), get(), get(), get(), clock = get()) }
-        viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull(), get(), get(), bizLogger = get()) }
+        viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), get(), get(), bizLogger = get()) }
+        viewModel { com.sadturtleman.flowershoes.feature.pairing.DeviceChangeViewModel(getOrNull(), getOrNull(), get(), bizLogger = get()) }
         viewModel { com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel(getOrNull(), get(), getOrNull(), get(), bizLogger = get()) }
         viewModel { com.sadturtleman.flowershoes.feature.pairing.SoloArrivalViewModel(get(), get(), get()) }
         viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull()) }

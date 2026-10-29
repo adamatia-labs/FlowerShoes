@@ -69,7 +69,7 @@ enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.de
 }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, COMPOSE, DRAW_FOR_LETTER, DRAW, DRAFTS, SETTINGS, LEAVE }
+private enum class Overlay { PAIRING, DEVICE_CHANGE, COMPOSE, DRAW_FOR_LETTER, DRAW, DRAFTS, SETTINGS, LEAVE }
 
 @Composable
 fun KkotsinApp() {
@@ -143,9 +143,13 @@ private fun OnboardingFlow() {
                 overlay = Overlay.PAIRING
             },
             invited = link is DeepLink.Invite,
+            // 이미 다른 폰에서 연결된 계정: 시작 방법 대신 기기 교체(#20).
+            onDeviceChange = { overlay = Overlay.DEVICE_CHANGE },
         )
         // 초대를 보냈거나(바로 홈) 받은 초대로 연결됐다 → 온보딩 끝.
         Overlay.PAIRING -> PairingRoute(onDone = { scope.launch { settings.setOnboarded() } }, onBack = closePairing, invite = inviteToken)
+        // 다 받으면 화면이 온보딩을 끝낸 것으로 한다(셸이 홈으로 바뀐다).
+        Overlay.DEVICE_CHANGE -> com.sadturtleman.flowershoes.feature.pairing.DeviceChangeRoute(onDone = {}, onBack = { overlay = null })
         else -> ComingSoon(shown!!.title(), onBack = { overlay = null })
     }
     }
@@ -159,6 +163,8 @@ private fun MainShell() {
     // 초대 링크로 들어왔으면 그 토큰(연결 화면이 받는 쪽으로 열린다).
     var inviteToken by rememberSaveable { mutableStateOf<String?>(null) }
     var settingsStart by remember { mutableStateOf(com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN) }
+    // 답한 기기 교체 화면: 결과(승인함 · 막음 완료)를 확인할 때까지 붙잡아 둔다.
+    var heldChange by remember { mutableStateOf<com.sadturtleman.flowershoes.core.data.sync.DeviceChangePrompt?>(null) }
     // 편지 쓰기 · 편지함이 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
@@ -298,17 +304,12 @@ private fun MainShell() {
             }
             PairingRoute(onDone = closePairing, onBack = closePairing, invite = inviteToken)
         }
-        Overlay.HAND_OVER -> {
-            PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, handOver = true)
-        }
-        Overlay.RECEIVE -> {
-            PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, mode = com.sadturtleman.flowershoes.feature.pairing.PairingMode.RECEIVE)
-        }
+        // 셸에서는 열지 않는다(연결된 폰은 교체 요청을 받는 쪽이다). 온보딩과 같은 화면.
+        Overlay.DEVICE_CHANGE -> com.sadturtleman.flowershoes.feature.pairing.DeviceChangeRoute(onDone = { overlay = null }, onBack = { overlay = null })
         Overlay.SETTINGS -> {
             SettingsRoute(
                 platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
                 onOpenPairing = { overlay = Overlay.PAIRING },
-                onHandOver = { overlay = Overlay.HAND_OVER },
                 onBack = { overlay = null; settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN },
                 startAt = settingsStart,
                 photoPicker = { rememberPhotoPicker(it) },
@@ -338,22 +339,18 @@ private fun MainShell() {
             }
             return@KkPageFlip
         }
-        // 상대가 새 폰으로 바꿨다(Figma 6 · 기기 교체 · 상대 폰 알림): 자동 확인 뒤 한 번.
-        val rotation = scheduler?.approvedRotations?.collectAsState()?.value?.firstOrNull()
-        if (rotation != null) {
-            val at = kotlin.time.Instant.fromEpochMilliseconds(rotation.createdAtMs)
-            com.sadturtleman.flowershoes.feature.settings.PartnerDeviceChangedScreen(
+        // 기기 교체(Figma 7 · 연인 폰 · 옛 폰): 상대의 "새 폰 맞나요?" · 내 계정의 "새 폰에서 로그인했어요".
+        val change = heldChange ?: scheduler?.deviceChanges?.collectAsState()?.value?.firstOrNull()
+        if (change != null) {
+            com.sadturtleman.flowershoes.feature.pairing.DeviceChangePromptRoute(
+                prompt = change,
                 partnerName = settingsState.partnerName,
-                deviceName = rotation.deviceName,
-                at = com.sadturtleman.flowershoes.feature.settings.relativeTime(at.toEpochMilliseconds()),
-                providerLabel = rotation.provider.takeIf { it.isNotBlank() }?.let(settingsVm::providerLabel),
-                onAcknowledge = { scheduler.rotationSeen(rotation.id) },
-                onUnknown = {
-                    scheduler.rotationSeen(rotation.id)
-                    settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.UNLINK
-                    overlay = Overlay.SETTINGS
-                },
-            )
+                provider = settingsState.provider?.let(settingsVm::providerLabel),
+                onActed = { heldChange = change },
+            ) {
+                heldChange = null
+                scheduler?.deviceChangeHandled(change.request.id)
+            }
             return@KkPageFlip
         }
         Box(Modifier.fillMaxSize()) {

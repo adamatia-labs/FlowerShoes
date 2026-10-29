@@ -22,17 +22,39 @@ interface KeyVault {
 
     suspend fun dropEpochsBefore(epoch: Int)
 
-    /** 연결 해제 · 탈퇴: 커플 키 전부. */
+    /**
+     * 기기 교체 승인 중(#20): 새 폰 앞으로 봉인해 보낸 새 커플 키와 그때의 옛 기기 · cutoff.
+     * 아직 현재 키가 아니다 — 함수가 승인을 받아들이면 [putCoupleKey] 로 옮기고 비운다. 앱이 꺼져도 남아야 한다.
+     */
+    suspend fun pendingApproval(): PendingApproval?
+
+    suspend fun putPendingApproval(approval: PendingApproval?)
+
+    /** 연결 해제 · 탈퇴: 커플 키 전부(승인 중인 키도). */
     suspend fun clearCoupleKeys()
 
     /** 탈퇴: 기기 키 · 커플 키 전부. */
     suspend fun clearAll()
 }
 
+/** 승인 중인 기기 교체. [key] 는 새 epoch 커플 키. */
+class PendingApproval(val requestId: String, val key: CoupleKey, val oldDeviceId: String?, val cutoff: Map<String, Long>)
+
+/** 보관함 파일에 두는 모양(Android · iOS 가 같은 JSON 을 쓴다). */
+@kotlinx.serialization.Serializable
+internal data class StoredApproval(val requestId: String, val epoch: Int, val key: String, val oldDeviceId: String? = null, val cutoff: Map<String, Long> = emptyMap()) {
+    fun toModel() = PendingApproval(requestId, CoupleKey(epoch, key.unb64()), oldDeviceId, cutoff)
+
+    companion object {
+        fun of(p: PendingApproval) = StoredApproval(p.requestId, p.key.epoch, p.key.export().b64(), p.oldDeviceId, p.cutoff)
+    }
+}
+
 /** 플랫폼 보관함이 붙기 전 · 테스트용. 프로세스가 끝나면 사라진다. */
 class InMemoryKeyVault : KeyVault {
     private var device: DeviceKeys? = null
     private val couple = mutableMapOf<Int, CoupleKey>()
+    private var pending: PendingApproval? = null
 
     override suspend fun deviceKeys() = device
 
@@ -52,10 +74,20 @@ class InMemoryKeyVault : KeyVault {
         couple.keys.removeAll { it < epoch }
     }
 
-    override suspend fun clearCoupleKeys() = couple.clear()
+    override suspend fun pendingApproval() = pending
+
+    override suspend fun putPendingApproval(approval: PendingApproval?) {
+        pending = approval
+    }
+
+    override suspend fun clearCoupleKeys() {
+        couple.clear()
+        pending = null
+    }
 
     override suspend fun clearAll() {
         device = null
         couple.clear()
+        pending = null
     }
 }

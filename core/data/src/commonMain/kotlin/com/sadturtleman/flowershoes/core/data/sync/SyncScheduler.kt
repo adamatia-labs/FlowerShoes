@@ -38,8 +38,8 @@ import kotlinx.coroutines.CancellationException
 class SyncScheduler(
     private val db: AppDatabase,
     private val client: SyncClient,
-    /** 상대의 기기 교체 요청을 동기화 때마다 확인해 자동 승인한다(7-3-A). */
-    private val approver: RotationApprover? = null,
+    /** 기기 교체 요청(상대의 새 폰 · 내 계정의 다른 폰)을 동기화 때마다 읽어 [deviceChanges] 로 내보낸다(#20). */
+    private val approver: DeviceChangeApprover? = null,
     /** 앱이 살아 있는 동안 우편함 초인종(Firestore 리스너). */
     private val doorbell: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
     private val period: Duration = 1.minutes,
@@ -57,18 +57,17 @@ class SyncScheduler(
         _partnerUnlinked.value = false
     }
 
-    private val _approved = kotlinx.coroutines.flow.MutableStateFlow<List<RotationRequest>>(emptyList())
+    private val _deviceChanges = kotlinx.coroutines.flow.MutableStateFlow<List<DeviceChangePrompt>>(emptyList())
+    private val dismissed = mutableSetOf<String>()
 
-    /** 자동 승인한 상대 기기 교체. 화면이 "새 폰으로 바꿨어요"를 한 번 보여 주고 [rotationSeen] 을 부른다. */
-    val approvedRotations: kotlinx.coroutines.flow.StateFlow<List<RotationRequest>> = _approved
+    /** 띄울 기기 교체 화면: 상대 폰의 승인 요청 · 옛 폰의 "새 폰에서 로그인했어요". 답하거나 닫으면 [deviceChangeHandled]. */
+    val deviceChanges: kotlinx.coroutines.flow.StateFlow<List<DeviceChangePrompt>> = _deviceChanges
 
-    fun rotationSeen(id: String) {
-        _approved.value = _approved.value.filterNot { it.id == id }
+    /** 이 실행 동안은 다시 띄우지 않는다(답은 서버 상태로 사라지고, 옛 폰 알림은 "괜찮아요"로 닫는다). */
+    fun deviceChangeHandled(id: String) {
+        dismissed += id
+        _deviceChanges.value = _deviceChanges.value.filterNot { it.request.id == id }
     }
-
-    /** 자동 승인하지 못한 교체 요청. 화면이 "확인 코드로 직접 확인해 주세요"를 띄운다. */
-    var pendingManual: List<Pair<RotationRequest, RotationDecision.NeedsManual>> = emptyList()
-        private set
 
     private val kicks = Channel<Unit>(Channel.CONFLATED)
     private val running = Mutex()
@@ -124,12 +123,7 @@ class SyncScheduler(
 
     private suspend fun syncOnce(): SyncReport? {
         val report = attempt { client.syncOnce() }?.also { lastReport = it }
-        approver?.let { a ->
-            attempt { a.check() }?.let { decisions ->
-                pendingManual = pendingManual + decisions.mapNotNull { (r, d) -> (d as? RotationDecision.NeedsManual)?.let { r to it } }
-                _approved.value = _approved.value + decisions.filter { it.second == RotationDecision.Approved }.map { it.first }
-            }
-        }
+        approver?.let { a -> attempt { a.prompts() }?.let { p -> _deviceChanges.value = p.filterNot { it.request.id in dismissed } } }
         if (!_partnerUnlinked.value && attempt { partnerGone() } == true) _partnerUnlinked.value = true
         return report
     }

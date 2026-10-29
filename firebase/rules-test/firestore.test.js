@@ -2,7 +2,7 @@
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 let env;
 const KAKAO = { firebase: { sign_in_provider: 'custom' } };
@@ -145,13 +145,60 @@ test('새 기기는 대기 상태로만 등록하고 스스로 활성화할 수 
   await assertFails(setDoc(doc(as('minjun'), 'couples/c1/devices/dev-x'), { ...pending, uid: 'jisu' }));
 });
 
-test('기기 교체 승인은 요청한 사람이 아닌 상대 활성 기기만 단다', async () => {
+// ── 기기 교체(#20) ───────────────────────────────────────────────────────
+
+const pendingDevice = { uid: 'minjun', signPub: 's', boxPub: 'b', state: 'pending', active: false, createdAt: Timestamp.now() };
+const change = (extra = {}) => ({
+  uid: 'minjun', newDeviceId: 'dev-b2', oldDeviceId: 'dev-b', deviceName: 'Galaxy S25', provider: 'KAKAO',
+  status: 'pending', createdAt: serverTimestamp(), expireAt: days(7), ...extra,
+});
+
+test('기기 교체 요청은 같은 계정의 대기 기기가 서버 시각 · 7일 이하로만 만든다', async () => {
   await seedCouple();
-  const rot = { uid: 'minjun', newDeviceId: 'dev-b2', oldDeviceId: 'dev-b', epoch: 2, wrappedKey: 'w', mac: 'm', sig: 's', createdAt: Timestamp.now() };
-  await assertSucceeds(setDoc(doc(as('minjun'), 'couples/c1/rotations/r1'), rot));
-  const approval = { approverDeviceId: 'dev-a', cutoff: { 'dev-b:app': 10 }, sig: 's', at: Timestamp.now() };
-  await assertFails(setDoc(doc(as('minjun'), 'couples/c1/rotations/r1/approval/a'), approval));
-  await assertSucceeds(setDoc(doc(as('jisu'), 'couples/c1/rotations/r1/approval/a'), approval));
+  const minjun = as('minjun');
+  // 대기 기기 문서가 먼저 있어야 한다.
+  await assertFails(setDoc(doc(minjun, 'couples/c1/deviceChanges/r0'), change()));
+  await setDoc(doc(minjun, 'couples/c1/devices/dev-b2'), pendingDevice);
+  await assertSucceeds(setDoc(doc(minjun, 'couples/c1/deviceChanges/r1'), change()));
+  await assertFails(setDoc(doc(minjun, 'couples/c1/deviceChanges/r2'), change({ createdAt: Timestamp.fromMillis(Date.now() - 86400 * 1000) })));
+  await assertFails(setDoc(doc(minjun, 'couples/c1/deviceChanges/r3'), change({ expireAt: days(8) })));
+  await assertFails(setDoc(doc(minjun, 'couples/c1/deviceChanges/r4'), change({ status: 'approved' })));
+  await assertFails(setDoc(doc(minjun, 'couples/c1/deviceChanges/r5'), change({ oldDeviceId: 'dev-a' })));
+  await assertFails(setDoc(doc(minjun, 'couples/c1/deviceChanges/r6'), change({ second: false })));
+  // 상대 계정 이름으로 · 커플 밖에서는 못 만든다.
+  await assertFails(setDoc(doc(as('jisu'), 'couples/c1/deviceChanges/r7'), change({ uid: 'jisu' })));
+  await assertFails(setDoc(doc(as('mallory'), 'couples/c1/deviceChanges/r8'), change({ uid: 'mallory' })));
+  // 상태는 함수만 바꾼다.
+  await assertFails(setDoc(doc(minjun, 'couples/c1/deviceChanges/r1'), { status: 'approved' }, { merge: true }));
+  await assertSucceeds(getDocs(collection(as('jisu'), 'couples/c1/deviceChanges')));
+});
+
+test('승인 · 거절은 상대 활성 기기만, 취소 · 막기는 요청한 계정만 한 번 답한다', async () => {
+  await seedCouple();
+  await setDoc(doc(as('minjun'), 'couples/c1/devices/dev-b2'), pendingDevice);
+  await setDoc(doc(as('minjun'), 'couples/c1/deviceChanges/r1'), change());
+  const approve = { result: 'approve', approverDeviceId: 'dev-a', cutoff: { 'dev-b:app': 10 }, sig: 's', counts: { letters: 3 }, at: serverTimestamp() };
+  await assertFails(setDoc(doc(as('minjun'), 'couples/c1/deviceChanges/r1/answer/partner'), approve));
+  await assertFails(setDoc(doc(as('jisu'), 'couples/c1/deviceChanges/r1/answer/partner'), { ...approve, approverDeviceId: 'dev-b' }));
+  await assertFails(setDoc(doc(as('jisu'), 'couples/c1/deviceChanges/r1/answer/owner'), { result: 'block', at: serverTimestamp() }));
+  await assertFails(setDoc(doc(as('minjun'), 'couples/c1/deviceChanges/r1/answer/owner'), { result: 'approve', at: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(as('minjun'), 'couples/c1/deviceChanges/r1/answer/owner'), { result: 'block', at: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(as('jisu'), 'couples/c1/deviceChanges/r1/answer/partner'), approve));
+  // 한 번만.
+  await assertFails(setDoc(doc(as('jisu'), 'couples/c1/deviceChanges/r1/answer/partner'), { result: 'reject', at: serverTimestamp() }));
+  // 승인한 폰은 새 기기 앞으로 커플 키 봉투를 둔다(새 기기는 활성화된 뒤에야 읽는다).
+  await assertSucceeds(setDoc(doc(as('jisu'), 'couples/c1/keys/dev-b2'), { wrapped: 'w', epoch: 2 }));
+  await assertFails(getDoc(doc(as('minjun'), 'couples/c1/keys/dev-b2')));
+});
+
+test('끝났거나 만료된 요청에는 답할 수 없다', async () => {
+  await seedCouple();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'couples/c1/deviceChanges/done'), { ...change(), createdAt: Timestamp.now(), status: 'rejected' });
+    await setDoc(doc(ctx.firestore(), 'couples/c1/deviceChanges/old'), { ...change(), createdAt: Timestamp.now(), expireAt: Timestamp.fromMillis(Date.now() - 1000) });
+  });
+  await assertFails(setDoc(doc(as('jisu'), 'couples/c1/deviceChanges/done/answer/partner'), { result: 'reject', at: serverTimestamp() }));
+  await assertFails(setDoc(doc(as('jisu'), 'couples/c1/deviceChanges/old/answer/partner'), { result: 'reject', at: serverTimestamp() }));
 });
 
 test('커플 문서는 멤버만 읽고 아무도 직접 만들지 못한다', async () => {
@@ -175,19 +222,6 @@ test('첨부 blob 은 활성 멤버만 올리고 멤버만 읽는다', async () 
   await assertFails(getDoc(doc(as('mallory'), 'couples/c1/blobs/b1')));
   await assertFails(setDoc(doc(as('mallory'), 'couples/c1/blobs/b2'), blob));
   await assertFails(setDoc(doc(as('jisu'), 'couples/c1/blobs/b3'), { ...blob, extra: 1 }));
-});
-
-test('넘겨주기 확인은 코드를 만든 활성 멤버(지수)만 쓴다', async () => {
-  await seedCouple();
-  await assertSucceeds(setDoc(doc(as('jisu'), 'relinks/R1'), { uid: 'jisu', coupleId: 'c1', expireAt: later() }));
-  // 같은 계정(민준)으로 로그인한 새 폰이 커밋한다.
-  await assertSucceeds(setDoc(doc(as('minjun'), 'relinks/R1/steps/join'), { uid: 'minjun', commit: 'c' }));
-  const confirm = { wrappedKey: 'w', sas: '123456', cutoff: '{}', sig: 's', newDeviceId: 'dev-b2', epoch: '2' };
-  await assertFails(setDoc(doc(as('minjun'), 'relinks/R1/steps/confirm-inviter'), confirm));
-  await assertSucceeds(setDoc(doc(as('jisu'), 'relinks/R1/steps/confirm-inviter'), confirm));
-  await assertSucceeds(setDoc(doc(as('minjun'), 'relinks/R1/steps/confirm-joiner'), { sas: '123456' }));
-  // 커플 밖 사람은 넘겨주기 코드를 만들 수 없다.
-  await assertFails(setDoc(doc(as('mallory'), 'relinks/R2'), { uid: 'mallory', coupleId: 'c1', expireAt: later() }));
 });
 
 test('Apple refresh token 보관함은 본인도 읽고 쓸 수 없다(함수만)', async () => {

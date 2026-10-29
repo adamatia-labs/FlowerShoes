@@ -57,7 +57,7 @@ fun kkotsinAndroidModules(
 private fun firebaseBackendOrNull(context: Context): CloudBackend? {
     if (com.google.firebase.FirebaseApp.getApps(context).isEmpty()) return null
     val transport = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
-    return CloudBackend(mailbox = transport, blobs = transport, pairing = transport, rotation = com.sadturtleman.flowershoes.core.firebase.FirestoreRotation(), account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(), relink = com.sadturtleman.flowershoes.core.firebase.FirestoreRelink(), notifyPrefs = com.sadturtleman.flowershoes.core.firebase.FirestoreNotifyPrefs(), inquiry = com.sadturtleman.flowershoes.core.firebase.FirestoreInquiry())
+    return CloudBackend(mailbox = transport, blobs = transport, pairing = transport, deviceChange = com.sadturtleman.flowershoes.core.firebase.FirestoreDeviceChange(), account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(), notifyPrefs = com.sadturtleman.flowershoes.core.firebase.FirestoreNotifyPrefs(), inquiry = com.sadturtleman.flowershoes.core.firebase.FirestoreInquiry())
 }
 
 private fun settingsDataStore(context: Context): DataStore<Preferences> =

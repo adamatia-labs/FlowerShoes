@@ -126,6 +126,9 @@ sealed interface OnboardingIntent {
 sealed interface OnboardingEvent {
     data object Finished : OnboardingEvent
     data object OpenPairing : OnboardingEvent
+
+    /** 이미 다른 폰에서 연결된 계정으로 로그인했다 → 기기 교체(#20). 약관 · 역할은 옛 폰에서 마쳤다. */
+    data object DeviceChange : OnboardingEvent
 }
 
 class OnboardingViewModel(
@@ -133,6 +136,8 @@ class OnboardingViewModel(
     private val settings: DeviceSettings,
     private val profile: ProfileRepository,
     clock: Clock = Clock.System,
+    /** 로그인한 계정이 이미 다른 폰에서 연결돼 있는지(서버). 확인하지 못하면 false. */
+    private val linkedElsewhere: suspend () -> Boolean = { false },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -186,7 +191,12 @@ class OnboardingViewModel(
             when (val r = auth.signIn(provider)) {
                 is SignInResult.Success -> {
                     if (r.uid.isNotEmpty()) settings.bindAccount(r.uid, r.provider.name)
-                    _state.update { it.copy(signingIn = false, step = OnboardingStep.TERMS, loginName = r.displayName) }
+                    if (runCatching { linkedElsewhere() }.getOrDefault(false)) {
+                        _state.update { it.copy(signingIn = false, loginName = r.displayName) }
+                        _events.send(OnboardingEvent.DeviceChange)
+                    } else {
+                        _state.update { it.copy(signingIn = false, step = OnboardingStep.TERMS, loginName = r.displayName) }
+                    }
                 }
                 SignInResult.Cancelled -> _state.update { it.copy(signingIn = false) }
                 is SignInResult.Failed -> _state.update { it.copy(signingIn = false, error = r.message) }

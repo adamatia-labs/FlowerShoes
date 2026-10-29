@@ -34,12 +34,12 @@ export function opSignedBytes(header: Buffer, ciphertext: Buffer): Buffer {
 }
 
 /** 기기 교체 승인 서명 대상. cutoff 는 키 순서를 고정해 양쪽이 같은 문자열을 만든다. */
-export function approvalMessage(coupleId: string, rotationId: string, newDeviceId: string, cutoff: Record<string, number>): Buffer {
+export function approvalMessage(coupleId: string, requestId: string, newDeviceId: string, cutoff: Record<string, number>): Buffer {
   const sorted = Object.keys(cutoff).sort().map((k) => `${k}=${cutoff[k]}`).join(',');
-  return Buffer.from(`kkotsin-approval-v1|${coupleId}|${rotationId}|${newDeviceId}|${sorted}`);
+  return Buffer.from(`kkotsin-approval-v1|${coupleId}|${requestId}|${newDeviceId}|${sorted}`);
 }
 
 /** 새 기기가 세션 토큰을 받을 때 서명하는 챌린지. 같은 uid 의 옛 폰이 대신 받아 가지 못하게 한다. */
-export function finalizeMessage(coupleId: string, rotationId: string, uid: string): Buffer {
-  return Buffer.from(`kkotsin-finalize-v1|${coupleId}|${rotationId}|${uid}`);
+export function finalizeMessage(coupleId: string, requestId: string, uid: string): Buffer {
+  return Buffer.from(`kkotsin-finalize-v1|${coupleId}|${requestId}|${uid}`);
 }

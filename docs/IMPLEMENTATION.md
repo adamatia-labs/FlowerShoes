@@ -6,15 +6,15 @@
 ## v7 수정 (v6 리뷰 반영, 7-3-A 백업 복원)
 
 1. **새 폰 토큰 전달**
-   - 승인 문서가 생기면 트리거 `onRotationApproved`가 기기 상태만 바꾼다. 새 기기는 active, 옛 기기는 active=false.
+   - 상대의 승인 답이 생기면 트리거 `onDeviceChangeAnswered`가 서명을 확인하고 기기 상태만 바꾼다. 새 기기는 active, 옛 기기는 active=false.
    - 새 폰은 callable `finalizeDevice`를 직접 부른다. 이 함수는 **새 기기 키로 서명한 챌린지**를 확인하고, 커스텀 토큰을 발급한 뒤 `revokeRefreshTokens`를 부른다.
 2. **빠진 부분 메우기**
    - 받는 쪽 커서가 상대 로그의 floor 아래면, 보내는 쪽은 재전송 대신 스냅샷을 보낸다.
    - 스냅샷에는 그 사람이 쓴 행 전체와, 그 사람 기기가 마지막으로 고친 일정이 들어간다.
-3. **오래된 백업 키**
-   - 상대 폰이 MAC을 검증할 수 없으면 자동 승인하지 않고 7-3-B(상대 넘겨주기)로 안내한다.
+3. **자동 승인 없음(#20)**
+   - 기기 교체는 언제나 상대가 직접 승인한다. MAC · 자동 승인 · 넘겨주기(7-3-B)는 지웠다.
 4. **연달아 오는 교체**
-   - 24시간 안에 두 번째 교체 요청이 오면 자동 승인하지 않는다.
+   - 24시간 안에 두 번째 교체 요청이면 상대 화면에 경고하고 한 번 더 확인한다.
 5. **탈퇴**
    - callable 함수가 Admin SDK로 처리한다.
 
@@ -74,12 +74,10 @@
    - Android는 붙었다: `BackupManager`, `RoomBackupSource`(일관된 SQLite 스냅샷), Firebase Storage 어댑터(서버 설정이 없으면 이 폰 안의 파일 저장소), Block Store 키 동기화, 설정의 지금 백업 · 복구 코드, 복원 화면, 백그라운드 자동 백업. 에뮬레이터에서 백업 → 일정 삭제 → 복원 → 재시작 → 일정이 돌아오는 것을 확인했다.
    - 복원 직후 자동 교체는 끝났다: `PostRestoreRotation` 이 동기화 때마다 요청 → 상대 확인 대기(배너) → finalize → 토큰 재로그인. 남은 것: iOS(iCloud 키체인 · Storage), Block Store 복원 시점 실기기 확인.
 5. **나머지 흐름**
-   - 7-3-B 상대 넘겨주기는 끝났다: `RelinkSession`(커밋 → 공개 → SAS → cutoff → epoch+1 → 공유 데이터 전체 스냅샷), 함수 `onRelinkStep`, 규칙, 연결 · 설정 화면. 남은 것은 넘겨주기 전 기기 생체 인증
+   - 기기 교체는 하나의 흐름이다(#20 · #40): 새 폰 로그인 → `DeviceChangeSession` 요청 → 상대 폰 `DeviceChangeApprover` 승인(cutoff → epoch+1 커플 키를 새 기기 공개키로 봉인 → 공유 데이터 전체 스냅샷) · 거절, 옛 폰 "내가 아니에요"(승인 전 막기). 함수 `onDeviceChangeCreated` · `onDeviceChangeAnswered` · `finalizeDevice`, 규칙 `couples/{c}/deviceChanges`. 넘겨주기(`RelinkSession` · SAS) · 자동 승인(`RotationApprover`)은 지웠다.
    - 탈퇴 화면(서버 callable · 로컬 정리는 있다)
    - 기기 인증은 끝났다(Android): 연결 해제 · 복구 코드 보기 · 연인 폰 교체 받기 앞에 BiometricPrompt(생체 또는 PIN). 화면 잠금이 없는 기기는 경고 후 진행
    - 연결 해제는 끝났다: `UnlinkService`(키 · 동기화 상태 정리, 보관/모두 지우기), 설정 화면, callable `unlinkCouple`
-   - 자동 승인하지 못한 교체 요청(`SyncScheduler.pendingManual`)을 안내하는 화면
-   - 기기 교체 자동 승인은 동기화 루프에 연결돼 있다(`RotationApprover`, Firestore 어댑터 `FirestoreRotation`).
 6. **PNG 렌더러** — Android는 끝났다(`:core:media` `DrawingPng`). 저장할 때 완성 PNG를 만들고, 동기화 · 위젯이 그 PNG를 쓴다. iOS 구현(Compose + Skia)은 macOS 빌드 확인이 남았다.
 8. **iOS**
    - macOS에서 `xcodegen`으로 프로젝트를 만든다.

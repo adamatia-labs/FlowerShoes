@@ -101,6 +101,8 @@ fun OnboardingRoute(
     onFinished: () -> Unit,
     onOpenPairing: () -> Unit,
     invited: Boolean = false,
+    /** 이미 연결된 계정의 새 폰 → 기기 교체 화면. */
+    onDeviceChange: () -> Unit = {},
     viewModel: OnboardingViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -109,6 +111,7 @@ fun OnboardingRoute(
             when (it) {
                 OnboardingEvent.Finished -> onFinished()
                 OnboardingEvent.OpenPairing -> onOpenPairing()
+                OnboardingEvent.DeviceChange -> onDeviceChange()
             }
         }
     }
