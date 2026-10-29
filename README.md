@@ -17,8 +17,6 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 | `:feature:*` | KMP · Compose | 온보딩 · 홈 · 캘린더 · 편지 · 그림 · 추억 · 연결 · 설정 화면과 ViewModel |
 | `:core:*` | KMP | 도메인 로직 · 저장 · 동기화 · 암호화 · 디자인 시스템 (아래 표) |
 | `:common:*` | Android · KMP | DataStore 래퍼 · 디스패처 한정자 · 기기 정보 · 공통 모델 |
-| `:tti:*` | 계측 | 화면 진입 시간(TTI). Logcat `TTI:` |
-| `:jank:*` | 계측 | 프레임 드랍. Logcat `JANK` |
 | `iosApp/` | iOS | XcodeGen 프로젝트 · 앱 진입점 · 알림 확장(NSE) · 위젯 |
 | `firebase/` | 서버 | Firestore 보안 규칙 · Cloud Functions(TypeScript) |
 
@@ -40,6 +38,8 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 | `notification` · `widget-bridge` | 알림 계획 · 위젯 스냅샷 |
 | `logging` | 비즈니스 이벤트(`BizEvent`) → GA4(GitLive Analytics). 디버그는 Logcat · Xcode 콘솔 `BIZLOG:` |
 | `featureflag` | 환경별 피처 플래그 · AB 테스트(`FlagKey`) ← Firebase Remote Config(GitLive) |
+| `tti` | 화면 진입 시간(4구간 · Room 저장 · 부팅 기준 시계). 화면 helper 는 Android 만 꽂는다. Logcat `TTI:` |
+| `jank` | 프레임 드랍 집계. Android 는 JankStats, iOS 는 CADisplayLink 표시 간격. 디버그는 Logcat · Xcode 콘솔 `JANK:` |
 
 ### 의존 방향
 

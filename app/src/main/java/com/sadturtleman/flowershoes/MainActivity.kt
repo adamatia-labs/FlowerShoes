@@ -16,11 +16,11 @@ import com.sadturtleman.flowershoes.ads.AdmobBanner
 import com.sadturtleman.flowershoes.app.DeepLinks
 import com.sadturtleman.flowershoes.core.designsystem.LocalAdBanner
 import com.sadturtleman.flowershoes.app.KkotsinApp
-import com.sadturtleman.flowershoes.jank.domain.JankReporter
-import com.sadturtleman.flowershoes.jank.presentation.LocalJankReporter
-import com.sadturtleman.flowershoes.jank.presentation.toJankFrame
-import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
-import com.sadturtleman.flowershoes.tti.presentation.LocalTtiRecorder
+import com.sadturtleman.flowershoes.core.jank.JankReporter
+import com.sadturtleman.flowershoes.core.jank.LocalJankReporter
+import com.sadturtleman.flowershoes.core.jank.toJankFrame
+import com.sadturtleman.flowershoes.core.tti.TtiRecorder
+import com.sadturtleman.flowershoes.core.tti.LocalTtiRecorder
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.android.getKoin
 

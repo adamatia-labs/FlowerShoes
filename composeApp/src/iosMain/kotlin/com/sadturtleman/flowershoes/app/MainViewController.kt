@@ -25,6 +25,9 @@ private val appScope = kotlinx.coroutines.MainScope()
 
 /** Swift(KkotsinApp)가 넣는 위젯 새로고침(WidgetCenter.reloadAllTimelines — Kotlin 에서는 부를 수 없다). */
 private var widgetReloader: (() -> Unit)? = null
+
+/** 프레임 드랍 계측의 프레임 소스(CADisplayLink). Koin 이 선 뒤에 만들고, 앞에 있는 동안만 돈다. */
+private var jankSource: com.sadturtleman.flowershoes.core.jank.DisplayLinkJankSource? = null
 private var notificationRegistration: (() -> Unit)? = null
 
 fun setNotificationRegistration(register: () -> Unit) { notificationRegistration = register }
@@ -124,6 +127,9 @@ fun MainViewController(
         val koin = org.koin.mp.KoinPlatform.getKoin()
         koin.get<com.sadturtleman.flowershoes.core.logging.BizLogger>().init()
         appScope.launch { koin.get<com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider>().init() }
+        // 지난 실행이 쏘지 못하고 죽은 TTI 기록도 이 시점에 함께 나간다.
+        koin.get<com.sadturtleman.flowershoes.core.tti.TtiRecorder>().init()
+        jankSource = com.sadturtleman.flowershoes.core.jank.DisplayLinkJankSource(koin.get())
     }
     return ComposeUIViewController(configure = {
         // 화면의 imePadding/스크롤이 키보드를 처리한다. 루트 전체를 밀면 상단 버튼이 상태바와 겹친다.
@@ -147,7 +153,11 @@ fun MainViewController(
         // 꽃신 평생이면 광고를 모두 숨긴다(Figma 9).
         Box(Modifier.fillMaxSize().imePadding()) {
             // 구매/공유 혜택이 바뀌어도 앱의 composition 위치와 내비게이션 상태를 유지한다.
+            // 화면 이름 · 스크롤 구간은 컴포지션이 알려 주므로 집계기를 트리에 꽂는다.
+            // TTI 기록기는 꽂지 않는다 — 화면별 TTI 는 Android 만 잰다(iOS 는 MetricKit · Firebase 의 앱 시작 지표).
             androidx.compose.runtime.CompositionLocalProvider(
+                com.sadturtleman.flowershoes.core.jank.LocalJankReporter provides
+                    org.koin.mp.KoinPlatform.getKoin().get<com.sadturtleman.flowershoes.core.jank.JankReporter>(),
                 com.sadturtleman.flowershoes.core.designsystem.LocalAdBanner provides { slot, modifier ->
                     if (ads != null && owned == false && purchasesReady) IosAdBanner(ads, slot, modifier)
                 },
@@ -162,8 +172,10 @@ fun MainViewController(
  */
 fun onForeground() {
     val koin = org.koin.mp.KoinPlatform.getKoinOrNull() ?: return
-    // onBackground 에서 접어 둔 기록기를 다시 연다.
+    // onBackground 에서 접어 둔 기록기를 다시 열고, 프레임 계측을 다시 켠다.
     koin.get<com.sadturtleman.flowershoes.core.logging.BizLogger>().init()
+    koin.get<com.sadturtleman.flowershoes.core.tti.TtiRecorder>().init()
+    jankSource?.start()
     appScope.launch {
         if (!servicesStarted) {
             servicesStarted = true
@@ -209,14 +221,18 @@ fun onForeground() {
 
 /**
  * iosApp 이 앱이 백그라운드로 내려갈 때 부른다. iOS 도 종료를 알려주지 않으므로 이것이 마지막 신호다.
- * 아직 나가지 못한 이벤트가 끝나기를 기다린 뒤 기록기를 접는다.
+ * 아직 나가지 못한 이벤트 · 완성된 TTI 기록을 보내고 기록기를 접는다. 프레임 계측은 멈추고 남은 통계를 비운다.
  */
 fun onBackground() {
-    org.koin.mp.KoinPlatform.getKoinOrNull()?.get<com.sadturtleman.flowershoes.core.logging.BizLogger>()?.destroy()
+    val koin = org.koin.mp.KoinPlatform.getKoinOrNull() ?: return
+    koin.get<com.sadturtleman.flowershoes.core.logging.BizLogger>().destroy()
+    koin.get<com.sadturtleman.flowershoes.core.tti.TtiRecorder>().destroy()
+    jankSource?.stop()
+    koin.get<com.sadturtleman.flowershoes.core.jank.JankReporter>().onAppBackground()
 }
 
 /**
- * 로깅 · 피처 플래그. [firebase] 는 GoogleService-Info.plist 로 Firebase 가 켜졌고 로컬 에뮬레이터가 아니다.
+ * 로깅 · 피처 플래그 · TTI · 프레임 드랍. [firebase] 는 GoogleService-Info.plist 로 Firebase 가 켜졌고 로컬 에뮬레이터가 아니다.
  * 디버그 빌드의 기록은 GA4 에 보내지 않고 표준 출력(Xcode 콘솔)으로 흘린다.
  * 환경(dev · qa · prod)은 Info.plist 의 KkotsinAppEnv(Config.xcconfig 의 APP_ENV)다. 비어 있으면 prod.
  */
@@ -231,4 +247,7 @@ private fun telemetryModules(firebase: Boolean): List<org.koin.core.module.Modul
             NSBundle.mainBundle.objectForInfoDictionaryKey("KkotsinAppEnv") as? String ?: "",
         ),
     ) { if (firebase) com.sadturtleman.flowershoes.core.featureflag.FirebaseRemoteConfigSource() else null },
+    com.sadturtleman.flowershoes.core.tti.ttiModule { com.sadturtleman.flowershoes.core.tti.ttiDatabaseBuilder() },
+    // 디버그 빌드만 프레임 통계를 Xcode 콘솔로 흘린다.
+    com.sadturtleman.flowershoes.core.jank.jankModule(debug = kotlin.native.Platform.isDebugBinary),
 )

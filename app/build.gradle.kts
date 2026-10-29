@@ -134,12 +134,8 @@ dependencies {
     // 기기 정보. 빌드 변형만은 이 모듈이 BuildConfig 에서 읽어 꽂아 준다(TelemetryModules).
     implementation(project(":common:util"))
 
-    // 화면 진입 시간 계측. Application 이 init · destroy 를 잡는다.
-    // domain 은 계약(TtiRecorder · PrintTtiShooter), data 는 Koin 조립,
-    // presentation 은 화면을 감싸는 TtiPage 때문에 필요하다.
-    implementation(project(":tti:domain"))
-    implementation(project(":tti:data"))
-    implementation(project(":tti:presentation"))
+    // 화면 진입 시간 계측. Application 이 init · destroy 를 잡고, Activity 가 화면 트리에 기록기를 꽂는다.
+    implementation(project(":core:tti"))
 
     // 비즈니스 이벤트 로깅(GA4). TTI 와 마찬가지로 Application 이 init · destroy 를 잡는다.
     implementation(project(":core:logging"))
@@ -148,9 +144,7 @@ dependencies {
     implementation(project(":core:featureflag"))
 
     // 프레임 드랍 계측. Activity 가 JankStats 를 단다.
-    implementation(project(":jank:domain"))
-    implementation(project(":jank:presentation"))
-    implementation(project(":jank:data"))
+    implementation(project(":core:jank"))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.credentials)
