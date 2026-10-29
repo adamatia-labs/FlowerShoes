@@ -113,7 +113,7 @@ class PartnerResendTest {
         val newPhone = Phone("minjun", "dev-b2")
         assertIs<DeviceChangeState.Waiting>(newPhone.change.request())
         val ask = assertIs<DeviceChangePrompt.Approve>(jisu.approver.prompts().single())
-        skipped = jisu.approver.approve(ask.request)
+        skipped = assertIs<ApproveResult.Approved>(jisu.approver.approve(ask.request)).skipped
         assertIs<DeviceChangeState.Linked>(newPhone.change.poll())
         newPhone.sync.syncOnce()
         return newPhone

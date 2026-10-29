@@ -93,8 +93,9 @@ class DeviceChangeTest {
         assertEquals(false, ask.request.second)
         assertIs<DeviceChangeState.Waiting>(b.change.poll())
 
-        assertEquals(0, minjun.approver.approve(ask.request))
+        assertEquals(ApproveResult.Approved(skipped = 0), minjun.approver.approve(ask.request))
         val linked = assertIs<DeviceChangeState.Linked>(b.change.poll())
+        assertTrue(linked.fresh)
         assertEquals(TransferCounts(letters = 2), linked.expected)
         assertEquals(listOf("custom-token-for-jisu"), b.tokens)
         assertTrue(minjun.approver.prompts().isEmpty())
@@ -142,6 +143,58 @@ class DeviceChangeTest {
         assertIs<DeviceChangeState.Blocked>(b.change.poll())
         assertTrue(minjun.approver.prompts().isEmpty())
         assertTrue(("minjun" to "새 폰 요청을 막았어요") in cloud.pushes)
+    }
+
+    @Test
+    fun `옛 폰의 막기가 승인보다 먼저 처리되면 상대 폰은 키도 기기도 바꾸지 않는다`() = runTest {
+        val b = newPhone()
+        b.change.request()
+        val ask = assertIs<DeviceChangePrompt.Approve>(minjun.approver.prompts().single())
+        val old = assertIs<DeviceChangePrompt.SignedInElsewhere>(jisu.approver.prompts().single())
+        // 두 답이 함수보다 먼저 써진다(규칙은 둘 다 받아 준다). 함수는 먼저 온 막기를 처리한다.
+        cloud.holdFunctions = true
+        jisu.approver.block(old.request)
+        val racing = DeviceChangeApprover(minjun.db, minjun.identity, minjun.vault, cloud.deviceChange("minjun"), minjun.sync, confirmDelay = { cloud.releaseFunctions() })
+
+        assertEquals(ApproveResult.Stopped, racing.approve(ask.request))
+        assertEquals(1, minjun.db.coupleDao().get()?.keyEpoch)
+        assertEquals("jisu-old", minjun.db.deviceDao().activeFor("jisu")?.id)
+        assertIs<DeviceChangeState.Blocked>(b.change.poll())
+        // 옛 폰과는 그대로 주고받는다.
+        val letter = minjun.letters.newLetter(listOf(LetterBlock.Text("괜찮아?"))).also { minjun.letters.send(it, emptyList()) }
+        settle()
+        assertTrue(jisu.letters.observeInbox().first().any { it.id == letter.id })
+    }
+
+    @Test
+    fun `승인 확인이 늦으면 다음 동기화가 마무리한다`() = runTest {
+        val b = newPhone()
+        b.change.request()
+        val ask = assertIs<DeviceChangePrompt.Approve>(minjun.approver.prompts().single())
+        cloud.holdFunctions = true
+        val slow = DeviceChangeApprover(minjun.db, minjun.identity, minjun.vault, cloud.deviceChange("minjun"), minjun.sync, confirmDelay = {})
+
+        assertEquals(ApproveResult.Sent, slow.approve(ask.request))
+        assertEquals(1, minjun.db.coupleDao().get()?.keyEpoch)
+        cloud.releaseFunctions()
+        assertTrue(slow.prompts().isEmpty())
+        assertEquals(2, minjun.db.coupleDao().get()?.keyEpoch)
+        assertIs<DeviceChangeState.Linked>(b.change.poll())
+    }
+
+    @Test
+    fun `승인 뒤 온보딩을 끝내기 전에 앱이 꺼져도 새 폰은 이어서 받는다`() = runTest {
+        val b = newPhone()
+        b.change.request()
+        minjun.approver.approve(assertIs<DeviceChangePrompt.Approve>(minjun.approver.prompts().single()).request)
+        assertIs<DeviceChangeState.Linked>(b.change.poll())
+
+        // 다시 켠 앱: 같은 DB · 보관함, 새 세션.
+        val again = DeviceChangeSession(b.db, b.identity, b.vault, cloud.deviceChange("jisu"))
+        assertEquals(cloud.serverCoupleIdOf("jisu"), again.linkedElsewhere())
+        val resumed = assertIs<DeviceChangeState.Linked>(again.poll())
+        assertEquals(false, resumed.fresh)
+        assertEquals(2, resumed.epoch)
     }
 
     @Test

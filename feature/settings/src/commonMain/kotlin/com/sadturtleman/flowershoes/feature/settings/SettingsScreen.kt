@@ -240,18 +240,6 @@ internal fun String.withSubject(): String {
     return this + if (batchim) "이" else "가"
 }
 
-/** "오늘 21:40" · "어제 08:10" · "10.21 21:40". */
-fun relativeTime(ms: Long): String {
-    val at = Instant.fromEpochMilliseconds(ms).toLocalDateTime(SEOUL)
-    val today = Clock.System.now().toLocalDateTime(SEOUL).date
-    val hm = "${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}"
-    return when (at.date.daysUntil(today)) {
-        0 -> "오늘 $hm"
-        1 -> "어제 $hm"
-        else -> "${at.month.number}.${at.day} $hm"
-    }
-}
-
 private fun hm(minute: Int) = "${(minute / 60).toString().padStart(2, '0')}:${(minute % 60).toString().padStart(2, '0')}"
 
 // ── 설정(첫 화면) ─────────────────────────────────────────────────────────

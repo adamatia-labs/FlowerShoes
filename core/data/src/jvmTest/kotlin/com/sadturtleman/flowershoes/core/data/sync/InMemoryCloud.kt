@@ -116,6 +116,19 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, AccountTransport {
     /** 지금 시각(요청 만료 · 24시간 판단). 테스트가 앞당긴다. */
     var nowMs: () -> Long = { kotlin.time.Clock.System.now().toEpochMilliseconds() }
 
+    /** 답을 처리하는 함수(onDeviceChangeAnswered)를 잠시 멈춘다 — 옛 폰의 막기와 상대의 승인이 겨루는 상황. */
+    var holdFunctions = false
+    private val heldFunctions = mutableListOf<() -> Unit>()
+
+    fun releaseFunctions() {
+        holdFunctions = false
+        heldFunctions.toList().also { heldFunctions.clear() }.forEach { it() }
+    }
+
+    private fun function(run: () -> Unit) {
+        if (holdFunctions) heldFunctions += run else run()
+    }
+
     /** 로그인한 사람마다 다른 창구(규칙 · 함수는 호출한 uid 를 안다). */
     fun deviceChange(uid: String): DeviceChangeTransport = DeviceChangeCloud(uid)
 
@@ -167,32 +180,41 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, AccountTransport {
             check(r.uid != uid && approver.deviceId == approval.approverDeviceId) { "규칙: 상대 활성 기기만 승인" }
             check(r.status == DeviceChangeStatus.PENDING && r.expireAtMs > nowMs()) { "규칙: 대기 중인 요청만" }
             keyEnvelopes["$coupleId/${r.newDeviceId}"] = approval.wrappedKey
-            // 함수: 승인 서명 확인 → 새 기기 활성화 · 옛 기기 폐기 · members 갱신.
-            val ok = com.sadturtleman.flowershoes.core.crypto.Signatures.verify(
-                DeviceChangeMessages.approval(coupleId, requestId, r.newDeviceId, approval.cutoff), approval.sig, approver.keys.signPub,
-            )
-            if (!ok) return
-            val (_, keys) = pendingDevices.remove(r.newDeviceId) ?: return
-            coupleDevices[coupleId] = members(coupleId).map { if (it.uid == r.uid) LinkedDevice(r.uid, r.newDeviceId, keys) else it }
-            update(coupleId, requestId) { it.copy(status = DeviceChangeStatus.APPROVED, answeredAtMs = nowMs(), counts = approval.counts) }
-            pushes += r.uid to null
+            // 함수: 아직 대기 중인지 다시 보고 · 승인 서명 확인 → 새 기기 활성화 · 옛 기기 폐기 · members 갱신.
+            function {
+                if (request(coupleId, requestId).status != DeviceChangeStatus.PENDING) return@function
+                val ok = com.sadturtleman.flowershoes.core.crypto.Signatures.verify(
+                    DeviceChangeMessages.approval(coupleId, requestId, r.newDeviceId, approval.cutoff), approval.sig, approver.keys.signPub,
+                )
+                if (!ok) return@function
+                val (_, keys) = pendingDevices.remove(r.newDeviceId) ?: return@function
+                coupleDevices[coupleId] = members(coupleId).map { if (it.uid == r.uid) LinkedDevice(r.uid, r.newDeviceId, keys) else it }
+                update(coupleId, requestId) { it.copy(status = DeviceChangeStatus.APPROVED, answeredAtMs = nowMs(), counts = approval.counts) }
+                pushes += r.uid to null
+            }
         }
 
         override suspend fun reject(coupleId: String, requestId: String) {
             val r = request(coupleId, requestId)
             check(r.uid != uid && r.status == DeviceChangeStatus.PENDING) { "규칙: 상대의 대기 요청만" }
-            pendingDevices.remove(r.newDeviceId)
-            update(coupleId, requestId) { it.copy(status = DeviceChangeStatus.REJECTED, answeredAtMs = nowMs()) }
-            pushes += r.uid to null
+            function {
+                if (request(coupleId, requestId).status != DeviceChangeStatus.PENDING) return@function
+                pendingDevices.remove(r.newDeviceId)
+                update(coupleId, requestId) { it.copy(status = DeviceChangeStatus.REJECTED, answeredAtMs = nowMs()) }
+                pushes += r.uid to null
+            }
         }
 
         override suspend fun cancel(coupleId: String, requestId: String, block: Boolean) {
             val r = request(coupleId, requestId)
             check(r.uid == uid && r.status == DeviceChangeStatus.PENDING) { "규칙: 내 대기 요청만" }
-            pendingDevices.remove(r.newDeviceId)
-            update(coupleId, requestId) { it.copy(status = if (block) DeviceChangeStatus.BLOCKED else DeviceChangeStatus.CANCELLED, answeredAtMs = nowMs()) }
-            val partner = members(coupleId).first { it.uid != uid }.uid
-            pushes += partner to if (block) "새 폰 요청을 막았어요" else null
+            function {
+                if (request(coupleId, requestId).status != DeviceChangeStatus.PENDING) return@function
+                pendingDevices.remove(r.newDeviceId)
+                update(coupleId, requestId) { it.copy(status = if (block) DeviceChangeStatus.BLOCKED else DeviceChangeStatus.CANCELLED, answeredAtMs = nowMs()) }
+                val partner = members(coupleId).first { it.uid != uid }.uid
+                pushes += partner to if (block) "새 폰 요청을 막았어요" else null
+            }
         }
 
         override suspend fun wrappedKey(coupleId: String, deviceId: String): ByteArray? {

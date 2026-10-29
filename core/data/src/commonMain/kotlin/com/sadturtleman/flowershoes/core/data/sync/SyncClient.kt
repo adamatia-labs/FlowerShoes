@@ -72,12 +72,27 @@ class SyncClient(
 
     suspend fun reconnect() = mailbox.reconnect()
 
-    /** 이번 바퀴에서 한도를 넘어 건너뛴 항목 수. */
-    private var skipped = 0
+    /**
+     * 이번 바퀴에서 한도를 넘어 건너뛴 항목 수. 동기화 루프와 승인 화면이 함께 부를 수 있어
+     * 인스턴스가 아니라 그 호출의 코루틴 문맥에 센다.
+     */
+    private class Skipped : kotlin.coroutines.AbstractCoroutineContextElement(Key) {
+        var count = 0
+
+        companion object Key : kotlin.coroutines.CoroutineContext.Key<Skipped>
+    }
+
+    private suspend fun skip() {
+        kotlin.coroutines.coroutineContext[Skipped]?.let { it.count++ }
+    }
 
     suspend fun syncOnce(): SyncReport {
+        val skipped = Skipped()
+        return kotlinx.coroutines.withContext(skipped) { syncRound() }.copy(skipped = skipped.count)
+    }
+
+    private suspend fun syncRound(): SyncReport {
         Sodium.init()
-        skipped = 0
         val couple = db.coupleDao().get() ?: return SyncReport()
         if (couple.partnerUserId.isEmpty()) return SyncReport() // 혼자 모드
         val partnerDevice = db.deviceDao().activeFor(couple.partnerUserId) ?: return SyncReport()
@@ -87,7 +102,7 @@ class SyncClient(
         val widgetResent = handleWidgetControl(couple, partnerDevice.id, partnerDevice.signPub)
         val sent = push(couple, partnerDevice.id, myStream.wire) + push(couple, partnerDevice.id, widgetStream)
         publishControl(couple)
-        return SyncReport(sent = sent, received = received.first, rejected = received.second, resent = plan.first + widgetResent, snapshot = plan.second, skipped = skipped)
+        return SyncReport(sent = sent, received = received.first, rejected = received.second, resent = plan.first + widgetResent, snapshot = plan.second)
     }
 
     /** 내 앱 스트림에서 아직 올리지 않은 것. 혼자 모드에서 쓴 것은 연결 뒤 첫 동기화까지 여기 남는다. */
@@ -158,7 +173,7 @@ class SyncClient(
         val header = OpHeader(op.opId, op.stream, op.seq, key.epoch)
         val env = OpEnvelope.seal(header, Plain(op.lamport, withBlobs(couple, op.payload)).encode(), key, signer)
         if (env.ciphertext.size <= MAX_OP_CIPHERTEXT) return MailItem(op.opId, op.kind, identity.deviceId, header.toBytes(), env.ciphertext, env.signature, resend)
-        skipped++
+        skip()
         val empty = OpEnvelope.seal(header, Plain(op.lamport, OpCodec.encode(OpPayload.Snapshot(0, emptyList()))).encode(), key, signer)
         return MailItem(op.opId, OpKind.SNAPSHOT.wire, identity.deviceId, header.toBytes(), empty.ciphertext, empty.signature, resend)
     }
@@ -236,7 +251,7 @@ class SyncClient(
         val blobId = Uuid.random().toString()
         val sealed = Aead.seal(blobKey, bytes)
         if (sealed.size > MAX_BLOB_BYTES) {
-            skipped++
+            skip()
             return null
         }
         blobs.put(couple.id, blobId, sealed)

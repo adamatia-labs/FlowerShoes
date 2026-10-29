@@ -41,9 +41,7 @@ enum class DeviceChangeStatus {
 }
 
 /** 새 폰이 받아 올 기록 수. 상대 폰이 승인할 때 세어 요청에 싣는다(받는 중 진행률의 분모). */
-data class TransferCounts(val letters: Int = 0, val events: Int = 0, val photos: Int = 0, val drawings: Int = 0) {
-    val total: Int get() = letters + events + photos + drawings
-}
+data class TransferCounts(val letters: Int = 0, val events: Int = 0, val photos: Int = 0, val drawings: Int = 0)
 
 /** couples/{c}/deviceChanges/{id}. */
 data class DeviceChangeRequest(
@@ -131,8 +129,11 @@ sealed interface DeviceChangeState {
 
     data class Waiting(val request: DeviceChangeRequest) : DeviceChangeState
 
-    /** 승인됐고 커플 키 · 커플 행을 만들었다. 기록은 이어지는 동기화로 들어온다. */
-    data class Linked(val coupleId: String, val expected: TransferCounts, val epoch: Int) : DeviceChangeState
+    /**
+     * 승인됐고 커플 키 · 커플 행을 만들었다. 기록은 이어지는 동기화로 들어온다.
+     * [fresh]: 이번에 처음 연결했다(앱을 다시 켜 이어 본 것이 아니다) — 연결 기록을 한 번만 남기려고.
+     */
+    data class Linked(val coupleId: String, val expected: TransferCounts, val epoch: Int, val fresh: Boolean = false) : DeviceChangeState
 
     data object Rejected : DeviceChangeState
 
@@ -178,11 +179,18 @@ class DeviceChangeSession(
 
     private suspend fun myKeys(): DeviceKeys = vault.deviceKeys() ?: DeviceKeys.generate().also { vault.putDeviceKeys(it) }
 
-    /** 이 계정이 이미 다른 폰에서 연결돼 있으면 그 커플 id. 이 폰에 커플이 있으면 null(교체가 아니다). */
+    /**
+     * 이 계정이 이미 다른 폰에서 연결돼 있으면 그 커플 id. 이 폰에 커플이 있으면 null(교체가 아니다) —
+     * 단, 이 기기의 교체가 승인돼 커플을 만든 뒤 온보딩을 끝내기 전에 앱이 꺼졌다면 그 커플(이어서 받는다).
+     */
     suspend fun linkedElsewhere(): String? {
-        if (db.coupleDao().get()?.partnerUserId?.isNotBlank() == true) return null
+        val local = db.coupleDao().get()?.takeIf { it.partnerUserId.isNotBlank() }
+        if (local != null) return local.id.takeIf { runCatching { mine(local.id)?.status == DeviceChangeStatus.APPROVED }.getOrDefault(false) }?.also { coupleId = it }
         return runCatching { transport.serverCoupleId() }.getOrNull()?.also { coupleId = it }
     }
+
+    private suspend fun mine(c: String): DeviceChangeRequest? =
+        transport.requests(c).filter { it.uid == identity.userId && it.newDeviceId == identity.deviceId }.maxByOrNull { it.createdAtMs }
 
     /** 상대에게 "새 폰 맞나요?"를 보낸다. 같은 기기의 이전 요청은 서버가 취소된 것으로 바꾼다. */
     suspend fun request(): DeviceChangeState {
@@ -204,8 +212,11 @@ class DeviceChangeSession(
     suspend fun poll(): DeviceChangeState {
         if (state is DeviceChangeState.Linked) return state
         val c = coupleId ?: linkedElsewhere() ?: return state
-        val mine = transport.requests(c).filter { it.uid == identity.userId && it.newDeviceId == identity.deviceId }.maxByOrNull { it.createdAtMs }
-            ?: return state
+        val mine = mine(c) ?: return state
+        // 이미 커플을 만들었다(앱을 다시 켰다): 다시 풀지 않고 이어서 받는다.
+        db.coupleDao().get()?.takeIf { it.id == c && mine.status == DeviceChangeStatus.APPROVED }?.let {
+            return set(DeviceChangeState.Linked(c, mine.counts ?: TransferCounts(), it.keyEpoch))
+        }
         val now = clock.now().toEpochMilliseconds()
         return set(
             when {
@@ -240,7 +251,7 @@ class DeviceChangeSession(
         db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         // 옛 세션(같은 계정의 옛 폰)을 끊고 이 기기로 다시 로그인한다. 실패해도 연결은 끝났다(옛 세션이 토큰 만료까지 남을 뿐이다).
         runCatching { signIn(transport.finalize(c, r.id, keys.sign(DeviceChangeMessages.finalize(c, r.id, identity.userId)))) }
-        return DeviceChangeState.Linked(c, r.counts ?: TransferCounts(), key.epoch)
+        return DeviceChangeState.Linked(c, r.counts ?: TransferCounts(), key.epoch, fresh = true)
     }
 
     /** 넘겨받은 내 역할(스냅샷의 내 사용자 행). 새 폰은 온보딩을 건너뛰므로 이 값으로 역할을 정한다. */
@@ -258,6 +269,18 @@ class DeviceChangeSession(
         const val MAX_NAME = 60
         const val MAX_PROVIDER = 20
     }
+}
+
+/** 상대 폰의 승인 결과. */
+sealed interface ApproveResult {
+    /** 받아들여졌고 보냈다. [skipped]: 크기 한도를 넘어 보내지 못한 항목 수(#20 결정 5). */
+    data class Approved(val skipped: Int) : ApproveResult
+
+    /** 답은 갔지만 아직 확인되지 않았다 — 다음 동기화가 마무리한다. */
+    data object Sent : ApproveResult
+
+    /** 그사이 옛 폰이 막았거나 새 폰이 취소했다. 아무것도 바꾸지 않았다. */
+    data object Stopped : ApproveResult
 }
 
 /** 상대 · 옛 폰 화면에 띄울 것. */
@@ -284,11 +307,15 @@ class DeviceChangeApprover(
     private val transport: DeviceChangeTransport,
     private val sync: SyncClient?,
     private val clock: Clock = Clock.System,
+    /** 승인 뒤 함수의 활성화를 다시 확인하기 전 기다림. */
+    private val confirmDelay: suspend () -> Unit = { kotlinx.coroutines.delay(1_000) },
 ) {
     suspend fun prompts(): List<DeviceChangePrompt> {
         val couple = db.coupleDao().get()?.takeIf { it.partnerUserId.isNotBlank() } ?: return emptyList()
         val now = clock.now().toEpochMilliseconds()
         val all = transport.requests(couple.id)
+        // 확인이 늦었던 승인을 마무리한다.
+        all.filter { it.id in awaiting }.forEach { settle(couple.id, it.id, it) }
         val forPartner = all.filter { it.uid == couple.partnerUserId && it.status == DeviceChangeStatus.PENDING && !it.expired(now) }.map { r ->
             DeviceChangePrompt.Approve(r, all.filter { it.uid == r.uid && r.createdAtMs - it.createdAtMs in 0 until RECENT.inWholeMilliseconds }.sortedBy { it.createdAtMs })
         }
@@ -300,11 +327,16 @@ class DeviceChangeApprover(
         return (forPartner + forMe).sortedBy { it.request.createdAtMs }
     }
 
+    /** 답은 썼고 서버(함수)가 활성화하길 기다리는 승인. 새 커플 키는 활성화가 확인된 뒤에만 쓴다. */
+    private class Awaiting(val request: DeviceChangeRequest, val newKey: CoupleKey, val newKeys: Pairing.PublicKeys, val oldDeviceId: String?, val cutoff: Map<String, Long>)
+
+    private val awaiting = mutableMapOf<String, Awaiting>()
+
     /**
-     * "맞아요, 승인". 돌려주는 값은 크기 한도를 넘어 보내지 못한 항목 수(#20 결정 5).
-     * 동기화 · 스냅샷은 키를 넘긴 뒤 한다 — 그 사이 앱이 꺼지면 다음 재전송이 메운다.
+     * "승인하기". 답을 쓴 뒤 함수가 승인을 받아들였는지(옛 폰의 막기와 겨룰 수 있다) 확인하고 나서야
+     * 새 커플 키 · 기기 행을 바꾸고 공유 데이터 전체를 보낸다. 확인이 늦으면 [prompts] 가 이어서 마무리한다.
      */
-    suspend fun approve(request: DeviceChangeRequest): Int {
+    suspend fun approve(request: DeviceChangeRequest): ApproveResult {
         val couple = checkNotNull(db.coupleDao().get()) { "연결된 커플이 없다" }
         check(request.uid == couple.partnerUserId) { "연인의 요청이 아니다" }
         val newKeys = checkNotNull(transport.deviceKeys(couple.id, request.newDeviceId)) { "새 기기 공개키가 없다" }
@@ -323,15 +355,39 @@ class DeviceChangeApprover(
                 newKey.wrapFor(newKeys.boxPub), newKey.epoch, db.transferCounts(),
             ),
         )
-        vault.putCoupleKey(newKey)
-
-        val now = clock.now().toEpochMilliseconds()
-        old?.let {
-            db.syncDao().addRevoked(RevokedDeviceEntity(it.id, now, cutoffJson(cutoff)))
-            db.deviceDao().upsert(it.copy(state = DeviceState.REVOKED.name, revokedAtMs = now))
+        awaiting[request.id] = Awaiting(request, newKey, newKeys, old?.id, cutoff)
+        repeat(CONFIRM_ATTEMPTS) {
+            settle(couple.id, request.id)?.let { return it }
+            confirmDelay()
         }
-        db.deviceDao().upsert(DeviceEntity(request.newDeviceId, request.uid, request.uid, newKeys.signPub, newKeys.boxPub, DeviceState.ACTIVE.name, now, null))
-        db.coupleDao().upsert(couple.copy(keyEpoch = newKey.epoch))
+        return settle(couple.id, request.id) ?: ApproveResult.Sent
+    }
+
+    /** 서버 상태를 보고 기다리던 승인을 마무리한다. 아직이면 null. */
+    private suspend fun settle(coupleId: String, requestId: String, known: DeviceChangeRequest? = null): ApproveResult? {
+        if (requestId !in awaiting) return null
+        val r = known ?: transport.requests(coupleId).firstOrNull { it.id == requestId } ?: return null
+        return when {
+            // 동기화 루프와 승인 화면이 함께 볼 수 있다 — 꺼낸 쪽만 마무리한다.
+            r.status == DeviceChangeStatus.APPROVED -> awaiting.remove(requestId)?.let { ApproveResult.Approved(apply(it)) }
+            // 옛 폰이 먼저 막았거나 새 폰이 취소했다: 키 · 기기는 그대로.
+            r.status != DeviceChangeStatus.PENDING || r.expired(clock.now().toEpochMilliseconds()) -> awaiting.remove(requestId)?.let { ApproveResult.Stopped }
+            else -> null
+        }
+    }
+
+    /** 승인이 받아들여졌다: 새 커플 키 · 옛 기기 폐기 · 새 기기 행, 그리고 전체 스냅샷. 돌려주는 값은 건너뛴 항목 수(#20 결정 5). */
+    private suspend fun apply(a: Awaiting): Int {
+        val couple = checkNotNull(db.coupleDao().get())
+        vault.putCoupleKey(a.newKey)
+        val now = clock.now().toEpochMilliseconds()
+        a.oldDeviceId?.let { id ->
+            db.syncDao().addRevoked(RevokedDeviceEntity(id, now, cutoffJson(a.cutoff)))
+            db.deviceDao().get(id)?.let { db.deviceDao().upsert(it.copy(state = DeviceState.REVOKED.name, revokedAtMs = now)) }
+        }
+        val r = a.request
+        db.deviceDao().upsert(DeviceEntity(r.newDeviceId, r.uid, r.uid, a.newKeys.signPub, a.newKeys.boxPub, DeviceState.ACTIVE.name, now, null))
+        db.coupleDao().upsert(couple.copy(keyEpoch = a.newKey.epoch))
         // 공유 데이터 전체를 새 기기로. 다음 push 가 새 키로 새 기기 우편함에 올린다.
         val s = sync ?: return 0
         s.writeFullSnapshot()
@@ -355,5 +411,8 @@ class DeviceChangeApprover(
 
     private companion object {
         val RECENT = 24.hours
+
+        /** 승인 확인을 몇 번 볼지(1초 간격). 그 뒤는 [prompts] 가 이어서 본다. */
+        const val CONFIRM_ATTEMPTS = 10
     }
 }

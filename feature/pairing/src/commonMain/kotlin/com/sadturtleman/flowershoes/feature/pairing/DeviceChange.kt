@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -41,6 +39,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.data.sync.ApproveResult
 import com.sadturtleman.flowershoes.core.data.sync.DeviceChangeApprover
 import com.sadturtleman.flowershoes.core.data.sync.DeviceChangePrompt
 import com.sadturtleman.flowershoes.core.data.sync.DeviceChangeRequest
@@ -111,7 +110,6 @@ class DeviceChangeViewModel(
     private val _ui = MutableStateFlow(DeviceChangeUi(available = session != null))
     val ui: StateFlow<DeviceChangeUi> = _ui.asStateFlow()
     private var polling: Job? = null
-    private var linkedLogged = false
 
     init {
         session?.let { s -> viewModelScope.launch { show(runCatching { s.poll() }.getOrElse { s.state }) } }
@@ -127,7 +125,7 @@ class DeviceChangeViewModel(
         val s = session ?: return
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
-            val next = runCatching { block(s) }.getOrElse { DeviceChangeState.Failed(it.message ?: "요청하지 못했어요") }
+            val next = runCatching { block(s) }.getOrElse { DeviceChangeState.Failed("요청하지 못했어요") }
             _ui.update { it.copy(busy = false) }
             show(next)
         }
@@ -160,10 +158,8 @@ class DeviceChangeViewModel(
      */
     private suspend fun receive(linked: DeviceChangeState.Linked) {
         val s = session ?: return
-        if (!linkedLogged) {
-            linkedLogged = true
-            bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = true))
-        }
+        // 승인으로 처음 연결된 때 한 번(앱을 다시 켜 이어 받는 것은 세지 않는다).
+        if (linked.fresh) bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = true))
         val expected = linked.expected
         _ui.update { it.copy(expected = expected, received = s.localCounts()) }
         val start = Clock.System.now()
@@ -214,13 +210,11 @@ internal fun DeviceChangeScreen(
     val partner = partnerName.ifBlank { PARTNER }
     when (val s = ui.state) {
         DeviceChangeState.Idle, is DeviceChangeState.Failed -> Screen(KkTopBarLeading.Back, onBack, footer = {
-            Text("${partner}의 폰이 켜져 있어야 해요", style = KkTheme.type.caption, color = c.sub, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(KkSpacing.lg))
             KkPrimaryButton("${partner}에게 요청하기", onRequest, enabled = ui.available && !ui.busy, loading = ui.busy)
         }) {
             Text("${partner}의 폰에서 되찾아요", style = KkTheme.type.title, color = c.ink)
             Spacer(Modifier.height(KkSpacing.xxxl))
-            PaperCard(rotation = 0.8f) {
+            Card {
                 Text("돌아와요", style = KkTheme.type.labelBold, color = c.ink)
                 listOf("편지 · 답장 · 그림", "일정 · 휴가 · 만남", "사진 · 추억 책").forEach { CheckLine(it, KkIcons.Check, c.success, c.ink) }
             }
@@ -258,14 +252,9 @@ internal fun DeviceChangeScreen(
                 "편지 ${got.letters}통 · 일정 ${got.events}개 · 사진 ${got.photos}장 · 그림 ${got.drawings}개",
                 style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(KkSpacing.xxxl))
-            Text(
-                "알림 · 테마 · 글꼴과 임시저장 편지는 돌아오지 않아요",
-                style = KkTheme.type.caption, color = c.sub, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
-            )
         }
         DeviceChangeState.Rejected, DeviceChangeState.Blocked, DeviceChangeState.Expired -> Screen(KkTopBarLeading.Close, onBack, footer = {
-            KkPrimaryButton("다시 요청", onRequest, enabled = !ui.busy, loading = ui.busy)
+            KkPrimaryButton("다시 요청하기", onRequest, enabled = !ui.busy, loading = ui.busy)
             TextButton("옛 폰으로 돌아가기", onBack)
         }) {
             Phones(partner, Link.Failed)
@@ -277,8 +266,6 @@ internal fun DeviceChangeScreen(
                     else -> "요청이 만료됐어요"
                 },
             )
-            Spacer(Modifier.height(KkSpacing.sm))
-            Text("${partner}에게 직접 연락한 뒤 다시 요청해 주세요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -381,7 +368,16 @@ fun DeviceChangePromptRoute(prompt: DeviceChangePrompt, partnerName: String, pro
     }
     DeviceChangePromptScreen(
         prompt, partnerName, provider, result, busy, failed,
-        onApprove = { act { PromptResult.Approved(it.approve(prompt.request)) } },
+        onApprove = {
+            act {
+                when (val r = it.approve(prompt.request)) {
+                    is ApproveResult.Approved -> PromptResult.Approved(r.skipped)
+                    ApproveResult.Sent -> PromptResult.Approved(0)
+                    // 그사이 막혔거나 취소됐다: 바뀐 것이 없으니 화면만 닫는다.
+                    ApproveResult.Stopped -> PromptResult.Rejected
+                }
+            }
+        },
         onReject = { act { it.reject(prompt.request); PromptResult.Rejected } },
         onBlock = { act { it.block(prompt.request); PromptResult.Blocked } },
         onClose = onHandled,
@@ -443,15 +439,16 @@ private fun ApproveScreen(
                         Modifier.align(Alignment.CenterHorizontally), type = KkToastType.Success,
                     )
                     Spacer(Modifier.height(KkSpacing.lg))
-                    KkPrimaryButton("확인", onClose)
+                    KkPrimaryButton("닫기", onClose)
                 } else {
-                    KkPrimaryButton(if (r.second) "${partner.withAnd()} 통화했어요, 승인" else "맞아요, 승인", { if (r.second) confirming = true else onApprove() }, enabled = !busy, loading = busy)
-                    TextButton("내가 아는 일이 아니에요", onReject, enabled = !busy)
+                    // 24시간 안 두 번째 요청은 한 번 더 확인한다(#20 결정 4).
+                    KkPrimaryButton("승인하기", { if (r.second) confirming = true else onApprove() }, enabled = !busy, loading = busy)
+                    TextButton("거절하기", onReject, enabled = !busy)
                 }
             },
         ) {
             if (r.second && approved == null) {
-                Banner("24시간 안에 두 번째 교체 요청이에요", "${partner}에게 전화해서 확인해 주세요")
+                Banner("24시간 안에 두 번째 교체 요청이에요")
                 Spacer(Modifier.height(KkSpacing.xxl))
             }
             RequestCard(r, partner, approved != null)
@@ -468,7 +465,7 @@ private fun ApproveScreen(
                         )
                     }
                 } else {
-                    Banner("직접 바꿨는지 연락해서 확인하세요", "${partner}인 척하는 사람일 수도 있어요")
+                    Banner("${partner}에게 직접 바꿨는지 물어보세요")
                     Spacer(Modifier.height(KkSpacing.xxxl))
                     Text("승인하면 우리 둘의 기록이 새 폰으로 가고, ${partner}의 옛 폰은 로그아웃돼요.", style = KkTheme.type.caption, color = c.sub)
                 }
@@ -477,7 +474,7 @@ private fun ApproveScreen(
         }
         if (confirming) KkDialogHost({ confirming = false }) {
             KkDialog(
-                "정말 승인할까요?", "${partner}의 새 폰으로 우리 둘의 기록이 가요", "승인",
+                "한 번 더 확인할게요", "${partner}에게 전화로 확인했을 때만 승인하세요", "승인하기",
                 onConfirm = { confirming = false; onApprove() }, onCancel = { confirming = false },
             )
         }
@@ -490,10 +487,10 @@ private fun SignedInScreen(prompt: DeviceChangePrompt.SignedInElsewhere, partner
     val r = prompt.request
     Screen(null, null, footer = {
         if (prompt.canBlock) {
-            KkButton("내가 한 게 아니에요 · 막기", onBlock, Modifier.fillMaxWidth(), enabled = !busy, loading = busy, danger = true)
-            TextButton("괜찮아요", onClose, enabled = !busy)
+            KkButton("새 폰 막기", onBlock, Modifier.fillMaxWidth(), enabled = !busy, loading = busy, danger = true)
+            TextButton("닫기", onClose, enabled = !busy)
         } else {
-            KkPrimaryButton("확인", onClose)
+            KkPrimaryButton("닫기", onClose)
         }
     }) {
         Spacer(Modifier.height(KkSpacing.xxxl))
@@ -501,7 +498,7 @@ private fun SignedInScreen(prompt: DeviceChangePrompt.SignedInElsewhere, partner
         Spacer(Modifier.height(KkSpacing.xl))
         CenterTitle("새 폰에서 로그인했어요")
         Spacer(Modifier.height(72.dp))
-        PaperCard(rotation = 0.6f) {
+        Card {
             Text(r.deviceName.ifBlank { "새 폰" }, style = KkTheme.type.labelBold, color = c.ink)
             Text(whenText(r.createdAtMs), style = KkTheme.type.caption, color = c.sub)
             Text(
@@ -516,7 +513,7 @@ private fun SignedInScreen(prompt: DeviceChangePrompt.SignedInElsewhere, partner
 @Composable
 private fun BlockedScreen(r: DeviceChangeRequest, partner: String, provider: String?, onClose: () -> Unit) {
     val c = KkTheme.colors
-    Screen(null, null, footer = { KkPrimaryButton("확인", onClose) }) {
+    Screen(null, null, footer = { KkPrimaryButton("닫기", onClose) }) {
         Spacer(Modifier.height(KkSpacing.xxxl))
         KkIcon(KkIcons.Lock, tint = c.ink, size = 48.dp, modifier = Modifier.align(Alignment.CenterHorizontally))
         Spacer(Modifier.height(KkSpacing.xxl))
@@ -524,7 +521,7 @@ private fun BlockedScreen(r: DeviceChangeRequest, partner: String, provider: Str
         Spacer(Modifier.height(KkSpacing.sm))
         Text("${r.deviceName.ifBlank { "새 폰" }}의 요청을 취소했어요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(80.dp))
-        PaperCard(rotation = -0.6f) {
+        Card {
             Text("지금 해 두면 좋아요", style = KkTheme.type.labelBold, color = c.ink)
             listOfNotNull(
                 provider?.let { "$it 계정 비밀번호 바꾸기" },
@@ -539,7 +536,7 @@ private fun BlockedScreen(r: DeviceChangeRequest, partner: String, provider: Str
 @Composable
 private fun RequestCard(r: DeviceChangeRequest, partner: String, approved: Boolean) {
     val c = KkTheme.colors
-    PaperCard(rotation = 0.8f) {
+    Card {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             KkIcon(KkIcons.Phone, tint = c.danger, size = 32.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -586,19 +583,18 @@ private fun Screen(
 private fun CenterTitle(text: String) =
     Text(text, style = KkTheme.type.title, color = KkTheme.colors.ink, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
 
-/** 종이 카드 + 마스킹 테이프(Figma Tape: 가운데 위에 -8 걸치고 살짝 회전). */
+/**
+ * 종이 카드. Figma 는 테이프를 붙이고 살짝 기울였지만, 읽고 행동하는 카드라 반듯하게 둔다
+ * (design.md: 기울기 · 테이프는 보여 주기만 하는 물건에만).
+ */
 @Composable
-private fun PaperCard(rotation: Float, content: @Composable ColumnScope.() -> Unit) {
-    val c = KkTheme.colors
+private fun Card(content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(KkRadius.sm)
-    Box(Modifier.fillMaxWidth().rotate(rotation)) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 6.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            content = content,
-        )
-        Box(Modifier.align(Alignment.TopCenter).offset(y = (-8).dp).rotate(2f).width(56.dp).height(16.dp).background(c.tape))
-    }
+    Column(
+        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(KkTheme.colors.surface).padding(KkSpacing.lg),
+        verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+        content = content,
+    )
 }
 
 @Composable
@@ -609,19 +605,16 @@ private fun CheckLine(text: String, icon: KkIcons, tint: Color, color: Color) {
     }
 }
 
-/** 배너(Figma Banner): tag 바탕 · 경고 아이콘 · 굵은 한 줄 + 보조 한 줄. */
+/** 배너(Figma Banner): tag 바탕 · 경고 아이콘 · 굵은 한 줄. */
 @Composable
-private fun Banner(title: String, body: String) {
+private fun Banner(title: String) {
     val c = KkTheme.colors
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(c.tag).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
     ) {
         KkIcon(KkIcons.Alert, tint = c.ink, size = 22.dp)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-            Text(title, style = KkTheme.type.labelBold, color = c.ink)
-            Text(body, style = KkTheme.type.caption, color = c.sub)
-        }
+        Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
     }
 }
 
