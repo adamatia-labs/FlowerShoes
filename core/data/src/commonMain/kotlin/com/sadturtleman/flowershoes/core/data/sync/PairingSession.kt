@@ -103,14 +103,17 @@ class PairingSession(
     suspend fun accept(input: String): PairingState {
         if (linkedLocally()) return set(PairingState.AlreadyLinked)
         if (!InviteToken.isValid(input)) return set(PairingState.Expired)
-        token = input
-        inviter = false
         val invite = transport.invite(input)
             // 문서가 없다: 쓰였거나 만료. 내가 수락하고 끝내지 못한 링크면 마저 끝낸다.
-            ?: return set(transport.linkedCoupleId(input, identity.userId)?.let { finish(it, input) } ?: PairingState.Expired)
+            ?: return set(finishIfLinkedVia(input) ?: PairingState.Expired)
+        // 자기 링크: 보낸 쪽 상태(기다리는 링크)는 그대로 둔다.
         if (invite.inviterUid == identity.userId) return set(PairingState.OwnLink(input))
         if (invite.expireAtMs <= clock.now().toEpochMilliseconds()) return set(PairingState.Expired)
-        transport.accept(input, identity.userId, identity.deviceId, Pairing.PublicKeys.of(myKeys()))
+        token = input
+        inviter = false
+        // 이미 누가 수락했으면(규칙상 한 번만) 쓰기가 거절된다 — 내가 끝내지 못한 수락이 아니면 만료다.
+        runCatching { transport.accept(input, identity.userId, identity.deviceId, Pairing.PublicKeys.of(myKeys())) }
+            .onFailure { return set(finishIfLinkedVia(input) ?: PairingState.Expired) }
         set(PairingState.Accepting(invite.name))
         return poll()
     }
@@ -118,7 +121,7 @@ class PairingSession(
     /** 서버가 커플을 만들었는지 본다. 보낸 쪽은 앱을 다시 켠 뒤 처음 부를 때 저장해 둔 링크를 이어 받는다. */
     suspend fun poll(): PairingState {
         if (token == null) return resumePending() ?: state
-        return set(check())
+        return set(refresh())
     }
 
     private suspend fun resumePending(): PairingState? {
@@ -127,32 +130,32 @@ class PairingSession(
         token = saved.token
         inviter = true
         state = PairingState.Waiting(saved.token, saved.expireAtMs)
-        return set(check())
+        return set(refresh())
     }
 
-    private suspend fun check(): PairingState {
-        val t = token ?: return state
-        val current = state
-        if (current is PairingState.Linked) return current
-        transport.linkedCoupleId(t, identity.userId)?.let { return finish(it, t) }
-        if (inviter) {
-            val invite = transport.invite(t)
-            if (invite == null || invite.expireAtMs <= clock.now().toEpochMilliseconds()) {
-                pending.save(null)
-                return PairingState.Expired
-            }
-        } else if (current is PairingState.Accepting && transport.invite(t) == null) {
-            // 함수가 수락을 거절하고 초대를 지웠다(그사이 보낸 사람이 다른 사람과 연결 등).
-            return PairingState.Expired
-        }
-        return current
+    private suspend fun refresh(): PairingState {
+        val current = token ?: return state
+        val shown = state
+        if (shown is PairingState.Linked) return shown
+        finishIfLinkedVia(current)?.let { return it }
+        val invite = if (inviter || shown is PairingState.Accepting) transport.invite(current) else return shown
+        val gone = invite == null || invite.expireAtMs <= clock.now().toEpochMilliseconds()
+        if (!gone) return shown
+        // 함수는 커플을 만든 뒤 초대를 지운다 — 두 읽기 사이에 연결됐을 수 있어 한 번 더 본다.
+        finishIfLinkedVia(current)?.let { return it }
+        // 만료 · 새 링크로 무효 · 함수가 수락을 거절(그사이 다른 사람과 연결 등).
+        if (inviter) pending.save(null)
+        return PairingState.Expired
     }
+
+    private suspend fun finishIfLinkedVia(inviteToken: String): PairingState? =
+        transport.linkedCoupleId(inviteToken, identity.userId)?.let { finish(it, inviteToken) }
 
     /** 서버가 만든 커플에서 상대 기기 공개키를 읽어 커플 키(epoch 1)를 도출하고 커플 · 기기 행을 만든다. */
-    private suspend fun finish(coupleId: String, t: String): PairingState {
-        val partner = transport.partnerDevice(coupleId, identity.userId) ?: return state
+    private suspend fun finish(coupleId: String, inviteToken: String): PairingState? {
+        val partner = transport.partnerDevice(coupleId, identity.userId) ?: return null
         val keys = myKeys()
-        vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, t))
+        vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, inviteToken))
         val now = clock.now().toEpochMilliseconds()
         val solo = db.coupleDao().get()
         db.coupleDao().clear()
@@ -161,7 +164,8 @@ class PairingSession(
         )
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
         db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
-        if (inviter) pending.save(null)
+        // 연결됐으면 내가 보낸 링크도 끝났다(서버가 두 사람의 초대를 지운다).
+        pending.save(null)
         return PairingState.Linked(coupleId)
     }
 

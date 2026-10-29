@@ -42,7 +42,7 @@ export function acceptDecision(
 ): 'link' | 'reject' {
   if (!invite) return 'reject';
   if (invite.expireAtMs <= nowMs) return 'reject';
-  if (invite.uid === accept.uid) return 'reject';
+  if (invite.uid === accept.uid || invite.deviceId === accept.deviceId) return 'reject';
   if (linked.inviterLinked || linked.joinerLinked) return 'reject';
   if (!isPubKey(invite.pubKey) || !isPubKey(accept.pubKey)) return 'reject';
   return 'link';
@@ -69,7 +69,6 @@ export function invitePageHtml(p: { name: string | undefined; expired: boolean; 
   const title = p.expired ? '꽃신 초대' : p.name ? `${p.name}님이 꽃신에 초대했어요` : '연인이 꽃신에 초대했어요';
   const heading = p.expired ? '이 초대 링크는 만료됐어요' : title;
   const note = p.expired ? '' : '<p class="note">설치 후 이 링크를 다시 눌러 주세요</p>';
-  const action = p.expired ? '<p class="label">내가 초대 링크 보내기</p>' : '';
   const t = escapeHtml(title);
   return `<!doctype html>
 <html lang="ko">
@@ -89,14 +88,13 @@ export function invitePageHtml(p: { name: string | undefined; expired: boolean; 
   body { margin: 0; font-family: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: var(--canvas); color: var(--ink); }
   main { max-width: 420px; margin: 0 auto; padding: 64px 20px; display: flex; flex-direction: column; gap: 16px; }
   h1 { font-size: 22px; margin: 0 0 8px; }
-  .note, .label { color: var(--sub); font-size: 15px; margin: 0; }
+  .note { color: var(--sub); font-size: 15px; margin: 0; }
   a.store { display: block; text-align: center; padding: 16px; border-radius: 12px; background: var(--accent); color: var(--on-accent); text-decoration: none; font-weight: 600; }
 </style>
 </head>
 <body>
 <main>
   <h1>${escapeHtml(heading)}</h1>
-  ${action}
   <a class="store" href="${escapeHtml(p.stores.play)}">Google Play</a>
   <a class="store" href="${escapeHtml(p.stores.appStore)}">App Store</a>
   ${note}

@@ -16,7 +16,7 @@
 // - onInquiryAnswered : 문의에 답변(관리자가 answer 를 쓰면) → 문의한 사람에게 알림
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { DocumentSnapshot, FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { DocumentSnapshot, FieldValue, getFirestore, QueryDocumentSnapshot, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
 import { defineSecret, defineString } from 'firebase-functions/params';
@@ -190,21 +190,19 @@ function splitPubKey(pubKey: string): { signPub: string; boxPub: string } {
   return { signPub: raw.subarray(0, 32).toString('base64'), boxPub: raw.subarray(32, 64).toString('base64') };
 }
 
-/** 같은 사람이 이전에 만든 초대를 지운다(#15 결정 3: 새 링크가 이전 링크를 무효화). */
-async function dropInvitesOf(uid: string, keep?: string) {
+/** 그 사람이 만든 초대 중 [drop] 이 고른 것을 지운다. */
+async function dropInvitesOf(uid: string, drop: (d: QueryDocumentSnapshot) => boolean = () => true) {
   const old = await db.collection('pairings').where('uid', '==', uid).get();
-  await Promise.all(old.docs.filter((d) => d.id !== keep).map((d) => db.recursiveDelete(d.ref)));
+  await Promise.all(old.docs.filter(drop).map((d) => db.recursiveDelete(d.ref)));
 }
 
 export const onInviteCreated = onDocumentCreated({ document: 'pairings/{token}', region: REGION }, async (event) => {
   const uid = event.data?.get('uid') as string | undefined;
   const expireAt = event.data?.get('expireAt') as Timestamp | undefined;
   if (!uid || !expireAt) return;
-  // 거의 동시에 두 개를 만들어도 둘 다 지우지 않도록, 이 초대보다 먼저 만든(만료가 이른) 것만 지운다.
-  const old = await db.collection('pairings').where('uid', '==', uid).get();
-  await Promise.all(old.docs
-    .filter((d) => d.id !== event.params.token && (d.get('expireAt') as Timestamp).toMillis() <= expireAt.toMillis())
-    .map((d) => db.recursiveDelete(d.ref)));
+  // 새 링크가 이전 링크를 무효화한다(#15 결정 3). 거의 동시에 두 개를 만들어도 둘 다 지우지 않도록,
+  // 이 초대보다 먼저 만든(만료가 이른) 것만 지운다.
+  await dropInvitesOf(uid, (d) => d.id !== event.params.token && (d.get('expireAt') as Timestamp).toMillis() <= expireAt.toMillis());
 });
 
 /**

@@ -32,6 +32,8 @@ test('만료 · 자기 링크 · 이미 연결된 사람은 연결하지 않는�
   assert.equal(acceptDecision(invite, accept, NOW, { ...free, inviterLinked: true }), 'reject');
   assert.equal(acceptDecision(invite, accept, NOW, { ...free, joinerLinked: true }), 'reject');
   assert.equal(acceptDecision(undefined, accept, NOW, free), 'reject');
+  // 보낸 기기 id 로 수락하면 그 기기 문서를 덮어쓴다.
+  assert.equal(acceptDecision(invite, { ...accept, deviceId: 'dev-a' }, NOW, free), 'reject');
 });
 
 test('공개키가 64바이트가 아니면 연결하지 않는다', () => {
@@ -52,7 +54,6 @@ test('OG 페이지는 보낸 사람 이름만 싣고 스토어 버튼 · 다시 
 test('만료 · 없는 초대는 같은 주소에서 만료 문구, OG 도 중립', () => {
   const html = invitePageHtml({ name: undefined, expired: true, url: 'https://x.web.app/i/t', stores });
   assert.match(html, /이 초대 링크는 만료됐어요/);
-  assert.match(html, /내가 초대 링크 보내기/);
   assert.doesNotMatch(html, /님이 꽃신에 초대했어요/);
 });
 

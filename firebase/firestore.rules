@@ -189,7 +189,12 @@ service cloud.firestore {
 
     // ── 사용자 설정(조용한 시간 · 묶음). 서버 알림 정책이 읽는다 ─────────────────
     match /users/{uid} {
-      allow get, update, create: if signedIn() && request.auth.uid == uid;
+      // coupleId · deviceId · linkedVia 는 함수만 쓴다(초대 수락이 "이미 연결됨"을 이 값으로 판단한다).
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && !request.resource.data.keys().hasAny(['coupleId', 'deviceId', 'linkedVia']);
+      allow update: if signedIn() && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['coupleId', 'deviceId', 'linkedVia']);
       allow delete, list: if false;
       match /notifyPrefs/{doc} {
         allow get: if signedIn() && request.auth.uid == uid;

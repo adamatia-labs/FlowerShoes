@@ -94,6 +94,17 @@ test('만료된 초대 · 없는 초대는 수락할 수 없다', async () => {
   await assertFails(setDoc(doc(as('minjun'), 'pairings/ZZZZZZZZZZZZZZZZZZZZZZ/steps/accept'), accept('minjun')));
 });
 
+test('커플 연결 표시(coupleId · deviceId · linkedVia)는 본인도 쓰지 못한다', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'users/minjun'), { coupleId: 'c1', deviceId: 'dev-b', linkedVia: TOKEN });
+  });
+  await assertSucceeds(setDoc(doc(as('minjun'), 'users/minjun'), { fcmTokens: ['t'] }, { merge: true }));
+  await assertFails(setDoc(doc(as('minjun'), 'users/minjun'), { coupleId: 'c2' }, { merge: true }));
+  await assertFails(setDoc(doc(as('minjun'), 'users/minjun'), { fcmTokens: ['t'] })); // 덮어쓰면 coupleId 가 지워진다
+  await assertFails(setDoc(doc(as('jisu'), 'users/jisu'), { linkedVia: TOKEN }));
+  await assertSucceeds(setDoc(doc(as('jisu'), 'users/jisu'), { fcmTokens: ['t'] }));
+});
+
 test('익명 로그인은 아무것도 못 한다', async () => {
   const anon = env.authenticatedContext('anon', { firebase: { sign_in_provider: 'anonymous' } }).firestore();
   await assertFails(setDoc(doc(anon, 'pairings/YYYYYYYYYYYYYYYYYYYYYY'), invite('anon')));

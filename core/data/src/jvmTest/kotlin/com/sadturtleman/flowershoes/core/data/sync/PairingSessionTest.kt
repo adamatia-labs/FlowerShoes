@@ -112,6 +112,23 @@ class PairingSessionTest {
     }
 
     @Test
+    fun `자기 링크를 눌러도 보낸 링크는 계속 기다린다`() = runTest {
+        val jisu = Phone("jisu", "dev-a")
+        val token = assertIs<PairingState.Waiting>(jisu.pairing.createLink("지수")).token
+        assertIs<PairingState.OwnLink>(jisu.pairing.accept(token))
+        Phone("minjun", "dev-b").pairing.accept(token)
+        assertIs<PairingState.Linked>(jisu.pairing.poll())
+    }
+
+    @Test
+    fun `서버가 처리하기 전 두 번째로 누른 사람은 만료를 본다`() = runTest {
+        val token = assertIs<PairingState.Waiting>(Phone("jisu", "dev-a").pairing.createLink("지수")).token
+        cloud.holdAccepts = true
+        assertIs<PairingState.Accepting>(Phone("minjun", "dev-b").pairing.accept(token))
+        assertIs<PairingState.Expired>(Phone("mallory", "dev-m").pairing.accept(token))
+    }
+
+    @Test
     fun `이미 연결돼 있으면 링크를 만들지도 받지도 않는다`() = runTest {
         val jisu = Phone("jisu", "dev-a")
         val minjun = Phone("minjun", "dev-b")

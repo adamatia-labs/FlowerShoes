@@ -480,9 +480,9 @@ fun ColumnScope.InviteConnect(onAdvance: () -> Unit, viewModel: PairingViewModel
         Text("내 초대 링크", style = KkTheme.type.label, color = c.accent)
         Text(
             when {
-                !ui.available -> "서버 설정이 들어가면 링크를 만들 수 있어요"
+                !ui.available -> "서버 설정 전"
                 token == null -> "링크를 만드는 중"
-                else -> "7일 동안 유효 · 한 번만 쓸 수 있어요"
+                else -> "7일 동안 유효 · 1회용"
             },
             style = KkTheme.type.caption, color = c.sub,
         )
