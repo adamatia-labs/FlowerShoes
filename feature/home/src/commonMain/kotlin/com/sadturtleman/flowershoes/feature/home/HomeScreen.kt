@@ -49,7 +49,8 @@ import org.koin.compose.viewmodel.koinViewModel
 
 /**
  * 홈(Figma 2 · 홈). 연결 뒤(52:86) · 연결 전 곰신(70:629) · 연결 전 군인(137:1428) 세 모양.
- * [onOpenPairing] 초대 링크 보내기 · 다시 보내기, [onWriteLetter] 편지 미리 쓰기, [onOpenCalendar] 일정.
+ * [onOpenPairing] 초대 링크 보내기 · 다시 보내기, [onWriteLetter] 편지 미리 쓰기, [onOpenCalendar] 일정,
+ * [onOpenDayLine] 그날의 한 줄 쓰기(일정 id).
  */
 @Composable
 fun HomeRoute(
@@ -58,10 +59,11 @@ fun HomeRoute(
     onOpenSettings: () -> Unit,
     onWriteLetter: () -> Unit = {},
     onOpenLeave: () -> Unit = onOpenCalendar,
+    onOpenDayLine: (String) -> Unit = {},
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings, onWriteLetter, onOpenLeave)
+    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings, onWriteLetter, onOpenLeave, onOpenDayLine)
 }
 
 @Composable
@@ -73,8 +75,10 @@ fun HomeScreen(
     onOpenSettings: () -> Unit = {},
     onWriteLetter: () -> Unit = {},
     onOpenLeave: () -> Unit = onOpenCalendar,
+    onOpenDayLine: (String) -> Unit = {},
 ) {
     val c = KkTheme.colors
+    val dayLine: @Composable () -> Unit = { state.dayLine?.let { DayLineCard(it, onOpenDayLine) { id -> onIntent(HomeIntent.DismissDayLine(id)) } } }
     Column(
         Modifier
             .fillMaxSize()
@@ -86,9 +90,15 @@ fun HomeScreen(
         Header(state, onOpenSettings)
         when {
             state.loading -> Unit
-            state.linked -> LinkedHome(state, onIntent, onOpenCalendar)
-            state.role == Role.SOLDIER -> SoldierUnlinked(state, onOpenPairing, onOpenCalendar, onOpenLeave)
-            else -> GomsinUnlinked(state.invitePending, onOpenPairing, onWriteLetter, onOpenCalendar)
+            state.linked -> LinkedHome(state, onIntent, onOpenCalendar, dayLine)
+            state.role == Role.SOLDIER -> {
+                SoldierUnlinked(state, onOpenPairing, onOpenCalendar, onOpenLeave)
+                dayLine()
+            }
+            else -> {
+                dayLine()
+                GomsinUnlinked(state.invitePending, onOpenPairing, onWriteLetter, onOpenCalendar)
+            }
         }
     }
 }
@@ -131,7 +141,7 @@ private fun Dday(state: HomeState, onOpenCalendar: () -> Unit) {
 // ── 연결 뒤(52:86) ──
 
 @Composable
-private fun LinkedHome(state: HomeState, onIntent: (HomeIntent) -> Unit, onOpenCalendar: () -> Unit) {
+private fun LinkedHome(state: HomeState, onIntent: (HomeIntent) -> Unit, onOpenCalendar: () -> Unit, dayLine: @Composable () -> Unit) {
     val c = KkTheme.colors
     Dday(state, onOpenCalendar)
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
@@ -144,6 +154,7 @@ private fun LinkedHome(state: HomeState, onIntent: (HomeIntent) -> Unit, onOpenC
             KkMissYouButton(state.sentMissYouToday, onClick = { onIntent(HomeIntent.SendMissYou) })
         }
     }
+    dayLine()
     if (state.scheduled.isNotEmpty()) {
         Text("오늘 도착할 메시지", style = KkTheme.type.labelBold, color = c.ink)
         state.scheduled.forEach { ScheduledMessage(it) }
@@ -176,6 +187,26 @@ private fun StatusTile(p: PartnerStatus, modifier: Modifier) {
             KkHeartIcon(color = c.stamp, size = 13.dp)
             Text("보고싶어 ${p.missYou}", style = KkTheme.type.label, color = c.accent)
         }
+    }
+}
+
+/** 그날의 한 줄 카드(Figma 홈 · 그날의 한 줄 카드, 반듯하게): 문구 + [남기기] + 닫기. */
+@Composable
+private fun DayLineCard(prompt: DayLinePrompt, onWrite: (String) -> Unit, onDismiss: (String) -> Unit) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.lg)
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(c.surface).border(1.dp, c.line, shape)
+            .padding(start = KkSpacing.lg, end = KkSpacing.xxs, top = 10.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(prompt.text, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
+        KkButton("남기기", { onWrite(prompt.eventId) }, size = KkButtonSize.M)
+        Box(
+            Modifier.size(44.dp).clip(CircleShape).clickable(role = A11y.Button) { onDismiss(prompt.eventId) }.semantics { contentDescription = "닫기" },
+            contentAlignment = Alignment.Center,
+        ) { KkIcon(KkIcons.Close, tint = c.sub, size = 13.8.dp) }
     }
 }
 

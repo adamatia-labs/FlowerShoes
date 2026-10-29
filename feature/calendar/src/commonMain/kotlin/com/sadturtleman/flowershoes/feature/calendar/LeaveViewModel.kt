@@ -4,9 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.LeaveRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
-import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
+import com.sadturtleman.flowershoes.core.military.LeavePool
+import com.sadturtleman.flowershoes.core.military.LeaveSource
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.model.LeaveKind
@@ -20,58 +21,71 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.number
 import kotlinx.datetime.plus
 
-/** 휴가 일정 한 번: 지났으면 사용 완료, 오늘 걸치면 사용 중, 앞으로면 사용 예정. */
-enum class LeaveUseState(val label: String) { PLANNED("사용 예정"), ONGOING("사용 중"), DONE("사용 완료") }
+/** 휴가 관리의 한 줄이 가리키는 것. */
+sealed interface LeaveTarget {
+    data class Regular(val source: LeaveSource.Regular) : LeaveTarget
+    data class Grant(val grant: LeaveGrant) : LeaveTarget
+    data class Use(val event: Event) : LeaveTarget
+}
 
-/** 휴가 하나의 풀 + 받은 휴가(출처 내역) + 휴가 일정(사용 내역). */
+/** 목록 한 줄(Figma List Row · Value): 제목 · 값 · ›. */
+data class LeaveRow(val title: String, val value: String?, val target: LeaveTarget)
+
+/** 휴가 관리(Figma 3 · 휴가 관리): 남은 휴가 / 전체 + 받은 휴가(출처) + 쓴 휴가(휴가 일정). */
 data class LeaveState(
     val pool: LeavePool = LeavePool(emptyList(), 0),
     val uses: List<Event> = emptyList(),
     val today: LocalDate,
     val partnerName: String? = null,
+    /** 정기휴가를 받은 날로 보인다(입대일). */
+    val enlistDate: LocalDate? = null,
 ) {
     val total: Int get() = pool.total
-
-    /** 오늘 뒤에 잡힌 날(사용 예정일). 오늘 걸친 일정은 남은 날만 예정으로 센다. */
-    val planned: Int get() = uses.sumOf { e -> plannedDays(e) }
-    val usedDays: Int get() = pool.used - planned
 
     /** 초과 사용이면 음수(빨간색). */
     val remaining: Int get() = pool.remaining
 
-    fun stateOf(e: Event): LeaveUseState = when {
-        e.end.date < today -> LeaveUseState.DONE
-        e.start.date <= today -> LeaveUseState.ONGOING
-        else -> LeaveUseState.PLANNED
-    }
+    /** 남은 휴가 막대: 전체에 대한 남은 비율(넘치면 0). */
+    val remainingFraction: Float get() = if (total <= 0) 0f else (remaining.toFloat() / total).coerceIn(0f, 1f)
+
+    /** 받은 휴가: 정기휴가(계산값, "정기휴가 28일(공군)")가 맨 위, 그 아래 받은 휴가는 "포상휴가 · 2026.09.25" · "4일". */
+    val received: List<LeaveRow>
+        get() = pool.sources.map { s ->
+            when (s) {
+                is LeaveSource.Regular -> LeaveRow(s.label, null, LeaveTarget.Regular(s))
+                is LeaveSource.Granted -> LeaveRow("${s.grant.kind.label} · ${s.grant.grantedOn.dotted()}", "${s.days}일", LeaveTarget.Grant(s.grant))
+            }
+        }
+
+    /** 쓴 휴가: 휴가 일정을 날짜순으로 "7월 10일 – 7월 14일" · "5일". */
+    val used: List<LeaveRow>
+        get() = uses.sortedBy { it.start }.map { e ->
+            val title = if (e.start.date == e.end.date) e.start.date.monthDay() else "${e.start.date.monthDay()} – ${e.end.date.monthDay()}"
+            LeaveRow(title, "${e.dayCount}일", LeaveTarget.Use(e))
+        }
 
     fun grant(id: String): LeaveGrant? = pool.grant(id)
-
-    private fun plannedDays(e: Event): Int = when {
-        e.start.date > today -> e.dayCount
-        e.end.date > today -> e.end.date.toEpochDays().toInt() - today.toEpochDays().toInt()
-        else -> 0
-    }
 }
 
-/** 휴가 추가 · 수정 칸. */
+/** 받은 휴가 등록 · 고치기 칸. [memo] 는 비워도 된다(사격 만발 같은 사유). */
 data class LeaveDraft(
     val id: String? = null,
     val kind: LeaveKind = LeaveKind.REWARD,
-    val name: String = "",
+    val memo: String = "",
     val days: Int = 1,
     val grantedOn: LocalDate,
 ) {
-    val valid: Boolean get() = name.isNotBlank() && days in 1..MAX_DAYS
+    val valid: Boolean get() = days in 1..MAX_DAYS
 
     companion object {
         const val MAX_DAYS = 60
     }
 }
 
-/** 휴가 관리(Figma 3 · 휴가 관리 · 사용 등록 · 추가). 출처를 고르지 않고 기간만 골라 풀에서 쓴다. */
+/** 휴가 관리(Figma 3 · 휴가 관리 · 휴가 상세 · 받은 휴가 등록 · 휴가 쓰기). 출처를 고르지 않고 기간만 골라 풀에서 쓴다. */
 class LeaveViewModel(
     private val leave: LeaveRepository,
     profile: ProfileRepository,
@@ -85,13 +99,15 @@ class LeaveViewModel(
         users.firstOrNull { it.id == id }?.nickname?.takeIf { it.isNotBlank() } ?: "연인"
     }
 
-    val state: StateFlow<LeaveState> = combine(leave.observePool(), leave.observeUses(), day, partner) { pool, uses, today, p ->
-        LeaveState(pool, uses, today, p)
+    private val enlist = profile.observeTimelines().map { it.firstOrNull()?.first?.enlistDate }
+
+    val state: StateFlow<LeaveState> = combine(leave.observePool(), leave.observeUses(), day, partner, enlist) { pool, uses, today, p, e ->
+        LeaveState(pool, uses, today, p, e)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LeaveState(today = clock.today()))
 
     fun newDraft(): LeaveDraft = LeaveDraft(grantedOn = clock.today())
 
-    fun editDraft(g: LeaveGrant): LeaveDraft = LeaveDraft(g.id, g.kind, g.name, g.days, g.grantedOn)
+    fun editDraft(g: LeaveGrant): LeaveDraft = LeaveDraft(g.id, g.kind, g.name.takeUnless { it == g.kind.label }.orEmpty(), g.days, g.grantedOn)
 
     fun save(d: LeaveDraft) {
         if (!d.valid) return
@@ -99,7 +115,7 @@ class LeaveViewModel(
             val old = d.id?.let { id -> state.value.grant(id) }
             leave.save(
                 LeaveGrant(
-                    id = d.id ?: leave.newId(), kind = d.kind, name = d.name.trim(), days = d.days, grantedOn = d.grantedOn,
+                    id = d.id ?: leave.newId(), kind = d.kind, name = d.memo.trim().ifBlank { d.kind.label }, days = d.days, grantedOn = d.grantedOn,
                     updatedAt = clock.now(), lamport = old?.lamport ?: 0, lastWriterDevice = old?.lastWriterDevice.orEmpty(),
                 ),
             )
@@ -108,7 +124,7 @@ class LeaveViewModel(
 
     fun delete(id: String) = viewModelScope.launch { leave.delete(id) }
 
-    /** 사용 등록 기본 날짜: 내일 하루. */
+    /** 휴가 쓰기 기본 기간: 내일 하루. */
     fun defaultRange(): Pair<LocalDate, LocalDate> {
         val from = clock.today().plus(DatePeriod(days = 1))
         return from to from
@@ -118,3 +134,9 @@ class LeaveViewModel(
         viewModelScope.launch { leave.use(from, to, notify && state.value.partnerName != null) }
     }
 }
+
+/** "7월 10일". */
+internal fun LocalDate.monthDay() = "${month.number}월 ${day}일"
+
+/** "2026.10.21". */
+internal fun LocalDate.dotted() = "$year.${month.number.toString().padStart(2, '0')}.${day.toString().padStart(2, '0')}"

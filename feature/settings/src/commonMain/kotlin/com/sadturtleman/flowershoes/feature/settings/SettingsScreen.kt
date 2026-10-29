@@ -135,7 +135,6 @@ fun SettingsRoute(
     onHandOver: () -> Unit = {},
     onBack: () -> Unit,
     startAt: SettingsPage = SettingsPage.MAIN,
-    onOpenLeave: () -> Unit = {},
     photoPicker: (@Composable (onPicked: (ByteArray) -> Unit) -> ((fromCamera: Boolean) -> Unit))? = null,
     /** 파일 공유 시트(내 기록 내보내기 ZIP). */
     shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)? = null,
@@ -157,7 +156,7 @@ fun SettingsRoute(
             SettingsPage.MAIN -> MainPage(state, platform, open, back, onOpenPairing, onHandOver, viewModel)
             SettingsPage.LIFETIME -> LifetimePage(state, viewModel, back)
             SettingsPage.CONNECTION -> ConnectionPage(state, platform, viewModel, back, onOpenPairing, onHandOver, open)
-            SettingsPage.MILITARY -> MilitaryPage(state, viewModel, back, onOpenLeave)
+            SettingsPage.MILITARY -> MilitaryPage(state, viewModel, back)
             SettingsPage.ANNIVERSARY -> AnniversaryPage(state, platform, viewModel, back)
             SettingsPage.THEME -> ThemePage(state, viewModel, back, open)
             SettingsPage.DISPLAY_MODE -> DisplayModePage(state, viewModel, back)
@@ -497,7 +496,7 @@ private fun ConnectionPage(
 
 /** 군 정보(Figma 7 · 군 정보): 역할 · 군종 · 입대일 · 전역일, 전역일 직접 고치기. */
 @Composable
-private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit, onOpenLeave: () -> Unit) {
+private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
     val c = KkTheme.colors
     var sheet by remember { mutableStateOf<String?>(null) }
     val s = state.service
@@ -527,8 +526,6 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
                 SwitchRow("전역일 직접 고치기", t.isOverridden) { on -> if (on) sheet = "discharge" else viewModel.overrideDischarge(null) }
             }
         }
-        // 휴가 관리(Figma 3 · 휴가): 홈 "남은 휴가" 칸 말고도 연결 뒤에 들어갈 곳.
-        Group("휴가") { KkListRow("휴가 관리", onClick = onOpenLeave) }
     }
     when (sheet) {
         "branch" -> KkModalSheet({ sheet = null }) {

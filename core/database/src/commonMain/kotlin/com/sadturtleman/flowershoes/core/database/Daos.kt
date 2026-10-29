@@ -140,6 +140,13 @@ interface EventDao {
     @Query("DELETE FROM event WHERE deletedAtMs IS NOT NULL AND deletedAtMs < :beforeMs")
     suspend fun purgeTombstones(beforeMs: Long)
 
+    /** [from]..[to] 에 시작한 만남(면회 · 외박 · 휴가) 중 그날의 한 줄이 있는 것. 빈 줄(지운 줄)은 :core:data 가 거른다. */
+    @Query(
+        "SELECT * FROM event WHERE deletedAtMs IS NULL AND start >= :from AND start <= :to AND dayLines IS NOT NULL " +
+            "AND type IN ('VISIT', 'OVERNIGHT', 'VACATION') ORDER BY start",
+    )
+    fun observeDayLines(from: String, to: String): Flow<List<EventEntity>>
+
     /** 휴가 일정 = 휴가 사용(휴가 풀의 사용 일수). */
     @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND type = 'VACATION' ORDER BY start")
     fun observeVacations(): Flow<List<EventEntity>>
@@ -340,4 +347,16 @@ interface SyncDao {
 
     @Upsert
     suspend fun setMeta(meta: MetaEntity)
+}
+
+@Dao
+interface LetterDraftDao {
+    @Query("SELECT * FROM letter_draft ORDER BY updatedAtMs DESC")
+    fun observeAll(): Flow<List<LetterDraftEntity>>
+
+    @Upsert
+    suspend fun upsert(draft: LetterDraftEntity)
+
+    @Query("DELETE FROM letter_draft WHERE id = :id")
+    suspend fun delete(id: String)
 }

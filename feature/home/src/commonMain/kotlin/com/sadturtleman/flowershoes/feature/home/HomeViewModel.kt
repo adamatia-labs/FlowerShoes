@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sadturtleman.flowershoes.core.data.DayLineCards
 import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.MissYouRepository
@@ -11,7 +12,10 @@ import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.military.expectedName
+import com.sadturtleman.flowershoes.core.model.DayLine
 import com.sadturtleman.flowershoes.core.model.Event
+import com.sadturtleman.flowershoes.core.model.dayLineAsk
+import com.sadturtleman.flowershoes.core.model.dayLineCard
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.Role
@@ -24,12 +28,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.number
@@ -53,6 +60,9 @@ data class NextLeave(val title: String, val detail: String)
 /** 상대 상태 위젯(Widget/Status). */
 data class PartnerStatus(val name: String, val initial: String, val label: String?, val dot: Long?, val ago: String?, val missYou: Int)
 
+/** 그날의 한 줄 카드: "어제 면회, 그날의 한 줄 남길까요?" [남기기]. */
+data class DayLinePrompt(val eventId: String, val text: String)
+
 /** 오늘 도착할 메시지 한 줄(Scheduled Message). */
 data class ScheduledRow(val id: String, val time: String, val message: String)
 
@@ -71,10 +81,13 @@ data class HomeState(
     val scheduled: List<ScheduledRow> = emptyList(),
     /** 보낸 초대 링크가 아직 유효하다(연결 전 "초대 보냄 · 기다리는 중 · 링크 다시 보내기"). */
     val invitePending: Boolean = false,
+    val dayLine: DayLinePrompt? = null,
 )
 
 sealed interface HomeIntent {
     data object SendMissYou : HomeIntent
+    /** 그날의 한 줄 카드 닫기(이 일정은 다시 띄우지 않는다). */
+    data class DismissDayLine(val eventId: String) : HomeIntent
 }
 
 private val SEOUL = TimeZone.of("Asia/Seoul")
@@ -89,6 +102,7 @@ class HomeViewModel(
     leave: com.sadturtleman.flowershoes.core.data.LeaveRepository? = null,
     /** 보낸 초대 링크(DeviceSettings.pendingInvite). */
     pendingInvite: Flow<com.sadturtleman.flowershoes.core.data.sync.PendingInvite?> = flowOf(null),
+    private val dayLineCards: DayLineCards? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
 
@@ -122,16 +136,25 @@ class HomeViewModel(
         events.observeRange(LocalDate(today.year - 2, 1, 1), LocalDate(today.year + 3, 12, 31))
     }.map { list -> list.filter { it.type == EventType.VACATION && it.deletedAt == null } }
 
+    /** 그날의 한 줄 카드: 끝난 지 사흘 안의 만남 중 내가 아직 안 쓰고 닫지 않은 것. */
+    private val dayLine: Flow<DayLinePrompt?> = clock.ticker().map { clock.today() }.distinctUntilChanged().flatMapLatest { today ->
+        combine(
+            events.observeRange(today.minus(DatePeriod(days = DayLine.CARD_DAYS)), today),
+            dayLineCards?.dismissed ?: flowOf(emptySet()),
+        ) { list, dismissed -> dayLineCard(list, me, today, dismissed)?.let { DayLinePrompt(it.id, it.dayLineAsk(today)) } }
+    }
+
     /** 휴가 하나의 풀(휴가 관리와 같은 값). 없으면(미리보기 · 테스트) 군종 정기휴가 − 캘린더 휴가로 센다. */
     private val pool: Flow<LeavePool?> = leave?.observePool() ?: flowOf(null)
 
     val state: StateFlow<HomeState> = combine(
         combine(people, profile.observeTimelines(), leaves, pool) { p, t, l, g -> Triple(p, t, l to g) },
-        partnerFeed,
+        combine(partnerFeed, dayLine) { f, d -> f to d },
         missYou.observeTodayFrom(me),
         letters.observeMyScheduledToday(),
         clock.ticker(),
-    ) { (p, timelines, leaveInfo), (partnerStatus, received), sent, scheduled, now ->
+    ) { (p, timelines, leaveInfo), (feed, dayLinePrompt), sent, scheduled, now ->
+        val (partnerStatus, received) = feed
         val (vacations, leavePool) = leaveInfo
         val today = now.toLocalDateTime(SEOUL).date
         val pair = timelines.firstOrNull()
@@ -193,6 +216,7 @@ class HomeViewModel(
                     message = l.blocks.filterIsInstance<LetterBlock.Text>().joinToString(" ") { it.text }.ifBlank { "그림 ${l.drawingCount}장" },
                 )
             },
+            dayLine = dayLinePrompt,
         )
     }.combine(pendingInvite) { s, invite ->
         s.copy(invitePending = !s.linked && invite != null && invite.expireAtMs > clock.now().toEpochMilliseconds())
@@ -201,6 +225,7 @@ class HomeViewModel(
     fun onIntent(intent: HomeIntent) {
         when (intent) {
             HomeIntent.SendMissYou -> viewModelScope.launch { missYou.send() }
+            is HomeIntent.DismissDayLine -> viewModelScope.launch { dayLineCards?.dismiss(intent.eventId) }
         }
     }
 }

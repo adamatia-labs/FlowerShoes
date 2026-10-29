@@ -80,11 +80,11 @@ data class EventEntity(
     val lamport: Long,
     val lastWriterDevice: String,
     val deletedAtMs: Long?,
-    /** 만남 사진 첨부 id 들(쉼표로 이음). */
+    /** 그날의 사진 첨부 id 들(쉼표로 이음). */
     val photoIds: String? = null,
     val memo: String? = null,
-    /** 만남 한 줄 메모(JSON 객체: 사용자 id → 메모). */
-    val meetNotes: String? = null,
+    /** 그날의 한 줄(JSON 객체: 사용자 id → 한 줄). */
+    val dayLines: String? = null,
     /** 매년 반복(기념일만 뜻이 있다). */
     val repeatYearly: Boolean = true,
 )
@@ -217,4 +217,15 @@ data class RevokedDeviceEntity(
 data class MetaEntity(
     @PrimaryKey val key: String,
     val value: Long,
+)
+
+/**
+ * 쓰던 편지(임시저장). 이 기기에만 — 동기화하지 않고 복구하지 않는다. 연결 해제 · 탈퇴 때 지운다.
+ * [draftJson] 은 편지 쓰기 화면의 글 · 편지지 · 글꼴 · 첨부 · 예약 시각(:feature:letter 의 ComposeDraft JSON).
+ */
+@Entity(tableName = "letter_draft", indices = [Index("updatedAtMs")])
+data class LetterDraftEntity(
+    @PrimaryKey val id: String,
+    val draftJson: String,
+    val updatedAtMs: Long,
 )

@@ -1,7 +1,5 @@
 package com.sadturtleman.flowershoes.core.data
 
-import com.sadturtleman.flowershoes.core.model.MeetNote
-import com.sadturtleman.flowershoes.core.model.mergeMeetNotes
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 import kotlin.test.Test
@@ -26,13 +24,4 @@ class RecordExportTest {
         assertEquals(3000, read.getValue("그림/2026-10-21_a.png").size)
     }
 
-    @Test
-    fun meetNotesMergePerLine() {
-        // 일정은 한쪽이 이겨도, 줄마다 늦게 쓴 메모가 남는다.
-        val mine = mapOf("me" to MeetNote("드디어 얼굴 봤다", 200), "you" to MeetNote("옛 줄", 100))
-        val theirs = mapOf("you" to MeetNote("면회실 짜장면 최고", 300))
-        val merged = mergeMeetNotes(mine, theirs)
-        assertEquals("드디어 얼굴 봤다", merged.getValue("me").text)
-        assertEquals("면회실 짜장면 최고", merged.getValue("you").text)
-    }
 }

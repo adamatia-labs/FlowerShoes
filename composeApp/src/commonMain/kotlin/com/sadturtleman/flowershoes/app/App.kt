@@ -69,7 +69,7 @@ enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.de
 }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, COMPOSE, DRAW_FOR_LETTER, SETTINGS, LEAVE }
+private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, COMPOSE, DRAW_FOR_LETTER, DRAW, DRAFTS, SETTINGS, LEAVE }
 
 @Composable
 fun KkotsinApp() {
@@ -159,8 +159,6 @@ private fun MainShell() {
     // 초대 링크로 들어왔으면 그 토큰(연결 화면이 받는 쪽으로 열린다).
     var inviteToken by rememberSaveable { mutableStateOf<String?>(null) }
     var settingsStart by remember { mutableStateOf(com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN) }
-    // 휴가 관리를 연 곳(설정 › 군 정보면 닫을 때 그리로).
-    var leaveFromSettings by remember { mutableStateOf(false) }
     // 편지 쓰기 · 편지함이 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
@@ -170,7 +168,19 @@ private fun MainShell() {
     val memory = koinViewModel<com.sadturtleman.flowershoes.feature.memory.MemoryViewModel>()
     val memoryDetail = memory.state.collectAsState().value.stack.isNotEmpty()
     val fileShare = rememberFileShare()
+    // 편지 쓰기를 새로 연다 — 쓰던 편지가 있으면 편지 쓰기 화면이 "이어 쓸까요?" 를 묻는다.
+    val writeLetter = {
+        letters.onIntent(LetterIntent.NewCompose)
+        overlay = Overlay.COMPOSE
+    }
     val bookStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookStore>()
+    // 그날의 한 줄 쓰기(다음 날 알림 · 홈 카드 · 일정 상세): 추억 탭 위에 쓰기 화면을 연다.
+    val openDayLine = { eventId: String ->
+        overlay = null
+        letters.onIntent(LetterIntent.Close)
+        tab = Tab.MEMORY
+        memory.onIntent(com.sadturtleman.flowershoes.feature.memory.MemoryIntent.Open(com.sadturtleman.flowershoes.feature.memory.MemoryPage.DayLine(eventId)))
+    }
 
     // 이 폰 기종을 내 정보에 싣는다(연인의 설정 › 연결 정보).
     val koin = getKoin()
@@ -205,6 +215,7 @@ private fun MainShell() {
                 overlay = null
                 tab = Tab.CALENDAR
             }
+            is DeepLink.DayLine -> openDayLine(l.eventId)
             DeepLink.Pairing -> {
                 inviteToken = null
                 overlay = Overlay.PAIRING
@@ -221,7 +232,6 @@ private fun MainShell() {
     BackHandler(enabled = overlay != null || letterOpen || tab != Tab.HOME) {
         when {
             overlay == Overlay.DRAW_FOR_LETTER -> overlay = Overlay.COMPOSE
-            overlay == Overlay.LEAVE && leaveFromSettings -> overlay = Overlay.SETTINGS
             overlay != null -> overlay = null
             letterOpen -> letters.onIntent(LetterIntent.Close)
             else -> tab = Tab.HOME
@@ -235,9 +245,8 @@ private fun MainShell() {
                 onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
                 onClose = { overlay = null },
                 photoPicker = { rememberPhotoPicker(it) },
-                // 잠긴 편지지 → 설정 › 꽃신 평생(편지는 임시저장이 남아 있다).
+                // 잠긴 편지지 → 설정 › 꽃신 평생(쓰던 편지는 화면을 나갈 때 저장된다).
                 onOpenLifetime = {
-                    letters.onIntent(LetterIntent.SaveDraft)
                     settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.LIFETIME
                     overlay = Overlay.SETTINGS
                 },
@@ -253,6 +262,31 @@ private fun MainShell() {
                     overlay = Overlay.COMPOSE
                 },
                 onClose = { overlay = Overlay.COMPOSE },
+            )
+        }
+        // 그림만 보내기(편지 탭 쓰기 메뉴 › 그림 그리기 · 받은 그림 › 답장 그리기): 그림 한 장짜리 편지.
+        Overlay.DRAW -> {
+            DrawingEditorRoute(
+                photoPicker = { rememberPhotoPicker(it) },
+                saveImage = imageSaver,
+                forLetter = false,
+                onSaved = { overlay = null },
+                onSend = { meta, caption, revealAt ->
+                    letters.onIntent(LetterIntent.SendDrawing(meta, caption, revealAt))
+                    overlay = null
+                    tab = Tab.LETTER
+                },
+                onClose = { overlay = null },
+            )
+        }
+        Overlay.DRAFTS -> {
+            com.sadturtleman.flowershoes.feature.letter.LetterDraftsRoute(
+                onBack = { overlay = null },
+                onResume = {
+                    letters.onIntent(LetterIntent.ResumeDraft(it))
+                    overlay = Overlay.COMPOSE
+                },
+                viewModel = letters,
             )
         }
         Overlay.PAIRING -> {
@@ -277,18 +311,18 @@ private fun MainShell() {
                 startAt = settingsStart,
                 photoPicker = { rememberPhotoPicker(it) },
                 shareFiles = fileShare,
-                onOpenLeave = {
-                    leaveFromSettings = true
-                    settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MILITARY
-                    overlay = Overlay.LEAVE
-                },
             )
         }
         Overlay.LEAVE -> {
-            com.sadturtleman.flowershoes.feature.calendar.LeaveRoute(onBack = {
-                overlay = if (leaveFromSettings) Overlay.SETTINGS else null
-                leaveFromSettings = false
-            })
+            // 휴가 관리는 캘린더 탭 아래 화면이다 — 닫으면 캘린더로. 쓴 휴가 한 줄은 그 일정 고치기를 연다.
+            com.sadturtleman.flowershoes.feature.calendar.LeaveRoute(
+                onBack = { overlay = null },
+                onOpenEvent = { e ->
+                    overlay = null
+                    tab = Tab.CALENDAR
+                    calendar.onIntent(com.sadturtleman.flowershoes.feature.calendar.CalendarIntent.Edit(e))
+                },
+            )
         }
         null -> {
         val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
@@ -329,20 +363,23 @@ private fun MainShell() {
                         onOpenPairing = { overlay = Overlay.PAIRING },
                         onOpenCalendar = { tab = Tab.CALENDAR },
                         onOpenSettings = { overlay = Overlay.SETTINGS },
-                        onWriteLetter = { overlay = Overlay.COMPOSE },
-                        onOpenLeave = { leaveFromSettings = false; overlay = Overlay.LEAVE },
+                        onWriteLetter = writeLetter,
+                        onOpenLeave = { tab = Tab.CALENDAR; overlay = Overlay.LEAVE },
+                        onOpenDayLine = openDayLine,
                     )
-                    Tab.CALENDAR -> CalendarRoute(viewModel = calendar)
+                    Tab.CALENDAR -> CalendarRoute(onOpenLeave = { overlay = Overlay.LEAVE }, onWriteDayLine = openDayLine, viewModel = calendar)
                     Tab.LETTER -> LetterInboxRoute(
-                        // Figma 최종 정리: 만들기 시트 없이 바로 편지 쓰기(그림은 편지 안에서).
-                        onCreate = { overlay = Overlay.COMPOSE },
+                        onWriteLetter = writeLetter,
+                        onDraw = { overlay = Overlay.DRAW },
+                        onOpenDrafts = { overlay = Overlay.DRAFTS },
                         onReply = {
                             letters.onIntent(LetterIntent.Close)
-                            overlay = Overlay.COMPOSE
+                            writeLetter()
                         },
+                        // 받은 그림 › 답장 그리기: 바로 그림판.
                         onReplyDrawing = {
                             letters.onIntent(LetterIntent.Close)
-                            overlay = Overlay.COMPOSE
+                            overlay = Overlay.DRAW
                         },
                         viewModel = letters,
                     )
@@ -351,7 +388,7 @@ private fun MainShell() {
                             letters.onIntent(LetterIntent.Open(it))
                             tab = Tab.LETTER
                         },
-                        onWriteLetter = { overlay = Overlay.COMPOSE },
+                        onWriteLetter = writeLetter,
                         photoPicker = { rememberPhotoPicker(it) },
                         book = com.sadturtleman.flowershoes.feature.memory.MemoryBookActions(
                             bookStore, ::newBookPdf, fileShare,
@@ -362,7 +399,7 @@ private fun MainShell() {
                 }
                 }
             }
-            // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 만남 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
+            // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 그날의 한 줄 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
             val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
             if (!reading) BottomBar(tab, onSelect = { tab = it })
         }
@@ -382,7 +419,6 @@ private fun overlayForward(from: Overlay?, to: Overlay?): Boolean = when {
     to == null -> false
     from == null -> true
     from == Overlay.DRAW_FOR_LETTER && to == Overlay.COMPOSE -> false
-    from == Overlay.LEAVE && to == Overlay.SETTINGS -> false
     else -> true
 }
 

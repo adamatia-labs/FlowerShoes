@@ -90,12 +90,12 @@ class InboxApplier(
                 val local = db.eventDao().get(p.event.id)
                 val incoming = Versioned(p.event.lamport, p.event.lastWriterDevice, p.event.deletedAt != null)
                 val localModel = local?.toModel()
-                val notes = com.sadturtleman.flowershoes.core.model.mergeMeetNotes(localModel?.meetNotes.orEmpty(), p.event.meetNotes)
+                val notes = com.sadturtleman.flowershoes.core.model.mergeDayLines(localModel?.dayLines.orEmpty(), p.event.dayLines)
                 if (Lww.incomingWins(local?.let { Versioned(it.lamport, it.lastWriterDevice, it.deletedAtMs != null) }, incoming)) {
-                    db.eventDao().upsert(p.event.copy(meetNotes = notes).toEntity())
-                } else if (localModel != null && notes != localModel.meetNotes) {
+                    db.eventDao().upsert(p.event.copy(dayLines = notes).toEntity())
+                } else if (localModel != null && notes != localModel.dayLines) {
                     // 일정은 이 폰 것이 이겨도 만남 메모는 줄마다 합친다(상대가 자기 줄만 고친 경우).
-                    db.eventDao().upsert(localModel.copy(meetNotes = notes).toEntity())
+                    db.eventDao().upsert(localModel.copy(dayLines = notes).toEntity())
                 }
             }
             is OpPayload.LeaveGrantPut -> {

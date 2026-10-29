@@ -912,3 +912,34 @@ fun KkScreenHeader(title: String, subtitle: String? = null, modifier: Modifier =
 /** 세로 여백. */
 @Composable
 fun KkGap(height: Dp) = Spacer(Modifier.height(height))
+
+// ── Menu ──────────────────────────────────────────────────────────────────
+
+/** 작은 액션 메뉴 한 줄. */
+data class KkMenuItem(val label: String, val icon: KkIcons, val onClick: () -> Unit)
+
+/**
+ * 작은 액션 메뉴(Figma Menu): 폭 200, 반경 16, surface, 줄 높이 48 · 아이콘 20 + Label/Bold.
+ * 누른 자리(부모 Box)에 붙어 열린다. 고르면 닫힌다.
+ */
+@Composable
+fun KkMenu(expanded: Boolean, onDismiss: () -> Unit, items: List<KkMenuItem>) {
+    val c = KkTheme.colors
+    androidx.compose.material3.DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.width(200.dp),
+        shape = RoundedCornerShape(16.dp),
+        containerColor = c.surface,
+    ) {
+        items.forEach { item ->
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text(item.label, style = KkTheme.type.labelBold, color = c.ink) },
+                onClick = { onDismiss(); item.onClick() },
+                leadingIcon = { KkIcon(item.icon, tint = c.ink, size = 20.dp) },
+                modifier = Modifier.height(48.dp),
+                contentPadding = PaddingValues(horizontal = KkSpacing.lg),
+            )
+        }
+    }
+}
