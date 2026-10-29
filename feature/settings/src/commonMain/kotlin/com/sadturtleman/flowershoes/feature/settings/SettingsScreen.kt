@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,12 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.data.NotificationPrefs
 import com.sadturtleman.flowershoes.core.data.SEOUL
@@ -61,8 +55,6 @@ import com.sadturtleman.flowershoes.core.designsystem.KkButton
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkChoice
 import com.sadturtleman.flowershoes.core.designsystem.KkDatePicker
-import com.sadturtleman.flowershoes.core.designsystem.KkDialog
-import com.sadturtleman.flowershoes.core.designsystem.KkDialogHost
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
@@ -108,16 +100,10 @@ interface PlatformActions {
     fun requestPinWidget(kind: String): Boolean = false
 
     /**
-     * 기기 생체 · 암호 인증(설계 7-5). 되돌릴 수 없는 일(연결 해제 · 넘겨주기) · 비밀(복구 코드) 앞에서 부른다.
+     * 기기 생체 · 암호 인증(설계 7-5). 되돌릴 수 없는 일(연결 해제 · 넘겨주기 · 탈퇴) 앞에서 부른다.
      * 화면 잠금이 없는 기기는 막을 방법이 없어 [DeviceAuth.NoLockScreen] 을 돌려주고, 화면이 경고를 띄운 뒤 진행한다.
      */
     suspend fun authenticate(reason: String): DeviceAuth = DeviceAuth.NoLockScreen
-
-    /** 백업 열쇠를 동기화하는 곳의 이름(복원 · 백업 찾음 화면). */
-    val keySyncName: String get() = "기기 백업"
-
-    /** 탈퇴: 플랫폼에 동기화해 둔 백업 키(Block Store · iCloud 키체인)를 지운다. */
-    suspend fun deleteSyncedBackupKey() = Unit
 
     /** 이 폰 이름(설정 › 로그인 계정 · 상대 폰의 "새 폰으로 바꿨어요"). */
     val deviceName: String get() = ""
@@ -130,9 +116,6 @@ interface PlatformActions {
 
     /** 알림 미리보기 숨기기: iOS 알림 확장이 상태 문구를 풀지 않게 App Group 에 표시한다. */
     fun setHidePreview(hide: Boolean) = Unit
-
-    /** 복구 코드를 비밀번호 관리자에 저장(Android Credential Manager). 못 하면 false — 화면이 복사로 대신한다. */
-    suspend fun savePassword(id: String, secret: String): Boolean = false
 }
 
 enum class DeviceAuth { Passed, Failed, NoLockScreen }
@@ -141,25 +124,15 @@ object NoPlatformActions : PlatformActions
 
 /** 설정 안의 화면들. 첫 화면은 [MAIN]. */
 enum class SettingsPage {
-    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, WIDGETS, BACKUP, EXPORT, RECOVERY,
+    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, WIDGETS, EXPORT,
     ACCOUNT, SIGN_IN_METHODS, DELETE_ACCOUNT, UNLINK, TERMS, LICENSES, INQUIRY, INQUIRY_HISTORY,
 }
-
-/** 백업 저장 한도(설정 › 백업의 사용량 막대). 사진은 줄여서 올려 이 안에 머문다. */
-/** 백업 용량(수익 모델 확정): 무료 1GB · 꽃신 평생 5GB. */
-private const val GB = 1024L * 1024 * 1024
-private const val FREE_BACKUP_GB = 1
-private const val LIFETIME_BACKUP_GB = 5
-/** 백업 용량 추가(한 번 결제 3,300원). */
-private const val PLUS_BACKUP_GB = 5
-private const val PLUS_PRICE = "3,300원"
 
 @Composable
 fun SettingsRoute(
     platform: PlatformActions,
     onOpenPairing: () -> Unit,
     onHandOver: () -> Unit = {},
-    onRestore: () -> Unit = {},
     onBack: () -> Unit,
     startAt: SettingsPage = SettingsPage.MAIN,
     onOpenLeave: () -> Unit = {},
@@ -189,9 +162,7 @@ fun SettingsRoute(
             SettingsPage.THEME -> ThemePage(state, viewModel, back, open)
             SettingsPage.DISPLAY_MODE -> DisplayModePage(state, viewModel, back)
             SettingsPage.WIDGETS -> WidgetsPage(state, platform, back)
-            SettingsPage.BACKUP -> BackupPage(state, platform, viewModel, back, open)
             SettingsPage.EXPORT -> ExportPage(shareFiles, back) { notice = it }
-            SettingsPage.RECOVERY -> RecoveryPage(platform, viewModel, back)
             SettingsPage.ACCOUNT -> AccountPage(state, platform, viewModel, back, open)
             SettingsPage.SIGN_IN_METHODS -> SignInMethodsPage(state, viewModel, back)
             SettingsPage.DELETE_ACCOUNT -> DeleteAccountPage(state, platform, viewModel, back)
@@ -358,11 +329,7 @@ private fun MainPage(
             KkListRow("위젯 안내", onClick = { open(SettingsPage.WIDGETS) })
         }
         Group("데이터") {
-            KkListRow("백업", value = state.backup.lastAtMs?.let(::relativeTime) ?: "아직 없음", onClick = { open(SettingsPage.BACKUP) })
-            Divider()
             KkListRow("내 기록 내보내기", onClick = { open(SettingsPage.EXPORT) })
-            Divider()
-            KkListRow("복구 코드", onClick = { open(SettingsPage.RECOVERY) })
         }
         KkAd(KkAdSlot.SETTINGS)
         Group("계정") {
@@ -796,140 +763,6 @@ private val WIDGET_FRAMES: List<Triple<String, String, Color?>> = listOf(
     Triple("NIGHT", "밤하늘", Color(0xFF1B2235)),
 )
 
-// ── 백업 ─────────────────────────────────────────────────────────────────
-
-/** 백업(Figma 7 · 백업): 마지막 백업 · 사용량 · 열쇠 보관 안내, 자동 · 셀룰러 · 지금 백업 · 복구 코드. */
-@Composable
-private fun BackupPage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit, open: (SettingsPage) -> Unit) {
-    val c = KkTheme.colors
-    val b = state.backup
-    Page("백업", onBack) {
-        if (!b.available) {
-            Text("이 빌드에서는 아직 백업을 쓸 수 없어요.", style = KkTheme.type.body, color = c.sub)
-            return@Page
-        }
-        val shape = RoundedCornerShape(KkRadius.lg)
-        Column(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
-        ) {
-            Text("마지막 백업", style = KkTheme.type.caption, color = c.sub)
-            Text(b.lastAtMs?.let(::relativeTime) ?: "아직 없어요", style = KkTheme.type.title, color = c.ink)
-            val lifetime = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()
-            val owned by (lifetime?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
-            val plus = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BackupPlusStore>()
-            val plusOwned by (plus?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
-            val quotaGb = (if (owned) LIFETIME_BACKUP_GB else FREE_BACKUP_GB) + if (plusOwned) PLUS_BACKUP_GB else 0
-            val fraction = (b.bytes.toFloat() / (quotaGb * GB)).coerceIn(0f, 1f)
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.line)) {
-                Box(Modifier.fillMaxHeight().fillMaxWidth(if (b.bytes > 0) fraction.coerceAtLeast(0.02f) else 0f).clip(RoundedCornerShape(3.dp)).background(c.accent))
-            }
-            Text("${bytesLabel(b.bytes)} / ${quotaGb}GB", style = KkTheme.type.caption, color = c.sub)
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.bar).padding(horizontal = KkSpacing.md, vertical = KkSpacing.sm),
-                horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(c.accent))
-                Text("${platform.keySyncName} 사용 여부와 관계없이 복구 코드도 따로 보관해 주세요", style = KkTheme.type.caption, color = c.ink)
-            }
-        }
-        Group(null) {
-            SwitchRow("자동 백업", state.autoBackup) { viewModel.setAutoBackup(it) }
-            Divider()
-            SwitchRow("셀룰러로 사진 백업", state.cellularBackup) { viewModel.setCellularBackup(it) }
-            Divider()
-            KkListRow(if (b.busy) "백업하는 중…" else "지금 백업하기", enabled = !b.busy, onClick = { viewModel.backupNow() })
-            Divider()
-            BackupPlusRow(viewModel)
-            Divider()
-            KkListRow("복구 코드", value = if (state.codeSeen) "확인함" else "확인 안 함", onClick = { open(SettingsPage.RECOVERY) })
-        }
-    }
-}
-
-// ── 복구 코드 ─────────────────────────────────────────────────────────────
-
-/** 복구 코드(Figma 6 · 설정 · 백업 · 복구 코드). 기기 인증 뒤에만 보여 준다. */
-@Composable
-private fun RecoveryPage(platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit) {
-    val c = KkTheme.colors
-    val scope = rememberCoroutineScope()
-    val clipboard = LocalClipboardManager.current
-    var code by remember { mutableStateOf<String?>(null) }
-    var denied by remember { mutableStateOf(false) }
-    var loaded by remember { mutableStateOf(false) }
-    var confirmNew by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (platform.authenticate("복구 코드를 보려면 본인 확인이 필요해요") == DeviceAuth.Failed) denied = true
-        else code = viewModel.recoveryCode()
-        loaded = true
-    }
-    Page("복구 코드", onBack, bottom = {
-        KkButton("새 코드 만들기", { confirmNew = true }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost, enabled = code != null)
-    }) {
-        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("백업을 여는 마지막 열쇠예요", style = KkTheme.type.title, color = c.ink)
-        }
-        Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(c.bar).padding(vertical = KkSpacing.xxl, horizontal = KkSpacing.lg),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
-        ) {
-            val shown = code
-            when {
-                denied -> Text("본인 확인을 하지 못했어요", style = KkTheme.type.body, color = c.sub)
-                shown == null && loaded -> Text("복구 코드를 불러오지 못했어요. 백업 설정을 확인해 주세요", style = KkTheme.type.body, color = c.sub)
-                shown == null -> Text("불러오는 중…", style = KkTheme.type.body, color = c.sub)
-                else -> shown.filter { it.isLetterOrDigit() }.chunked(4).chunked(3).forEach { line ->
-                    Text(
-                        line.joinToString("  "), style = KkTheme.type.title.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp),
-                        color = c.ink, textAlign = TextAlign.Center,
-                    )
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            CodeAction("복사", Modifier.weight(1f), enabled = code != null) {
-                code?.let { clipboard.setText(AnnotatedString(it)) }
-                viewModel.notice("복사했어요. 비밀번호 앱이나 안전한 곳에 붙여 넣어 주세요")
-            }
-            CodeAction("비밀번호 관리자에 저장", Modifier.weight(1f), enabled = code != null) {
-                val secret = code ?: return@CodeAction
-                scope.launch {
-                    if (platform.savePassword("꽃신 복구 코드", secret)) {
-                        viewModel.notice("비밀번호 관리자에 저장했어요")
-                    } else {
-                        clipboard.setText(AnnotatedString(secret))
-                        viewModel.notice("이 기기에서는 바로 저장할 수 없어 복사했어요. 비밀번호 앱에 붙여 넣어 주세요")
-                    }
-                }
-            }
-        }
-    }
-    if (confirmNew) {
-        KkDialogHost(onDismiss = { confirmNew = false }) {
-            KkDialog(
-                title = "새 코드를 만들까요?", body = "지금 코드는 더 이상 쓸 수 없어요. 새 코드를 다시 적어 두세요",
-                confirm = "새로 만들기",
-                onConfirm = {
-                    confirmNew = false
-                    scope.launch { viewModel.regenerateCode()?.let { code = it } }
-                },
-                onCancel = { confirmNew = false },
-            )
-        }
-    }
-}
-
-@Composable
-private fun CodeAction(label: String, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
-    val c = KkTheme.colors
-    Box(
-        modifier.height(44.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar)
-            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Text(label, style = KkTheme.type.label, color = if (enabled) c.accent else c.sub) }
-}
-
 // ── 로그인 계정 · 탈퇴 ────────────────────────────────────────────────────
 
 /** 로그인 계정(Figma 최종 정리 › 설정 · 로그인 계정): 로그인 · 다른 로그인 방법 연결 · 이 폰 + 회원 탈퇴. */
@@ -951,7 +784,7 @@ private fun AccountPage(state: SettingsState, platform: PlatformActions, viewMod
 
 /**
  * 로그인 방법(Figma 최종 정리 › 설정 · 다른 로그인 방법): 지금 방법은 "연결됨", 나머지는 "연결하기".
- * 연결해 두면 폰을 잃어도 그 방법으로 같은 계정 · 백업에 들어온다.
+ * 연결해 두면 폰을 잃어도 그 방법으로 같은 계정에 들어온다.
  */
 @Composable
 private fun SignInMethodsPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
@@ -1003,7 +836,7 @@ private fun DeleteAccountPage(state: SettingsState, platform: PlatformActions, v
     Page("회원 탈퇴", onBack, bottom = {
         KkButton("탈퇴하기", {
             scope.launch {
-                if (platform.authenticate("탈퇴하려면 본인 확인이 필요해요") != DeviceAuth.Failed) viewModel.deleteAccount(platform::deleteSyncedBackupKey)
+                if (platform.authenticate("탈퇴하려면 본인 확인이 필요해요") != DeviceAuth.Failed) viewModel.deleteAccount()
                 else viewModel.notice("본인 확인을 하지 못했어요")
             }
         }, Modifier.fillMaxWidth(), danger = true, enabled = ok)
@@ -1017,7 +850,6 @@ private fun DeleteAccountPage(state: SettingsState, platform: PlatformActions, v
             listOfNotNull(
                 if (state.linked) "${state.partnerName.withAnd()}의 연결" else null,
                 "이 폰의 편지 · 그림 · 일정",
-                "암호화 백업 전부",
                 "꽃신 평생 이용권",
             ).forEach { item ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
@@ -1242,31 +1074,9 @@ private fun ExportPage(shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?, o
     }
 }
 
-/** 백업 용량 추가(+5GB · 한 번 결제). 산 뒤에는 "추가됨". 결제가 없는 빌드에서는 안내만. */
-@Composable
-private fun BackupPlusRow(viewModel: SettingsViewModel) {
-    val store = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BackupPlusStore>()
-    val owned by (store?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
-    var price by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(store) { price = store?.price() }
-    KkListRow(
-        "백업 용량 추가 · +${PLUS_BACKUP_GB}GB",
-        value = if (owned) "추가됨" else price ?: PLUS_PRICE,
-        enabled = !owned && !busy,
-        trailing = if (owned) KkRowTrailing.None else KkRowTrailing.Chevron,
-        onClick = {
-            if (store == null) { viewModel.notice("결제는 앱 출시와 함께 열려요"); return@KkListRow }
-            busy = true
-            scope.launch {
-                when (val r = store.buy()) {
-                    com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Purchased -> viewModel.notice("백업 용량이 ${PLUS_BACKUP_GB}GB 늘었어요")
-                    is com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Failed -> viewModel.notice(r.message)
-                    else -> Unit
-                }
-                busy = false
-            }
-        },
-    )
+private fun bytesLabel(b: Long): String = when {
+    b == 0L -> "0KB"
+    b >= 1_000_000_000 -> "${(b / 100_000_000) / 10.0}GB"
+    b >= 1_000_000 -> "${b / 1_000_000}MB"
+    else -> "${maxOf(1, b / 1_000)}KB"
 }

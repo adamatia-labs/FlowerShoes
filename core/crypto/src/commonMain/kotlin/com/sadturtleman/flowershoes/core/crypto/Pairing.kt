@@ -44,8 +44,7 @@ object Pairing {
 /**
  * Crockford Base32 코드. 0/O, 1/I/L 처럼 헷갈리는 글자를 같은 것으로 읽어 손으로 옮겨 적기 쉽다.
  *
- * - 초대 코드 · 재연결 코드: 8자리(40비트), 1회용 · 24시간.
- * - 복구 코드: 24자리(120비트). 서버가 대입 공격을 해도 풀 수 없을 만큼 길다.
+ * 초대 코드 · 재연결 코드: 8자리(40비트), 1회용 · 24시간.
  */
 object CrockfordCode {
     private const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"

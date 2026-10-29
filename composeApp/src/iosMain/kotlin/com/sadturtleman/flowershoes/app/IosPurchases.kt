@@ -21,7 +21,7 @@ fun interface LifetimeOwnedCallback {
     fun changed(owned: Boolean)
 }
 
-/** 활성 entitlement id 들(추억 책 memory_book · 백업 용량 추가 backup_plus 를 가려 보려고). */
+/** 활성 entitlement id 들(추억 책 memory_book 을 가려 보려고). */
 fun interface EntitlementsCallback {
     fun changed(active: List<String>)
 }
@@ -36,7 +36,7 @@ interface IosPurchases {
     fun price(done: PurchasePriceCallback)
     fun buy(done: PurchaseOutcomeCallback)
     fun restore(done: PurchaseOutcomeCallback)
-    /** 이용권이 바뀔 때마다(다른 기기에서 복원 · 환불 등). 꽃신 평생 = 추억 책 · 용량 추가 말고 활성 entitlement. */
+    /** 이용권이 바뀔 때마다(다른 기기에서 복원 · 환불 등). 꽃신 평생 = 추억 책 말고 활성 entitlement. */
     fun observe(listener: LifetimeOwnedCallback)
 
     /** 활성 entitlement 가 바뀔 때마다(따로 파는 상품의 산 표시). */
@@ -48,7 +48,7 @@ interface IosPurchases {
     fun restoreProduct(entitlement: String, done: PurchaseOutcomeCallback)
 }
 
-/** 따로 파는 상품 하나(추억 책 PDF · 백업 용량 추가). Android RevenueCatLifetimeStore.Product 와 같은 Offering · entitlement id. */
+/** 따로 파는 상품 하나(추억 책 PDF). Android RevenueCatLifetimeStore.Product 와 같은 Offering · entitlement id. */
 internal class IosProduct(
     private val purchases: IosPurchases,
     private val offering: String,

@@ -1,7 +1,6 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
 import com.sadturtleman.flowershoes.core.crypto.CoupleKey
-import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import com.sadturtleman.flowershoes.core.crypto.Hash
 import com.sadturtleman.flowershoes.core.crypto.Signatures
 import com.sadturtleman.flowershoes.core.data.Identity
@@ -11,7 +10,6 @@ import com.sadturtleman.flowershoes.core.database.RevokedDeviceEntity
 import com.sadturtleman.flowershoes.core.model.DeviceState
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
-import kotlin.uuid.Uuid
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -75,58 +73,6 @@ object RotationMessages {
         "kkotsin-finalize-v1|$coupleId|$rotationId|$uid".encodeToByteArray()
 }
 
-/**
- * 새 폰 쪽(백업 복원 직후). 백업에 있던 커플 키(현재 epoch)로 MAC 을 만들어 "커플 키를 가진 본인"임을 증명한다.
- * 계정만 털린 사람은 MAC 을 못 만들어 대기 상태에 머문다 → 진짜 폰이 끊기는 공격이 안 된다.
- */
-class RotationRequester(
-    private val db: AppDatabase,
-    private val identity: Identity,
-    private val vault: KeyVault,
-    private val transport: RotationTransport,
-    private val clock: Clock = Clock.System,
-    /** 새 폰 이름 · 로그인 제공자(상대 폰의 "새 폰으로 바꿨어요" 카드). */
-    private val deviceInfo: suspend () -> Pair<String, String> = { "" to "" },
-) {
-    suspend fun request(oldDeviceId: String): RotationRequest {
-        val couple = checkNotNull(db.coupleDao().get()) { "복원된 커플이 없다" }
-        val oldKey = checkNotNull(vault.currentCoupleKey()) { "백업에 커플 키가 없다" }
-        val keys = vault.deviceKeys() ?: DeviceKeys.generate().also { vault.putDeviceKeys(it) }
-        val partner = checkNotNull(db.deviceDao().activeFor(couple.partnerUserId)) { "상대 기기를 모른다" }
-        transport.putPendingDevice(couple.id, identity.deviceId, identity.userId, keys.signPub, keys.boxPub)
-
-        val newKey = CoupleKey.generate(oldKey.epoch + 1)
-        vault.putCoupleKey(newKey)
-        val draft = RotationRequest(
-            id = Uuid.random().toString(), uid = identity.userId, newDeviceId = identity.deviceId, oldDeviceId = oldDeviceId,
-            epoch = newKey.epoch, newSignPub = keys.signPub, newBoxPub = keys.boxPub, wrappedKey = newKey.wrapFor(partner.boxPub),
-            mac = ByteArray(0), sig = ByteArray(0), createdAtMs = clock.now().toEpochMilliseconds(),
-        )
-        val msg = RotationMessages.request(couple.id, draft)
-        val info = deviceInfo()
-        val request = RotationRequest(
-            draft.id, draft.uid, draft.newDeviceId, draft.oldDeviceId, draft.epoch, draft.newSignPub, draft.newBoxPub,
-            draft.wrappedKey, mac = oldKey.mac(msg), sig = keys.sign(msg), createdAtMs = draft.createdAtMs,
-            deviceName = info.first, provider = info.second,
-        )
-        transport.putRotation(couple.id, request)
-        return request
-    }
-
-    /** 상대 폰이 승인하면 세션을 이어 받고 로컬 기기 정보를 바꾼다. 아직이면 null(복원한 데이터는 읽기 전용으로 보여 준다). */
-    suspend fun finishIfApproved(request: RotationRequest): String? {
-        val couple = checkNotNull(db.coupleDao().get())
-        transport.approval(couple.id, request.id) ?: return null
-        val keys = checkNotNull(vault.deviceKeys())
-        val token = transport.finalize(couple.id, request.id, keys.sign(RotationMessages.finalize(couple.id, request.id, identity.userId)))
-        val now = clock.now().toEpochMilliseconds()
-        db.coupleDao().upsert(couple.copy(keyEpoch = request.epoch))
-        db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
-        db.deviceDao().get(request.oldDeviceId)?.let { db.deviceDao().upsert(it.copy(state = DeviceState.REVOKED.name, revokedAtMs = now)) }
-        return token
-    }
-}
-
 /** 상대 폰이 받은 교체 요청을 어떻게 처리했는지. */
 sealed interface RotationDecision {
     data object Approved : RotationDecision
@@ -140,7 +86,7 @@ sealed interface RotationDecision {
 /**
  * 상대 폰 쪽: 동기화 때마다 교체 요청을 확인해 자동 승인한다(사용자 조작 없음).
  *
- * - MAC(지금 커플 키) · 새 기기 서명이 맞아야 한다. 백업 속 키가 너무 오래돼 MAC 을 검증할 수 없으면 7-3-B 로.
+ * - MAC(지금 커플 키) · 새 기기 서명이 맞아야 한다. 요청의 키가 너무 오래돼 MAC 을 검증할 수 없으면 7-3-B 로.
  * - 24시간 안에 두 번째 요청이면 자동 승인하지 않는다(도난 폰과 진짜 주인이 번갈아 교체하는 것을 막는다).
  * - 승인 직전에 우편함을 끝까지 받아 반영하고, 그 시점 커서를 옛 기기 cutoff 로 적는다.
  */
@@ -168,7 +114,7 @@ class RotationApprover(
         val msg = RotationMessages.request(coupleId, r)
         if (!Signatures.verify(msg, r.sig, r.newSignPub)) return RotationDecision.Rejected
         val current = vault.coupleKey(r.epoch - 1)
-            ?: return RotationDecision.NeedsManual("새 폰의 백업이 오래돼 자동으로 확인할 수 없어요. 상대 폰 넘겨주기로 연결해 주세요")
+            ?: return RotationDecision.NeedsManual("새 폰의 키가 오래돼 자동으로 확인할 수 없어요. 상대 폰 넘겨주기로 연결해 주세요")
         if (!current.verifyMac(msg, r.mac)) return RotationDecision.Rejected
         val recent = all.any { it.id != r.id && it.createdAtMs < r.createdAtMs && r.createdAtMs - it.createdAtMs < 24.hours.inWholeMilliseconds }
         if (recent) return RotationDecision.NeedsManual("하루 안에 기기 교체가 두 번 요청됐어요. 확인 코드로 직접 확인해 주세요")
@@ -188,42 +134,3 @@ class RotationApprover(
         return RotationDecision.Approved
     }
 }
-
-/** 복원 뒤 기기 교체가 어디까지 왔는지. 화면이 안내 문구를 고른다. */
-enum class RestoreRotationState {
-    /** 교체할 일이 없다(복원하지 않았거나 이미 끝났다). */
-    NotNeeded,
-
-    /** 요청을 올렸고 상대 폰의 자동 확인을 기다린다. 그동안 보낸 것은 확인 뒤에 전달된다. */
-    WaitingForPartner,
-
-    /** 방금 끝났다. */
-    Done,
-}
-
-/**
- * 백업 복원 직후 자동 기기 교체(7-3-A). 동기화할 때마다 한 걸음씩 진행한다 — 앱이 재시작돼도 이어진다.
- *
- * 복원된 DB 에는 옛 폰이 내 활성 기기로 남아 있다. 그 id 가 지금 기기와 다르면 교체가 필요하다.
- * 이미 올린 요청은 서버에서 다시 찾으므로(newDeviceId) 같은 요청을 두 번 만들지 않는다.
- */
-class PostRestoreRotation(
-    private val db: AppDatabase,
-    private val identity: Identity,
-    private val requester: RotationRequester,
-    private val transport: RotationTransport,
-    /** 끝났을 때: 커스텀 토큰으로 다시 로그인 · 키 epoch 저장 등 플랫폼 일. */
-    private val onFinished: suspend (token: String, epoch: Int) -> Unit = { _, _ -> },
-) {
-    suspend fun step(): RestoreRotationState {
-        val couple = db.coupleDao().get() ?: return RestoreRotationState.NotNeeded
-        val active = db.deviceDao().activeFor(identity.userId) ?: return RestoreRotationState.NotNeeded
-        if (active.id == identity.deviceId) return RestoreRotationState.NotNeeded
-        val request = transport.rotations(couple.id).lastOrNull { it.newDeviceId == identity.deviceId && it.uid == identity.userId }
-            ?: requester.request(oldDeviceId = active.id)
-        val token = requester.finishIfApproved(request) ?: return RestoreRotationState.WaitingForPartner
-        onFinished(token, request.epoch)
-        return RestoreRotationState.Done
-    }
-}
-

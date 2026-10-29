@@ -28,18 +28,13 @@ fun kkotsinAndroidModules(
     val firebase = com.google.firebase.FirebaseApp.getApps(app).isNotEmpty()
     (app as? android.app.Application)?.registerActivityLifecycleCallbacks(com.sadturtleman.flowershoes.app.auth.CurrentActivity)
     // Firebase 가 연결된 빌드에서만 실제 로그인. 아니면 로그인 없이 이 기기 안에서만.
-    // 로그인 직후 "백업이 있나" — BackupManager 는 처음 쓸 때 만들어지므로 그 자리에서 Koin 에서 꺼낸다.
-    val hasBackup: suspend (String) -> Boolean = { uid ->
-        org.koin.mp.KoinPlatform.getKoin().getOrNull<com.sadturtleman.flowershoes.core.backup.BackupManager>()?.hasBackup(uid) ?: false
-    }
     val auth: com.sadturtleman.flowershoes.core.auth.AuthGateway =
         if (firebase && (emulatorHost.isNotBlank() || devEmailLogin)) {
             com.sadturtleman.flowershoes.app.auth.DevEmailAuthGateway(
                 deviceTag = { "dev-" + android.provider.Settings.Secure.getString(app.contentResolver, android.provider.Settings.Secure.ANDROID_ID) },
-                hasBackup = hasBackup,
-                linker = com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys, hasBackup = hasBackup),
+                linker = com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys),
             )
-        } else if (firebase) com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys, hasBackup = hasBackup)
+        } else if (firebase) com.sadturtleman.flowershoes.app.auth.AndroidAuthGateway(app, authKeys)
         else com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway()
     val attachments = app.filesDir.resolve("attachments").absolutePath.toPath()
     return kkotsinModules(
@@ -52,23 +47,6 @@ fun kkotsinAndroidModules(
     ) + module {
         single { SnapshotStore(app.filesDir.resolve("widget/snapshot.json").absolutePath.toPath()) }
         single { WidgetSnapshotPublisher(get(), get(), get(), get(), get(), get(), get(), get(), attachments, get()) }
-        // 백업: 서버 설정이 있으면 Firebase Storage, 없으면 이 폰 안의 파일(암호문)로.
-        single {
-            val temporary = app.cacheDir.resolve("backup-work").absolutePath.toPath()
-            val storage: com.sadturtleman.flowershoes.core.backup.BackupStorage =
-                if (firebase) com.sadturtleman.flowershoes.app.backup.FirebaseStorageBackup()
-                else com.sadturtleman.flowershoes.core.backup.FileBackupStorage(app.filesDir.resolve("backup-local").absolutePath.toPath())
-            com.sadturtleman.flowershoes.core.backup.BackupManager(
-                storage = storage,
-                source = com.sadturtleman.flowershoes.core.backup.RoomBackupSource(get(), get(), get(), get(), temporary),
-                vault = get(),
-                keySync = if (emulatorHost.isNotBlank()) null else com.sadturtleman.flowershoes.app.backup.BlockStoreKeySync(app),
-                applier = com.sadturtleman.flowershoes.core.backup.RoomRestoreApplier(get(), get(), get(), get(), temporary,
-                    openBackup = { androidx.room.Room.databaseBuilder<com.sadturtleman.flowershoes.core.database.AppDatabase>(app, it).buildKkotsin() },
-                    scheduler = { getOrNull() }),
-                appSchemaVersion = com.sadturtleman.flowershoes.core.database.AppDatabase.VERSION,
-            )
-        }
     }
 }
 

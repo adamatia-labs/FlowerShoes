@@ -15,7 +15,7 @@ final class NotificationService: UNNotificationServiceExtension {
         defer { contentHandler(content) }
 
         guard (info["v"] as? String) == "1", let kind = info["kind"] as? String else {
-            // backupExpiry 등 암호화 Op가 아닌 푸시는 서버가 보낸 안내 문구를 유지한다.
+            // 암호화 Op가 아닌 푸시는 서버가 보낸 안내 문구를 유지한다.
             return
         }
 

@@ -5,6 +5,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
@@ -26,12 +27,11 @@ class LocalBackendTest {
         withTimeout(30_000) {
             val auth = FirebaseAuth.getInstance()
             val user = auth.createUserWithEmailAndPassword("qa-${UUID.randomUUID()}@kkotsin.test", "local-qa-only").await().user!!
-            val file = FirebaseStorage.getInstance().reference.child("backups/${user.uid}/qa-routing")
+            val file = FirebaseStorage.getInstance().reference.child("couples/qa-${UUID.randomUUID()}/qa-routing")
             try {
-                val bytes = byteArrayOf(1, 7, 9)
-                file.putBytes(bytes).await()
-                assertArrayEquals(bytes, file.getBytes(100).await())
-                file.delete().await()
+                // Not a couple member, so storage.rules denies it: the emulator with our rules answered.
+                val denied = runCatching { file.putBytes(byteArrayOf(1, 7, 9)).await() }.exceptionOrNull()
+                assertEquals(StorageException.ERROR_NOT_AUTHORIZED, (denied as StorageException).errorCode)
             } finally { user.delete().await(); auth.signOut() }
         }
     }

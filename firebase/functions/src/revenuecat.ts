@@ -3,26 +3,23 @@
  * RevenueCat 사용자 id = 꽃신 계정 id(앱이 logIn 한다).
  */
 export const BOOK_ENTITLEMENT = 'memory_book';
-export const PLUS_ENTITLEMENT = 'backup_plus';
 
 export interface Entitlements {
   lifetime: boolean;
   book: boolean;
-  backupPlus: boolean;
 }
 
 type SubscriberEntitlement = { expires_date?: string | null };
 
-/** /v1/subscribers/{id} 응답 → 활성 이용권. 평생은 추억 책 · 용량 추가가 아닌 활성 entitlement 하나라도. */
+/** /v1/subscribers/{id} 응답 → 활성 이용권. 평생은 추억 책이 아닌 활성 entitlement 하나라도. */
 export function entitlementsFrom(body: unknown, now: Date): Entitlements {
   const ents = ((body as { subscriber?: { entitlements?: Record<string, SubscriberEntitlement> } })?.subscriber?.entitlements) ?? {};
   const active = Object.entries(ents)
     .filter(([, e]) => !e.expires_date || new Date(e.expires_date).getTime() > now.getTime())
     .map(([id]) => id);
   return {
-    lifetime: active.some((id) => id !== BOOK_ENTITLEMENT && id !== PLUS_ENTITLEMENT),
+    lifetime: active.some((id) => id !== BOOK_ENTITLEMENT),
     book: active.includes(BOOK_ENTITLEMENT),
-    backupPlus: active.includes(PLUS_ENTITLEMENT),
   };
 }
 

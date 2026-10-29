@@ -18,7 +18,6 @@ import com.revenuecat.purchases.awaitOfferings
 import com.revenuecat.purchases.awaitPurchase
 import com.revenuecat.purchases.awaitRestore
 import com.revenuecat.purchases.interfaces.UpdatedCustomerInfoListener
-import com.sadturtleman.flowershoes.core.data.BackupPlusStore
 import com.sadturtleman.flowershoes.core.data.BookStore
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.LifetimeStore
@@ -48,13 +47,11 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
     }
 
     private val _bookOwned = MutableStateFlow(false)
-    private val _plusOwned = MutableStateFlow(false)
 
     private fun update(info: CustomerInfo) {
         val active = info.entitlements.active.keys
-        _owned.value = active.any { it != BOOK_ENTITLEMENT && it != PLUS_ENTITLEMENT }
+        _owned.value = active.any { it != BOOK_ENTITLEMENT }
         _bookOwned.value = BOOK_ENTITLEMENT in active
-        _plusOwned.value = PLUS_ENTITLEMENT in active
     }
 
     /** 따로 파는 한 번 결제 상품: Offering [offering] 의 첫 상품, 산 표시는 [flow]. */
@@ -72,9 +69,6 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
 
     /** 추억 책 PDF(같은 RevenueCat 사용자 · 같은 결제 흐름). */
     val book: BookStore = object : Product(BOOK_OFFERING, _bookOwned), BookStore {}
-
-    /** 백업 용량 추가(+5GB). */
-    val backupPlus: BackupPlusStore = object : Product(PLUS_OFFERING, _plusOwned), BackupPlusStore {}
 
     /** 꽃신 계정으로 로그인해 둔다(아직 신원이 없으면 익명 그대로). */
     private suspend fun ensureUser() {
@@ -125,8 +119,6 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
         /** RevenueCat 대시보드: 추억 책 PDF 의 Offering · entitlement id. */
         const val BOOK_OFFERING = "memory_book"
         const val BOOK_ENTITLEMENT = "memory_book"
-        const val PLUS_OFFERING = "backup_plus"
-        const val PLUS_ENTITLEMENT = "backup_plus"
     }
 
     private fun message(code: PurchasesErrorCode): String = when (code) {

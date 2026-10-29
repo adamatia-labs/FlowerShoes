@@ -2,7 +2,6 @@ package com.sadturtleman.flowershoes.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadturtleman.flowershoes.core.backup.BackupManager
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.NotificationPrefs
@@ -20,26 +19,16 @@ import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
-
-/** 백업 화면 상태(설정 › 백업). */
-data class BackupInfo(
-    val available: Boolean = false,
-    val lastAtMs: Long? = null,
-    val bytes: Long = 0,
-    val busy: Boolean = false,
-)
 
 data class SettingsState(
     val theme: AppTheme = AppTheme.GOMSIN,
@@ -59,10 +48,6 @@ data class SettingsState(
     val timeline: ServiceTimeline? = null,
     val provider: String? = null,
     val notify: NotificationPrefs = NotificationPrefs(),
-    val autoBackup: Boolean = true,
-    val cellularBackup: Boolean = false,
-    val codeSeen: Boolean = false,
-    val backup: BackupInfo = BackupInfo(),
 )
 
 /**
@@ -73,12 +58,10 @@ class SettingsViewModel(
     private val profile: ProfileRepository,
     private val unlink: UnlinkService,
     private val identity: Identity,
-    private val backup: BackupManager? = null,
     private val notifyTransport: NotifyPrefsTransport? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
 
-    private val backupInfo = MutableStateFlow(BackupInfo(available = backup != null))
     private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 2)
     val notices: SharedFlow<String> = _notices
 
@@ -88,9 +71,8 @@ class SettingsViewModel(
         combine(settings.state, settings.displayMode, settings.accountProvider) { d, mode, provider -> Triple(d, mode, provider) },
         profile.observeTimelines(),
         people,
-        combine(settings.notifyPrefs, settings.autoBackup, settings.cellularBackup, settings.recoveryCodeSeen, settings.marketingConsent) { n, a, c, s, m -> listOf(n, a, c, s, m) },
-        backupInfo,
-    ) { (d, mode, provider), timelines, (couple, users), flags, b ->
+        combine(settings.notifyPrefs, settings.marketingConsent) { n, m -> n to m },
+    ) { (d, mode, provider), timelines, (couple, users), (notify, marketing) ->
         val me = identity.userId
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
         val today = clock.today()
@@ -103,7 +85,7 @@ class SettingsViewModel(
             myName = users.firstOrNull { it.id == me }?.nickname?.takeIf { it.isNotBlank() } ?: "나",
             partnerName = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.nickname?.takeIf { it.isNotBlank() } ?: "연인",
             partnerDevice = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.deviceName?.takeIf { it.isNotBlank() },
-            marketing = flags[4] as Boolean,
+            marketing = marketing,
             linked = partnerId != null,
             linkedSince = since,
             anniversary = anniversary,
@@ -111,25 +93,9 @@ class SettingsViewModel(
             service = timelines.firstOrNull()?.first,
             timeline = timelines.firstOrNull()?.second,
             provider = provider,
-            notify = flags[0] as NotificationPrefs,
-            autoBackup = flags[1] as Boolean,
-            cellularBackup = flags[2] as Boolean,
-            codeSeen = flags[3] as Boolean,
-            backup = b,
+            notify = notify,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsState())
-
-    init {
-        refreshBackup()
-    }
-
-    private fun refreshBackup() {
-        val m = backup ?: return
-        viewModelScope.launch {
-            val preview = runCatching { m.preview(identity.userId) }.getOrNull()
-            backupInfo.update { it.copy(lastAtMs = preview?.createdAtMs, bytes = preview?.summary?.bytes ?: 0) }
-        }
-    }
 
     fun setTheme(theme: AppTheme) = viewModelScope.launch { settings.setTheme(theme) }
 
@@ -176,35 +142,6 @@ class SettingsViewModel(
 
     fun setMarketing(on: Boolean) = viewModelScope.launch { settings.setMarketingConsent(on) }
 
-    fun setAutoBackup(on: Boolean) = viewModelScope.launch { settings.setAutoBackup(on) }
-
-    fun setCellularBackup(on: Boolean) = viewModelScope.launch { settings.setCellularBackup(on) }
-
-    fun backupNow() {
-        val m = backup ?: return
-        if (backupInfo.value.busy) return
-        viewModelScope.launch {
-            backupInfo.update { it.copy(busy = true) }
-            runCatching { m.backupNow(identity.userId) }
-                .onSuccess { manifest -> backupInfo.update { it.copy(lastAtMs = manifest.createdAtMs, bytes = manifest.summary.bytes) }; _notices.tryEmit("백업했어요") }
-                .onFailure { _notices.tryEmit("백업하지 못했어요. 잠시 뒤 다시 해 주세요") }
-            backupInfo.update { it.copy(busy = false) }
-        }
-    }
-
-    /** 복구 코드(기기 인증 뒤 화면이 부른다). 아직 백업하지 않았으면 열쇠를 만들고 코드를 만든다. */
-    suspend fun recoveryCode(): String? {
-        val m = backup ?: return null
-        val code = runCatching { m.recoveryCode() ?: run { m.ensureKey(identity.userId); m.recoveryCode() } }.getOrNull()
-        if (code != null) settings.setRecoveryCodeSeen()
-        return code
-    }
-
-    suspend fun regenerateCode(): String? {
-        val m = backup ?: return null
-        return runCatching { m.regenerateRecoveryCode(identity.userId) }.getOrNull()?.also { _notices.tryEmit("새 코드를 만들었어요. 옛 코드는 더 이상 쓸 수 없어요") }
-    }
-
     fun notice(message: String) {
         _notices.tryEmit(message)
     }
@@ -216,7 +153,7 @@ class SettingsViewModel(
     fun afterPartnerUnlinked(after: AfterUnlink) = viewModelScope.launch { unlink.onPartnerUnlinked(after) }
 
     /** 탈퇴. 끝나면 설정이 비워져 셸이 처음 화면(로그인)으로 돌아간다. */
-    fun deleteAccount(deleteSyncedBackupKey: suspend () -> Unit) = viewModelScope.launch { unlink.deleteAccount(deleteSyncedBackupKey) }
+    fun deleteAccount() = viewModelScope.launch { unlink.deleteAccount() }
 
     /** 상대 폰 교체 알림의 "카카오 계정으로 로그인" 문구. */
     fun providerLabel(provider: String?): String = when (provider) {

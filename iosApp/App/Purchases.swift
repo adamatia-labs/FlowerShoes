@@ -11,7 +11,7 @@ final class LifetimePurchases: NSObject, IosPurchases, PurchasesDelegate {
     private var listener: LifetimeOwnedCallback?
     private var entitlementListeners: [EntitlementsCallback] = []
     /// 따로 파는 상품의 entitlement — 꽃신 평생 판정에서 뺀다(Android 와 같다).
-    private static let separate: Set<String> = ["memory_book", "backup_plus"]
+    private static let separate: Set<String> = ["memory_book"]
 
     override init() {
         super.init()

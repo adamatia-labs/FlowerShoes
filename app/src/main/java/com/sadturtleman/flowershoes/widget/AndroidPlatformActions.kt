@@ -28,16 +28,6 @@ class AndroidPlatformActions(private val context: Context) : PlatformActions {
     override val appVersion: String
         get() = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0.0"
 
-    /** Credential Manager 로 비밀번호 관리자(Google 비밀번호 관리자 등)에 저장. */
-    override suspend fun savePassword(id: String, secret: String): Boolean {
-        val activity = CurrentActivity.activity ?: return false
-        return runCatching {
-            androidx.credentials.CredentialManager.create(activity)
-                .createCredential(activity, androidx.credentials.CreatePasswordRequest(id, secret))
-            true
-        }.getOrDefault(false)
-    }
-
     private val receivers = linkedMapOf(
         "dday" to ("전역 D-day" to DdayWidgetReceiver::class.java),
         "missyou" to ("보고싶어" to MissYouWidgetReceiver::class.java),
@@ -51,12 +41,6 @@ class AndroidPlatformActions(private val context: Context) : PlatformActions {
     override fun requestPinWidget(kind: String): Boolean {
         val target = receivers[kind]?.second ?: return false
         return AppWidgetManager.getInstance(context).requestPinAppWidget(ComponentName(context, target), null, null)
-    }
-
-    override val keySyncName: String get() = "Google 계정 백업"
-
-    override suspend fun deleteSyncedBackupKey() {
-        com.sadturtleman.flowershoes.app.backup.BlockStoreKeySync(context).delete()
     }
 
     /** BIOMETRIC_STRONG or DEVICE_CREDENTIAL — 지문 · 얼굴이 없으면 PIN · 패턴으로. */

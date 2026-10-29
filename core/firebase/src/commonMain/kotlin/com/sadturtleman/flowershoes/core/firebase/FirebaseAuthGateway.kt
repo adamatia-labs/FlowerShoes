@@ -9,7 +9,6 @@ import dev.gitlive.firebase.auth.GoogleAuthProvider
 import dev.gitlive.firebase.auth.OAuthProvider
 import dev.gitlive.firebase.auth.auth
 import dev.gitlive.firebase.functions.functions
-import dev.gitlive.firebase.storage.storage
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.Serializable
@@ -48,7 +47,6 @@ interface SocialSignInUi {
  */
 class FirebaseAuthGateway(
     private val ui: SocialSignInUi,
-    private val hasBackup: suspend (uid: String) -> Boolean,
     private val region: String = "asia-northeast3",
 ) : AuthGateway {
 
@@ -82,7 +80,7 @@ class FirebaseAuthGateway(
                 Firebase.auth.signInWithCredential(GoogleAuthProvider.credential(idToken, null)).user?.uid
             }
         } ?: return SignInResult.Failed("로그인하지 못했어요")
-        SignInResult.Success(uid, provider, hasBackup = runCatching { hasBackup(uid) }.getOrDefault(false))
+        SignInResult.Success(uid, provider)
     } catch (e: ProviderFailed) {
         SignInResult.Failed(e.message ?: "로그인하지 못했어요")
     } catch (e: Exception) {
@@ -108,7 +106,7 @@ class FirebaseAuthGateway(
             AuthProvider.KAKAO -> return SignInResult.Failed("카카오는 연결할 수 없어요")
         }
         user.linkWithCredential(credential)
-        SignInResult.Success(user.uid, provider, hasBackup = false)
+        SignInResult.Success(user.uid, provider)
     } catch (e: ProviderFailed) {
         SignInResult.Failed(e.message ?: "연결하지 못했어요")
     } catch (e: Exception) {
@@ -127,10 +125,6 @@ class FirebaseAuthGateway(
 /** 연결 실패 문구: 다른 꽃신 계정이 이미 쓰는 Apple · Google 이면 그렇게 알린다. */
 fun linkError(e: Exception): String =
     if (e.message.orEmpty().contains("already", ignoreCase = true)) "이미 다른 꽃신 계정에 연결된 계정이에요" else "연결하지 못했어요: ${e.message}"
-
-/** 로그인 직후 "백업에서 복원하기"를 보여 줄지: Storage 에 manifest 가 있는지만 본다(내용은 백업 키 없이 못 연다). */
-suspend fun hasCloudBackup(uid: String): Boolean =
-    Firebase.storage.reference.child("backups/$uid/manifests").listAll().items.isNotEmpty()
 
 /** Firebase 가 초기화됐는지(iOS: GoogleService-Info.plist 가 있어 Swift 가 configure 했는지). */
 fun firebaseConfigured(): Boolean = runCatching { Firebase.app }.isSuccess

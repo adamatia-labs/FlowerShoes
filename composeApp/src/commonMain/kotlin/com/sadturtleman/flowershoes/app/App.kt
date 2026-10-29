@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -61,7 +60,6 @@ import org.koin.compose.koinInject
 import com.sadturtleman.flowershoes.feature.settings.NoPlatformActions
 import com.sadturtleman.flowershoes.feature.settings.PlatformActions
 import com.sadturtleman.flowershoes.feature.settings.SettingsRoute
-import com.sadturtleman.flowershoes.feature.settings.RestoreRoute
 
 /** 하단 탭. 화면 이동은 여기서만 정한다 — feature 끼리는 서로 모른다. */
 enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.designsystem.KkIcons) {
@@ -72,7 +70,7 @@ enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.de
 }
 
 /** 탭 밖으로 덮어 띄우는 화면. */
-private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, RESTORE, COMPOSE, DRAW_FOR_LETTER, SETTINGS, LEAVE }
+private enum class Overlay { PAIRING, HAND_OVER, RECEIVE, COMPOSE, DRAW_FOR_LETTER, SETTINGS, LEAVE }
 
 @Composable
 fun KkotsinApp() {
@@ -123,33 +121,17 @@ private fun OnboardingFlow() {
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
     val settings = koinInject<DeviceSettings>()
     val scope = rememberCoroutineScope()
-    // 복원 · 연결 화면에서 뒤로 가면 온보딩으로(복원을 원하지 않으면 약관부터 새로 시작).
+    // 연결 화면에서 뒤로 가면 온보딩으로.
     BackHandler(enabled = overlay != null) { overlay = null }
     KkPageFlip(overlay, pageKey = { it ?: "onboarding" }, isForward = ::overlayForward) { shown ->
     when (shown) {
         null -> OnboardingRoute(
             // 온보딩 완료는 DeviceSettings.onboarded 로 바뀌어 셸이 알아서 바뀐다.
             onFinished = {},
-            onOpenRestore = { overlay = Overlay.RESTORE },
             onOpenPairing = { overlay = Overlay.PAIRING },
             connect = { onAdvance -> InviteConnect(onAdvance) },
         )
         Overlay.PAIRING -> PairingRoute(onDone = { scope.launch { settings.setOnboarded() } }, onBack = { overlay = null })
-        Overlay.RECEIVE -> PairingRoute(onDone = { overlay = null }, onBack = { overlay = Overlay.RESTORE }, mode = com.sadturtleman.flowershoes.feature.pairing.PairingMode.RECEIVE)
-        Overlay.RESTORE -> {
-            val onboarding = koinViewModel<com.sadturtleman.flowershoes.feature.onboarding.OnboardingViewModel>()
-            RestoreRoute(
-                onBack = { overlay = null },
-                onStartFresh = { overlay = null },
-                // 복구 코드도 없으면 연인 폰에서 넘겨받는다(6 · 재연결).
-                onRelink = { overlay = Overlay.RECEIVE },
-                onOtherAccount = {
-                    onboarding.onIntent(com.sadturtleman.flowershoes.feature.onboarding.OnboardingIntent.SignOut)
-                    overlay = null
-                },
-                platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
-            )
-        }
         else -> ComingSoon(shown!!.title(), onBack = { overlay = null })
     }
     }
@@ -259,15 +241,11 @@ private fun MainShell() {
         Overlay.RECEIVE -> {
             PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, mode = com.sadturtleman.flowershoes.feature.pairing.PairingMode.RECEIVE)
         }
-        Overlay.RESTORE -> {
-            RestoreRoute(onBack = { overlay = null })
-        }
         Overlay.SETTINGS -> {
             SettingsRoute(
                 platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
                 onOpenPairing = { overlay = Overlay.PAIRING },
                 onHandOver = { overlay = Overlay.HAND_OVER },
-                onRestore = { overlay = Overlay.RESTORE },
                 onBack = { overlay = null; settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN },
                 startAt = settingsStart,
                 photoPicker = { rememberPhotoPicker(it) },
@@ -287,7 +265,6 @@ private fun MainShell() {
         }
         null -> {
         val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
-        val restoreState = scheduler?.restoreState?.collectAsState()?.value
         val settingsVm = koinViewModel<com.sadturtleman.flowershoes.feature.settings.SettingsViewModel>()
         val settingsState by settingsVm.state.collectAsState()
         // 상대가 연결을 해제했다(Figma 6 · 연결 해제 / 상대 폰): 사본을 어떻게 할지 고를 때까지 다른 화면을 막는다.
@@ -316,22 +293,7 @@ private fun MainShell() {
             )
             return@KkPageFlip
         }
-        // 복원 뒤 다시 시작했을 때 한 번: "거의 다 됐어요"(복원 · 지수 폰 확인 대기). 둘러보기를 누르면 배너만 남는다.
-        var waitingSeen by rememberSaveable { mutableStateOf(false) }
-        if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner && !waitingSeen) {
-            com.sadturtleman.flowershoes.feature.settings.RestoreWaitingScreen(partnerName = settingsState.partnerName, onBrowse = { waitingSeen = true })
-            return@KkPageFlip
-        }
         Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding()) {
-            if (restoreState == com.sadturtleman.flowershoes.core.data.sync.RestoreRotationState.WaitingForPartner) {
-                // 복원 뒤 기기 교체(7-3-A): 상대 폰이 동기화하면 자동으로 확인된다.
-                Text(
-                    "연인 폰에서 새 폰을 확인하는 중이에요. 그동안 보낸 것은 확인이 끝나면 전달돼요.",
-                    style = KkTheme.type.body,
-                    color = c.sub,
-                    modifier = Modifier.fillMaxWidth().background(c.surface).padding(horizontal = KkSpacing.lg, vertical = KkSpacing.sm),
-                )
-            }
             Box(Modifier.weight(1f)) {
                 Crossfade(tab, animationSpec = tween(TAB_FADE_MS), label = "tab") { t ->
                 when (t) {
@@ -390,7 +352,6 @@ private fun overlayForward(from: Overlay?, to: Overlay?): Boolean = when {
     from == null -> true
     from == Overlay.DRAW_FOR_LETTER && to == Overlay.COMPOSE -> false
     from == Overlay.LEAVE && to == Overlay.SETTINGS -> false
-    from == Overlay.RECEIVE && to == Overlay.RESTORE -> false
     else -> true
 }
 
@@ -420,7 +381,4 @@ private fun ComingSoon(title: String, onBack: (() -> Unit)?) {
     }
 }
 
-private fun Overlay.title() = when (this) {
-    Overlay.RESTORE -> "백업에서 복원하기"
-    else -> "연인과 연결하기"
-}
+private fun Overlay.title() = "연인과 연결하기"

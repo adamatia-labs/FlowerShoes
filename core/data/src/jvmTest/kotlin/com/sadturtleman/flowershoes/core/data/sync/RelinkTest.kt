@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 /**
- * 상대 폰이 넘겨주기(7-3-B): 민준이 폰을 잃어버렸고 백업도 복구 코드도 없다.
+ * 상대 폰이 넘겨주기(7-3-B): 민준이 폰을 잃어버렸다.
  * 지수 폰이 코드를 만들고, 새 폰(같은 계정)이 입력해 SAS 를 맞춘 뒤 지수 폰이 공유 데이터 전체를 넘겨준다.
  */
 class RelinkTest {

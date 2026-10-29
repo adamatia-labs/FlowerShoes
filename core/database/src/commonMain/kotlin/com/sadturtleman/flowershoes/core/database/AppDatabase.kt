@@ -13,7 +13,6 @@ import kotlinx.coroutines.IO
  * 꽃신 로컬 DB. 각자 폰의 이 DB 가 원본이다(Local-first).
  *
  * 파일은 OS 백업에서 뺀다 — 기기 키는 백업되지 않으므로 DB 만 복원되면 "데이터는 있는데 열쇠가 없는" 상태가 된다.
- * 복원은 앱 자체 암호화 백업(:core:backup)으로만 한다.
  */
 @Database(
     entities = [
