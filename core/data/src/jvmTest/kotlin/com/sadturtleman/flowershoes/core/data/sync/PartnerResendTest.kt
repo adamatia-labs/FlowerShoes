@@ -156,10 +156,10 @@ class PartnerResendTest {
         val photoLetter = jisu.letters.newLetter(listOf(LetterBlock.Text("면회 날"), LetterBlock.Photo(letterPhotoId)), paper = "rose", font = "nanum")
         jisu.letters.send(photoLetter, emptyList())
 
-        // 휴가: 받은 휴가 하나와 그 휴가로 잡은 캘린더 일정
+        // 휴가: 받은 휴가 하나와 휴가 일정
         val grant = LeaveGrant("g1", LeaveKind.REWARD, "포상휴가 · 사격 만발", 4, LocalDate(2026, 9, 1), Clock.System.now(), 0, "")
         minjun.leaves.save(grant)
-        minjun.leaves.use(grant, LocalDate(2026, 11, 10), LocalDate(2026, 11, 13), notify = true)
+        minjun.leaves.use(LocalDate(2026, 11, 10), LocalDate(2026, 11, 13), notify = true)
 
         // 만남 일정: 지수가 메모와 자기 한 줄을 쓰고, 민준이 만남 사진과 자기 한 줄을 더한다.
         val meet = Event(
@@ -213,13 +213,14 @@ class PartnerResendTest {
         assertEquals(mapOf("jisu" to MeetNote("벌써 보고 싶다", 1_000), "minjun" to MeetNote("또 와 줘", 2_000)), e1.meetNotes)
         assertEquals(listOf(meetPhotoId), e1.photoIds)
 
-        // 휴가: 받은 휴가와 사용 일정
+        // 휴가: 받은 휴가와 휴가 일정 → 같은 풀(육군 24 + 포상 4, 4일 사용)
         val grants = b.leaves.observeGrants().first()
         assertEquals(listOf("포상휴가 · 사격 만발"), grants.map { it.name })
-        assertEquals(listOf("g1"), b.leaves.observeUses().first().map { it.leaveGrantId })
+        assertEquals(listOf(4), b.leaves.observeUses().first().map { it.dayCount })
+        assertEquals(24, b.leaves.observePool().first().remaining)
 
-        // 기념일 · 프로필 · 복무
-        assertEquals("2024-05-18", b.db.coupleDao().get()?.anniversary)
+        // 기념일(일정) · 프로필 · 복무
+        assertEquals(LocalDate(2024, 5, 18), b.profile.observeAnniversary().first())
         val users = b.db.userDao().all().associateBy { it.id }
         assertEquals("지수" to "GOMSIN", users.getValue("jisu").let { it.nickname to it.role })
         assertEquals("민준" to "SOLDIER", users.getValue("minjun").let { it.nickname to it.role })

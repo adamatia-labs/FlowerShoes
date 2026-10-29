@@ -133,12 +133,6 @@ class InboxApplier(
                     db.userDao().upsert(UserEntity(p.userId, p.role, p.nickname, p.lamport, p.deviceName.ifBlank { local?.deviceName }, p.perks.joinToString(",").ifBlank { null }))
                 }
             }
-            is OpPayload.AnniversaryPut -> {
-                val couple = db.coupleDao().get() ?: return
-                if (p.lamport > couple.anniversaryLamport) {
-                    db.coupleDao().upsert(couple.copy(anniversary = p.date, anniversaryLamport = p.lamport))
-                }
-            }
             is OpPayload.Delete -> delete(p)
             is OpPayload.Snapshot -> p.items.forEach { applyPayload(it) }
         }

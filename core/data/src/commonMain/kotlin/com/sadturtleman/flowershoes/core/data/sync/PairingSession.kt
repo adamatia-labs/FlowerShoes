@@ -155,11 +155,8 @@ class PairingSession(
         }
         val keys = myKeys()
         val now = clock.now().toEpochMilliseconds()
-        val solo = db.coupleDao().get()
         db.coupleDao().clear()
-        db.coupleDao().upsert(
-            CoupleEntity(coupleId, identity.userId, p.uid, keyEpoch = 1, linkedAtMs = now, anniversary = solo?.anniversary, anniversaryLamport = solo?.anniversaryLamport ?: 0),
-        )
+        db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, p.uid, keyEpoch = 1, linkedAtMs = now))
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
         db.deviceDao().upsert(DeviceEntity(p.deviceId, p.uid, p.uid, p.keys.signPub, p.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         return PairingState.Linked(coupleId)

@@ -41,15 +41,15 @@ fun ServiceEntity.toModel() = Service(
 )
 
 fun Event.toEntity() = EventEntity(
-    id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(), leaveGrantId,
+    id, type.name, title, start.toString(), end.toString(), alarm, updatedAt.ms(), lamport, lastWriterDevice, deletedAt?.ms(),
     photoIds.takeIf { it.isNotEmpty() }?.joinToString(","), memo.ifBlank { null },
-    meetNotes.takeIf { it.isNotEmpty() }?.let { letterJson.encodeToString(notesSerializer, it) },
+    meetNotes.takeIf { it.isNotEmpty() }?.let { letterJson.encodeToString(notesSerializer, it) }, repeatYearly,
 )
 fun EventEntity.toModel() = Event(
     id, EventType.valueOf(type), title, LocalDateTime.parse(start), LocalDateTime.parse(end), alarm,
-    updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(), leaveGrantId,
+    updatedAtMs.instant(), lamport, lastWriterDevice, deletedAtMs?.instant(),
     photoIds?.split(',')?.filter { it.isNotBlank() }.orEmpty(), memo.orEmpty(),
-    meetNotes?.let { runCatching { letterJson.decodeFromString(notesSerializer, it) }.getOrNull() }.orEmpty(),
+    meetNotes?.let { runCatching { letterJson.decodeFromString(notesSerializer, it) }.getOrNull() }.orEmpty(), repeatYearly,
 )
 
 fun LeaveGrant.toEntity() = LeaveGrantEntity(

@@ -104,8 +104,15 @@ interface MissYouDao {
 
 @Dao
 interface EventDao {
-    @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND `end` >= :from AND start <= :to ORDER BY start")
+    /** [from]..[to] 에 걸리는 일정 + 그 전에 시작한 매년 반복 기념일(해마다 옮겨 놓는 건 :core:data). */
+    @Query(
+        "SELECT * FROM event WHERE deletedAtMs IS NULL AND start <= :to AND " +
+            "(`end` >= :from OR (type = 'ANNIVERSARY' AND repeatYearly = 1)) ORDER BY start",
+    )
     fun observeRange(from: String, to: String): Flow<List<EventEntity>>
+
+    @Query("SELECT * FROM event WHERE id = :id AND deletedAtMs IS NULL")
+    fun observe(id: String): Flow<EventEntity?>
 
     @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND start >= :from ORDER BY start LIMIT 1")
     fun observeNext(from: String): Flow<EventEntity?>
@@ -131,9 +138,9 @@ interface EventDao {
     @Query("DELETE FROM event WHERE deletedAtMs IS NOT NULL AND deletedAtMs < :beforeMs")
     suspend fun purgeTombstones(beforeMs: Long)
 
-    /** 받은 휴가에서 쓴 날(휴가 관리 · 상세). */
-    @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND leaveGrantId IS NOT NULL ORDER BY start")
-    fun observeLeaveUses(): Flow<List<EventEntity>>
+    /** 휴가 일정 = 휴가 사용(휴가 풀의 사용 일수). */
+    @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND type = 'VACATION' ORDER BY start")
+    fun observeVacations(): Flow<List<EventEntity>>
 }
 
 @Dao

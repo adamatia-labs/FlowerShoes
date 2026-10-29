@@ -42,6 +42,7 @@ class SyncRoundTripTest {
         val letters = LetterRepository(db, writer, identity, clock)
         val missYou = MissYouRepository(db, writer, identity, clock)
         val leave = LeaveRepository(db, writer, identity, clock)
+        val profile = ProfileRepository(db, writer, identity, clock = clock)
         val inbox = InboxApplier(db, clock)
         val stream = StreamId(deviceId, StreamId.Channel.APP)
 
@@ -152,27 +153,53 @@ class SyncRoundTripTest {
     }
 
     @Test
-    fun `받은 휴가와 쓴 날이 상대에게 가고 지우면 tombstone 으로 간다`() = runTest {
+    fun `받은 휴가와 휴가 일정이 상대에게 가고 상대 폰의 휴가 풀이 같아진다`() = runTest {
         val grant = com.sadturtleman.flowershoes.core.model.LeaveGrant(
             "g1", com.sadturtleman.flowershoes.core.model.LeaveKind.REWARD, "포상휴가 · 사격 만발", 4,
             kotlinx.datetime.LocalDate.parse("2026-10-02"), clock.now, 0, "",
         )
+        a.profile.saveService(com.sadturtleman.flowershoes.core.model.Service("minjun", com.sadturtleman.flowershoes.core.model.Branch.AIR_FORCE, kotlinx.datetime.LocalDate.parse("2026-03-02"), 2))
         a.leave.save(grant)
-        a.leave.use(grant, kotlinx.datetime.LocalDate.parse("2026-11-14"), kotlinx.datetime.LocalDate.parse("2026-11-15"), notify = false)
-        // 받은 휴가 · 알리지 않은 사용 등록은 조용한 종류로 나간다.
-        assertEquals(listOf("profile", "profile"), a.log().map { it.kind })
+        a.leave.use(kotlinx.datetime.LocalDate.parse("2026-11-14"), kotlinx.datetime.LocalDate.parse("2026-11-15"), notify = false)
+        // 복무 · 받은 휴가 · 알리지 않은 사용 등록은 조용한 종류로 나간다.
+        assertEquals(listOf("profile", "profile", "profile"), a.log().map { it.kind })
         deliver(a, b)
 
         val mirrored = b.leave.observeGrants().first().single()
         assertEquals("포상휴가", mirrored.title)
         assertEquals("포상휴가 · 사격 만발 · 2026.10.02에 받음", mirrored.subtitle)
         val use = b.leave.observeUses().first().single()
-        assertEquals("g1", use.leaveGrantId)
+        assertEquals(EventType.VACATION, use.type)
         assertEquals(2, use.dayCount)
+        val pool = b.leave.observePool().first()
+        assertEquals(32, pool.total) // 공군 28 + 포상 4
+        assertEquals(30, pool.remaining)
 
         a.leave.delete("g1")
         deliver(a, b, a.log().takeLast(1))
         assertEquals(emptyList(), b.leave.observeGrants().first())
+        assertEquals(26, b.leave.observePool().first().remaining)
+    }
+
+    @Test
+    fun `커플 기념일은 매년 반복 기념일 일정 하나로 상대에게 가고 그 해 캘린더에 놓인다`() = runTest {
+        a.profile.setAnniversary(kotlinx.datetime.LocalDate.parse("2024-05-18"))
+        deliver(a, b)
+
+        assertEquals(kotlinx.datetime.LocalDate.parse("2024-05-18"), b.profile.observeAnniversary().first())
+        val inMay = b.events.observeRange(kotlinx.datetime.LocalDate.parse("2026-05-01"), kotlinx.datetime.LocalDate.parse("2026-05-31")).first()
+        val anniv = inMay.single()
+        assertEquals(EventType.ANNIVERSARY, anniv.type)
+        assertEquals(kotlinx.datetime.LocalDate.parse("2026-05-18"), anniv.start.date)
+
+        // 둘이 고치면 늦게 쓴 쪽 하나만 남는다(같은 일정 id · LWW).
+        b.profile.setAnniversary(kotlinx.datetime.LocalDate.parse("2024-05-19"))
+        deliver(b, a)
+        assertEquals(kotlinx.datetime.LocalDate.parse("2024-05-19"), a.profile.observeAnniversary().first())
+
+        a.profile.setAnniversary(null)
+        deliver(a, b, a.log().takeLast(1))
+        assertNull(b.profile.observeAnniversary().first())
     }
 
     @Test

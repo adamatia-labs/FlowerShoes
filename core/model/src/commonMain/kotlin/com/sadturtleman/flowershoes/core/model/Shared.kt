@@ -1,8 +1,11 @@
 package com.sadturtleman.flowershoes.core.model
 
 import kotlin.time.Instant
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.daysUntil
+import kotlinx.datetime.plus
 import kotlinx.serialization.Serializable
 
 /** 군종. 사회복무요원은 계급이 없다. */
@@ -46,7 +49,7 @@ data class MissYou(
 )
 
 @Serializable
-enum class EventType { VACATION, OVERNIGHT, VISIT, TRAINING, DUTY, OTHER }
+enum class EventType { VACATION, OVERNIGHT, VISIT, TRAINING, DUTY, ANNIVERSARY, OTHER }
 
 /**
  * 일정. 둘 다 고치는 공유 데이터라 행 단위 LWW(lamport, lastWriterDevice)로 맞춘다.
@@ -64,8 +67,6 @@ data class Event(
     val lamport: Long,
     val lastWriterDevice: String,
     val deletedAt: Instant? = null,
-    /** 받은 휴가에서 쓴 날(휴가 › 사용 등록). 그 휴가의 남은 일수에서 빠진다. */
-    val leaveGrantId: String? = null,
     /** 만남 사진(추억 › 만남 상세, 둘이 합쳐 최대 10). 첨부 id — 본문은 편지 사진처럼 blob 으로 간다. */
     val photoIds: List<String> = emptyList(),
     /** 메모(일정 추가 › 메모). */
@@ -75,7 +76,34 @@ data class Event(
      * — 둘이 동시에 같은 일정을 고쳐도 상대의 줄을 덮지 않게 일정 LWW 와 따로 합친다([mergeMeetNotes]).
      */
     val meetNotes: Map<String, MeetNote> = emptyMap(),
-)
+    /** 매년 반복(일정 추가 › 기념일, 기본 켬). [EventType.ANNIVERSARY] 에만 뜻이 있다 — [repeats]. */
+    val repeatYearly: Boolean = true,
+) {
+    /** 해마다 같은 날 다시 놓이는 일정인지. */
+    val repeats: Boolean get() = type == EventType.ANNIVERSARY && repeatYearly
+
+    /** 차지하는 날 수(시작 · 끝 · 주말 포함). 휴가 일정이면 이만큼 휴가를 쓴다. */
+    val dayCount: Int get() = start.date.daysUntil(end.date) + 1
+
+    /**
+     * [from]..[to] 에 걸리는 이 일정. 매년 반복이면 해마다 옮긴 사본(같은 id, 원래 해 이후만), 아니면 겹칠 때 자기 자신.
+     * 2월 29일은 평년에 2월 28일로 놓인다.
+     */
+    fun occurrencesIn(from: LocalDate, to: LocalDate): List<Event> {
+        if (!repeats) return if (end.date >= from && start.date <= to) listOf(this) else emptyList()
+        return (maxOf(start.year, from.year - 1)..to.year).mapNotNull { year ->
+            val shift = DatePeriod(years = year - start.year)
+            val s = LocalDateTime(start.date.plus(shift), start.time)
+            val e = LocalDateTime(end.date.plus(shift), end.time)
+            if (e.date >= from && s.date <= to) copy(start = s, end = e) else null
+        }
+    }
+
+    companion object {
+        /** 커플 기념일(설정 › 기념일 · 함께한 날 · 100일 알림). 두 폰이 같은 id 로 쓰니 LWW 로 하나만 남는다. */
+        const val COUPLE_ANNIVERSARY_ID = "anniversary-couple"
+    }
+}
 
 /** 만남 한 줄 메모(40자). [at] 은 쓴 시각(ms) — 줄 단위 LWW. */
 @Serializable
@@ -87,15 +115,15 @@ data class MeetNote(val text: String, val at: Long) {
 fun mergeMeetNotes(a: Map<String, MeetNote>, b: Map<String, MeetNote>): Map<String, MeetNote> =
     (a.keys + b.keys).associateWith { k -> listOfNotNull(a[k], b[k]).maxBy { it.at } }
 
-/** 받은 휴가 종류(휴가 › 추가). */
+/** 받은 휴가 종류(휴가 › 추가). 정기휴가는 군종으로 계산하는 값이라 여기 없다. */
 @Serializable
 enum class LeaveKind(val label: String) {
-    REGULAR("정기휴가"), REWARD("포상휴가"), CONSOLATION("위로휴가"), PETITION("청원휴가"), OTHER("기타"),
+    REWARD("포상휴가"), CONSOLATION("위로휴가"), PETITION("청원휴가"), OTHER("기타"),
 }
 
 /**
- * 받은 휴가 한 건(행정반 방식: 받은 휴가 단위로 관리). 둘 다 고치는 공유 데이터 — 일정처럼 행 단위 LWW · tombstone.
- * 쓴 날은 [Event.leaveGrantId] 로 이 휴가를 가리키는 캘린더 휴가 일정이다.
+ * 받은 휴가 한 건. 휴가 풀의 전체에 더해질 뿐 출처별로 따로 쓰지 않는다(쓸 때는 기간만 고른다).
+ * 둘 다 고치는 공유 데이터 — 일정처럼 행 단위 LWW · tombstone.
  */
 @Serializable
 data class LeaveGrant(
