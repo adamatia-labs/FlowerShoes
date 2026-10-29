@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.core.notification
 
 import kotlin.time.Duration.Companion.minutes
+import com.sadturtleman.flowershoes.core.data.ExportHistory
 import com.sadturtleman.flowershoes.core.data.SEOUL
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Event
@@ -38,6 +39,7 @@ data class LocalNotification(
  * - 일정 전날 20:00(알림을 켠 일정만). 매년 반복 기념일은 올해 · 내년의 그날 전날.
  * - 기념일: 전역일 · 입대 100일 단위 · 커플 기념일 일정의 100일 단위 · 매년 반복 기념일의 그날 아침.
  * - 그날의 한 줄: 면회 · 외박 · 휴가가 끝난 다음 날 10:00. 두 폰이 각자 띄우고, 이미 쓴 사람의 폰은 띄우지 않는다.
+ * - 내 기록 받아 두기: 마지막으로 내보낸 날(없으면 처음 쓴 날)부터 3개월마다 10:00. 지나친 알림은 다음 3개월 째로.
  *
  * iOS 는 앱당 로컬 알림 64개가 한도다. 가까운 [budget](기본 50)개만 예약하고 나머지는 앱 실행 · 백그라운드 새로고침 때
  * 다시 채운다. 14개는 여유분.
@@ -58,6 +60,8 @@ class NotificationPlanner(private val budget: Int = 50) {
         anniversaryHundreds: Boolean = true,
         anniversaryYears: Boolean = true,
         dayLineFor: String? = null,
+        /** 내 기록 내보내기 기록. null 이면(알림을 껐으면) 권유하지 않는다. */
+        exports: ExportHistory? = null,
     ): List<LocalNotification> {
         val out = mutableListOf<LocalNotification>()
         val today = now.toLocalDate()
@@ -151,6 +155,20 @@ class NotificationPlanner(private val budget: Int = 50) {
             }
         }
 
+        exports?.let { h ->
+            val since = (h.lastExportAtMs ?: h.firstRunAtMs)?.let { Instant.fromEpochMilliseconds(it).toLocalDate() } ?: return@let
+            fun at(months: Int) = LocalDateTime(since.plus(DatePeriod(months = months)), LocalTime(10, 0)).toInstant(SEOUL)
+            var months = EXPORT_EVERY_MONTHS
+            while (at(months) <= now) months += EXPORT_EVERY_MONTHS
+            out += LocalNotification(
+                id = "export-reminder",
+                at = at(months),
+                title = "내 기록 받아 두기",
+                body = if (h.lastExportAtMs != null) "마지막으로 내보낸 지 ${months}개월이 지났어요" else "아직 내 기록을 내보낸 적이 없어요",
+                deepLink = "kkotsin://settings/device",
+            )
+        }
+
         return out.sortedBy { it.at }.distinctBy { it.id }.take(budget)
     }
 
@@ -161,6 +179,8 @@ class NotificationPlanner(private val budget: Int = 50) {
     private companion object {
         /** 이보다 가까운 미래의 편지는 두 폰 시계 차이로 본다. */
         val CLOCK_SKEW = 2.minutes
+
+        const val EXPORT_EVERY_MONTHS = 3
     }
 }
 

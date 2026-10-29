@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sadturtleman.flowershoes.core.data.sync.PendingInvite
 import com.sadturtleman.flowershoes.core.data.sync.PendingInviteStore
@@ -47,6 +48,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         store.edit { p ->
             if (p[USER_ID] == null) p[USER_ID] = "local:${Uuid.random()}"
             if (p[DEVICE_ID] == null) p[DEVICE_ID] = Uuid.random().toString()
+            if (p[FIRST_RUN] == null) p[FIRST_RUN] = kotlin.time.Clock.System.now().toEpochMilliseconds()
         }
         return state.first()
     }
@@ -175,6 +177,12 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         }
     }
 
+    /** 내 기록 내보내기 기록(3개월마다 알림의 기준). 끄면 알림 설정이 null 로 거른다. */
+    val exportHistory: Flow<ExportHistory> = store.data.map { ExportHistory(it[FIRST_RUN], it[LAST_EXPORT]) }
+
+    /** 내 기록 ZIP 을 만들어 공유 시트로 넘겼다. */
+    suspend fun markExported(atMs: Long) = store.edit { it[LAST_EXPORT] = atMs }
+
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
     suspend fun reset() = store.edit { it.clear() }
 
@@ -199,9 +207,14 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val SOLO_ARRIVAL = intPreferencesKey("solo_arrival_watch")
         const val DAYLINE_KEEP = 20
         val BOOK_PROMO = stringPreferencesKey("book_promo")
+        val FIRST_RUN = longPreferencesKey("first_run_at")
+        val LAST_EXPORT = longPreferencesKey("last_export_at")
         const val PROMO_NEVER = "NEVER"
     }
 }
+
+/** 이 폰을 처음 쓴 때 · 마지막으로 내 기록을 내보낸 때(ms). 내보낸 적이 없으면 처음 쓴 때부터 센다. */
+data class ExportHistory(val firstRunAtMs: Long? = null, val lastExportAtMs: Long? = null)
 
 /** 홈의 그날의 한 줄 카드에서 닫은 일정 id. */
 interface DayLineCards {

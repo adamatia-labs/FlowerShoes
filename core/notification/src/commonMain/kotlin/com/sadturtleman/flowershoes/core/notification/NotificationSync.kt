@@ -31,18 +31,21 @@ class NotificationSync(
     /** 알림 설정: 끈 종류(일정 전날 · 기념일 · 예약 편지)는 예약하지 않는다. */
     private val prefs: kotlinx.coroutines.flow.Flow<com.sadturtleman.flowershoes.core.data.NotificationPrefs> =
         kotlinx.coroutines.flow.flowOf(com.sadturtleman.flowershoes.core.data.NotificationPrefs()),
+    /** 내 기록 내보내기 기록: 3개월마다 기록 받아 두기 알림의 기준. */
+    private val exports: kotlinx.coroutines.flow.Flow<com.sadturtleman.flowershoes.core.data.ExportHistory> =
+        kotlinx.coroutines.flow.flowOf(com.sadturtleman.flowershoes.core.data.ExportHistory()),
 ) {
     @OptIn(FlowPreview::class)
     fun start(scope: CoroutineScope): Job = scope.launch {
         val today = clock.today()
         combine(
-            combine(db.letterDao().observeAll(), prefs) { l, p -> l to p },
+            combine(db.letterDao().observeAll(), prefs, exports) { l, p, e -> Triple(l, p, e) },
             // 매년 반복 기념일은 원래 날 그대로(planner 가 해마다 옮긴다). 어제 끝난 만남은 오늘 10시 그날의 한 줄 알림.
             db.eventDao().observeRange("${today.minus(DatePeriod(days = 1))}T00:00", "${today.plus(DatePeriod(years = 1))}T23:59"),
             profile.observeTimelines(),
             db.coupleDao().observe(),
             db.userDao().observeAll(),
-        ) { (letters, p), upcoming, timelines, couple, users ->
+        ) { (letters, p, history), upcoming, timelines, couple, users ->
             val partner = couple?.partnerUserId.orEmpty()
             planner.plan(
                 now = clock.now(),
@@ -56,6 +59,7 @@ class NotificationSync(
                 anniversaryYears = p.anniversary && p.anniversaryYear,
                 // 그날의 한 줄은 일정 알림을 따른다.
                 dayLineFor = identity.userId.takeIf { p.eventEve },
+                exports = history.takeIf { p.exportReminder },
             )
         }
             .distinctUntilChanged()

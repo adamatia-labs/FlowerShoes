@@ -228,6 +228,11 @@ private fun MainShell() {
                 inviteToken = null
                 overlay = Overlay.PAIRING
             }
+            DeepLink.DeviceRecovery -> {
+                letters.onIntent(LetterIntent.Close)
+                settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.DEVICE
+                overlay = Overlay.SETTINGS
+            }
             is DeepLink.Invite -> {
                 inviteToken = l.token
                 overlay = Overlay.PAIRING

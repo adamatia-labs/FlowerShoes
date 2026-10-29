@@ -22,6 +22,8 @@ data class NotificationPrefs(
     /** 보고싶어를 몇 번마다 한 번 알릴지(1 = 매번). */
     val missYouBundle: Int = 10,
     val hidePreview: Boolean = false,
+    /** 3개월마다 기록 받아 두기(설정 › 기기 바꾸기 · 복구). 이 폰이 예약하는 로컬 알림. */
+    val exportReminder: Boolean = true,
 ) {
     val quietEnabled: Boolean get() = quietStart != quietEnd
 }

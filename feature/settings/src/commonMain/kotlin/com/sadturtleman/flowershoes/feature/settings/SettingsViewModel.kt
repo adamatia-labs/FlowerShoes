@@ -149,12 +149,18 @@ class SettingsViewModel(
     /** 알림 받기(설정 › 앱): Figma 최종 정리는 켜기/끄기 하나 — 받을 종류를 한꺼번에 바꾼다. */
     fun setAllNotify(on: Boolean, platform: PlatformActions) {
         val n = state.value.notify
-        setNotify(n.copy(letters = on, missYou = on, status = on, eventEve = on, anniversary = on), platform)
+        setNotify(n.copy(letters = on, missYou = on, status = on, eventEve = on, anniversary = on, exportReminder = on), platform)
     }
 
     fun setAnniversaryAlerts(hundreds: Boolean, years: Boolean, platform: PlatformActions) {
         setNotify(state.value.notify.copy(anniversary100 = hundreds, anniversaryYear = years), platform)
     }
+
+    /** 3개월마다 기록 받아 두기(설정 › 기기 바꾸기 · 복구). 이 폰이 예약하는 로컬 알림이다. */
+    fun setExportReminder(on: Boolean, platform: PlatformActions) = setNotify(state.value.notify.copy(exportReminder = on), platform)
+
+    /** 내 기록 ZIP 을 공유 시트로 넘겼다: 3개월 알림을 오늘부터 다시 센다. */
+    fun markExported() = viewModelScope.launch { settings.markExported(clock.now().toEpochMilliseconds()) }
 
     fun setMarketing(on: Boolean) = viewModelScope.launch { settings.setMarketingConsent(on) }
 
