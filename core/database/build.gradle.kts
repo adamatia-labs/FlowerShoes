@@ -34,13 +34,20 @@ kotlin {
         }
         getByName("jvmTest").dependencies {
             implementation(kotlin("test"))
+            implementation(libs.junit)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.androidx.room.testing)
         }
     }
 }
 
 room {
     schemaDirectory("$projectDir/schemas")
+}
+
+// 마이그레이션 테스트가 내보낸 스키마 JSON 을 읽는다.
+tasks.withType<Test>().configureEach {
+    systemProperty("room.schemaDirectory", "$projectDir/schemas")
 }
 
 dependencies {

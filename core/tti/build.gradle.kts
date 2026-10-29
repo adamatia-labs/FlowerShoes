@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.androidx.room)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
 }
@@ -43,12 +44,22 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.junit)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.androidx.room.testing)
         }
     }
 }
 
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
+// 마이그레이션 테스트가 내보낸 스키마 JSON 을 읽는다.
+tasks.withType<Test>().configureEach {
+    systemProperty("room.schemaDirectory", "$projectDir/schemas")
+}
+
 dependencies {
-    // Room 컴파일러는 타깃마다 따로 돌린다. 계측 DB 라 스키마를 내보내지 않는다(바뀌면 버린다).
+    // Room 컴파일러는 타깃마다 따로 돌린다.
     add("kspAndroid", libs.androidx.room.compiler)
     add("kspJvm", libs.androidx.room.compiler)
     add("kspIosArm64", libs.androidx.room.compiler)
