@@ -157,6 +157,7 @@ class DeviceChangeTest {
         val racing = DeviceChangeApprover(minjun.db, minjun.identity, minjun.vault, cloud.deviceChange("minjun"), minjun.sync, confirmDelay = { cloud.releaseFunctions() })
 
         assertEquals(ApproveResult.Stopped, racing.approve(ask.request))
+        assertNull(minjun.vault.pendingApproval())
         assertEquals(1, minjun.db.coupleDao().get()?.keyEpoch)
         assertEquals("jisu-old", minjun.db.deviceDao().activeFor("jisu")?.id)
         assertIs<DeviceChangeState.Blocked>(b.change.poll())
@@ -167,19 +168,29 @@ class DeviceChangeTest {
     }
 
     @Test
-    fun `승인 확인이 늦으면 다음 동기화가 마무리한다`() = runTest {
+    fun `승인을 보낸 뒤 앱이 꺼져도 다시 켠 상대 폰이 새 키로 마무리한다`() = runTest {
         val b = newPhone()
         b.change.request()
         val ask = assertIs<DeviceChangePrompt.Approve>(minjun.approver.prompts().single())
         cloud.holdFunctions = true
-        val slow = DeviceChangeApprover(minjun.db, minjun.identity, minjun.vault, cloud.deviceChange("minjun"), minjun.sync, confirmDelay = {})
+        val beforeCrash = DeviceChangeApprover(minjun.db, minjun.identity, minjun.vault, cloud.deviceChange("minjun"), minjun.sync, confirmDelay = {})
 
-        assertEquals(ApproveResult.Sent, slow.approve(ask.request))
+        assertEquals(ApproveResult.Sent, beforeCrash.approve(ask.request))
         assertEquals(1, minjun.db.coupleDao().get()?.keyEpoch)
+        // 앱이 꺼진 사이 함수가 새 폰을 활성화했다. 다시 켠 앱: 같은 DB · 보관함, 새 승인자.
         cloud.releaseFunctions()
-        assertTrue(slow.prompts().isEmpty())
+        val afterRestart = DeviceChangeApprover(minjun.db, minjun.identity, minjun.vault, cloud.deviceChange("minjun"), minjun.sync)
+        assertTrue(afterRestart.prompts().isEmpty())
         assertEquals(2, minjun.db.coupleDao().get()?.keyEpoch)
+        assertNull(minjun.vault.pendingApproval())
+
+        // 새 폰과 새 키로 주고받는다.
         assertIs<DeviceChangeState.Linked>(b.change.poll())
+        b.sync.syncOnce()
+        val fromNew = b.letters.newLetter(listOf(LetterBlock.Text("새 폰이야"))).also { b.letters.send(it, emptyList()) }
+        b.sync.syncOnce()
+        minjun.sync.syncOnce()
+        assertTrue(minjun.letters.observeInbox().first().any { it.id == fromNew.id })
     }
 
     @Test

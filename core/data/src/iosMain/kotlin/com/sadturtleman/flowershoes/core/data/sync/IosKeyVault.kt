@@ -60,6 +60,8 @@ class IosKeyVault(
         val boxPub: String? = null,
         val deviceSecret: String? = null,
         val coupleKeys: Map<Int, String> = emptyMap(),
+        /** 기기 교체 승인 중인 새 커플 키(#20). */
+        val pendingApproval: StoredApproval? = null,
     )
 
     private val lock = Mutex()
@@ -101,10 +103,16 @@ class IosKeyVault(
         save(s.copy(coupleKeys = s.coupleKeys.filterKeys { it >= epoch }))
     }
 
+    override suspend fun pendingApproval(): PendingApproval? = lock.withLock { load().pendingApproval?.toModel() }
+
+    override suspend fun putPendingApproval(approval: PendingApproval?) = lock.withLock {
+        save(load().copy(pendingApproval = approval?.let(StoredApproval::of)))
+    }
+
     override suspend fun clearCoupleKeys() = lock.withLock {
         val s = load()
         s.coupleKeys.keys.forEach { delete("coupleKey.$it") }
-        save(s.copy(coupleKeys = emptyMap()))
+        save(s.copy(coupleKeys = emptyMap(), pendingApproval = null))
     }
 
     override suspend fun clearAll() = lock.withLock {
