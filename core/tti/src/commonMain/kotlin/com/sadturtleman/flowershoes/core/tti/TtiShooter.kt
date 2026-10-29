@@ -1,7 +1,7 @@
 package com.sadturtleman.flowershoes.core.tti
 
 /**
- * 완성된 측정을 내보내는 곳. 어디로 보낼지는 앱이 정한다(app 모듈에서 바인딩).
+ * 완성된 측정을 내보내는 곳. 수집 서버가 없어 지금은 [ttiModule] 이 [PrintTtiShooter] 를 꽂는다.
  *
  * IO 디스패처에서 불린다.
  */

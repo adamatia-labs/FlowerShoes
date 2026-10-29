@@ -11,7 +11,7 @@ kotlin {
 
     // 화면 진입 시간(TTI) 계측. 어느 feature 에도 속하지 않고 앱 전체를 가로지른다.
     // 구간 기록 · 쏘기 · Room 저장 · 화면 helper 는 commonMain 이고, 부팅 기준 시계만 플랫폼별이다.
-    // 화면 helper 를 트리에 꽂는 것은 Android 뿐이다(iOS 는 기록기 수명만 잡는다).
+    // 기록기를 조립하고 화면 트리에 꽂는 것은 Android 뿐이다(화면별 TTI 는 Android 만 잰다). iOS 는 컴파일만 된다.
     android {
         namespace = "com.sadturtleman.flowershoes.core.tti"
         compileSdk = libs.versions.compileSdk.get().toInt()
@@ -33,9 +33,9 @@ kotlin {
             api(libs.kotlinx.coroutines.core)
             // 디스패처 한정자. 측정 기록은 전부 IO 에서 돈다.
             implementation(project(":common:di"))
-            // 로컬 저장. 프로세스가 죽어도 남아 있어야 하므로 메모리가 아니라 DB 다.
-            implementation(libs.androidx.room.runtime)
-            implementation(libs.androidx.sqlite.bundled)
+            // 로컬 저장. 프로세스가 죽어도 남아 있어야 하므로 메모리가 아니라 DB 다. 플랫폼 빌더가 Room 타입을 그대로 내보낸다.
+            api(libs.androidx.room.runtime)
+            api(libs.androidx.sqlite.bundled)
             // 그려진 프레임을 잡는 helper 만 Compose 를 쓴다(withFrameNanos · CompositionLocal).
             implementation(compose.runtime)
         }

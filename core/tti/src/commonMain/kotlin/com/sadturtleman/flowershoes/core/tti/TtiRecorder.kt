@@ -5,7 +5,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 /**
  * 화면별 TTI 기록기.
  *
- * 앱 전체에 하나만 있고, 시작은 Application(iOS 는 MainViewController)에서 [init] 으로 연다.
+ * 앱 전체에 하나만 있고, 시작은 Application 에서 [init] 으로 연다(화면별 TTI 는 Android 만 잰다).
  *
  * 모든 함수는 값을 돌려주지 않고 즉시 반환한다 — 실제 기록은 IO 디스패처에서 이어 돈다.
  * 측정하려는 코드(컴포지션 · ViewModel)를 기다리게 만들면 그 대기 시간이 다시 측정값을 오염시킨다.
