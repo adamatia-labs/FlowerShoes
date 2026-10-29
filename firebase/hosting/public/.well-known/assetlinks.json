@@ -1,0 +1,26 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sadturtleman.flowershoes",
+      "sha256_cert_fingerprints": ["TODO_PLAY_APP_SIGNING_SHA256"]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sadturtleman.flowershoes.dev",
+      "sha256_cert_fingerprints": ["TODO_DEV_SIGNING_SHA256"]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sadturtleman.flowershoes.qa",
+      "sha256_cert_fingerprints": ["TODO_QA_SIGNING_SHA256"]
+    }
+  }
+]

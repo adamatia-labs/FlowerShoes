@@ -1,73 +1,83 @@
+@file:OptIn(ExperimentalUnsignedTypes::class)
+
 package com.sadturtleman.flowershoes.core.crypto
 
+import com.ionspin.kotlin.crypto.scalarmult.ScalarMultiplication
+import kotlin.io.encoding.Base64
+
 /**
- * 첫 연결 · 상대 넘겨주기의 확인 코드(SAS).
+ * 첫 연결(초대 링크). 확인 숫자(SAS)는 없다 — "서버가 키를 바꿔치기하지 않는다"는 신뢰를 감수한다(기획서 §4).
  *
- * 순서: 초대받는 쪽이 [commit] 만 올린다 → 초대한 쪽이 공개키를 공개한다 → 초대받는 쪽이 공개키와 nonce 를 공개한다
- * → 초대한 쪽이 [verifyCommitment] 로 확인한다 → 양쪽이 [sas] 를 화면에 띄워 서로 맞는지 본다.
+ * 순서: 보낸 쪽이 공개키를 초대 문서에 둔다 → 받는 쪽이 링크로 그 문서를 읽고 자기 공개키로 수락한다
+ * → 양쪽이 [coupleKey] 로 같은 커플 키(epoch 1)를 얻는다. 커플 키 자체는 서버를 지나지 않는다.
  *
- * 커밋이 없으면 중간의 서버가 상대 키를 본 뒤 SAS 가 같아질 때까지 자기 키를 바꿔 볼 수 있다(6자리 = 100만 가지).
- * 커밋이 있으면 양쪽 키가 서로를 보기 전에 고정되므로 바꿔치기가 들킬 확률이 999,999/1,000,000 이다.
+ * [coupleKey] 는 역할(보낸 쪽 · 받는 쪽)을 모른다 — 공개키 두 쌍만 있으면 어느 기기에서든 같은 값이 나온다.
  */
 object Pairing {
 
-    const val NONCE_BYTES = 32
+    private val COUPLE_KEY_CONTEXT = "kkotsin-pair-v1".encodeToByteArray()
 
-    private val COMMIT_CONTEXT = "kkotsin-commit-v1".encodeToByteArray()
-    private val SAS_CONTEXT = "kkotsin-sas-v1".encodeToByteArray()
+    /** 한 기기의 공개키 두 개. 초대 · 수락 문서에는 [encode] 한 문자열 하나(`pubKey`)로 오간다. */
+    class PublicKeys(val signPub: ByteArray, val boxPub: ByteArray) {
+        /** base64(signPub(32) ‖ boxPub(32)). */
+        fun encode(): String = Base64.encode(signPub + boxPub)
 
-    data class PublicKeys(val signPub: ByteArray, val boxPub: ByteArray)
+        companion object {
+            private const val KEY_BYTES = 32
 
-    fun newNonce(): ByteArray = Sodium.random(NONCE_BYTES)
+            fun of(keys: DeviceKeys) = PublicKeys(keys.signPub, keys.boxPub)
 
-    fun commit(keys: PublicKeys, nonce: ByteArray): ByteArray =
-        Hash.of(COMMIT_CONTEXT, keys.boxPub, keys.signPub, nonce)
+            fun decode(text: String): PublicKeys? {
+                val raw = runCatching { Base64.decode(text) }.getOrNull() ?: return null
+                if (raw.size != 2 * KEY_BYTES) return null
+                return PublicKeys(raw.copyOf(KEY_BYTES), raw.copyOfRange(KEY_BYTES, raw.size))
+            }
+        }
+    }
 
-    fun verifyCommitment(commitment: ByteArray, revealed: PublicKeys, nonce: ByteArray): Boolean =
-        constantTimeEquals(commitment, commit(revealed, nonce))
-
-    /** 6자리 숫자 문자열. 양쪽이 같은 인자(초대한 쪽 = A, 초대받는 쪽 = B)로 계산해야 같아진다. */
-    fun sas(code: String, inviter: PublicKeys, joiner: PublicKeys, joinerNonce: ByteArray): String {
-        val h = Hash.of(
-            SAS_CONTEXT, code.encodeToByteArray(),
-            inviter.signPub, inviter.boxPub, joiner.signPub, joiner.boxPub, joinerNonce,
-            length = 16,
+    /**
+     * 내 비밀키와 상대 공개키로 커플 키(epoch 1)를 만든다.
+     * `BLAKE2b-256( P(ctx) ‖ P(X25519(내 boxSec, 상대 boxPub)) ‖ P(token) ‖ 두 기기 P(signPub) ‖ P(boxPub) — boxPub 오름차순 )`
+     */
+    fun coupleKey(mine: DeviceKeys, theirs: PublicKeys, token: String): CoupleKey {
+        val shared = mine.agree(theirs.boxPub)
+        val (first, second) = listOf(PublicKeys.of(mine), theirs).sortedWith { a, b -> compareBytes(a.boxPub, b.boxPub) }
+        val key = Hash.of(
+            COUPLE_KEY_CONTEXT, shared, token.encodeToByteArray(),
+            first.signPub, first.boxPub, second.signPub, second.boxPub,
         )
-        var v = 0L
-        for (i in 0 until 8) v = (v shl 8) or (h[i].toLong() and 0xFF)
-        // 64비트를 10^6 으로 나눈 나머지 — 치우침은 2^-44 수준이라 무시해도 된다.
-        val n = (v ushr 1) % 1_000_000
-        return n.toString().padStart(6, '0')
+        shared.fill(0)
+        return CoupleKey(epoch = 1, bytes = key)
+    }
+
+    private fun compareBytes(a: ByteArray, b: ByteArray): Int {
+        for (i in 0 until minOf(a.size, b.size)) {
+            val d = (a[i].toInt() and 0xFF) - (b[i].toInt() and 0xFF)
+            if (d != 0) return d
+        }
+        return a.size - b.size
     }
 }
 
+/** X25519 공유 비밀. 이 모듈 안에서 바로 해시해 쓰고 버린다. */
+internal fun DeviceKeys.agree(theirBoxPub: ByteArray): ByteArray =
+    try {
+        ScalarMultiplication.scalarMultiplication(boxSec.toUByteArray(), theirBoxPub.toUByteArray()).toByteArray()
+    } catch (e: Exception) {
+        throw CryptoException("상대 공개키로 키를 맞출 수 없다", e)
+    }
+
 /**
- * Crockford Base32 코드. 0/O, 1/I/L 처럼 헷갈리는 글자를 같은 것으로 읽어 손으로 옮겨 적기 쉽다.
- *
- * 초대 코드 · 재연결 코드: 8자리(40비트), 1회용 · 24시간.
+ * 초대 토큰: 128비트 무작위, base64url(패딩 없음) 22자. 링크(`/i/{token}` · `kakaolink?invite=`)로만 오가는 1회용 비밀이다.
+ * 문서 id 를 알면 초대 문서를 읽을 수 있으므로(firestore.rules) 추측 공간이 곧 보안이다.
  */
-object CrockfordCode {
-    private const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+object InviteToken {
+    const val LENGTH = 22
+    private const val BYTES = 16
+    private val URL_SAFE = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
+    private val FORMAT = Regex("^[A-Za-z0-9_-]{$LENGTH}$")
 
-    fun random(length: Int): String {
-        val bytes = Sodium.random(length) // 바이트마다 하위 5비트만 쓴다 → 글자당 정확히 5비트, 치우침 없음
-        return buildString { bytes.forEach { append(ALPHABET[it.toInt() and 0x1F]) } }
-    }
+    fun random(): String = URL_SAFE.encode(Sodium.random(BYTES))
 
-    /** 사용자가 입력한 값을 정규화한다. 대소문자 · 하이픈 · 공백을 무시하고 헷갈리는 글자를 맞춘다. 형식이 아니면 null. */
-    fun normalize(input: String): String? {
-        val out = StringBuilder()
-        for (c in input.uppercase()) {
-            when (c) {
-                '-', ' ' -> continue
-                'O' -> out.append('0')
-                'I', 'L' -> out.append('1')
-                else -> if (c in ALPHABET) out.append(c) else return null
-            }
-        }
-        return out.toString()
-    }
-
-    /** 4자리씩 하이픈으로 끊어 보여 준다. */
-    fun format(code: String): String = code.chunked(4).joinToString("-")
+    fun isValid(token: String): Boolean = FORMAT.matches(token)
 }

@@ -3,7 +3,9 @@
 // - onInboxCreated  : 우편함 새 문서 → 알림 정책(조용한 시간 · 묶음) → FCM
 // - morningDigest   : 15분마다, 조용한 시간이 막 끝난 사람에게 "밤사이 소식 N개"
 // - onPrefsWritten  : notifyPrefs 저장 시 아침 요약 색인(quietEndUtcMinute) 계산
-// - onPairingStep   : 두 사람이 SAS 확인을 마치면 커플 · 기기 · 키 봉투를 만든다
+// - onInviteCreated : 새 초대 링크가 생기면 같은 사람의 이전 링크를 지운다
+// - onInviteAccepted : 초대 수락(1회) → 커플 · 기기 등록, 초대 소비, 보낸 사람에게 푸시
+// - invitePage      : Hosting /i/{token} → OG 미리보기 · 스토어 랜딩(GET 은 부작용 없음)
 // - onDeviceCreated : 대기 기기가 생기면 진짜 폰에 "새 기기에서 로그인 시도" 알림
 // - onRotationApproved : 상대 기기의 서명된 승인 → 새 기기 active, 옛 기기 폐기
 // - onRelinkStep    : 상대 폰이 넘겨주기 — 지수 서명 · SAS 확인 → 새 기기 활성화, 옛 기기 폐기
@@ -14,7 +16,7 @@
 // - onInquiryAnswered : 문의에 답변(관리자가 answer 를 쓰면) → 문의한 사람에게 알림
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { DocumentSnapshot, FieldValue, getFirestore, QueryDocumentSnapshot, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
 import { defineSecret, defineString } from 'firebase-functions/params';
@@ -25,6 +27,7 @@ import { decide, DEFAULT_PREFS, inDigestWindow, INLINE_MAX_BASE64, NotifyPrefs, 
 import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from './sig';
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { refreshEntitlements } from './revenuecat';
+import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -167,41 +170,99 @@ export const morningDigest = onSchedule({ schedule: 'every 15 minutes', region: 
   await Promise.all(stale.docs.map((d) => d.ref.delete()));
 });
 
-// ── 첫 연결 ───────────────────────────────────────────────────────────────
+// ── 첫 연결: 초대 링크(#15) ─────────────────────────────────────────────────
 
-export const onPairingStep = onDocumentCreated({ document: 'pairings/{code}/steps/{name}', region: REGION }, async (event) => {
-  const { code, name } = event.params;
-  if (!name.startsWith('confirm-')) return;
-  const base = db.doc(`pairings/${code}`);
-  const [pairing, join, inviter, reveal, ci, cj] = await Promise.all(
-    ['', '/steps/join', '/steps/inviter', '/steps/reveal', '/steps/confirm-inviter', '/steps/confirm-joiner'].map((p) => db.doc(`pairings/${code}${p}`).get()),
-  );
-  if (![pairing, join, inviter, reveal, ci, cj].every((s) => s.exists)) return; // 아직 한쪽만 확인
-  if (ci.get('sas') !== cj.get('sas')) {
-    // 두 화면의 SAS 가 다르다 → 바꿔치기 의심. 초대를 폐기한다.
-    await db.recursiveDelete(base);
+const PLAY_STORE_URL = defineString('PLAY_STORE_URL', { default: 'https://play.google.com/store/apps/details?id=com.sadturtleman.flowershoes' });
+const APP_STORE_URL = defineString('APP_STORE_URL', { default: 'https://apps.apple.com/app/idTODO_APP_STORE_ID' });
+
+function inviteOf(snap: DocumentSnapshot): InviteDoc | undefined {
+  if (!snap.exists) return undefined;
+  const expireAt = snap.get('expireAt') as Timestamp | undefined;
+  return {
+    uid: snap.get('uid'), deviceId: snap.get('deviceId'), pubKey: snap.get('pubKey'), name: snap.get('name') ?? '',
+    expireAtMs: expireAt?.toMillis() ?? 0,
+  };
+}
+
+/** pubKey = base64(signPub(32) ‖ boxPub(32)) → 기기 문서의 두 필드. */
+function splitPubKey(pubKey: string): { signPub: string; boxPub: string } {
+  const raw = b64(pubKey);
+  return { signPub: raw.subarray(0, 32).toString('base64'), boxPub: raw.subarray(32, 64).toString('base64') };
+}
+
+/** 그 사람이 만든 초대 중 [drop] 이 고른 것을 지운다. */
+async function dropInvitesOf(uid: string, drop: (d: QueryDocumentSnapshot) => boolean = () => true) {
+  const old = await db.collection('pairings').where('uid', '==', uid).get();
+  await Promise.all(old.docs.filter(drop).map((d) => db.recursiveDelete(d.ref)));
+}
+
+export const onInviteCreated = onDocumentCreated({ document: 'pairings/{token}', region: REGION }, async (event) => {
+  const uid = event.data?.get('uid') as string | undefined;
+  const expireAt = event.data?.get('expireAt') as Timestamp | undefined;
+  if (!uid || !expireAt) return;
+  // 새 링크가 이전 링크를 무효화한다(#15 결정 3). 거의 동시에 두 개를 만들어도 둘 다 지우지 않도록,
+  // 이 초대보다 먼저 만든(만료가 이른) 것만 지운다.
+  await dropInvitesOf(uid, (d) => d.id !== event.params.token && (d.get('expireAt') as Timestamp).toMillis() <= expireAt.toMillis());
+});
+
+/**
+ * 받는 쪽의 수락(pairings/{token}/steps/accept, 규칙이 1회 · 작성자를 막는다) → 커플 · 기기 등록, 초대 소비, 보낸 사람에게 푸시.
+ * 커플 키는 서버를 지나지 않는다 — 양쪽이 couples/{c}/devices 의 상대 공개키로 각자 도출한다.
+ */
+export const onInviteAccepted = onDocumentCreated({ document: 'pairings/{token}/steps/{name}', region: REGION }, async (event) => {
+  const { token, name } = event.params;
+  if (name !== 'accept' || !event.data) return;
+  const accept = event.data.data() as AcceptDoc;
+  const base = db.doc(`pairings/${token}`);
+  const coupleRef = db.collection('couples').doc();
+  const result = await db.runTransaction(async (tx) => {
+    const invite = inviteOf(await tx.get(base));
+    const [inviterUser, joinerUser] = invite
+      ? await Promise.all([tx.get(db.doc(`users/${invite.uid}`)), tx.get(db.doc(`users/${accept.uid}`))])
+      : [undefined, undefined];
+    const decision = acceptDecision(invite, accept, Date.now(), {
+      inviterLinked: !!inviterUser?.get('coupleId'),
+      joinerLinked: !!joinerUser?.get('coupleId'),
+    });
+    if (decision === 'reject' || !invite) return undefined;
+    tx.set(coupleRef, { members: { [invite.uid]: invite.deviceId, [accept.uid]: accept.deviceId }, linkedAt: FieldValue.serverTimestamp() });
+    for (const [uid, deviceId, pubKey] of [[invite.uid, invite.deviceId, invite.pubKey], [accept.uid, accept.deviceId, accept.pubKey]]) {
+      tx.set(coupleRef.collection('devices').doc(deviceId), {
+        uid, ...splitPubKey(pubKey), state: 'active', active: true, createdAt: FieldValue.serverTimestamp(),
+      });
+      // linkedVia: 이 초대로 생긴 커플이라는 표시. 앱은 linkedVia 가 지금 토큰과 같을 때만 coupleId 를 믿는다.
+      tx.set(db.doc(`users/${uid}`), { coupleId: coupleRef.id, deviceId, linkedVia: token }, { merge: true });
+    }
+    return invite;
+  });
+  // 연결됐든 거절됐든 이 초대는 끝났다(1회용). 두 사람의 다른 초대도 더는 쓸 수 없다.
+  await db.recursiveDelete(base);
+  if (!result) return;
+  await Promise.all([dropInvitesOf(result.uid), dropInvitesOf(accept.uid)]);
+  const joinerName = ((await db.doc(`users/${accept.uid}`).get()).get('nickname') as string | undefined) ?? '연인';
+  await push(result.uid, { visible: { title: '꽃신', body: `${joinerName}님과 연결됐어요` }, data: { kind: 'linked', coupleId: coupleRef.id } });
+  await push(accept.uid, { data: { kind: 'linked', coupleId: coupleRef.id } });
+});
+
+/**
+ * Hosting `/i/**` → 미리보기 · 랜딩 페이지. 크롤러(카카오 스크랩 등)가 먼저 열기 때문에 GET 은 아무것도 바꾸지 않는다.
+ * 만료 상태가 캐시에 남지 않게 저장하지 않는다.
+ */
+export const invitePage = onRequest({ region: REGION }, async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.status(405).end();
     return;
   }
-  const inviterUid = pairing.get('uid') as string;
-  const joinerUid = join.get('uid') as string;
-  const coupleRef = db.collection('couples').doc();
-  const batch = db.batch();
-  batch.set(coupleRef, { members: { [inviterUid]: inviter.get('deviceId'), [joinerUid]: reveal.get('deviceId') }, linkedAt: FieldValue.serverTimestamp() });
-  batch.set(coupleRef.collection('devices').doc(inviter.get('deviceId')), {
-    uid: inviterUid, signPub: inviter.get('signPub'), boxPub: inviter.get('boxPub'), state: 'active', active: true, createdAt: FieldValue.serverTimestamp(),
-  });
-  batch.set(coupleRef.collection('devices').doc(reveal.get('deviceId')), {
-    uid: joinerUid, signPub: reveal.get('signPub'), boxPub: reveal.get('boxPub'), state: 'active', active: true, createdAt: FieldValue.serverTimestamp(),
-  });
-  // 커플 키(epoch 1)는 초대한 폰이 초대받은 폰의 boxPub 으로 봉인해 confirm 에 실어 보냈다.
-  batch.set(coupleRef.collection('keys').doc(reveal.get('deviceId')), { wrapped: ci.get('wrappedKey'), epoch: 1 });
-  // linkedVia: 이 초대 코드로 생긴 커플이라는 표시. 같은 두 사람이 다시 연결하면 coupleId 가 잠깐 옛 값이라
-  // 앱은 linkedVia 가 지금 코드와 같을 때만 coupleId 를 믿는다.
-  batch.set(db.doc(`users/${inviterUid}`), { coupleId: coupleRef.id, deviceId: inviter.get('deviceId'), linkedVia: code }, { merge: true });
-  batch.set(db.doc(`users/${joinerUid}`), { coupleId: coupleRef.id, deviceId: reveal.get('deviceId'), linkedVia: code }, { merge: true });
-  await batch.commit();
-  await db.recursiveDelete(base);
-  await Promise.all([inviterUid, joinerUid].map((u) => push(u, { data: { kind: 'linked', coupleId: coupleRef.id } })));
+  const token = tokenFromPath(req.path);
+  const invite = token ? inviteOf(await db.doc(`pairings/${token}`).get()) : undefined;
+  const expired = !invite || invite.expireAtMs <= Date.now();
+  res.set('Cache-Control', 'private, no-store');
+  res.status(200).type('html').send(invitePageHtml({
+    name: expired ? undefined : invite.name,
+    expired,
+    url: `https://${req.hostname}${req.path}`,
+    stores: { play: PLAY_STORE_URL.value(), appStore: APP_STORE_URL.value() },
+  }));
 });
 
 // ── 기기 교체(7-3-A) ─────────────────────────────────────────────────────

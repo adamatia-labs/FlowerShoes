@@ -76,14 +76,8 @@ class EndToEndTest {
     }
 
     private suspend fun link() {
-        val code = assertIs<PairingState.ShowCode>(jisu.pairing.start()).code
-        assertIs<PairingState.WaitingPartner>(minjun.pairing.join(code.lowercase()))
-        jisu.pairing.poll() // join 을 보고 공개키 공개
-        val sasB = assertIs<PairingState.CompareSas>(minjun.pairing.poll()).sas
-        val sasA = assertIs<PairingState.CompareSas>(jisu.pairing.poll()).sas
-        assertEquals(sasA, sasB, "두 화면의 확인 코드가 같아야 한다")
-        jisu.pairing.confirm()
-        assertIs<PairingState.Linked>(minjun.pairing.confirm())
+        val token = assertIs<PairingState.Waiting>(jisu.pairing.createLink("지수")).token
+        assertIs<PairingState.Linked>(minjun.pairing.accept(token))
         assertIs<PairingState.Linked>(jisu.pairing.poll())
     }
 
@@ -199,11 +193,6 @@ class EndToEndTest {
         assertNull(jisu.db.serviceDao().get(PENDING_SOLDIER))
         assertEquals("2026-04-16", jisu.db.serviceDao().get("minjun")?.enlistDate)
         assertEquals("2026-04-16", minjun.db.serviceDao().get("minjun")?.enlistDate)
-    }
-
-    @Test
-    fun `잘못된 코드 형식은 바로 거부한다`() = runTest {
-        assertTrue(minjun.pairing.join("12U") is PairingState.Failed)
     }
 
     @Test

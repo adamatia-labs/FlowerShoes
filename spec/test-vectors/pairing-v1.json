@@ -1,0 +1,9 @@
+{
+  "description": "초대 링크 커플 키 v1. pubKey = base64(signPub‖boxPub), secret = signSec(64)‖boxSec(32), coupleKey = BLAKE2b-256(P(\"kkotsin-pair-v1\")‖P(X25519)‖P(token)‖boxPub 오름차순 P(signPub)‖P(boxPub))",
+  "token": "lMUx7lUYw_FL1C-F1P9pVA",
+  "pubKeyA": "rNt3csfzjlPB7Lt2y/76qWmvtPAvQgmxcCr+C69L1zK4FMbyREe0J/BFkz1eZevGAprLep2bSGbx3eMSZjaBRw==",
+  "secretA": "8Pff7mywvyoBLL6mtCubRZ9uv3rGm/CjCjOrc7tzF9as23dyx/OOU8Hsu3bL/vqpaa+08C9CCbFwKv4Lr0vXMhqDiBD+jhx2Jc12UyymQLNiyMw0WirXfK7Z0tZWlACx",
+  "pubKeyB": "7fsj7qchB4/7C0NaX1oE/VditlpLV4xQ7MmSRevBQz0L1HX+PhzunMz2BCzKlor5VMbqD55Y3atZFZW4K6uTMQ==",
+  "secretB": "9e2pCIMGuLcejAyr5uqm26LjOECJf9sj1Bab15ZSUAvt+yPupyEHj/sLQ1pfWgT9V2K2WktXjFDsyZJF68FDPT6o9yJBKMIYtD/KcIPaCCkBkQwVMm7uI3eUX9CGlJ3J",
+  "coupleKey": "Ah2n5uZaY7cSvERY8RphZHQfSDdounGkeJ8QJzzotNY="
+}

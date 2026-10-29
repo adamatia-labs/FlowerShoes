@@ -29,7 +29,7 @@ Kotlin Multiplatform(Android · iOS) · Compose Multiplatform · Koin · Room KM
 | `model` | 도메인 모델 |
 | `military` | 복무 규칙 표 · 전역일 · 진급일 · 호봉 · D-day |
 | `sync` | 스트림 · 커서 · 재전송/floor/스냅샷 판단 · LWW |
-| `crypto` | 기기 키 · 커플 키 · Op 봉투 · SAS · 기기 교체 MAC |
+| `crypto` | 기기 키 · 커플 키 · Op 봉투 · 초대 토큰 · 첫 연결 키 도출 · 기기 교체 MAC |
 | `database` | Room KMP 테이블 · DAO · 플랫폼별 빌더 |
 | `data` | Repository · 쓰기+SyncOp 트랜잭션 · 동기화 클라이언트 · 연결 · 기기 교체 |
 | `drawing-engine` · `drawing-ui` | 그림 문서(TLV) · 간소화 · 리플레이 · 렌더러 |
