@@ -66,7 +66,7 @@ class LeavePoolTest {
             events = emptyList(),
         )
         assertEquals(LeaveSource.Regular(Branch.AIR_FORCE, 28), pool.sources.first())
-        assertEquals("정기휴가 28일(공군)", pool.sources.first().label)
+        assertEquals("정기휴가 28일(공군)", (pool.sources.first() as LeaveSource.Regular).label)
         assertEquals(listOf("new", "old"), pool.sources.drop(1).map { (it as LeaveSource.Granted).grant.id })
     }
 

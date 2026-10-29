@@ -117,11 +117,11 @@ class NotificationPlanner(private val budget: Int = 50) {
                 val years = e.start.year - original.start.year
                 if (years <= 0) return@forEach
                 dayAt9(e.start.date)?.takeIf { it > now }?.let { at ->
-                    out += if (original === couple) {
+                    out += if (original.id == Event.COUPLE_ANNIVERSARY_ID) {
                         LocalNotification("anniv-${e.start.year}", at, "${years}주년이에요", "오늘은 우리 기념일", "kkotsin://home")
                     } else {
                         LocalNotification(
-                            "anniv-${e.id}-${e.start.year}", at, "오늘은 ${e.title.ifBlank { e.type.koreanName }}", "${years}주년이에요",
+                            "anniv-${e.id}-${e.start.year}", at, "오늘은 ${e.title.ifBlank { e.type.koreanName }}", "${years}년째 돌아온 날",
                             "kkotsin://calendar/${e.start.date}",
                         )
                     }

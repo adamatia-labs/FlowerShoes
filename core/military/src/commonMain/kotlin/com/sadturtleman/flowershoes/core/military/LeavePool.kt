@@ -9,16 +9,15 @@ import com.sadturtleman.flowershoes.core.model.koreanName
 /** 휴가 풀에 더해지는 출처 한 줄(휴가 관리 › 출처 내역). */
 sealed interface LeaveSource {
     val days: Int
-    val label: String
 
     /** 정기휴가: 군종으로 계산하는 값이라 저장하지 않는다. 출처 내역 맨 위에 고정. */
     data class Regular(val branch: Branch, override val days: Int) : LeaveSource {
-        override val label: String get() = "정기휴가 ${days}일(${branch.koreanName})"
+        /** "정기휴가 28일(공군)". */
+        val label: String get() = "정기휴가 ${days}일(${branch.koreanName})"
     }
 
     data class Granted(val grant: LeaveGrant) : LeaveSource {
         override val days: Int get() = grant.days
-        override val label: String get() = "${grant.kind.label} ${days}일"
     }
 }
 
@@ -32,6 +31,8 @@ data class LeavePool(val sources: List<LeaveSource>, val used: Int) {
     val total: Int get() = sources.sumOf { it.days }
     val remaining: Int get() = total - used
     val overdrawn: Boolean get() = remaining < 0
+
+    fun grant(id: String): LeaveGrant? = sources.firstNotNullOfOrNull { (it as? LeaveSource.Granted)?.grant?.takeIf { g -> g.id == id } }
 
     companion object {
         /** [branch] 가 없으면(복무 정보 전) 정기휴가 없이 받은 휴가만. 지운 것(tombstone)은 세지 않는다. */

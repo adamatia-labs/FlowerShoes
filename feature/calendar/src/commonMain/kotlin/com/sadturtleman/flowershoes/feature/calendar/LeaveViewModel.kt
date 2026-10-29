@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.LeaveRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.military.LeavePool
-import com.sadturtleman.flowershoes.core.military.LeaveSource
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.model.Event
@@ -48,7 +47,7 @@ data class LeaveState(
         else -> LeaveUseState.PLANNED
     }
 
-    fun grant(id: String): LeaveGrant? = pool.sources.filterIsInstance<LeaveSource.Granted>().firstOrNull { it.grant.id == id }?.grant
+    fun grant(id: String): LeaveGrant? = pool.grant(id)
 
     private fun plannedDays(e: Event): Int = when {
         e.start.date > today -> e.dayCount

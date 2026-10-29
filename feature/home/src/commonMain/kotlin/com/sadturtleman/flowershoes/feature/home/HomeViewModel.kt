@@ -10,7 +10,6 @@ import com.sadturtleman.flowershoes.core.data.StatusRepository
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.military.LeavePool
-import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.military.koreanName
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
@@ -119,17 +118,17 @@ class HomeViewModel(
         events.observeRange(LocalDate(today.year - 2, 1, 1), LocalDate(today.year + 3, 12, 31))
     }.map { list -> list.filter { it.type == EventType.VACATION && it.deletedAt == null } }
 
-    /** 받은 휴가(휴가 관리 › 출처 내역). 정기휴가는 군종으로 계산한다. */
-    private val granted: Flow<List<LeaveGrant>> = leave?.observeGrants() ?: flowOf(emptyList())
+    /** 휴가 하나의 풀(휴가 관리와 같은 값). 없으면(미리보기 · 테스트) 군종 정기휴가 − 캘린더 휴가로 센다. */
+    private val pool: Flow<LeavePool?> = leave?.observePool() ?: flowOf(null)
 
     val state: StateFlow<HomeState> = combine(
-        combine(people, profile.observeTimelines(), leaves, granted) { p, t, l, g -> Triple(p, t, l to g) },
+        combine(people, profile.observeTimelines(), leaves, pool) { p, t, l, g -> Triple(p, t, l to g) },
         partnerFeed,
         missYou.observeTodayFrom(me),
         letters.observeMyScheduledToday(),
         clock.ticker(),
     ) { (p, timelines, leaveInfo), (partnerStatus, received), sent, scheduled, now ->
-        val (vacations, grants) = leaveInfo
+        val (vacations, leavePool) = leaveInfo
         val today = now.toLocalDateTime(SEOUL).date
         val pair = timelines.firstOrNull()
         val t = pair?.second
@@ -145,7 +144,7 @@ class HomeViewModel(
             )
         }
         // 휴가 하나의 풀: 정기(군종) + 받은 휴가 − 휴가 일정 일수. 초과 사용이면 음수.
-        val pool = LeavePool.of(branch, grants, vacations)
+        val pool = leavePool ?: LeavePool.of(branch, emptyList(), vacations)
         val soldier = t?.let {
             val next = it.nextRank(today)
             SoldierStats(

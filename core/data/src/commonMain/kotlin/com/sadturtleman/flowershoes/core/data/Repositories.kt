@@ -116,7 +116,8 @@ class ProfileRepository(
 
     /** 커플 기념일(함께한 날의 1일째). 기념일 일정([Event.COUPLE_ANNIVERSARY_ID])의 날짜다. */
     fun observeAnniversary(): Flow<LocalDate?> =
-        db.eventDao().observe(Event.COUPLE_ANNIVERSARY_ID).map { it?.toModel()?.start?.date }.distinctUntilChanged()
+        db.eventDao().observe(Event.COUPLE_ANNIVERSARY_ID).map { e -> e?.toModel()?.takeIf { it.type == EventType.ANNIVERSARY }?.start?.date }
+            .distinctUntilChanged()
 
     /**
      * 커플 기념일을 매년 반복 기념일 일정 하나로 남긴다(조용한 종류 — 알림 없이 반영). null 이면 그 일정을 지운다.

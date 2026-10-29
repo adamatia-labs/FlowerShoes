@@ -104,10 +104,12 @@ interface MissYouDao {
 
 @Dao
 interface EventDao {
-    /** [from]..[to] 에 걸리는 일정 + 그 전에 시작한 매년 반복 기념일(해마다 옮겨 놓는 건 :core:data). */
+    /**
+     * [from]..[to] 에 걸리는 일정 + 그 전에 시작한 매년 반복 기념일(해마다 옮겨 놓는 건 :core:data)과 커플 기념일(100일 단위 알림).
+     */
     @Query(
         "SELECT * FROM event WHERE deletedAtMs IS NULL AND start <= :to AND " +
-            "(`end` >= :from OR (type = 'ANNIVERSARY' AND repeatYearly = 1)) ORDER BY start",
+            "(`end` >= :from OR (type = 'ANNIVERSARY' AND (repeatYearly = 1 OR id = 'anniversary-couple'))) ORDER BY start",
     )
     fun observeRange(from: String, to: String): Flow<List<EventEntity>>
 

@@ -123,7 +123,7 @@ private fun LeaveListScreen(state: LeaveState, onBack: () -> Unit, onUse: () -> 
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Stat("사용한 일수", state.usedDays, c.ink, Modifier.weight(1f))
-                        Stat("남은 휴가일", state.remaining, if (state.remaining < 0) c.danger else c.accent, Modifier.weight(1f))
+                        Stat("남은 휴가일", state.remaining, if (state.pool.overdrawn) c.danger else c.accent, Modifier.weight(1f))
                     }
                 }
                 KkPrimaryButton("사용 등록", onUse, Modifier.fillMaxWidth())
@@ -289,7 +289,7 @@ private fun LeaveEditScreen(
                 })
             }
         }
-        KkInput(d.name, { d = d.copy(name = it.take(30)) }, label = "이름", placeholder = d.kind.label)
+        KkInput(d.name, { d = d.copy(name = it.take(30)) }, label = "이름")
         Text("일수", style = KkTheme.type.label, color = c.sub)
         val shape = RoundedCornerShape(KkRadius.lg)
         Row(
