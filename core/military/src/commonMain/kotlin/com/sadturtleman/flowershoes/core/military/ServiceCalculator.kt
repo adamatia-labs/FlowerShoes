@@ -108,6 +108,17 @@ val Rank.koreanName: String
     }
 
 /**
+ * 화면에 보이는 계급 이름. 계산은 고정 개월이라 진급 심사 · 누락을 모르므로 늘 "예정"을 붙인다(#32).
+ * 지금 계급 · 다음 진급을 보여 주는 곳은 [koreanName] 대신 이것을 쓴다.
+ */
+val Rank.expectedName: String
+    get() = "$koreanName(예정)"
+
+/** 진급 일정 이름(캘린더 막대 등). Figma "상병 진급" 태그 뒤에 "예정"을 붙인다. */
+val Rank.promotionName: String
+    get() = "$koreanName 진급 예정"
+
+/**
  * 복무 기간 전체의 연가 일수(홈 › 남은 휴가). 군 인사 규정의 기본 연가만 — 포상 · 위로 휴가는 캘린더에 적은 휴가로 따로 센다.
  * 사회복무요원은 복무 기관 규정이 달라 0(남은 휴가 칸을 숨긴다).
  */
