@@ -306,6 +306,16 @@ class LetterRepository(
 
     suspend fun drawingsOf(letterId: String): List<DrawingEntity> = db.drawingDao().forLetter(letterId)
 
+    /**
+     * 편지 한 통(지운 것 빼고). 공개 전 예약 편지도 돌려준다 — 받은 편지 화면이 "아직 못 열어요"로 잠가 보여 준다.
+     * 편지함 · 위젯 · 추억은 [observeInbox] 를 쓴다.
+     */
+    suspend fun find(letterId: String): Letter? = db.letterDao().get(letterId)?.takeIf { it.deletedAtMs == null }?.toModel()
+
+    /** 이 편지에 내가 고마워를 보냈는지(받은 편지 › 고마워는 한 번). */
+    suspend fun thanked(letterId: String): Boolean =
+        db.receiptDao().get(ReceiptEntity.HEART.name, letterId, identity.userId) != null
+
     /** 내가 쓴 편지 수(예약 편지 포함, 지운 것 빼고). 혼자 모드에서 연결하는 순간 한꺼번에 전달되는 양이다. */
     suspend fun countMine(): Int = db.letterDao().byAuthor(identity.userId).count { it.deletedAtMs == null }
 

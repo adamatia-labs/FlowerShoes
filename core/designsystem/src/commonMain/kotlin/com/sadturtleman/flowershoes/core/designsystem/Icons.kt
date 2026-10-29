@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.sadturtleman.flowershoes.core.designsystem.res.Res
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_album
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_back
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_book
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_calendar
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_check
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_chevron_down
@@ -93,6 +94,7 @@ enum class KkIcons(internal val res: DrawableResource) {
     Alert(Res.drawable.ic_alert),
     Export(Res.drawable.ic_export),
     Frame(Res.drawable.ic_frame),
+    Book(Res.drawable.ic_book),
 
     // 컴포넌트 안에서만 쓰는 글리프(크기가 24 가 아니다 — 자리에 맞춰 가운데 둔다)
     Back(Res.drawable.ic_back),

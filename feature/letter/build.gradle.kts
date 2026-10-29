@@ -38,6 +38,7 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
         }
         jvmTest.dependencies {
+            implementation(compose.desktop.currentOs)
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
         }

@@ -100,7 +100,10 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
                 KkButton("답장 그리기", onReplyDrawing, style = KkButtonStyle.Secondary, size = KkButtonSize.M)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
                     KkSecondaryButton("다시 보기", onClick = { replay.restart() }, modifier = Modifier.weight(1f))
-                    KkPrimaryButton("고마워", onClick = { onIntent(LetterIntent.Thanks) }, modifier = Modifier.weight(1f))
+                    KkPrimaryButton(
+                        if (open.thanked) "고마워를 보냈어요" else "고마워",
+                        onClick = { onIntent(LetterIntent.Thanks) }, modifier = Modifier.weight(1f), enabled = !open.thanked,
+                    )
                 }
             }
             else -> Box(Modifier.height(KkSpacing.xxxl))

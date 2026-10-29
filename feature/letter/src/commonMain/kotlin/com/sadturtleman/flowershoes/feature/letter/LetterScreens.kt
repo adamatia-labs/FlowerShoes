@@ -42,8 +42,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -101,7 +99,6 @@ import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
 import com.sadturtleman.flowershoes.core.designsystem.KkSecondaryButton
-import com.sadturtleman.flowershoes.core.designsystem.KkSegmentedControl
 import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkStatusChip
@@ -122,11 +119,34 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.toLocalDateTime
 import org.koin.compose.viewmodel.koinViewModel
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
+import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeMark
+import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeRow
+import com.sadturtleman.flowershoes.core.designsystem.KkLetterSize
+import com.sadturtleman.flowershoes.core.designsystem.KkPolaroid
+import com.sadturtleman.flowershoes.core.designsystem.KkPostmark
+import com.sadturtleman.flowershoes.core.designsystem.KkPostmarkInk
+import com.sadturtleman.flowershoes.core.designsystem.KkSkeleton
+import com.sadturtleman.flowershoes.core.designsystem.KkUnderlineTabs
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import com.sadturtleman.flowershoes.core.drawingui.ReplayCanvas
+import com.sadturtleman.flowershoes.core.drawingui.drawDocument
+import com.sadturtleman.flowershoes.core.drawingui.rememberReplayState
+import kotlinx.datetime.toInstant
 
 // ── 편지함 ────────────────────────────────────────────────────────────────
 
 /**
- * 편지함(Figma 4 · 편지함 / 빈 편지함). 편지를 열면 같은 자리에서 읽기로 바뀐다.
+ * 편지함(Figma 4 · 편지함 `360:2613`). 편지를 열면 같은 자리에서 읽기로 바뀐다.
  * 편지 쓰기 버튼은 "편지 쓰기 / 그림 그리기" 메뉴를 연다(그림만 그려도 그림 한 장짜리 편지).
  */
 @Composable
@@ -144,7 +164,7 @@ fun LetterInboxRoute(
         KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "inbox" }, isForward = { _, to -> to != null }) { open ->
             when {
                 open != null && open.drawingOnly -> DrawingLetterScreen(open, viewModel::onIntent, onReplyDrawing)
-                open != null -> LetterReadScreen(open, viewModel::onIntent, onReply)
+                open != null -> LetterReadScreen(open, viewModel::onIntent, onReply, onReplyDrawing)
                 else -> LetterInboxScreen(state, viewModel::onIntent, onWriteLetter, onDraw, onOpenDrafts)
             }
         }
@@ -162,10 +182,11 @@ fun LetterInboxScreen(
 ) {
     val c = KkTheme.colors
     var writeMenu by remember { mutableStateOf(false) }
+    // Figma 4 · 편지함: 제목 줄 → 밑줄 탭 → 쓰던 편지 → 월 머리 + 봉투(행은 반듯하게, 장식만 기운다).
     Column(
         Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
-            .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+            .padding(horizontal = KkSpacing.xxl, vertical = KkSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("편지함", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
@@ -185,153 +206,268 @@ fun LetterInboxScreen(
                 )
             }
         }
-        KkSegmentedControl(LetterFilter.entries.map { it.label }, state.filter.ordinal, { onIntent(LetterIntent.Filter(LetterFilter.entries[it])) })
+        KkUnderlineTabs(LetterFilter.entries.map { it.label }, state.filter.ordinal, { onIntent(LetterIntent.Filter(LetterFilter.entries[it])) })
         if (state.drafts.isNotEmpty()) DraftRow(state.drafts, onOpenDrafts)
         when {
+            state.loading -> repeat(4) { EnvelopeSkeleton() }
+            // 빈 상태는 제목 + 동작만(설명 줄 없음).
             state.inbox.isEmpty() -> KkEmptyState(
                 title = "아직 주고받은 편지가 없어요",
-                description = "오늘 하루를 그림 한 장이나 짧은 편지로 보내 보세요",
+                description = "",
                 icon = KkIcons.Mail,
-                action = "만들기",
+                action = "편지 쓰기",
                 onAction = { writeMenu = true },
             )
             state.visibleInbox.isEmpty() -> Text(
                 "이 분류에는 아직 편지가 없어요", style = KkTheme.type.body, color = c.sub,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = KkSpacing.xxxl),
             )
-            else -> state.visibleInbox.chunked(2).forEach { row ->
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-                    row.forEach { card -> InboxItem(card, Modifier.weight(1f)) { onIntent(LetterIntent.Open(card.letter.id)) } }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
-                }
+            else -> state.months.forEach { (month, cards) ->
+                Text(month, style = KkTheme.type.handL, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
+                cards.forEach { card -> InboxEnvelope(card) { onIntent(LetterIntent.Open(card.letter.id)) } }
             }
         }
         Spacer(Modifier.height(KkSpacing.lg))
     }
 }
 
-/** 편지함 한 칸(Item): 그림만 = 흰 카드 + 그림, 편지 = 올리브 카드 + 줄 그림. 안 읽은 편지는 점. */
+/** 편지함 봉투 한 줄: 봉인 · 폴라로이드(실제 그림) · 소인 · 우표. */
 @Composable
-private fun InboxItem(card: LetterCard, modifier: Modifier, onClick: () -> Unit) {
-    val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    val drawing = card.drawingOnly
-    Column(
-        modifier.fillMaxHeight().heightIn(min = 220.dp).kkElevation(KkElevation.Mid, shape).clip(shape)
-            .background(if (drawing) c.surface else c.bar)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) { if (card.unread) contentDescription = "안 읽은 편지, ${card.title}" }
-            .padding(KkSpacing.md),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
-    ) {
-        Box(
-            Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(KkRadius.md)).background(if (drawing) c.canvas else c.surface),
-            contentAlignment = Alignment.Center,
-        ) {
-            val thumb = card.thumb
-            when {
-                thumb != null -> Box(Modifier.size(100.dp), contentAlignment = Alignment.Center) { DrawingView(thumb) }
-                drawing -> KkIcon(KkIcons.Heart, tint = c.accent, size = 32.dp)
-                else -> LetterLines(c.accent)
+private fun InboxEnvelope(card: LetterCard, onClick: () -> Unit) {
+    val mark = when (val e = card.envelope) {
+        is Envelope.New -> KkEnvelopeMark.Seal(e.stamp)
+        Envelope.Drawing -> KkEnvelopeMark.Polaroid(rememberDrawingThumb(card.thumb))
+        is Envelope.Sent -> KkEnvelopeMark.Postmark(e.date)
+        is Envelope.Received -> KkEnvelopeMark.Stamp(e.stamp)
+    }
+    KkEnvelopeRow(card.title, card.meta, mark, onClick)
+}
+
+/** 미니 폴라로이드에 넣을 그림 한 장(완성본, 42dp 칸). 스티커 · 사진 배경은 이 크기에서 빼고 그린다. */
+@Composable
+private fun rememberDrawingThumb(doc: DrawingDocument?): ImageBitmap? {
+    val density = LocalDensity.current
+    val side = with(density) { 84.dp.roundToPx() }
+    return remember(doc, side) {
+        doc?.let { d ->
+            ImageBitmap(side, side).also { bitmap ->
+                CanvasDrawScope().draw(density, LayoutDirection.Ltr, Canvas(bitmap), Size(side.toFloat(), side.toFloat())) { drawDocument(d) }
             }
         }
-        // Figma 최종 정리: 종류 알약 없이 제목 · "10.21 · 지수". 안 읽은 편지만 제목 앞 점.
-        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
-            if (card.unread) Box(Modifier.size(6.dp).clip(CircleShape).background(c.stamp))
-            Text(card.title, style = KkTheme.type.label, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Text(card.meta, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
     }
 }
 
-/** 글 편지 썸네일: 네 줄. */
+/** 편지함 로딩(Figma 4 · 편지함 / 로딩): 봉투 자리 + Skeleton 두 줄 + 장식 자리. */
 @Composable
-private fun LetterLines(color: Color) {
-    Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
-        listOf(110, 96, 104, 70).forEach { w -> Box(Modifier.width(w.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(color)) }
+private fun EnvelopeSkeleton() {
+    val c = KkTheme.colors
+    Row(
+        Modifier.fillMaxWidth().height(100.dp).clip(RoundedCornerShape(KkRadius.sm)).background(c.surface)
+            .padding(horizontal = 17.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+            KkSkeleton(Modifier.fillMaxWidth(0.9f))
+            KkSkeleton(Modifier.fillMaxWidth(0.4f))
+        }
+        Box(Modifier.size(44.dp, 54.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.line))
     }
 }
 
 // ── 받은 편지 ─────────────────────────────────────────────────────────────
 
-/** 편지 읽기(Figma 4 · 받은 편지): 보낸 사람 → 받는 사람 · 날짜, 제목, 글 · 그림(처음 보면 자동 재생). */
+/**
+ * 편지 읽기(Figma 4 · 받은 편지 `363:3666`): 위 막대(누가 보낸 편지 · 보낸 시각) → 보낸 사람이 고른 편지지(+ 소인) → 고마워 · 답장.
+ * 편지지는 콘텐츠라 읽는 사람의 테마 · 다크 모드와 무관하게 [paperLook] 색 그대로다. 그림은 폴라로이드로 붙는다.
+ */
 @Composable
-fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply: () -> Unit) {
-    val c = KkTheme.colors
-    val paper = Paper.of(open.letter.paper)
-    val ink = when {
-        paper == Paper.NIGHT -> c.canvas
-        paper.lifetime -> Color(0xFF2E2A26)
-        else -> c.ink
+fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply: () -> Unit, onReplyDrawing: () -> Unit = {}) {
+    if (open.locked) {
+        LockedLetterScreen(open, onIntent)
+        return
     }
+    val c = KkTheme.colors
     // 읽는 화면은 탭 바 없이 전체(Figma) — 아래 버튼이 제스처 바에 걸리지 않게.
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
-        KkTopBar(
-            "편지", onLeading = { onIntent(LetterIntent.Close) },
-            trailingText = if (open.mine) "삭제" else null, onTrailing = { onIntent(LetterIntent.Delete(open.letter.id)) },
+        ReadTopBar(
+            open.title, open.subtitle, onBack = { onIntent(LetterIntent.Close) },
+            trailing = if (open.mine) "삭제" else null, onTrailing = { onIntent(LetterIntent.Delete(open.letter.id)) },
         )
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
-        ) {
-            val shape = RoundedCornerShape(KkRadius.xl)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.md, bottom = KkSpacing.lg)) {
+            LetterSheet(open, onIntent)
+        }
+        if (!open.mine) {
             Column(
-                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(paper.background(c)).padding(KkSpacing.xl),
-                verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+                Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.sm, bottom = KkSpacing.lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(KkSpacing.xxl),
             ) {
-                Text(open.meta, style = KkTheme.type.caption, color = if (paper == Paper.NIGHT) c.canvas.copy(alpha = 0.7f) else c.sub)
-                open.letter.title?.takeIf { it.isNotBlank() }?.let { Text(it, style = KkTheme.type.title, color = ink) }
-                val font = KkLetterFont.of(open.letter.font)
-                val fontFamily = font.family()
-                open.letter.blocks.forEach { block ->
-                    when (block) {
-                        is LetterBlock.Text -> Text(block.text, style = KkTheme.type.body.copy(fontFamily = fontFamily, fontSize = font.size(15f, com.sadturtleman.flowershoes.core.designsystem.KkLetterSize.of(open.letter.font))), color = ink)
-                        is LetterBlock.DrawingRef -> {
-                            val doc = open.drawings[block.drawingId]
-                            Box(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)).background(Color.White)
-                                    .border(1.dp, c.line, RoundedCornerShape(KkRadius.lg)).padding(14.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (doc == null) {
-                                    Text("그림을 받는 중이에요", style = KkTheme.type.body, color = c.sub, modifier = Modifier.padding(KkSpacing.xxl))
-                                } else {
-                                    ReplayPlayer(
-                                        doc,
-                                        autoPlay = block.drawingId in open.firstView,
-                                        onFinished = { onIntent(LetterIntent.DrawingSeen(block.drawingId)) },
-                                    )
+                // 받은 그림에서 "그림으로 답장"은 바로 그림판(planning.md §8).
+                if (open.letter.drawingCount > 0) {
+                    KkButton("그림으로 답장", onReplyDrawing, style = KkButtonStyle.Secondary, size = KkButtonSize.M)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+                    KkSecondaryButton(
+                        if (open.thanked) "고마워를 보냈어요" else "고마워",
+                        onClick = { onIntent(LetterIntent.Thanks) }, modifier = Modifier.weight(if (open.thanked) 1.2f else 1f), enabled = !open.thanked,
+                    )
+                    KkPrimaryButton("답장 쓰기", onClick = onReply, modifier = Modifier.weight(if (open.thanked) 1f else 1.5f))
+                }
+            }
+        }
+    }
+}
+
+/** 읽기 위 막대(Figma Top Bar · Back): 뒤로 + 제목(Label/Bold) · 아래 줄(Caption) + 선택적 글자 동작. */
+@Composable
+private fun ReadTopBar(title: String, subtitle: String, onBack: () -> Unit, trailing: String? = null, onTrailing: () -> Unit = {}) {
+    val c = KkTheme.colors
+    Row(
+        Modifier.fillMaxWidth().height(56.dp).padding(start = KkSpacing.xs, end = KkSpacing.lg),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
+    ) {
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onBack).semantics { contentDescription = "뒤로 가기" },
+            contentAlignment = Alignment.Center,
+        ) { KkIcon(KkIcons.Back, tint = c.ink, size = 15.8.dp, modifier = Modifier.width(8.8.dp)) }
+        Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
+            Text(title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle.isNotEmpty()) Text(subtitle, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+        }
+        if (trailing != null) {
+            Box(Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onTrailing).padding(horizontal = KkSpacing.xs), contentAlignment = Alignment.Center) {
+                Text(trailing, style = KkTheme.type.label, color = c.accent)
+            }
+        }
+    }
+}
+
+/** 편지지 한 장: 화면 폭 종이 + 위 오른쪽 소인(보낸 사람 쪽 문구 · 잉크) + 줄 친 글 · 폴라로이드 그림 · 사진. */
+@Composable
+private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
+    val paper = Paper.of(open.letter.paper)
+    val look = paper.look()
+    val font = KkLetterFont.of(open.letter.font)
+    val size = font.size(15f, KkLetterSize.of(open.letter.font))
+    val body = KkTheme.type.body.copy(fontFamily = font.family(), fontSize = size, lineHeight = size * 1.7f, color = look.ink)
+    Box(
+        Modifier.fillMaxWidth().heightIn(min = 480.dp).kkElevation(KkElevation.Low, RectangleShape)
+            .background(look.background).border(1.dp, look.edge),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(start = KkSpacing.xxl, end = KkSpacing.xxl, top = KkSpacing.lg, bottom = KkSpacing.xxxl)) {
+            // 소인 자리(64)만큼 위를 비운다. 군사우편 편지지는 왼쪽 위에 "군사우편" 표시.
+            Box(Modifier.fillMaxWidth().height(48.dp)) {
+                if (paper == Paper.MAIL) {
+                    Text(
+                        "군사우편", style = KkTheme.type.labelBold, color = look.mark, maxLines = 1,
+                        modifier = Modifier.border(1.dp, look.mark).padding(horizontal = 10.dp, vertical = KkSpacing.xxs),
+                    )
+                }
+            }
+            open.letter.title?.takeIf { it.isNotBlank() }?.let { RuledText(it, body.copy(fontWeight = FontWeight.Bold), look.rule) }
+            open.letter.blocks.forEach { block ->
+                when (block) {
+                    is LetterBlock.Text -> RuledText(block.text, body, look.rule)
+                    is LetterBlock.DrawingRef -> {
+                        val doc = open.drawings[block.drawingId]
+                        Box(Modifier.fillMaxWidth().padding(vertical = KkSpacing.xl), contentAlignment = Alignment.Center) {
+                            if (doc == null) {
+                                Text("그림을 받는 중이에요", style = KkTheme.type.body, color = look.ink, modifier = Modifier.padding(KkSpacing.xxl))
+                            } else {
+                                val replay = rememberReplayState(doc, autoPlay = block.drawingId in open.firstView)
+                                KkPolaroid(
+                                    Modifier.width(160.dp), tilt = 4f, caption = open.captions[block.drawingId],
+                                    onReplay = if (replay.playing) null else replay::restart,
+                                ) {
+                                    // 그림 바탕은 그림 문서가 칠한다(콘텐츠).
+                                    ReplayCanvas(doc, replay, Modifier.fillMaxSize(), onFinished = { onIntent(LetterIntent.DrawingSeen(block.drawingId)) })
                                 }
                             }
                         }
-                        is LetterBlock.Photo -> {
-                            val bytes = open.photos[block.attachmentId]
-                            val bitmap = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
+                    }
+                    is LetterBlock.Photo -> {
+                        val bytes = open.photos[block.attachmentId]
+                        val bitmap = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
+                        Box(Modifier.fillMaxWidth().padding(vertical = KkSpacing.md)) {
                             if (bitmap != null) {
-                                Image(
-                                    bitmap, contentDescription = "사진",
-                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.lg)),
-                                    contentScale = ContentScale.FillWidth,
-                                )
+                                Image(bitmap, contentDescription = "사진", modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
                             } else {
-                                Box(
-                                    Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(KkRadius.lg)).background(c.line),
-                                    contentAlignment = Alignment.Center,
-                                ) { Text("사진을 받는 중이에요", style = KkTheme.type.body, color = c.sub) }
+                                Box(Modifier.fillMaxWidth().height(160.dp).background(look.rule), contentAlignment = Alignment.Center) {
+                                    Text("사진을 받는 중이에요", style = KkTheme.type.body, color = look.ink)
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        if (!open.mine) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = KkSpacing.lg),
-                horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+        KkPostmark(KkPostmarkInk.of(open.senderRole), open.postmark, Modifier.align(Alignment.TopEnd).padding(top = KkSpacing.sm, end = KkSpacing.lg).rotate(-9f))
+    }
+}
+
+/** 편지지 줄 위의 글: 줄마다 아래에 괘선을 긋는다(글자 크기가 바뀌어도 글줄에 맞는다). */
+@Composable
+private fun RuledText(text: String, style: TextStyle, rule: Color) {
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    Text(
+        text, style = style, onTextLayout = { layout = it },
+        modifier = Modifier.fillMaxWidth().drawBehind {
+            val l = layout ?: return@drawBehind
+            for (i in 0 until l.lineCount) {
+                val y = l.getLineBottom(i)
+                drawLine(rule, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+            }
+        },
+    )
+}
+
+/**
+ * 아직 못 여는 예약 편지(Figma 받은 편지 · 예약 편지 · 아직 못 열어요): 잠긴 봉투 + 열리는 때 + 남은 시간.
+ * 열리는 시각이 되면 그 자리에서 편지를 연다.
+ */
+@Composable
+private fun LockedLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
+    val c = KkTheme.colors
+    val at = open.opensAt ?: return
+    var now by remember { mutableStateOf(Clock.System.now()) }
+    LaunchedEffect(open.letter.id, at) {
+        val opens = at.toInstant(SEOUL)
+        while (true) {
+            now = Clock.System.now()
+            // 시각이 되면 다시 연다. 뷰모델 시계가 조금 늦으면 아직 잠긴 채 돌아오므로 열릴 때까지 몇 초마다 다시 묻는다.
+            if (now >= opens) onIntent(LetterIntent.Open(open.letter.id))
+            delay(if (now >= opens) 3_000 else 1_000)
+        }
+    }
+    Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
+        ReadTopBar(open.title, open.subtitle, onBack = { onIntent(LetterIntent.Close) })
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xxl, vertical = 120.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.xxl),
+        ) {
+            // 누를 수 없는 봉투: 접근성에는 "잠긴 편지, 첫 줄, 보낸 사람 · 도착" 한 덩어리로 읽힌다.
+            Box(
+                Modifier.clearAndSetSemantics { contentDescription = "잠긴 편지, ${open.envelopeLine}, ${open.envelopeMeta}" },
+                contentAlignment = Alignment.Center,
             ) {
-                KkSecondaryButton("고마워", onClick = { onIntent(LetterIntent.Thanks) }, modifier = Modifier.weight(1f))
-                KkPrimaryButton("답장 쓰기", onClick = onReply, modifier = Modifier.weight(1f))
+                KkEnvelopeRow(open.envelopeLine, open.envelopeMeta, KkEnvelopeMark.Stamp(open.stamp), onClick = {})
+                // 봉인 대신 자물쇠: 아직 열 수 없다.
+                Box(Modifier.size(44.dp).clip(CircleShape).background(c.accent), contentAlignment = Alignment.Center) {
+                    KkIcon(KkIcons.Lock, tint = c.canvas, size = 20.dp)
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+                Text("${opensAt(at)}에 열려요", style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center)
+                Text(countdown(now.toLocalDateTime(SEOUL), at), style = KkTheme.type.title, color = c.accent, textAlign = TextAlign.Center)
             }
         }
+        KkSecondaryButton(
+            "열리면 알려 주세요", onClick = { onIntent(LetterIntent.NotifyWhenOpen) },
+            modifier = Modifier.padding(start = KkSpacing.xl, end = KkSpacing.xl, bottom = KkSpacing.lg),
+        )
     }
 }
 

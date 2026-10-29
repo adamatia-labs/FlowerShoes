@@ -11,8 +11,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -44,8 +45,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -53,8 +56,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
+import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeMark
+import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeRow
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkInput
@@ -65,7 +71,9 @@ import com.sadturtleman.flowershoes.core.designsystem.KkPolaroidSize
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
 import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
+import com.sadturtleman.flowershoes.core.designsystem.KkSkeleton
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
+import com.sadturtleman.flowershoes.core.designsystem.KkSpinner
 import com.sadturtleman.flowershoes.core.designsystem.KkTape
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkToast
@@ -80,7 +88,7 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * 추억(Figma 6 · 추억): 우리의 책 · 비어 있음 · 한 달 · 책으로 보기 · 그날의 한 줄(보기 · 쓰기).
+ * 추억(Figma 6 · 추억): 목록 · 비어 있음 · 로딩 · 한 달 · 책으로 보기 · 그날의 한 줄(보기 · 쓰기).
  * [book] 은 책으로 보기의 PDF 결제 · 만들기(플랫폼). 없으면 미리보기만 보인다.
  */
 @Composable
@@ -128,34 +136,54 @@ fun MemoryRoute(
     }
 }
 
-/** 추억 첫 화면(Figma 추억 · 책): 우리의 책 표지 카드 + 월별 장. 아무것도 없으면 빈 책 + [편지 쓰기]. */
+/**
+ * 추억 · 목록(Figma 367:82): 위 막대(제목 + 책 아이콘 → 책으로 보기) · [+ 그날의 한 줄] · 테이프 붙은 월 페이지(최근 달부터).
+ * 비어 있으면 첫 추억 안내 + 이번 달 점선 빈 페이지, 읽는 중엔 페이지 스켈레톤.
+ */
 @Composable
 fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onWriteLetter: () -> Unit) {
     val c = KkTheme.colors
-    Column(
-        Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
-            .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
-    ) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("추억", style = KkTheme.type.title, color = c.ink)
-        }
-        if (state.loading) return@Column
-        state.latestMeet?.let { id -> DayLineButton { onIntent(MemoryIntent.Open(MemoryPage.DayLine(id))) } }
-        if (state.empty) {
-            BookCard(null) {}
-            Column(Modifier.fillMaxWidth().padding(vertical = 80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-                Text("편지 · 그림 · 만남이 달마다 한 장씩 모여 책이 돼요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
-                KkButton("편지 쓰기", onWriteLetter)
+    Column(Modifier.fillMaxSize().background(c.canvas)) {
+        MemoryTopBar(onBook = state.progress?.let { { onIntent(MemoryIntent.Open(MemoryPage.Book)) } })
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState(), enabled = !state.loading)
+                .padding(horizontal = KkSpacing.xxl, vertical = KkSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.xl),
+        ) {
+            if (state.loading) {
+                repeat(2) { PageSkeleton() }
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { KkSpinner(c.accent, 32.dp) }
+                return@Column
             }
-            return@Column
+            state.latestMeet?.let { id -> DayLineButton { onIntent(MemoryIntent.Open(MemoryPage.DayLine(id))) } }
+            if (state.empty) {
+                EmptyMemory(onWriteLetter)
+                state.today?.let { EmptyPage(YearMonth.of(it), Modifier.padding(horizontal = KkSpacing.lg)) }
+                return@Column
+            }
+            state.chapters.forEachIndexed { i, ch ->
+                val month = state.months[ch.ym] ?: return@forEachIndexed
+                val page = monthPage(month)
+                if (page.empty) EmptyPage(ch.ym)
+                else MonthPageCard(ch, month, page, photos, tilt = if (i % 2 == 0) 1f else -1.2f) { onIntent(MemoryIntent.Open(MemoryPage.Month(ch.ym))) }
+            }
+            Spacer(Modifier.height(KkSpacing.sm))
         }
-        BookCard(state.progress) { onIntent(MemoryIntent.Open(MemoryPage.Book)) }
-        Text("월별 장", style = KkTheme.type.label, color = c.sub)
-        state.chapters.forEach { ch ->
-            ChapterRow(ch, state.months[ch.ym], photos) { onIntent(MemoryIntent.Open(MemoryPage.Month(ch.ym))) }
-        }
-        Spacer(Modifier.height(KkSpacing.lg))
+    }
+}
+
+/** 추억 위 막대: "추억"(Title) + 책 아이콘(책으로 보기). 책이 아직 없으면 아이콘만 흐리게. */
+@Composable
+private fun MemoryTopBar(onBook: (() -> Unit)?) {
+    val c = KkTheme.colors
+    Row(Modifier.fillMaxWidth().height(56.dp).padding(start = KkSpacing.lg, end = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+        Text("추억", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
+        Box(
+            Modifier.size(48.dp).clip(CircleShape)
+                .clickable(enabled = onBook != null, role = Role.Button) { onBook?.invoke() }
+                .semantics { contentDescription = "책으로 보기" },
+            contentAlignment = Alignment.Center,
+        ) { KkIcon(KkIcons.Book, tint = if (onBook != null) c.ink else c.sub) }
     }
 }
 
@@ -174,190 +202,246 @@ private fun DayLineButton(onClick: () -> Unit) {
     }
 }
 
-/** 우리의 책 표지 카드: 작은 책 표지 + "세 번째 장 쓰는 중 · 3 / 18개월" + 진행 막대 + 책으로 보기. [progress] 가 null 이면 빈 책. */
+/**
+ * 월 페이지(보여 주기만 하는 물건이라 기울이고 모서리에 테이프): "10월"(손글씨) · 편지 · 그림 · 만남 수,
+ * 폴라로이드(장 표지) · 작은 봉투 · 만남 꼬리표, 아래 가장 최근 편지 한 줄. 누르면 한 달.
+ */
 @Composable
-private fun BookCard(progress: BookProgress?, onOpen: () -> Unit) {
+private fun MonthPageCard(ch: Chapter, month: MonthDetail, page: MonthPage, photos: Map<String, ByteArray?>, tilt: Float, onClick: () -> Unit) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Row(
-        Modifier.fillMaxWidth().clip(shape).background(c.bar)
-            .then(if (progress != null) Modifier.clickable(role = Role.Button, onClick = onOpen) else Modifier)
-            .padding(KkSpacing.lg),
-        horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg), verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val coverShape = RoundedCornerShape(6.dp)
-        if (progress == null) {
-            Box(Modifier.size(84.dp, 112.dp).clip(coverShape).border(1.5.dp, c.accent, coverShape))
-        } else {
-            Box(Modifier.size(84.dp, 112.dp).clip(coverShape).background(c.accent)) {
-                AirmailStripe(Modifier.fillMaxWidth().height(8.dp))
-                Text("우리의\n책", style = KkTheme.type.label, color = c.surface, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
-            }
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("우리의 책", style = KkTheme.type.labelBold, color = c.ink)
-            Text(progress?.label() ?: "첫 장을 채워 보세요", style = KkTheme.type.body, color = c.sub)
-            if (progress != null) {
-                val f = progress.total?.let { (progress.current.toFloat() / it).coerceIn(0f, 1f) } ?: 1f
-                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(c.surface)) {
-                    Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(RoundedCornerShape(3.dp)).background(c.accent))
+    Box(Modifier.fillMaxWidth().padding(horizontal = KkSpacing.xs).rotate(tilt)) {
+        Column(
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, RectangleShape).background(c.surface)
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 18.dp),
+        ) {
+            Text("${ch.ym.month}월", style = KkTheme.type.handL, color = c.ink)
+            Text(month.counts(), style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.sm))
+            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                when (val cover = ch.cover) {
+                    is ChapterCover.Photo -> KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
+                        PhotoImage(photos[cover.attachmentId], Modifier.fillMaxSize())
+                    }
+                    is ChapterCover.Drawing -> month.letters.firstOrNull { it.id == cover.letterId }?.thumb?.let { doc ->
+                        KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
+                            Box(Modifier.fillMaxSize().background(c.bar)) { DrawingView(doc, Modifier.fillMaxSize()) }
+                        }
+                    }
+                    null -> Unit
                 }
-                Text("책으로 보기 ›", style = KkTheme.type.label, color = c.accent)
+                page.envelope?.let { SmallEnvelope(it, tilt = if (tilt > 0) -2f else 2f) }
+                page.meet?.let { MeetTicket("${it.date.md()} ${it.tag}", it.title, Modifier.widthIn(min = 104.dp, max = 120.dp), tilt = if (tilt > 0) 2f else -1.5f) }
+            }
+            page.lastLine?.let { (date, text) ->
+                Text(
+                    "$date  $text", style = KkTheme.type.caption, color = c.sub, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 18.dp),
+                )
             }
         }
+        KkTape(Modifier.align(Alignment.TopStart).offset(x = (-10).dp, y = (-6).dp).rotate(-40f))
+        KkTape(Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = 12.dp).rotate(35f))
     }
 }
 
-private fun BookProgress.label(): String = when {
-    done -> "다 쓴 책 · ${current}장"
-    total != null -> "${ordinalKo(current)} 장 쓰는 중 · $current / ${total}개월"
-    else -> "${ordinalKo(current)} 장 쓰는 중"
+private fun MonthDetail.counts() = "편지 ${letters.size} · 그림 $drawings · 만남 ${meets.size}"
+
+/** 월 페이지의 작은 봉투(paper/tag 78×54 · 편지 아이콘 · 편지 제목). */
+@Composable
+private fun SmallEnvelope(label: String, tilt: Float) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.sm)
+    Column(
+        Modifier.rotate(tilt).size(78.dp, 54.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.tag).padding(top = KkSpacing.sm, start = 6.dp, end = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
+    ) {
+        KkIcon(KkIcons.Mail, tint = c.accent, size = 22.dp)
+        Text(label, style = KkTheme.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+    }
 }
 
-/** 월별 장 한 줄: 대표 사진(만남 사진 · 첫 그림) + "10월 · 세 번째 장" + 쓰는 중 태그 + 편지 · 그림 · 만남 수. */
-@OptIn(ExperimentalLayoutApi::class)
+/** 만남 꼬리표(paper/tag · 구멍 · 절취선 · 위 테이프): 굵은 [title] + [sub] 한 줄. 태그 위 글자는 ink 만. */
 @Composable
-private fun ChapterRow(ch: Chapter, month: MonthDetail?, photos: Map<String, ByteArray?>, onClick: () -> Unit) {
+private fun MeetTicket(title: String, sub: String?, modifier: Modifier = Modifier, tilt: Float = 0f) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
-            .clickable(role = Role.Button, onClick = onClick).padding(KkSpacing.md),
-        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
+    val shape = RoundedCornerShape(KkRadius.sm)
+    Box(modifier.rotate(tilt)) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).height(IntrinsicSize.Min).kkElevation(KkElevation.Low, shape).clip(shape).background(c.tag),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.padding(start = KkSpacing.sm).size(8.dp).clip(CircleShape).background(c.canvas))
+            Box(Modifier.padding(start = 6.dp, top = 6.dp, bottom = 6.dp).width(1.dp).fillMaxHeight().background(c.line))
+            Column(Modifier.padding(start = KkSpacing.sm, end = KkSpacing.sm, top = KkSpacing.sm, bottom = KkSpacing.sm), verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
+                Text(title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (!sub.isNullOrBlank()) Text(sub, style = KkTheme.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        KkTape(Modifier.align(Alignment.TopCenter).offset(y = (-8).dp).rotate(-4f))
+    }
+}
+
+/** 점선 빈 페이지(아직 아무것도 붙이지 않은 달): "10월"(손글씨, sub) + "아직 붙인 게 없어요" + 위 테이프. */
+@Composable
+private fun EmptyPage(ym: YearMonth, modifier: Modifier = Modifier) {
+    val c = KkTheme.colors
+    Box(modifier.fillMaxWidth().padding(horizontal = KkSpacing.xs).rotate(1.5f)) {
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 150.dp).dashedBorder(c.line, KkRadius.sm).padding(start = 17.dp, top = 13.dp, end = 17.dp, bottom = KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+        ) {
+            Text("${ym.month}월", style = KkTheme.type.handL, color = c.sub)
+            Text("아직 붙인 게 없어요", style = KkTheme.type.caption, color = c.sub)
+        }
+        KkTape(Modifier.align(Alignment.TopCenter).offset(y = (-8).dp).rotate(4f))
+    }
+}
+
+/** 추억 · 비어 있음: 책 아이콘 · "첫 추억은 첫 편지부터"(손글씨) · [편지 쓰기]. */
+@Composable
+private fun EmptyMemory(onWriteLetter: () -> Unit) {
+    val c = KkTheme.colors
+    Column(
+        Modifier.fillMaxWidth().padding(top = 50.dp, bottom = 30.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
-        Box(Modifier.size(64.dp).clip(RoundedCornerShape(KkRadius.md)).background(c.bar), contentAlignment = Alignment.Center) {
-            when (val cover = ch.cover) {
-                is ChapterCover.Photo -> PhotoImage(photos[cover.attachmentId], Modifier.fillMaxSize())
-                is ChapterCover.Drawing -> month?.letters?.firstOrNull { it.id == cover.letterId }?.thumb?.let { Box(Modifier.size(56.dp)) { DrawingView(it) } }
-                null -> KkIcon(KkIcons.Album, tint = c.accent)
-            }
+        KkIcon(KkIcons.Book, tint = c.ink, size = 56.dp)
+        Text("첫 추억은 첫 편지부터", style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center)
+        KkButton("편지 쓰기", onWriteLetter, style = KkButtonStyle.Secondary, size = KkButtonSize.M)
+    }
+}
+
+/** 월 페이지 스켈레톤(Figma 추억 · 로딩): 월 · 수 · 물건 셋 · 한 줄 자리. */
+@Composable
+private fun PageSkeleton() {
+    val c = KkTheme.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.sm)).background(c.surface).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        KkSkeleton(Modifier.size(60.dp, 20.dp))
+        KkSkeleton(Modifier.width(150.dp).height(10.dp))
+        Row(Modifier.fillMaxWidth().padding(vertical = KkSpacing.sm), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            repeat(3) { Box(Modifier.weight(1f).height(92.dp).clip(RoundedCornerShape(KkRadius.sm)).background(c.line).clearAndSetSemantics {}) }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("${ch.ym.month}월 · ${ordinalKo(ch.number)} 장", style = KkTheme.type.labelBold, color = c.ink)
-                if (ch.writing) Pill("쓰는 중", c.bar, c.accent)
-            }
-            Text(
-                listOfNotNull(
-                    "입대".takeIf { ch.enlisted },
-                    "편지 ${ch.letters}".takeIf { ch.letters > 0 },
-                    "그림 ${ch.drawings}".takeIf { ch.drawings > 0 },
-                    "만남 ${ch.meets}".takeIf { ch.meets > 0 },
-                ).ifEmpty { listOf("아직 비어 있어요") }.joinToString(" · "),
-                style = KkTheme.type.body, color = c.sub,
-            )
-        }
-        Text("›", style = KkTheme.type.title, color = c.sub)
+        KkSkeleton(Modifier.fillMaxWidth(0.8f).height(10.dp))
     }
 }
 
 // ── 한 달 ─────────────────────────────────────────────────────────────────
 
-/** 추억 · 한 달(Figma): 달력(일정 막대 · 편지 점 · 그림 편지 마름모 · 오늘) + 편지(세 형태) + 만남. */
+/**
+ * 추억 · 한 달(Figma 367:266): "2026년 10월" + 편지 · 그림 · 만남 수, 날짜별 타임라인(최근 날부터).
+ * 편지는 봉투(봉인 · 미니 폴라로이드 · 소인 · 우표), 그림만 보낸 편지는 폴라로이드, 만남은 꼬리표.
+ */
 @Composable
-private fun MonthScreen(m: MonthDetail, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit) {
+internal fun MonthScreen(m: MonthDetail, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit) {
     val c = KkTheme.colors
-    var all by remember(m.ym) { mutableStateOf(false) }
+    val days = remember(m) { monthTimeline(m) }
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
-        KkTopBar("${m.ym.month}월 · ${ordinalKo(m.number)} 장", onLeading = { onIntent(MemoryIntent.Back) }, modifier = Modifier.padding(horizontal = KkSpacing.lg))
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { onIntent(MemoryIntent.Back) }.semantics { contentDescription = "뒤로 가기" },
+                contentAlignment = Alignment.Center,
+            ) { KkIcon(KkIcons.Back, tint = c.ink, size = 15.8.dp, modifier = Modifier.width(8.8.dp)) }
+            Column(Modifier.weight(1f).padding(start = KkSpacing.xs)) {
+                Text("${m.ym.year}년 ${m.ym.month}월", style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
+                Text(m.counts(), style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+            }
+        }
+        val line = c.line
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+            Modifier.weight(1f).verticalScroll(rememberScrollState())
+                .drawBehind { drawRect(line, topLeft = androidx.compose.ui.geometry.Offset(TIMELINE_X.toPx() - 1.dp.toPx(), 0f), size = androidx.compose.ui.geometry.Size(2.dp.toPx(), size.height)) }
+                .padding(start = KkSpacing.lg, end = 14.dp, top = KkSpacing.lg, bottom = KkSpacing.xxl),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.xl),
         ) {
-            Text(
-                listOf("편지 ${m.letters.size}", "그림 ${m.drawings}", "만남 ${m.meets.size}").joinToString(" · "),
-                style = KkTheme.type.body, color = c.sub,
-            )
-            val shape = RoundedCornerShape(KkRadius.lg)
-            Box(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.md)) {
-                MonthCalendar(m, today = remember { kotlin.time.Clock.System.today() }, ink = c.ink, muted = c.sub, sunday = c.danger)
-            }
-            Legend()
-            if (m.letters.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("편지 ${m.letters.size}", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
-                    if (m.letters.size > 3) Text(if (all) "접기" else "전체 보기", style = KkTheme.type.label, color = c.accent, modifier = Modifier.clickable(role = Role.Button) { all = !all })
-                }
-                (if (all) m.letters else m.letters.take(3)).forEach { l -> LetterRow(l, photos) { onOpenLetter(l.id) } }
-            }
-            if (m.meets.isNotEmpty()) {
-                Text("만남 ${m.meets.size}", style = KkTheme.type.labelBold, color = c.ink)
-                m.meets.forEach { meet -> MeetSummary(meet, photos) { onIntent(MemoryIntent.Open(MemoryPage.Meet(meet.eventId))) } }
-            }
-            Spacer(Modifier.height(KkSpacing.lg))
+            days.forEach { day -> TimelineDayRow(day, photos, onIntent, onOpenLetter) }
         }
     }
 }
 
-/** 편지 한 줄: 그림만은 큰 그림 + "그림 편지", 글 사이 그림은 작은 그림 + 글, 글만은 글. */
+/** 타임라인 선의 x(화면 왼쪽에서). 날짜 칸 40 + 점 칸 가운데. */
+private val TIMELINE_X = 64.dp
+
 @Composable
-private fun LetterRow(l: MonthLetter, photos: Map<String, ByteArray?>, onClick: () -> Unit) {
+private fun TimelineDayRow(day: TimelineDay, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
-            .clickable(role = Role.Button, onClick = onClick).padding(KkSpacing.md),
-        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (l.kind != LetterKind.TEXT) {
-            val s = if (l.kind == LetterKind.DRAWING_ONLY) 56.dp else 44.dp
-            Box(Modifier.size(s).clip(RoundedCornerShape(KkRadius.md)).background(c.bar), contentAlignment = Alignment.Center) {
-                when {
-                    l.thumb != null -> Box(Modifier.size(s - 6.dp)) { DrawingView(l.thumb) }
-                    l.photoId != null -> PhotoImage(photos[l.photoId], Modifier.fillMaxSize())
+    Row(Modifier.fillMaxWidth()) {
+        Column(Modifier.width(40.dp).padding(top = 2.dp)) {
+            Text(day.date.md(), style = KkTheme.type.labelBold, color = c.ink, maxLines = 1, softWrap = false)
+            Text(weekday(day.date), style = KkTheme.type.caption, color = c.sub)
+        }
+        Box(Modifier.width(16.dp).padding(top = 6.dp), contentAlignment = Alignment.TopCenter) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(c.accent))
+        }
+        Column(Modifier.weight(1f).padding(start = 6.dp), verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+            day.items.forEach { item ->
+                when (item) {
+                    is TimelineItem.Meet -> item.meet.let { meet ->
+                        MeetTicket(
+                            meet.title, meet.notes.firstOrNull()?.let { (who, text) -> "$who · $text" } ?: meet.time,
+                            // 누르는 목록 안이라 반듯하게(design.md).
+                            Modifier.fillMaxWidth().clickable(role = Role.Button) { onIntent(MemoryIntent.Open(MemoryPage.Meet(meet.eventId))) },
+                        )
+                    }
+                    is TimelineItem.Letter -> item.letter.let { l ->
+                        if (l.kind == LetterKind.DRAWING_ONLY) DrawingLetter(l, photos) { onOpenLetter(l.id) }
+                        else KkEnvelopeRow(l.text.ifBlank { "그림 편지" }, "${l.author} · ${l.date.md()}", l.envelopeMark(photos), { onOpenLetter(l.id) })
+                    }
                 }
             }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(l.meta, style = KkTheme.type.caption, color = c.sub)
-            Text(
-                if (l.kind == LetterKind.DRAWING_ONLY) "그림 편지" else l.text,
-                style = KkTheme.type.body, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
-        }
     }
 }
 
-/** 만남 카드(한 달 안): 태그 · 제목 · 날짜, 사진 둘, 메모 한 줄. */
+/** 봉투 오른쪽 장식([LetterMark] → [KkEnvelopeMark]). */
 @Composable
-private fun MeetSummary(meet: MeetCard, photos: Map<String, ByteArray?>, onClick: () -> Unit) {
+private fun MonthLetter.envelopeMark(photos: Map<String, ByteArray?>): KkEnvelopeMark = when (mark()) {
+    LetterMark.Sent -> KkEnvelopeMark.Postmark(date.dotted())
+    LetterMark.Seal -> KkEnvelopeMark.Seal(stamp)
+    LetterMark.Stamp -> KkEnvelopeMark.Stamp(stamp)
+    LetterMark.Drawing -> {
+        val bytes = photos[drawingPng ?: photoId]
+        KkEnvelopeMark.Polaroid(remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } })
+    }
+}
+
+private fun kotlinx.datetime.LocalDate.dotted() =
+    "$year.${(month.ordinal + 1).toString().padStart(2, '0')}.${day.toString().padStart(2, '0')}"
+
+/** 그림만 보낸 편지: 폴라로이드(실제 그림 + 캡션) 옆에 "그림 · 민준이 보냄" · [그린 순서대로 다시 보기](편지에서 재생). */
+@Composable
+private fun DrawingLetter(l: MonthLetter, photos: Map<String, ByteArray?>, onOpen: () -> Unit) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
-            .clickable(role = Role.Button, onClick = onClick).padding(KkSpacing.md),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            Pill(meet.tag, c.bar, c.accent)
-            Text("${meet.title} · ${meet.date.md()}", style = KkTheme.type.label, color = c.ink)
-        }
-        if (meet.photos.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-                meet.photos.take(3).forEach { id -> PhotoImage(photos[id], Modifier.size(96.dp, 72.dp).clip(RoundedCornerShape(KkRadius.md))) }
+    Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg), verticalAlignment = Alignment.Top) {
+        Box {
+            KkPolaroid(
+                Modifier.width(140.dp).padding(top = KkSpacing.sm).clickable(role = Role.Button, onClick = onOpen).semantics { contentDescription = "그림 편지" },
+                tilt = 2.5f, caption = l.caption,
+            ) {
+                Box(Modifier.fillMaxSize().background(c.bar)) {
+                    when {
+                        l.thumb != null -> DrawingView(l.thumb, Modifier.fillMaxSize())
+                        l.drawingPng != null -> PhotoImage(photos[l.drawingPng], Modifier.fillMaxSize())
+                    }
+                }
+            }
+            // 안 읽은 그림 편지: 봉투처럼 "새" 봉인을 모서리에 건다.
+            if (l.mark() == LetterMark.Seal) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).offset(x = 6.dp).size(28.dp).clip(CircleShape).background(c.accent).clearAndSetSemantics { contentDescription = "새 편지" },
+                    contentAlignment = Alignment.Center,
+                ) { Text("새", style = KkTheme.type.labelBold, color = c.canvas) }
             }
         }
-        meet.notes.firstOrNull()?.let { (who, text) -> Text("$who · $text", style = KkTheme.type.body, color = c.sub) }
-    }
-}
-
-/** 달력 범례: 편지 · 그림 편지 · 면회 · 휴가 · 진급. */
-@Composable
-private fun Legend() {
-    val c = KkTheme.colors
-    Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
-        LegendItem("편지") { Box(Modifier.size(6.dp).clip(CircleShape).background(c.stamp)) }
-        LegendItem("그림 편지") { Box(Modifier.size(6.dp).rotate(45f).background(c.accent)) }
-        LegendItem("면회") { Box(Modifier.size(14.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(c.eventVisit)) }
-        LegendItem("휴가") { Box(Modifier.size(14.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(c.eventVacation)) }
-    }
-}
-
-@Composable
-private fun LegendItem(label: String, mark: @Composable () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-        mark()
-        Text(label, style = KkTheme.type.caption, color = KkTheme.colors.sub)
+        Column(Modifier.padding(top = 22.dp)) {
+            Text("그림 · ${if (l.mine) "내가" else l.author.subject()} 보냄", style = KkTheme.type.caption, color = c.sub)
+            Text(
+                "그린 순서대로 다시 보기", style = KkTheme.type.caption, color = c.accent,
+                modifier = Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onOpen).wrapContentHeight(),
+            )
+        }
     }
 }
 
@@ -588,12 +672,4 @@ internal fun PhotoImage(bytes: ByteArray?, modifier: Modifier) {
     val bitmap: ImageBitmap? = remember(bytes) { bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() } }
     if (bitmap != null) Image(bitmap, null, modifier, contentScale = ContentScale.Crop)
     else Box(modifier.background(KkTheme.colors.line))
-}
-
-@Composable
-internal fun Pill(text: String, bg: Color, fg: Color) {
-    Text(
-        text, style = KkTheme.type.label, color = fg, maxLines = 1, softWrap = false,
-        modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(bg).padding(horizontal = KkSpacing.xs, vertical = KkSpacing.xxs),
-    )
 }
