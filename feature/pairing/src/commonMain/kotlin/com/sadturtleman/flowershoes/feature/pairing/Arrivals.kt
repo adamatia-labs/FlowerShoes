@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
+import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
@@ -34,6 +36,7 @@ import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.model.Letter
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,6 +52,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import org.koin.compose.viewmodel.koinViewModel
 
 /** 이 기간 안에 도착해야 "도착" 순간으로 띄운다. 그 뒤에 오는 옛 편지는 평소 편지함으로. */
 private val ARRIVAL_WINDOW = 7.days
@@ -80,15 +84,18 @@ class SoloArrivalViewModel(
 
     init {
         viewModelScope.launch {
+            // 띄울 수 > 0, 기다릴 것 없음(연결한 지 오래됨) = EXPIRED, 아직 = 0.
             val count = settings.soloArrivalWatch.flatMapLatest { on ->
                 if (!on) flowOf(0)
-                else combine(profile.observeCouple(), letters.observeInbox()) { couple, inbox ->
+                else combine(profile.observeCouple(), letters.observeInbox(), clock.ticker(1.hours)) { couple, inbox, now ->
                     val partner = couple?.partnerUserId?.takeIf { it.isNotBlank() } ?: return@combine 0
-                    arrivalToShow(inbox, partner, Instant.fromEpochMilliseconds(couple.linkedAtMs), clock.now())
+                    val linkedAt = Instant.fromEpochMilliseconds(couple.linkedAtMs)
+                    if (now - linkedAt > ARRIVAL_WINDOW) EXPIRED else arrivalToShow(inbox, partner, linkedAt, now)
                 }
             }
-            _arrived.value = count.distinctUntilChanged().debounce(SETTLE).filter { it > 0 }.first()
+            val settled = count.distinctUntilChanged().debounce(SETTLE).filter { it != 0 }.first()
             settings.setSoloArrivalWatch(false)
+            if (settled > 0) _arrived.value = settled
         }
     }
 
@@ -98,12 +105,13 @@ class SoloArrivalViewModel(
 
     private companion object {
         val SETTLE = 3.seconds
+        const val EXPIRED = -1
     }
 }
 
 /** 셸(홈 위)에 놓는다. [onOpenLetters] 편지함으로. */
 @Composable
-fun SoloArrivals(onOpenLetters: () -> Unit, viewModel: SoloArrivalViewModel = org.koin.compose.viewmodel.koinViewModel()) {
+fun SoloArrivals(onOpenLetters: () -> Unit, viewModel: SoloArrivalViewModel = koinViewModel()) {
     val arrived by viewModel.arrived.collectAsStateWithLifecycle()
     val n = arrived ?: return
     ArrivalDialog(n, onOpen = { viewModel.dismiss(); onOpenLetters() }, onClose = viewModel::dismiss)
@@ -121,7 +129,7 @@ internal fun ArrivalDialog(letters: Int, onOpen: () -> Unit, onClose: () -> Unit
         ) {
             KkIcon(KkIcons.Mail, tint = c.stamp, size = 32.dp)
             Text(arrivalTitle(letters), style = KkTheme.type.title, color = c.ink)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, androidx.compose.ui.Alignment.End)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, Alignment.End)) {
                 KkButton("닫기", onClose, style = KkButtonStyle.Ghost, size = KkButtonSize.M)
                 KkButton("편지함 열기", onOpen, size = KkButtonSize.M)
             }
