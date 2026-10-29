@@ -22,6 +22,7 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
 
     // Mailbox
     override suspend fun put(coupleId: String, toDevice: String, item: MailItem) {
+        check(item.ciphertext.size <= MAX_OP_CIPHERTEXT) { "우편함 규칙: 암호문 ${item.ciphertext.size}바이트 > $MAX_OP_CIPHERTEXT" }
         inbox.getOrPut("$coupleId/$toDevice") { linkedMapOf() }[item.opId] = tamper?.invoke(item) ?: item
     }
 
@@ -39,6 +40,7 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
 
     // BlobStore
     override suspend fun put(coupleId: String, blobId: String, bytes: ByteArray) {
+        check(bytes.size <= MAX_BLOB) { "Storage 규칙: blob ${bytes.size}바이트 > $MAX_BLOB" }
         blobStore["$coupleId/$blobId"] = bytes
     }
 
@@ -126,6 +128,14 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, RotationTransport, A
 
     override suspend fun deleteAccount() {
         unlinked += "account"
+    }
+
+    companion object {
+        /** firestore.rules 우편함: ct(base64) ≤ 90,000자 = 암호문 67,500바이트. */
+        const val MAX_OP_CIPHERTEXT = 90_000 / 4 * 3
+
+        /** storage.rules couples/{c}/…: 10MB. 이보다 작은 것(≤ 675,000)은 Firestore blob 문서에 인라인으로 간다. */
+        const val MAX_BLOB = 10 * 1024 * 1024
     }
 }
 
