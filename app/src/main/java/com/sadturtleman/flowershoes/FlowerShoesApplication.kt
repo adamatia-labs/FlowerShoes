@@ -115,7 +115,7 @@ class FlowerShoesApplication :
                 androidx.glance.appwidget.GlanceAppWidgetManager(this@FlowerShoesApplication)
                     .getGlanceIds(com.sadturtleman.flowershoes.widget.DrawingWidget::class.java).isNotEmpty()
             }) { updateAllWidgets(this@FlowerShoesApplication) }
-            NotificationSync(get(), get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication), prefs = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs).start(this)
+            NotificationSync(get(), get(), get(), AndroidNotificationScheduler(this@FlowerShoesApplication), prefs = get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs).start(this)
             // 서버 설정이 있는 빌드에서만 등록돼 있다.
             getKoin().getOrNull<SyncScheduler>()?.start(this)
             registerPushTokenOnSignIn()

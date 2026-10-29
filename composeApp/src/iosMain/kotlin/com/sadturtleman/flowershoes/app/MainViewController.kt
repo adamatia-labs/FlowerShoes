@@ -190,7 +190,7 @@ fun onForeground() {
             )
             koin.getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()?.start(appScope)
             com.sadturtleman.flowershoes.core.notification.NotificationSync(
-                koin.get(), koin.get(), koin.get(), koin.get(),
+                koin.get(), koin.get(), koin.get(),
                 com.sadturtleman.flowershoes.app.ios.IosNotificationScheduler(),
                 prefs = koin.get<com.sadturtleman.flowershoes.core.data.DeviceSettings>().notifyPrefs,
             ).start(appScope)

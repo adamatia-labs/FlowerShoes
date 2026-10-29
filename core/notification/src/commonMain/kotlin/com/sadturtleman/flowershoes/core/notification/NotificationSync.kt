@@ -1,6 +1,5 @@
 package com.sadturtleman.flowershoes.core.notification
 
-import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.today
@@ -15,7 +14,6 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
-import kotlinx.datetime.LocalDate
 import kotlinx.datetime.plus
 
 /**
@@ -26,7 +24,6 @@ class NotificationSync(
     private val db: AppDatabase,
     private val identity: Identity,
     private val profile: ProfileRepository,
-    private val events: EventRepository,
     private val scheduler: NotificationScheduler,
     private val clock: Clock = Clock.System,
     private val planner: NotificationPlanner = NotificationPlanner(),
@@ -39,7 +36,8 @@ class NotificationSync(
         val today = clock.today()
         combine(
             combine(db.letterDao().observeAll(), prefs) { l, p -> l to p },
-            events.observeRange(today, today.plus(DatePeriod(years = 1))),
+            // 매년 반복 기념일은 원래 날 그대로(planner 가 해마다 옮긴다).
+            db.eventDao().observeRange("${today}T00:00", "${today.plus(DatePeriod(years = 1))}T23:59"),
             profile.observeTimelines(),
             db.coupleDao().observe(),
             db.userDao().observeAll(),
@@ -50,11 +48,11 @@ class NotificationSync(
                 partnerName = users.firstOrNull { it.id == partner }?.nickname?.ifBlank { null } ?: "연인",
                 // 예약 편지 공개 알림은 받는 폰이 띄운다 — 내가 쓴 편지는 빼고.
                 scheduledLetters = if (p.letters) letters.filter { it.authorId != identity.userId }.map { it.toModel() } else emptyList(),
-                events = if (p.eventEve) upcoming else emptyList(),
+                events = upcoming.map { it.toModel() },
                 timeline = if (p.anniversary) timelines.firstOrNull()?.second else null,
-                anniversary = if (p.anniversary) couple?.anniversary?.let(LocalDate::parse) else null,
-                anniversaryHundreds = p.anniversary100,
-                anniversaryYears = p.anniversaryYear,
+                eventEve = p.eventEve,
+                anniversaryHundreds = p.anniversary && p.anniversary100,
+                anniversaryYears = p.anniversary && p.anniversaryYear,
             )
         }
             .distinctUntilChanged()

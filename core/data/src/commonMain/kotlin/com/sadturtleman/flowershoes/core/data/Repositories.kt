@@ -1,10 +1,10 @@
 package com.sadturtleman.flowershoes.core.data
 
 import com.sadturtleman.flowershoes.core.database.AppDatabase
-import com.sadturtleman.flowershoes.core.database.CoupleEntity
 import com.sadturtleman.flowershoes.core.database.DrawingEntity
 import com.sadturtleman.flowershoes.core.database.MemoryEntity
 import com.sadturtleman.flowershoes.core.database.UserEntity
+import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Event
@@ -18,6 +18,7 @@ import com.sadturtleman.flowershoes.core.model.ReceiptEntity
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.Service
 import com.sadturtleman.flowershoes.core.model.Status
+import com.sadturtleman.flowershoes.core.model.koreanName
 import com.sadturtleman.flowershoes.core.sync.OpKind
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -32,7 +33,6 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.atTime
-import kotlinx.datetime.daysUntil
 import kotlinx.datetime.number
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -58,6 +58,7 @@ class ProfileRepository(
     private val writer: SyncWriter,
     private val identity: Identity,
     private val calculator: ServiceCalculator = ServiceCalculator(),
+    private val clock: Clock = Clock.System,
 ) {
     fun observeUsers(): Flow<List<UserEntity>> = db.userDao().observeAll()
 
@@ -66,7 +67,7 @@ class ProfileRepository(
     /** 연결된 연인의 uid. 연결 전 · 해제 뒤에는 null. */
     fun observePartnerId(): Flow<String?> = db.coupleDao().observe().map { it?.partnerUserId }
 
-    /** 커플(연결 · 기념일). 혼자 모드면 null 이거나 상대가 비어 있다. */
+    /** 커플(연결). 혼자 모드면 null 이거나 상대가 비어 있다. */
     fun observeCouple(): Flow<com.sadturtleman.flowershoes.core.database.CoupleEntity?> = db.coupleDao().observe()
 
     /** 커플 중 군인의 복무 일정. 혼자 모드에서 곰신이 입력한 값이어도 여기서 보인다. */
@@ -113,14 +114,29 @@ class ProfileRepository(
         )
     }
 
+    /** 커플 기념일(함께한 날의 1일째). 기념일 일정([Event.COUPLE_ANNIVERSARY_ID])의 날짜다. */
+    fun observeAnniversary(): Flow<LocalDate?> =
+        db.eventDao().observe(Event.COUPLE_ANNIVERSARY_ID).map { e -> e?.toModel()?.takeIf { it.type == EventType.ANNIVERSARY }?.start?.date }
+            .distinctUntilChanged()
+
+    /**
+     * 커플 기념일을 매년 반복 기념일 일정 하나로 남긴다(조용한 종류 — 알림 없이 반영). null 이면 그 일정을 지운다.
+     * 두 폰이 같은 id 를 쓰니 동시에 고쳐도 일정 LWW 로 하나만 남는다.
+     */
     suspend fun setAnniversary(date: LocalDate?) {
+        val id = Event.COUPLE_ANNIVERSARY_ID
+        val local = db.eventDao().get(id)?.toModel()
+        val at = clock.now()
+        val next = if (date == null) {
+            local?.takeIf { it.deletedAt == null }?.copy(deletedAt = at) ?: return
+        } else {
+            (local ?: Event(id, EventType.ANNIVERSARY, "사귄 날", date.atTime(0, 0), date.atTime(23, 59), false, at, 0, identity.deviceId))
+                .copy(start = date.atTime(0, 0), end = date.atTime(23, 59), deletedAt = null)
+        }
         writer.write(
-            OpKind.PROFILE, "anniversary", "couple",
-            localWrite = { lamport ->
-                val couple = db.coupleDao().get() ?: CoupleEntity("solo", identity.userId, "", 0, 0, null, 0)
-                db.coupleDao().upsert(couple.copy(anniversary = date?.toString(), anniversaryLamport = lamport))
-            },
-            payload = { lamport -> OpPayload.AnniversaryPut(date?.toString(), lamport) },
+            OpKind.PROFILE, "event", id,
+            localWrite = { lamport -> db.eventDao().upsert(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at).toEntity()) },
+            payload = { lamport -> OpPayload.EventPut(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at)) },
         )
     }
 }
@@ -131,8 +147,11 @@ class EventRepository(
     private val identity: Identity,
     private val clock: Clock = Clock.System,
 ) {
+    /** [from]..[to] 에 걸리는 일정. 매년 반복 기념일은 그 해의 날로 옮겨 놓는다(같은 id — 고치면 원래 일정이 바뀐다). */
     fun observeRange(from: LocalDate, to: LocalDate): Flow<List<Event>> =
-        db.eventDao().observeRange("${from}T00:00", "${to}T23:59").map { list -> list.map { it.toModel() } }
+        db.eventDao().observeRange("${from}T00:00", "${to}T23:59").map { list ->
+            list.flatMap { it.toModel().occurrencesIn(from, to) }.sortedBy { it.start }
+        }
 
     suspend fun get(id: String): Event? = db.eventDao().get(id)?.toModel()
 
@@ -164,8 +183,8 @@ class EventRepository(
 }
 
 /**
- * 휴가 관리(Figma 3 · 휴가). 받은 휴가는 조용한 종류(PROFILE)로, 쓴 날은 캘린더 휴가 일정으로 남긴다 —
- * 그래서 캘린더 · 홈 "다음 휴가"에 그대로 보이고, 일정을 지우면 남은 일수가 돌아온다.
+ * 휴가 하나의 풀(planning §8). 받은 휴가는 조용한 종류(PROFILE)로, 쓴 날은 캘린더 휴가 일정이다 —
+ * 그래서 캘린더 · 홈 "다음 휴가"에 그대로 보이고, 일정을 지우면 남은 휴가가 돌아온다. 정기휴가는 군종으로 계산한다.
  */
 class LeaveRepository(
     private val db: AppDatabase,
@@ -175,7 +194,13 @@ class LeaveRepository(
 ) {
     fun observeGrants(): Flow<List<LeaveGrant>> = db.leaveDao().observeAll().map { list -> list.map { it.toModel() } }
 
-    fun observeUses(): Flow<List<Event>> = db.eventDao().observeLeaveUses().map { list -> list.map { it.toModel() } }
+    /** 휴가 일정 = 휴가 사용. */
+    fun observeUses(): Flow<List<Event>> = db.eventDao().observeVacations().map { list -> list.map { it.toModel() } }
+
+    /** 남은 휴가 / 전체 · 출처 내역. 군인의 복무 정보(혼자 모드면 곰신이 넣은 값)의 군종으로 정기휴가를 센다. */
+    fun observePool(): Flow<LeavePool> = combine(db.serviceDao().observeAll(), observeGrants(), observeUses()) { services, grants, uses ->
+        LeavePool.of(services.firstOrNull()?.toModel()?.branch, grants, uses)
+    }
 
     suspend fun save(grant: LeaveGrant) {
         writer.write(
@@ -196,14 +221,14 @@ class LeaveRepository(
     }
 
     /**
-     * 사용 등록: [from]..[to] 를 캘린더 휴가 일정으로 남긴다. [notify] 면 상대 폰에 "일정을 바꿨어요" 알림이 간다(EVENT),
+     * 사용 등록: [from]..[to] 를 캘린더 휴가 일정으로 남긴다(출처를 고르지 않는다). [notify] 면 상대 폰에 "일정을 바꿨어요" 알림이 간다(EVENT),
      * 아니면 알림 없이 반영한다(PROFILE — 받는 쪽은 종류가 아니라 본문으로 반영한다).
      */
-    suspend fun use(grant: LeaveGrant, from: LocalDate, to: LocalDate, notify: Boolean) {
+    suspend fun use(from: LocalDate, to: LocalDate, notify: Boolean) {
         val event = Event(
-            id = Uuid.random().toString(), type = EventType.VACATION, title = grant.title,
+            id = Uuid.random().toString(), type = EventType.VACATION, title = EventType.VACATION.koreanName,
             start = from.atTime(0, 0), end = to.atTime(23, 59), alarm = false,
-            updatedAt = clock.now(), lamport = 0, lastWriterDevice = identity.deviceId, leaveGrantId = grant.id,
+            updatedAt = clock.now(), lamport = 0, lastWriterDevice = identity.deviceId,
         )
         writer.write(
             if (notify) OpKind.EVENT else OpKind.PROFILE, "event", event.id,
@@ -221,15 +246,12 @@ class LeaveRepository(
 /** 카드 제목: "포상휴가 · 사격 만발" → "포상휴가". */
 val LeaveGrant.title: String get() = name.substringBefore(" · ").ifBlank { kind.label }
 
-/** 카드 아래 줄: "정기휴가 · 2026.10.21에 받음" / "포상휴가 · 사격 만발 · 2026.10.02에 받음". */
+/** 카드 아래 줄: "포상휴가 · 사격 만발 · 2026.10.02에 받음". */
 val LeaveGrant.subtitle: String
     get() {
         val head = if (name.startsWith(kind.label)) name else kind.label
         return "$head · ${grantedOn.year}.${grantedOn.month.number.toString().padStart(2, '0')}.${grantedOn.day.toString().padStart(2, '0')}에 받음"
     }
-
-/** 일정이 차지하는 날 수(양 끝 포함). */
-val Event.dayCount: Int get() = start.date.daysUntil(end.date) + 1
 
 /** 편지 · 편지 안 그림. 그림만 보내기도 글 없는 편지 한 통이다. */
 class LetterRepository(

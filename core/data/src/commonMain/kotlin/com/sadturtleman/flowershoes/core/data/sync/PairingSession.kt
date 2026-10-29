@@ -157,11 +157,8 @@ class PairingSession(
         val keys = myKeys()
         vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, inviteToken))
         val now = clock.now().toEpochMilliseconds()
-        val solo = db.coupleDao().get()
         db.coupleDao().clear()
-        db.coupleDao().upsert(
-            CoupleEntity(coupleId, identity.userId, partner.uid, keyEpoch = 1, linkedAtMs = now, anniversary = solo?.anniversary, anniversaryLamport = solo?.anniversaryLamport ?: 0),
-        )
+        db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, partner.uid, keyEpoch = 1, linkedAtMs = now))
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
         db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         // 연결됐으면 내가 보낸 링크도 끝났다(서버가 두 사람의 초대를 지운다).

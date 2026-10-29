@@ -221,13 +221,13 @@ class DrawingEditorViewModel(
         if (profile != null) viewModelScope.launch {
             val today0 = clock.today()
             val upcoming = events?.observeRange(today0, LocalDate(today0.year + 2, 12, 31)) ?: kotlinx.coroutines.flow.flowOf(emptyList())
-            combine(profile.observeCouple(), profile.observeUsers(), profile.observeTimelines(), upcoming) { couple, users, timelines, evs ->
+            combine(profile.observeCouple(), profile.observeUsers(), profile.observeTimelines(), upcoming, profile.observeAnniversary()) { couple, users, timelines, evs, anniversary ->
                 val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
                 val partner = partnerId?.let { id -> users.firstOrNull { it.id == id } }?.nickname?.takeIf { it.isNotBlank() } ?: "연인"
                 val today = clock.today()
                 val timeline = timelines.firstOrNull()?.second
                 val left = timeline?.daysLeft(today)
-                val since = (couple?.anniversary?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                val since = (anniversary
                     ?: couple?.linkedAtMs?.takeIf { partnerId != null }?.let { Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.of("Asia/Seoul")).date })
                     ?.let { it.daysUntil(today) + 1 }
                 fun next(type: com.sadturtleman.flowershoes.core.model.EventType) =
