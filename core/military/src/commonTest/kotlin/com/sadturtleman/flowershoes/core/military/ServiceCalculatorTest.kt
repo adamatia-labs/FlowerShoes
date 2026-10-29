@@ -70,6 +70,7 @@ class ServiceCalculatorTest {
         val today = LocalDate.parse("2024-12-25")
         assertEquals("상병(예정)", t.rankAt(today)?.rank?.expectedName)
         assertEquals("병장(예정)", t.nextRank(today)?.rank?.expectedName)
+        assertEquals("병장 진급 예정", t.nextRank(today)?.rank?.promotionName)
     }
 
     @Test

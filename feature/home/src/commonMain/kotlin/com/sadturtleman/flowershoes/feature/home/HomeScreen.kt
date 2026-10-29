@@ -271,7 +271,7 @@ private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onEnter
     Dday(state, onOpenCalendar)
     state.soldier?.let { s ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("다음 진급", s.nextRank ?: "병장(예정)", Modifier.weight(1f))
+            StatTile("다음 진급", s.nextRank ?: "—", Modifier.weight(1f))
             if (s.leaveLeft != null) StatTile("남은 휴가", "${s.leaveLeft}일", Modifier.weight(1f), onClick = onOpenLeave)
             StatTile("복무", "${s.servedDay}일째", Modifier.weight(1f))
         }
