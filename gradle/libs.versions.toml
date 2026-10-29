@@ -108,6 +108,8 @@ androidx-metrics-performance = { group = "androidx.metrics", name = "metrics-per
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+# 마이그레이션 테스트(MigrationTestHelper). 내보낸 스키마 JSON 으로 옛 버전 DB 를 만들어 이전 경로를 돌린다.
+androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycleRuntimeKtx" }
 
 # 로컬 저장 (:common:datastore)

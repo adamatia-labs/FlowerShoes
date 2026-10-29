@@ -75,7 +75,7 @@ FIREBASE_EMULATOR_HOST=10.0.2.2   # 로컬 Firebase 에뮬레이터를 쓸 때�
 core 테스트는 Windows 에서도 `jvmTest` 로 돕니다. iOS 타깃은 macOS 에서만 빌드됩니다.
 
 ```bash
-./gradlew :core:military:jvmTest :core:sync:jvmTest :core:drawing-engine:jvmTest :core:crypto:jvmTest :core:database:jvmTest :core:data:jvmTest :core:notification:jvmTest
+./gradlew :core:military:jvmTest :core:sync:jvmTest :core:drawing-engine:jvmTest :core:crypto:jvmTest :core:database:jvmTest :core:tti:jvmTest :core:data:jvmTest :core:notification:jvmTest
 ```
 
 서버 테스트:
@@ -92,9 +92,17 @@ cd firebase/functions && npm install && npm test
 adb shell am start -a android.intent.action.VIEW -d "kkotsin://home"
 ```
 
+## 로컬 DB(Room)
+
+`core/database`(kkotsin.db) · `core/tti`(tti.db) 둘 다 출시 기준이 버전 1 입니다. 내보낸 스키마 JSON 은 각 모듈의 `schemas/` 에 커밋합니다.
+
+- **스키마를 바꾸면 버전을 올리고 `AutoMigration` 또는 `Migration` + 테스트를 함께 넣습니다. 파괴적 폴백(`fallbackToDestructiveMigration*`)은 쓰지 않습니다.** 경로가 빠지면 사용자 데이터를 지우는 대신 앱이 열리지 않습니다.
+- `MigrationTest` · `TtiMigrationTest` 가 옛 버전마다 현재 버전까지 이전되는지 확인하고, CI `Room` 이 새로 생기거나 바뀐 스키마 JSON 이 커밋되지 않았으면 실패합니다.
+- 자세한 규칙은 [docs/agents/code-review-standards.md](docs/agents/code-review-standards.md) 를 봅니다.
+
 ## CI
 
-GitHub Actions: `Functions`(함수 단위 · Firestore 통합 테스트), `iOS`(macOS 빌드).
+GitHub Actions: `Functions`(함수 단위 · Firestore 통합 테스트), `iOS`(macOS 빌드), `Room`(마이그레이션 테스트 · 스키마 JSON 확인).
 
 ## 브랜치
 
