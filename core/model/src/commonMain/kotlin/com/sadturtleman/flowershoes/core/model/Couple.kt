@@ -71,3 +71,19 @@ data class Device(
 
 @Serializable
 enum class DeviceState { PENDING, ACTIVE, REVOKED }
+
+/** 추억 책 표지 2종(planning §8). 산 사람이 고르고 두 사람이 함께 쓴다. 고르기 전에는 [MILITARY]. */
+@Serializable
+enum class BookCover {
+    /** 꽃신 편지지: 분홍 줄 편지지 · 꽃신 우편 소인. */
+    FLOWER,
+
+    /** 군사우편: 크라프트 봉투 · 항공우편 띠 · 군사우편 소인. */
+    MILITARY;
+
+    companion object {
+        val DEFAULT = MILITARY
+
+        fun from(stored: String?): BookCover = entries.firstOrNull { it.name == stored } ?: DEFAULT
+    }
+}

@@ -92,6 +92,7 @@ fun kkotsinModules(
         single { AttachmentStore(get(), attachmentsRoot) }
         single { com.sadturtleman.flowershoes.core.data.RecordExporter(get(), get(), get()) }
         single { com.sadturtleman.flowershoes.core.data.SharedPerks(getOrNull(), getOrNull(), get()) }
+        single { com.sadturtleman.flowershoes.core.data.BookPromo(get(), get<com.sadturtleman.flowershoes.core.data.SharedPerks>().bookOn, get<DeviceSettings>().bookPromo, get()) }
         single { InboxApplier(get(), get()) }
         single { ProfileRepository(get(), get(), get()) }
         single { EventRepository(get(), get(), get(), get()) }
@@ -100,6 +101,7 @@ fun kkotsinModules(
         single<com.sadturtleman.flowershoes.core.data.LetterDraftStore> { com.sadturtleman.flowershoes.core.data.RoomLetterDraftStore(get()) }
         single { MissYouRepository(get(), get(), get(), get()) }
         single { StatusRepository(get(), get(), get(), get()) }
+        single { com.sadturtleman.flowershoes.core.data.BookCoverRepository(get(), get(), get()) }
         single { vault }
         single { UnlinkService(get(), get(), get(), cloud?.account, wipeAttachmentFiles = { get<AttachmentStore>().deleteAllFiles() }) }
         // 서버 설정이 없는 빌드에서는 등록하지 않는다(화면은 getOrNull 로 "설정 전" 안내를 보여 준다).
@@ -144,7 +146,7 @@ fun kkotsinModules(
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
-        viewModel { MemoryViewModel(get(), get(), get(), get(), clock = get()) }
+        viewModel { MemoryViewModel(get(), get(), get(), get(), get(), clock = get()) }
         viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), getOrNull(), get(), get(), bizLogger = get()) }
         viewModel { com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel(getOrNull(), get(), getOrNull(), get(), bizLogger = get()) }
         viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull()) }

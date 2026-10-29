@@ -56,6 +56,10 @@ sealed interface OpPayload {
         val perks: List<String> = emptyList(),
     ) : OpPayload
 
+    /** 추억 책 표지(두 사람 공유, BookCover 이름 — 모르는 표지는 기본 표지로 읽는다). 조용한 종류(PROFILE)로 보낸다. 행 LWW(lamport, writerDevice). */
+    @Serializable @SerialName("bookcover")
+    data class BookCoverPut(val cover: String, val lamport: Long, val writerDevice: String) : OpPayload
+
     @Serializable @SerialName("delete")
     data class Delete(val entity: DeletableEntity, val id: String, val lamport: Long, val atMs: Long, val writerDevice: String) : OpPayload
 

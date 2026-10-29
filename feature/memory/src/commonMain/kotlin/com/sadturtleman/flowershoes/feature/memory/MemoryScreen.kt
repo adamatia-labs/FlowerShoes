@@ -112,7 +112,7 @@ fun MemoryRoute(
                     // 지워졌거나 아직 시작하지 않은 일정(알림 · 홈 카드가 늦게 눌림)이면 닫는다.
                     else if (!state.loading) LaunchedEffect(page) { onIntent(MemoryIntent.Back) }
                 }
-                MemoryPage.Book -> BookScreen(state, photos, book, onBack = { onIntent(MemoryIntent.Back) }, onNotice = { notice = it })
+                MemoryPage.Book -> BookScreen(state, photos, book, onChooseCover = { onIntent(MemoryIntent.ChooseCover(it)) }, onBack = { onIntent(MemoryIntent.Back) }, onNotice = { notice = it })
             }
         }
         removing?.let { (eventId, id) ->

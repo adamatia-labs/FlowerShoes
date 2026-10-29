@@ -89,6 +89,15 @@ data class EventEntity(
     val repeatYearly: Boolean = true,
 )
 
+/** 추억 책 표지(두 사람이 함께 쓰는 값 하나). 행 하나, LWW(lamport, lastWriterDevice). */
+@Entity(tableName = "book_cover")
+data class BookCoverEntity(
+    @PrimaryKey val id: String = "book",
+    val cover: String,
+    val lamport: Long,
+    val lastWriterDevice: String,
+)
+
 /** 받은 휴가(휴가 관리 › 출처 내역). 일정과 같은 LWW · tombstone. */
 @Entity(tableName = "leave_grant")
 data class LeaveGrantEntity(
