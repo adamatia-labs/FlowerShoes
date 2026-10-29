@@ -142,8 +142,9 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onW
         Spacer(Modifier.height(KkSpacing.lg))
     }
     state.draft?.let { d ->
-        // 그날의 한 줄 남기기: 저장된 면회 · 외박 · 휴가가 시작했으면(지난 일정도 언제든).
-        val dayLine = d.id?.takeIf { d.type.hasDayLine && d.start <= state.today }
+        // 그날의 한 줄 남기기: 저장된 면회 · 외박 · 휴가가 시작했으면(지난 일정도 언제든). 고치는 중인 칸이 아니라 저장된 일정으로 본다.
+        val saved = d.id?.let { id -> (state.monthEvents + state.upcoming).firstOrNull { it.id == id } }
+        val dayLine = saved?.takeIf { it.hasDayLine && it.start.date <= state.today }?.id
         EventEditor(d, onIntent, dayLine?.let { id -> { onIntent(CalendarIntent.CloseDraft); onWriteDayLine(id) } })
     }
 }

@@ -11,6 +11,9 @@ data class DayLine(val text: String, val at: Long) {
     companion object {
         const val MAX_CHARS = 40
 
+        /** 그날의 사진(둘이 합쳐). */
+        const val MAX_PHOTOS = 10
+
         /** 일정이 끝나고 며칠 동안 홈 카드를 띄우는지. */
         const val CARD_DAYS = 3
     }
@@ -20,7 +23,7 @@ data class DayLine(val text: String, val at: Long) {
 fun mergeDayLines(a: Map<String, DayLine>, b: Map<String, DayLine>): Map<String, DayLine> =
     (a.keys + b.keys).associateWith { k -> listOfNotNull(a[k], b[k]).maxBy { it.at } }
 
-/** 실제로 만나는 날(면회 · 외박 · 휴가) — 그날의 한 줄을 남기는 일정. 군인 혼자 등록한 휴가도 포함. */
+/** 실제로 만나는 날(면회 · 외박 · 휴가) — 그날의 한 줄을 남기는 일정. 군인 혼자 등록한 휴가도 포함. EventDao.observeDayLines 의 SQL 과 같은 목록. */
 val EventType.hasDayLine: Boolean get() = this == EventType.VISIT || this == EventType.OVERNIGHT || this == EventType.VACATION
 
 val Event.hasDayLine: Boolean get() = type.hasDayLine

@@ -18,6 +18,7 @@ import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.LetterBlock
+import com.sadturtleman.flowershoes.core.model.DayLine
 import com.sadturtleman.flowershoes.core.model.hasDayLine
 import com.sadturtleman.flowershoes.core.model.myDayLine
 import com.sadturtleman.flowershoes.core.model.partnerDayLine
@@ -256,7 +257,8 @@ class MemoryViewModel(
 
     fun onIntent(intent: MemoryIntent) {
         when (intent) {
-            is MemoryIntent.Open -> stack.update { it + intent.page }
+            // 같은 화면을 거듭 열면(알림 · 홈 카드를 여러 번) 한 장만 둔다.
+            is MemoryIntent.Open -> stack.update { if (it.lastOrNull() == intent.page) it else it + intent.page }
             MemoryIntent.Back -> stack.update { it.dropLast(1) }
             is MemoryIntent.SaveDayLine -> viewModelScope.launch {
                 events.writeDayLine(intent.eventId, intent.text)
@@ -264,8 +266,8 @@ class MemoryViewModel(
             }
             is MemoryIntent.AddMeetPhoto -> viewModelScope.launch {
                 val e = events.get(intent.eventId) ?: return@launch
-                if (e.photoIds.size >= MAX_MEET_PHOTOS) {
-                    _notices.tryEmit("사진은 둘이 합쳐 ${MAX_MEET_PHOTOS}장까지예요")
+                if (e.photoIds.size >= DayLine.MAX_PHOTOS) {
+                    _notices.tryEmit("사진은 둘이 합쳐 ${DayLine.MAX_PHOTOS}장까지예요")
                     return@launch
                 }
                 val id = attachments.put(AttachmentKind.PHOTO, intent.jpeg)
@@ -415,8 +417,6 @@ class MemoryViewModel(
     }
 
     private companion object {
-        /** 그날의 사진(둘이 합쳐, 화면 기능명세 2-7). */
-        const val MAX_MEET_PHOTOS = 10
     }
 }
 

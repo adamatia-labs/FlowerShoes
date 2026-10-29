@@ -8,6 +8,7 @@ import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.DayLine
+import com.sadturtleman.flowershoes.core.model.hasDayLine
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.LeaveGrant
@@ -185,10 +186,10 @@ class EventRepository(
 
     /**
      * 그날의 한 줄: 내 줄만 고친다(40자, 빈 글 = 지움). 지운 줄도 시각을 남겨야 상대 폰의 옛 줄이 이기지 않는다.
-     * 지운 일정에는 쓰지 않는다(되살리지 않게).
+     * 지운 일정 · 만남이 아닌 일정에는 쓰지 않는다(되살리지 않게).
      */
     suspend fun writeDayLine(eventId: String, text: String) {
-        val e = db.eventDao().get(eventId)?.toModel()?.takeIf { it.deletedAt == null } ?: return
+        val e = db.eventDao().get(eventId)?.toModel()?.takeIf { it.deletedAt == null && it.hasDayLine } ?: return
         val line = DayLine(text.trim().take(DayLine.MAX_CHARS), clock.now().toEpochMilliseconds())
         save(e.copy(dayLines = e.dayLines + (identity.userId to line)))
     }
@@ -197,7 +198,7 @@ class EventRepository(
     fun observeDayLinesIn(year: Int, month: Int): Flow<List<Event>> {
         val first = LocalDate(year, month, 1)
         val last = first.plus(DatePeriod(months = 1)).minus(DatePeriod(days = 1))
-        return db.eventDao().observeDayLines("${first}T00:00", "${last}T23:59").map { list ->
+        return db.eventDao().observeDayLines("${first}T00:00", "${last}T23:59:59.999").map { list ->
             list.map { it.toModel() }.filter { e -> e.dayLines.values.any { it.text.isNotBlank() } }
         }
     }

@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -132,8 +133,7 @@ class HomeViewModel(
     }.map { list -> list.filter { it.type == EventType.VACATION && it.deletedAt == null } }
 
     /** 그날의 한 줄 카드: 끝난 지 사흘 안의 만남 중 내가 아직 안 쓰고 닫지 않은 것. */
-    private val dayLine: Flow<DayLinePrompt?> = clock.ticker().flatMapLatest {
-        val today = clock.today()
+    private val dayLine: Flow<DayLinePrompt?> = clock.ticker().map { clock.today() }.distinctUntilChanged().flatMapLatest { today ->
         combine(
             events.observeRange(today.minus(DatePeriod(days = DayLine.CARD_DAYS)), today),
             dayLineCards?.dismissed ?: flowOf(emptySet()),

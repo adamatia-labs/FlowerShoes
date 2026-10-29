@@ -106,7 +106,12 @@ fun MemoryRoute(
                 null -> MemoryScreen(state, photos, onIntent, onWriteLetter)
                 is MemoryPage.Month -> state.months[page.ym]?.let { MonthScreen(it, photos, onIntent, onOpenLetter) }
                 is MemoryPage.Meet -> state.meet(page.eventId)?.let { MeetDetailScreen(it, photos, onIntent) { id -> removing = page.eventId to id } }
-                is MemoryPage.DayLine -> state.meet(page.eventId)?.let { DayLineWriteScreen(it, photos, onIntent, addPhoto) }
+                is MemoryPage.DayLine -> {
+                    val meet = state.meet(page.eventId)
+                    if (meet != null) DayLineWriteScreen(meet, photos, onIntent, addPhoto)
+                    // 지워졌거나 아직 시작하지 않은 일정(알림 · 홈 카드가 늦게 눌림)이면 닫는다.
+                    else if (!state.loading) LaunchedEffect(page) { onIntent(MemoryIntent.Back) }
+                }
                 MemoryPage.Book -> BookScreen(state, photos, book, onBack = { onIntent(MemoryIntent.Back) }, onNotice = { notice = it })
             }
         }
@@ -554,8 +559,8 @@ private fun DayLineWriteScreen(meet: MeetCard, photos: Map<String, ByteArray?>, 
             )
             Text("사진", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-                meet.photos.takeLast(2).forEachIndexed { i, id -> Polaroid(photos[id], if (i % 2 == 0) 2f else -2f, Modifier.width(93.dp)) }
-                if (addPhoto != null && meet.photos.size < MAX_PHOTOS) {
+                meet.photos.takeLast(2).forEach { id -> Polaroid(photos[id], 0f, Modifier.width(93.dp)) }
+                if (addPhoto != null && meet.photos.size < DayLine.MAX_PHOTOS) {
                     Column(
                         Modifier.size(if (meet.photos.isEmpty()) 96.dp else 80.dp, 96.dp).clip(RoundedCornerShape(KkRadius.sm)).dashedBorder(c.line, KkRadius.sm)
                             .clickable(role = Role.Button) { addPhoto(meet.eventId) },
@@ -563,7 +568,7 @@ private fun DayLineWriteScreen(meet: MeetCard, photos: Map<String, ByteArray?>, 
                     ) {
                         KkIcon(KkIcons.Plus, tint = c.sub)
                         Text(
-                            if (meet.photos.isEmpty()) "사진 추가" else "${meet.photos.size} / $MAX_PHOTOS",
+                            if (meet.photos.isEmpty()) "사진 추가" else "${meet.photos.size} / ${DayLine.MAX_PHOTOS}",
                             style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.sm),
                         )
                     }
@@ -582,9 +587,6 @@ private fun Modifier.dashedBorder(color: Color, radius: androidx.compose.ui.unit
     )
     drawRoundRect(color, cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx()), style = stroke)
 }
-
-/** 그날의 사진(둘이 합쳐). */
-private const val MAX_PHOTOS = 10
 
 // ── 공용 ─────────────────────────────────────────────────────────────────
 
