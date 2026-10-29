@@ -32,6 +32,7 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_social_apple
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_social_google
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_social_kakao
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_spinner
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_sprig
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_sticker
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_toast_error
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_toast_info
@@ -102,6 +103,9 @@ enum class KkIcons(internal val res: DrawableResource) {
     ToastSuccess(Res.drawable.ic_toast_success),
     ToastError(Res.drawable.ic_toast_error),
     Spinner(Res.drawable.ic_spinner),
+
+    /** 홈 머리말 말린 꽃 가지(곰신 테마, 60×60, deco/plant). */
+    Sprig(Res.drawable.ic_sprig),
 
     // 소셜 로그인 공식 로고(색이 정해져 있어 tint 없이 쓴다)
     SocialKakao(Res.drawable.ic_social_kakao),

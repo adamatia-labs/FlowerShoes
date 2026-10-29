@@ -160,7 +160,7 @@ fun OnboardingScreen(
                     OnboardingStep.CONNECT -> {
                         // 시작 방법(346:457): 연인 초대하기 · 혼자 먼저 시작하기. 입대일이 아직이면 안내 띠(346:487).
                         KkStepIndicator(step = state.totalSteps, total = state.totalSteps)
-                        if (state.beforeEnlistment) KkBanner("입대 전에 같이 연결해 두세요", "훈련소에선 폰을 쓸 수 없어요")
+                        if (state.beforeEnlistment) KkBanner("입대 전에 같이 연결해 두세요")
                         Text("어떻게 시작할까요?", style = KkTheme.type.title, color = c.ink)
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             KkChoice("연인 초대하기", state.startWithInvite, { onIntent(OnboardingIntent.SelectStart(true)) })

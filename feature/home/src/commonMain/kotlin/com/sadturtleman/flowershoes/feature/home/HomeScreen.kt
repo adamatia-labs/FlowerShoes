@@ -6,67 +6,81 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.Role as A11y
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.designsystem.KkBanner
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
-import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
-import com.sadturtleman.flowershoes.core.designsystem.KkDdayCard
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
-import com.sadturtleman.flowershoes.core.designsystem.KkHeartIcon
+import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeMark
+import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeRow
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
-import com.sadturtleman.flowershoes.core.designsystem.KkMissYouButton
+import com.sadturtleman.flowershoes.core.designsystem.KkMissYouFab
+import com.sadturtleman.flowershoes.core.designsystem.KkPaperTag
+import com.sadturtleman.flowershoes.core.designsystem.KkPaperTagStyle
+import com.sadturtleman.flowershoes.core.designsystem.KkPostmark
+import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
+import com.sadturtleman.flowershoes.core.designsystem.KkServiceProgress
+import com.sadturtleman.flowershoes.core.designsystem.KkServiceProgressStyle
+import com.sadturtleman.flowershoes.core.designsystem.KkSkeleton
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
+import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.core.model.Role
+import kotlinx.coroutines.delay
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
- * 홈(Figma 2 · 홈). 연결 뒤(52:86) · 연결 전 곰신(70:629) · 연결 전 군인(137:1428) 세 모양.
- * 연결 전이어도 D-day 는 혼자 계산해 보여 주고, 입대일 전이면 연결을 강하게 권한다(홈 · 입대 전 350:972).
- * [onOpenPairing] 초대 링크 보내기 · 다시 보내기, [onWriteLetter] 편지 미리 쓰기, [onOpenCalendar] 일정,
- * [onOpenDayLine] 그날의 한 줄 쓰기(일정 id).
+ * 홈 v2(Figma 2 · 홈 350:686). 큰 손글씨 D-day · 복무 진행 · 종이 태그 두 장 · 오늘 온 편지 · 보고싶어 FAB.
+ * 연결 전은 같은 머리 아래 초대(혼자 모드 350:834 · 350:892), 입대일 전은 안내 띠 + 초대 버튼(350:972), 전역 뒤는 보관 모드(352:1258).
+ * 설정 탭이 없어 설정 톱니는 머리말 오른쪽에 둔다(#66 결정). 광고 없음.
+ * [onOpenPairing] 초대 링크 보내기 · 다시 보내기, [onWriteLetter] 편지 쓰기, [onOpenLetter] 편지 열기(id),
+ * [onOpenDayLine] 그날의 한 줄 쓰기(일정 id), [onOpenSettings] 설정(입대일 입력 포함).
  */
 @Composable
 fun HomeRoute(
     onOpenPairing: () -> Unit,
-    onOpenCalendar: () -> Unit,
     onOpenSettings: () -> Unit,
     onWriteLetter: () -> Unit = {},
-    onOpenLeave: () -> Unit = onOpenCalendar,
+    onOpenLetter: (String) -> Unit = {},
     onOpenDayLine: (String) -> Unit = {},
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenCalendar, onOpenSettings, onWriteLetter, onOpenLeave, onOpenDayLine)
+    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenSettings, onWriteLetter, onOpenLetter, onOpenDayLine)
 }
 
 @Composable
@@ -74,138 +88,245 @@ fun HomeScreen(
     state: HomeState,
     onIntent: (HomeIntent) -> Unit,
     onOpenPairing: () -> Unit,
-    onOpenCalendar: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onWriteLetter: () -> Unit = {},
-    onOpenLeave: () -> Unit = onOpenCalendar,
+    onOpenLetter: (String) -> Unit = {},
     onOpenDayLine: (String) -> Unit = {},
 ) {
     val c = KkTheme.colors
-    val dayLine: @Composable () -> Unit = { state.dayLine?.let { DayLineCard(it, onOpenDayLine) { id -> onIntent(HomeIntent.DismissDayLine(id)) } } }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(c.canvas)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(if (state.linked) KkSpacing.lg else 12.dp),
-    ) {
-        Header(state, onOpenSettings)
-        when {
-            state.loading -> Unit
-            state.linked -> LinkedHome(state, onIntent, onOpenCalendar, dayLine)
-            state.role == Role.SOLDIER -> {
-                SoldierUnlinked(state, onOpenPairing, onOpenCalendar, onOpenLeave, onOpenSettings)
-                dayLine()
+    val fab = state.linked && !state.loading
+    Box(Modifier.fillMaxSize().background(c.canvas)) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(start = KkSpacing.xxl, end = KkSpacing.xxl, top = KkSpacing.md, bottom = if (fab) 88.dp else KkSpacing.xxl),
+        ) {
+            Header(state, onOpenSettings)
+            if (state.loading) {
+                Loading()
+                return@Column
             }
-            else -> {
-                dayLine()
-                GomsinUnlinked(state, onOpenPairing, onWriteLetter, onOpenCalendar, onOpenSettings)
+            if (state.enlistNudge) KkBanner("입대 전에 같이 연결해 두세요", modifier = Modifier.padding(top = KkSpacing.md), action = "초대", onAction = onOpenPairing)
+            Hero(state.hero, onOpenSettings)
+            Tags(state.tags)
+            state.dayLine?.let { Spacer(Modifier.height(KkSpacing.lg)); DayLineCard(it, onOpenDayLine) { id -> onIntent(HomeIntent.DismissDayLine(id)) } }
+            when {
+                state.linked -> Letters(state, onWriteLetter, onOpenLetter)
+                state.hero?.phase == HomePhase.BEFORE_ENLIST -> {
+                    Spacer(Modifier.height(KkSpacing.xxl))
+                    if (state.invitePending) InviteStatus(onOpenPairing) else KkPrimaryButton("${state.partnerName ?: "연인"} 초대하기", onOpenPairing)
+                    if (state.role == Role.GOMSIN) PendingLetters(state, onOpenLetter)
+                }
+                state.role == Role.SOLDIER -> SoldierSolo(state, onOpenPairing)
+                else -> GomsinSolo(state, onOpenPairing, onOpenLetter)
             }
         }
+        if (fab) MissYouFab(state, onIntent, Modifier.align(Alignment.BottomEnd).padding(end = KkSpacing.xxl, bottom = KkSpacing.lg))
     }
 }
 
-// ── Header: "민준 ♥ 지수 · D+412 ⚙" / 연결 전 "홈 ⚙" ──
+// ── 머리말: "10월 28일 수요일" / "지수 & 민준" + 말린 꽃(곰신) · 군사우편 소인(군인) + 설정 ──
 
 @Composable
 private fun Header(state: HomeState, onOpenSettings: () -> Unit) {
     val c = KkTheme.colors
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        val couple = state.couple
-        if (couple != null) {
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(couple.first, style = KkTheme.type.title, color = c.ink, maxLines = 1)
-                KkHeartIcon(color = c.stamp, size = 26.dp)
-                Text(couple.second, style = KkTheme.type.title, color = c.ink, maxLines = 1)
+    Row(Modifier.fillMaxWidth().heightIn(min = 76.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
+            if (state.loading) {
+                KkSkeleton(Modifier.width(80.dp))
+                KkSkeleton(Modifier.width(120.dp).height(20.dp))
+            } else {
+                Text(state.dateLine, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+                Text(state.title, style = KkTheme.type.title, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-        } else {
-            Text("홈", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(44.dp).clip(CircleShape).clickable(role = A11y.Button, onClick = onOpenSettings).semantics { contentDescription = "설정" },
-                contentAlignment = Alignment.Center,
-            ) { KkIcon(KkIcons.Settings, tint = c.ink) }
-        }
-    }
-}
-
-/** 입대일이 없으면(곰신이 "나중에 넣을게요") 누르면 설정으로 — 군 정보에서 넣는다. */
-@Composable
-private fun Dday(state: HomeState, onOpenCalendar: () -> Unit, onOpenSettings: () -> Unit = onOpenCalendar) {
-    val d = state.dday
-    if (d != null) {
-        KkDdayCard(d.days, d.rank, d.percent, d.date, d.progress, caption = d.caption, onClick = onOpenCalendar)
-    } else {
-        KkDdayCard("D-?", "입대일 입력 전", "복무 0%", "설정에서 입대일을 넣어 주세요", 0f, onClick = onOpenSettings)
-    }
-}
-
-/** 입대일 전 안내 띠(홈 · 입대 전 350:972). D-day 위에 놓는다. */
-@Composable
-private fun EnlistBanner(state: HomeState, onOpenPairing: () -> Unit) {
-    if (state.enlistNudge) KkBanner("입대 전에 같이 연결해 두세요", "입대하면 연락이 어려워져요", action = "초대", onAction = onOpenPairing)
-}
-
-/**
- * 연결 권유. 입대일 전이면 큰 초대 버튼(350:972), 아니면 평소 카드. 초대를 이미 보냈으면 상태 줄([Invite]).
- */
-@Composable
-private fun Connect(state: HomeState, onOpenPairing: () -> Unit) {
-    if (state.enlistNudge && !state.invitePending) KkPrimaryButton("연인 초대하기", onOpenPairing, Modifier.fillMaxWidth())
-    else Invite(state.invitePending, onOpenPairing)
-}
-
-// ── 연결 뒤(52:86) ──
-
-@Composable
-private fun LinkedHome(state: HomeState, onIntent: (HomeIntent) -> Unit, onOpenCalendar: () -> Unit, dayLine: @Composable () -> Unit) {
-    val c = KkTheme.colors
-    Dday(state, onOpenCalendar)
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-        state.partner?.let { StatusTile(it, Modifier.weight(1f)) }
-        val shape = RoundedCornerShape(KkRadius.xl)
+        // 장식(보여 주기만 하는 물건): 곰신 테마는 말린 꽃 가지, 군인 테마는 오늘 날짜 군사우편 소인.
+        if (KkTheme.appTheme == AppTheme.SOLDIER) KkPostmark("군사우편", state.stampDate, Modifier.rotate(12f))
+        else KkIcon(KkIcons.Sprig, tint = c.plant, size = 60.dp)
         Box(
-            Modifier.weight(1f).fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
+            Modifier.size(48.dp).clip(CircleShape).clickable(role = A11y.Button, onClick = onOpenSettings).semantics { contentDescription = "설정" },
             contentAlignment = Alignment.Center,
-        ) {
-            KkMissYouButton(state.sentMissYouToday, onClick = { onIntent(HomeIntent.SendMissYou) })
-        }
-    }
-    dayLine()
-    if (state.scheduled.isNotEmpty()) {
-        Text("오늘 도착할 메시지", style = KkTheme.type.labelBold, color = c.ink)
-        state.scheduled.forEach { ScheduledMessage(it) }
+        ) { KkIcon(KkIcons.Settings, tint = c.sub) }
     }
 }
 
-/** Widget/Status: 상대 이름 첫 글자 원 · 이름 · 몇 분 전 / 상태 점 + 상태 / ♥ 보고싶어 N. */
+// ── 큰 D-day: 곰신 테마는 손글씨 라벨 + 점선 길, 군인 테마는 스텐실 라벨 + 개월 칸 ──
+
 @Composable
-private fun StatusTile(p: PartnerStatus, modifier: Modifier) {
+private fun Hero(hero: HomeHero?, onOpenSettings: () -> Unit) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.xl)
-    Column(
-        modifier.fillMaxHeight().heightIn(min = 170.dp).kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
-        verticalArrangement = Arrangement.spacedBy(KkSpacing.md, Alignment.CenterVertically),
+    val soldier = KkTheme.appTheme == AppTheme.SOLDIER
+    Spacer(Modifier.height(KkSpacing.xxxl))
+    Text(
+        hero?.caption ?: "전역까지",
+        style = if (soldier) KkTheme.type.title else KkTheme.type.handL,
+        color = if (soldier) c.accent else c.sub,
+        maxLines = 1,
+        modifier = Modifier.padding(start = KkSpacing.xxs),
+    )
+    // D-day/L 은 글자 앞 여백이 있어 Figma 처럼 4 왼쪽으로 당긴다.
+    Text(hero?.value ?: "D-?", style = KkTheme.type.ddayL, color = c.ink, maxLines = 1, softWrap = false, modifier = Modifier.offset(x = (-4).dp))
+    when {
+        hero == null -> TextAction("입대일 넣기", onOpenSettings)
+        hero.phase == HomePhase.SERVING || hero.phase == HomePhase.DISCHARGE_DAY -> KkServiceProgress(
+            progress = hero.progress, start = hero.start, end = hero.end, percent = hero.percent,
+            modifier = Modifier.padding(top = KkSpacing.sm),
+            style = if (soldier) KkServiceProgressStyle.Months else KkServiceProgressStyle.Path,
+            months = hero.months,
+        )
+        else -> hero.detail?.let { Text(it, style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.sm)) }
+    }
+}
+
+/** 종이 태그 두 장(보여 주기만 하는 물건이라 기울인다: +3° · -2.5°, Figma). */
+@Composable
+private fun Tags(tags: List<HomeTag>) {
+    if (tags.isEmpty()) return
+    Row(Modifier.fillMaxWidth().padding(top = 32.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        tags.forEachIndexed { i, tag ->
+            KkPaperTag(
+                tag.label, tag.value,
+                modifier = if (i == 0) Modifier else Modifier.offset(y = 2.dp),
+                valueStyle = if (tag.hand) KkPaperTagStyle.Hand else KkPaperTagStyle.Number,
+                tilt = if (i == 0) 3f else -2.5f,
+            )
+        }
+    }
+}
+
+// ── 연결 뒤: 오늘 온 편지(보관 모드는 최근 편지) ──
+
+@Composable
+private fun ColumnScope.Letters(state: HomeState, onWriteLetter: () -> Unit, onOpenLetter: (String) -> Unit) {
+    val c = KkTheme.colors
+    Box(Modifier.padding(top = KkSpacing.xxxl).fillMaxWidth().height(1.dp).background(c.line))
+    Text(
+        if (state.hero?.phase == HomePhase.ARCHIVE) "최근 편지" else "오늘 온 편지",
+        style = KkTheme.type.labelBold, color = c.ink,
+        modifier = Modifier.padding(top = KkSpacing.md).heightIn(min = 24.dp),
+    )
+    val letter = state.letter
+    if (letter == null) {
+        Text(if (state.hero?.phase == HomePhase.ARCHIVE) "받은 편지가 없어요" else "오늘 온 편지가 없어요", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.md))
+        TextAction("편지 쓰기", onWriteLetter)
+        return
+    }
+    Row(
+        Modifier.padding(top = KkSpacing.xs).fillMaxWidth().clip(RoundedCornerShape(KkRadius.sm)).clickable(role = A11y.Button) { onOpenLetter(letter.id) }
+            .padding(vertical = KkSpacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(32.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
-                Text(p.initial, style = KkTheme.type.label, color = c.accent)
+        KkIcon(KkIcons.Mail, tint = c.accent, modifier = Modifier.padding(top = KkSpacing.xs))
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+            Text(letter.line, style = KkTheme.type.handLetter, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(letter.meta, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+        }
+    }
+}
+
+/** 보고싶어 FAB. 누르면 잠깐 "보냈어요"로 바뀌었다가 돌아온다(Figma 홈 · 보고싶어 보냄). */
+@Composable
+private fun MissYouFab(state: HomeState, onIntent: (HomeIntent) -> Unit, modifier: Modifier) {
+    var sent by remember { mutableStateOf(false) }
+    LaunchedEffect(sent) {
+        if (sent) {
+            delay(SENT_MS)
+            sent = false
+        }
+    }
+    KkMissYouFab(sent, onClick = {
+        if (!sent) onIntent(HomeIntent.SendMissYou)
+        sent = true
+    }, modifier.semantics { contentDescription = "보고싶어 보내기, 오늘 ${state.sentMissYouToday}번 보냄" })
+}
+
+private const val SENT_MS = 2_000L
+
+// ── 혼자 모드 · 곰신(350:834): 초대 카드 + 연결되면 보낼 편지 ──
+
+@Composable
+private fun GomsinSolo(state: HomeState, onOpenPairing: () -> Unit, onOpenLetter: (String) -> Unit) {
+    val c = KkTheme.colors
+    Spacer(Modifier.height(KkSpacing.xxl))
+    if (state.invitePending) InviteStatus(onOpenPairing)
+    else {
+        val shape = RoundedCornerShape(KkRadius.lg)
+        Column(
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+        ) {
+            Text("연인을 초대해 보세요", style = KkTheme.type.labelBold, color = c.ink)
+            KkButton("초대 링크 보내기", onOpenPairing, size = KkButtonSize.M)
+        }
+    }
+    PendingLetters(state, onOpenLetter)
+}
+
+/** "연결되면 보낼 편지 N통" + 최근 두 통을 봉투로 겹쳐 보여 준다(보여 주기용 더미라 살짝 기울인다). */
+@Composable
+private fun PendingLetters(state: HomeState, onOpenLetter: (String) -> Unit) {
+    val letters = state.pendingLetters
+    if (letters.isEmpty()) return
+    val c = KkTheme.colors
+    Text("연결되면 보낼 편지 ${letters.size}통", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.xxxl))
+    val stamp = state.hero?.value.orEmpty()
+    Box(Modifier.padding(top = KkSpacing.lg).fillMaxWidth()) {
+        letters.getOrNull(1)?.let { back ->
+            KkEnvelopeRow(back.line, back.meta, KkEnvelopeMark.Stamp(stamp), { onOpenLetter(back.id) }, Modifier.padding(start = KkSpacing.lg, end = KkSpacing.lg).rotate(-3f))
+        }
+        val front = letters.first()
+        KkEnvelopeRow(front.line, front.meta, KkEnvelopeMark.Stamp(stamp), { onOpenLetter(front.id) }, Modifier.padding(top = KkSpacing.xs, end = 32.dp).rotate(1.5f))
+    }
+}
+
+// ── 혼자 모드 · 군인(350:892): 진급 일정 + 작은 초대 카드 ──
+
+@Composable
+private fun SoldierSolo(state: HomeState, onOpenPairing: () -> Unit) {
+    val c = KkTheme.colors
+    if (state.ranks.isNotEmpty()) {
+        Text("진급 일정", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.md, bottom = KkSpacing.xs))
+        state.ranks.forEach { row ->
+            // List Row(Figma): 높이 56, 아래 선. 진급일은 "예정"이라 누르는 동작은 없다.
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(row.name, style = KkTheme.type.body, color = c.ink, modifier = Modifier.weight(1f))
+                Text(row.detail, style = KkTheme.type.label, color = c.sub, maxLines = 1)
             }
-            Column {
-                Text(p.name, style = KkTheme.type.label, color = c.ink, maxLines = 1)
-                Text(p.ago ?: "아직 소식 없음", style = KkTheme.type.caption, color = c.sub)
-            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
         }
-        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-            Box(Modifier.size(10.dp).clip(CircleShape).background(p.dot?.let { Color(it.toInt()) } ?: c.line))
-            Text(p.label ?: "상태 없음", style = KkTheme.type.title, color = if (p.label != null) c.ink else c.sub, maxLines = 1)
+    }
+    Spacer(Modifier.height(KkSpacing.md))
+    if (state.invitePending) InviteStatus(onOpenPairing)
+    else {
+        val shape = RoundedCornerShape(KkRadius.lg)
+        Row(
+            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
+                .padding(start = KkSpacing.lg, end = KkSpacing.md, top = KkSpacing.md, bottom = KkSpacing.md),
+            horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("연인 초대하기", style = KkTheme.type.caption, color = c.ink, modifier = Modifier.weight(1f))
+            KkButton("초대", onOpenPairing, size = KkButtonSize.M)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            KkHeartIcon(color = c.stamp, size = 13.dp)
-            Text("보고싶어 ${p.missYou}", style = KkTheme.type.label, color = c.accent)
-        }
+    }
+}
+
+/** 초대를 보낸 뒤: "초대 보냄 · 기다리는 중 · 링크 다시 보내기"(409:8664). */
+@Composable
+private fun InviteStatus(onOpenPairing: () -> Unit) {
+    val c = KkTheme.colors
+    val shape = RoundedCornerShape(KkRadius.lg)
+    Row(
+        Modifier.fillMaxWidth().clip(shape).background(c.surface).border(1.dp, c.line, shape).padding(start = 12.dp, end = 4.dp, top = KkSpacing.sm, bottom = KkSpacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        KkIcon(KkIcons.Send, tint = c.sub, size = 16.dp)
+        Text("초대 보냄 · 기다리는 중", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
+        TextAction("링크 다시 보내기", onOpenPairing)
     }
 }
 
@@ -229,158 +350,32 @@ private fun DayLineCard(prompt: DayLinePrompt, onWrite: (String) -> Unit, onDism
     }
 }
 
-/** Scheduled Message(예약됨). */
+/** 글자 버튼(accent Label/Bold, 터치 높이 48). */
 @Composable
-private fun ScheduledMessage(row: ScheduledRow) {
-    val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
-            .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
-        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        KkIcon(KkIcons.Clock, tint = c.accent)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
-            Text(row.time, style = KkTheme.type.label, color = c.accent)
-            Text(row.message, style = KkTheme.type.body, color = c.ink, maxLines = 2)
-        }
-        Text(
-            "예약됨", style = KkTheme.type.label, color = c.accent,
-            modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(c.bar).padding(horizontal = KkSpacing.sm, vertical = KkSpacing.xxs),
-        )
-    }
+private fun TextAction(text: String, onClick: () -> Unit) {
+    Text(
+        text, style = KkTheme.type.labelBold, color = KkTheme.colors.accent, maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).clickable(role = A11y.Button, onClick = onClick)
+            .heightIn(min = 48.dp).padding(horizontal = KkSpacing.lg, vertical = 15.dp),
+    )
 }
 
-// ── 연결 전 · 곰신(70:629) ──
-
+/** 홈 · 로딩(351:1230): 큰 D-day · 태그 · 편지 자리를 스켈레톤으로. */
 @Composable
-private fun GomsinUnlinked(state: HomeState, onOpenPairing: () -> Unit, onWriteLetter: () -> Unit, onOpenCalendar: () -> Unit, onOpenSettings: () -> Unit) {
-    val c = KkTheme.colors
-    EnlistBanner(state, onOpenPairing)
-    Dday(state, onOpenCalendar, onOpenSettings)
-    Connect(state, onOpenPairing)
-    Text("연결 전에 할 수 있어요", style = KkTheme.type.title, color = c.ink)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        CanDoTile(KkIcons.Mail, "편지 미리 쓰기", "연결되면 한 번에 도착해요", Modifier.weight(1f), onWriteLetter)
-        CanDoTile(KkIcons.Calendar, "일정 적어 두기", "수료식 · 첫 면회 · 휴가", Modifier.weight(1f), onOpenCalendar)
+private fun Loading() {
+    Spacer(Modifier.height(KkSpacing.xxxl))
+    KkSkeleton(Modifier.width(116.dp).height(24.dp))
+    KkSkeleton(Modifier.padding(top = KkSpacing.lg).width(240.dp).height(96.dp))
+    KkSkeleton(Modifier.padding(top = KkSpacing.lg).fillMaxWidth())
+    Row(Modifier.fillMaxWidth().padding(top = 32.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        KkSkeleton(Modifier.width(140.dp).height(66.dp))
+        KkSkeleton(Modifier.width(140.dp).height(66.dp))
     }
-    Text("연결하면 함께 보여요", style = KkTheme.type.title, color = c.ink)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(Triple(KkIcons.Home, "상대 상태", "?"), Triple(KkIcons.Heart, "보고싶어", "?")).forEach { (icon, label, value) ->
-            Column(
-                Modifier.weight(1f).clip(RoundedCornerShape(KkRadius.lg)).background(c.line).padding(horizontal = 12.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                KkIcon(icon, tint = c.sub)
-                Text(label, style = KkTheme.type.body, color = c.sub)
-                Text(value, style = KkTheme.type.labelBold, color = c.sub)
-            }
+    Row(Modifier.padding(top = 80.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+        KkSkeleton(Modifier.size(24.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            KkSkeleton(Modifier.width(240.dp).height(16.dp))
+            KkSkeleton(Modifier.width(96.dp).height(10.dp))
         }
     }
 }
-
-/** 초대를 보냈으면 "초대 보냄 · 기다리는 중 · 링크 다시 보내기"(409:8664), 아니면 연결 권유 카드. */
-@Composable
-private fun Invite(pending: Boolean, onOpenPairing: () -> Unit) {
-    if (!pending) {
-        InviteCard { KkButton("초대 링크 보내기", onOpenPairing, Modifier.fillMaxWidth(), size = KkButtonSize.M) }
-        return
-    }
-    val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Row(
-        Modifier.fillMaxWidth().clip(shape).background(c.surface).border(1.dp, c.line, shape).padding(start = 12.dp, end = 4.dp, top = KkSpacing.sm, bottom = KkSpacing.sm),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        KkIcon(KkIcons.Send, tint = c.sub, size = 16.dp)
-        Text("초대 보냄 · 기다리는 중", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.weight(1f))
-        Text(
-            "링크 다시 보내기",
-            style = KkTheme.type.labelBold,
-            color = c.accent,
-            modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).clickable(role = A11y.Button, onClick = onOpenPairing)
-                .heightIn(min = 48.dp).padding(horizontal = KkSpacing.lg, vertical = 12.dp),
-        )
-    }
-}
-
-@Composable
-private fun InviteCard(buttons: @Composable () -> Unit) {
-    val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(Modifier.size(48.dp).clip(CircleShape).background(c.bar), contentAlignment = Alignment.Center) {
-            KkIcon(KkIcons.Heart, tint = c.ink)
-        }
-        Text("연인과 연결할까요?", style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
-        buttons()
-    }
-}
-
-@Composable
-private fun CanDoTile(icon: KkIcons, title: String, body: String, modifier: Modifier, onClick: () -> Unit) {
-    val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Column(
-        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).clickable(role = A11y.Button, onClick = onClick).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        KkIcon(icon, tint = c.ink)
-        Text(title, style = KkTheme.type.labelBold, color = c.ink)
-        Text(body, style = KkTheme.type.caption, color = c.sub)
-    }
-}
-
-// ── 연결 전 · 군인(137:1428) ──
-
-@Composable
-private fun SoldierUnlinked(state: HomeState, onOpenPairing: () -> Unit, onOpenCalendar: () -> Unit, onOpenLeave: () -> Unit, onOpenSettings: () -> Unit) {
-    val c = KkTheme.colors
-    EnlistBanner(state, onOpenPairing)
-    Dday(state, onOpenCalendar, onOpenSettings)
-    state.soldier?.let { s ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("다음 진급", s.nextRank ?: "—", Modifier.weight(1f))
-            if (s.leaveLeft != null) StatTile("남은 휴가", "${s.leaveLeft}일", Modifier.weight(1f), onClick = onOpenLeave)
-            StatTile("복무", "${s.servedDay}일째", Modifier.weight(1f))
-        }
-    }
-    Connect(state, onOpenPairing)
-    state.nextLeave?.let { leave ->
-        val shape = RoundedCornerShape(KkRadius.lg)
-        Row(
-            Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
-                .clickable(role = A11y.Button, onClick = onOpenCalendar).padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            KkIcon(KkIcons.Calendar, tint = c.ink)
-            Column {
-                Text(leave.title, style = KkTheme.type.labelBold, color = c.ink)
-                Text(leave.detail, style = KkTheme.type.caption, color = c.sub)
-            }
-        }
-    }
-}
-
-@Composable
-private fun StatTile(label: String, value: String, modifier: Modifier, onClick: (() -> Unit)? = null) {
-    val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
-    Column(
-        modifier.kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
-            .then(if (onClick != null) Modifier.clickable(role = A11y.Button, onClick = onClick) else Modifier)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(label, style = KkTheme.type.caption, color = c.sub)
-        Text(value, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
-    }
-}
-

@@ -813,9 +813,10 @@ fun KkEmptyState(
 /**
  * 안내 띠(Figma Banner): paper/tag 바탕 · 알림 아이콘 · 제목(굵게) + 한 줄 · 오른쪽 텍스트 동작.
  * 화면 위쪽에서 꼭 알아야 할 것 하나(입대 전 연결 · 동기화 · 오프라인)에만 쓴다.
+ * [body] 는 사실 한 줄일 때만 넣는다 — 설명 문구는 쓰지 않는다(design.md 카피 규칙). null 이면 제목만.
  */
 @Composable
-fun KkBanner(title: String, body: String, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
+fun KkBanner(title: String, body: String? = null, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
@@ -827,7 +828,7 @@ fun KkBanner(title: String, body: String, modifier: Modifier = Modifier, action:
         KkIcon(KkIcons.Alert, tint = c.ink, size = 22.dp)
         Column(Modifier.weight(1f).padding(vertical = KkSpacing.md), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
             Text(title, style = KkTheme.type.labelBold, color = c.ink)
-            Text(body, style = KkTheme.type.caption, color = c.sub)
+            if (body != null) Text(body, style = KkTheme.type.caption, color = c.sub)
         }
         if (action != null) {
             Text(
