@@ -80,6 +80,11 @@ class FlowerShoesApplication :
                     AuthKeys(BuildConfig.KAKAO_NATIVE_APP_KEY, BuildConfig.GOOGLE_WEB_CLIENT_ID),
                     emulatorHost = if (BuildConfig.DEBUG) BuildConfig.FIREBASE_EMULATOR_HOST else "",
                     devEmailLogin = BuildConfig.DEBUG && BuildConfig.DEV_EMAIL_LOGIN,
+                    invite = com.sadturtleman.flowershoes.core.data.sync.InviteConfig(
+                        host = BuildConfig.INVITE_HOST,
+                        // 카카오 SDK 는 로그인 앱 키로 초기화된다 — 키가 없으면 템플릿도 쓸 수 없다.
+                        kakaoTemplateId = BuildConfig.KAKAO_INVITE_TEMPLATE_ID.takeIf { it > 0 && BuildConfig.KAKAO_NATIVE_APP_KEY.isNotBlank() },
+                    ),
                 ),
             )
             modules(

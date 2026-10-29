@@ -83,6 +83,8 @@ kotlin {
             implementation("com.google.firebase:firebase-auth")
             implementation("com.google.firebase:firebase-functions")
             implementation(libs.kakao.user)
+            // 초대 링크: 카카오 사용자 정의 피드 템플릿 공유
+            implementation(libs.kakao.share)
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.play)
             implementation(libs.googleid)

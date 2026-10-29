@@ -137,6 +137,7 @@ androidx-glance-material3 = { group = "androidx.glance", name = "glance-material
 zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 kakao-user = { group = "com.kakao.sdk", name = "v2-user", version.ref = "kakaoSdk" }
+kakao-share = { group = "com.kakao.sdk", name = "v2-share", version.ref = "kakaoSdk" }
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
 androidx-credentials-play = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleId" }

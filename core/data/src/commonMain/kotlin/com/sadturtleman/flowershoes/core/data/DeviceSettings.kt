@@ -124,10 +124,15 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         totals
     }
 
+    /** 기다리는 초대 링크(홈 "초대 보냄 · 기다리는 중"). 연결되거나 만료되면 null. */
+    val pendingInvite: Flow<PendingInvite?> = store.data.map { it.pendingInvite() }
+
+    private fun Preferences.pendingInvite(): PendingInvite? =
+        this[PENDING_INVITE]?.split('|')?.takeIf { it.size == 2 }?.let { (t, at) -> at.toLongOrNull()?.let { PendingInvite(t, it) } }
+
     /** 보낸 초대 링크(토큰 · 만료). 앱을 다시 켜도 수락을 이어 받는다 — [com.sadturtleman.flowershoes.core.data.sync.PairingSession]. */
     val pendingInvites: PendingInviteStore = object : PendingInviteStore {
-        override suspend fun load(): PendingInvite? =
-            store.data.first()[PENDING_INVITE]?.split('|')?.takeIf { it.size == 2 }?.let { (t, at) -> at.toLongOrNull()?.let { PendingInvite(t, it) } }
+        override suspend fun load(): PendingInvite? = store.data.first().pendingInvite()
 
         override suspend fun save(invite: PendingInvite?) {
             store.edit { if (invite == null) it.remove(PENDING_INVITE) else it[PENDING_INVITE] = "${invite.token}|${invite.expireAtMs}" }

@@ -43,6 +43,8 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_download
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_pause
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_play
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_replay
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_link
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_cloud
 import com.sadturtleman.flowershoes.core.designsystem.res.logo_mark
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_note
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_brush
@@ -75,6 +77,8 @@ enum class KkIcons(internal val res: DrawableResource) {
     Trace(Res.drawable.ic_trace),
     Settings(Res.drawable.ic_settings),
     ChevronRight(Res.drawable.ic_chevron_right),
+    Link(Res.drawable.ic_link),
+    Cloud(Res.drawable.ic_cloud),
     Note(Res.drawable.ic_note),
     Brush(Res.drawable.ic_brush),
     More(Res.drawable.ic_more),

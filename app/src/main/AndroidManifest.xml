@@ -67,6 +67,24 @@
 
                 <data android:scheme="kkotsin" />
             </intent-filter>
+            <!-- 초대 링크: 카카오 피드 템플릿의 앱 실행 버튼(kakao{앱키}://kakaolink?invite={token}) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:host="kakaolink" android:scheme="${kakaoScheme}" />
+            </intent-filter>
+            <!-- 초대 링크: App Links(https://{INVITE_HOST}/i/{token}). 검증 파일은 firebase/hosting/public/.well-known/assetlinks.json -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" android:host="${inviteHost}" android:pathPrefix="/i/" />
+            </intent-filter>
         </activity>
         <!-- 서버가 보낸 화면 알림(FCM)의 아이콘 · 색 -->
         <meta-data

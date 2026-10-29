@@ -103,6 +103,7 @@ fun MainViewController(
                         com.sadturtleman.flowershoes.core.auth.LocalOnlyAuthGateway()
                     },
                     vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
+                    invite = inviteConfig(),
                 ) + telemetryModules(firebase = firebase && !emulatorAuth) + org.koin.dsl.module {
                     if (kotlin.native.Platform.isDebugBinary) {
                         single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
@@ -234,6 +235,15 @@ fun onBackground() {
     koin.get<com.sadturtleman.flowershoes.core.logging.BizLogger>().destroy()
     jankSource?.stop()
     koin.get<com.sadturtleman.flowershoes.core.jank.JankReporter>().onAppBackground()
+}
+
+/** 초대 링크 호스트 · 카카오 피드 템플릿 ID(Info.plist ← Config.xcconfig 의 INVITE_HOST · KAKAO_INVITE_TEMPLATE_ID). */
+private fun inviteConfig(): com.sadturtleman.flowershoes.core.data.sync.InviteConfig {
+    fun plist(key: String) = (NSBundle.mainBundle.objectForInfoDictionaryKey(key) as? String)?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("$(") }
+    return com.sadturtleman.flowershoes.core.data.sync.InviteConfig(
+        host = plist("KkotsinInviteHost") ?: com.sadturtleman.flowershoes.core.data.sync.InviteLinks.DEFAULT_HOST,
+        kakaoTemplateId = plist("KakaoInviteTemplateId")?.toLongOrNull(),
+    )
 }
 
 /**

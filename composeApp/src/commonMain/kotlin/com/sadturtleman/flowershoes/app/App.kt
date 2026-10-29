@@ -51,7 +51,6 @@ import com.sadturtleman.flowershoes.feature.letter.LetterInboxRoute
 import com.sadturtleman.flowershoes.feature.letter.LetterIntent
 import com.sadturtleman.flowershoes.feature.letter.LetterViewModel
 import com.sadturtleman.flowershoes.feature.memory.MemoryRoute
-import com.sadturtleman.flowershoes.feature.pairing.InviteConnect
 import com.sadturtleman.flowershoes.feature.pairing.PairingRoute
 import org.koin.compose.viewmodel.koinViewModel
 import com.sadturtleman.flowershoes.feature.onboarding.OnboardingRoute
@@ -104,6 +103,7 @@ fun KkotsinApp() {
     KkotsinTheme(theme = current?.theme ?: AppTheme.GOMSIN, dark = dark) {
         CompositionLocalProvider(
             com.sadturtleman.flowershoes.core.designsystem.LocalKkShare provides share,
+            com.sadturtleman.flowershoes.feature.pairing.LocalInviteShare provides rememberInviteShare(),
             com.sadturtleman.flowershoes.core.drawingui.LocalDrawingPhotoLoader provides photoLoader,
         ) {
             when {
@@ -121,17 +121,31 @@ private fun OnboardingFlow() {
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
     val settings = koinInject<DeviceSettings>()
     val scope = rememberCoroutineScope()
+    // 온보딩 전에 초대 링크를 눌렀다: 로그인 · 역할 · 테마를 마친 뒤 시작 방법 대신 바로 수락 화면.
+    val link by DeepLinks.next.collectAsState()
+    var inviteToken by rememberSaveable { mutableStateOf<String?>(null) }
+    val closePairing = {
+        overlay = null
+        inviteToken = null
+    }
     // 연결 화면에서 뒤로 가면 온보딩으로.
-    BackHandler(enabled = overlay != null) { overlay = null }
+    BackHandler(enabled = overlay != null) { closePairing() }
     KkPageFlip(overlay, pageKey = { it ?: "onboarding" }, isForward = ::overlayForward) { shown ->
     when (shown) {
         null -> OnboardingRoute(
             // 온보딩 완료는 DeviceSettings.onboarded 로 바뀌어 셸이 알아서 바뀐다.
             onFinished = {},
-            onOpenPairing = { overlay = Overlay.PAIRING },
-            connect = { onAdvance -> InviteConnect(onAdvance) },
+            onOpenPairing = {
+                (link as? DeepLink.Invite)?.let {
+                    inviteToken = it.token
+                    DeepLinks.consumed()
+                }
+                overlay = Overlay.PAIRING
+            },
+            invited = link is DeepLink.Invite,
         )
-        Overlay.PAIRING -> PairingRoute(onDone = { scope.launch { settings.setOnboarded() } }, onBack = { overlay = null })
+        // 초대를 보냈거나(바로 홈) 받은 초대로 연결됐다 → 온보딩 끝.
+        Overlay.PAIRING -> PairingRoute(onDone = { scope.launch { settings.setOnboarded() } }, onBack = closePairing, invite = inviteToken)
         else -> ComingSoon(shown!!.title(), onBack = { overlay = null })
     }
     }
@@ -142,6 +156,8 @@ private fun OnboardingFlow() {
 private fun MainShell() {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
+    // 초대 링크로 들어왔으면 그 토큰(연결 화면이 받는 쪽으로 열린다).
+    var inviteToken by rememberSaveable { mutableStateOf<String?>(null) }
     var settingsStart by remember { mutableStateOf(com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN) }
     // 편지 쓰기 · 편지함이 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
@@ -175,7 +191,7 @@ private fun MainShell() {
         runCatching { koin.get<com.sadturtleman.flowershoes.core.data.ProfileRepository>().publishDevice(device) }
     }
 
-    // 알림 · 위젯에서 들어온 딥링크
+    // 알림 · 위젯 · 초대 링크로 들어온 딥링크
     val link by DeepLinks.next.collectAsState()
     LaunchedEffect(link) {
         when (val l = link) {
@@ -200,7 +216,14 @@ private fun MainShell() {
                 tab = Tab.CALENDAR
             }
             is DeepLink.DayLine -> openDayLine(l.eventId)
-            DeepLink.Pairing -> overlay = Overlay.PAIRING
+            DeepLink.Pairing -> {
+                inviteToken = null
+                overlay = Overlay.PAIRING
+            }
+            is DeepLink.Invite -> {
+                inviteToken = l.token
+                overlay = Overlay.PAIRING
+            }
         }
         DeepLinks.consumed()
     }
@@ -267,7 +290,11 @@ private fun MainShell() {
             )
         }
         Overlay.PAIRING -> {
-            PairingRoute(onDone = { overlay = null }, onBack = { overlay = null })
+            val closePairing = {
+                overlay = null
+                inviteToken = null
+            }
+            PairingRoute(onDone = closePairing, onBack = closePairing, invite = inviteToken)
         }
         Overlay.HAND_OVER -> {
             PairingRoute(onDone = { overlay = null }, onBack = { overlay = null }, handOver = true)
@@ -327,6 +354,7 @@ private fun MainShell() {
             )
             return@KkPageFlip
         }
+        Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding()) {
             Box(Modifier.weight(1f)) {
                 Crossfade(tab, animationSpec = tween(TAB_FADE_MS), label = "tab") { t ->
@@ -374,6 +402,9 @@ private fun MainShell() {
             // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 그날의 한 줄 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
             val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
             if (!reading) BottomBar(tab, onSelect = { tab = it })
+        }
+        // 보낸 초대가 수락됐다 → 연결 모달 · 편지 보내는 중 · 다 보냄 토스트.
+        com.sadturtleman.flowershoes.feature.pairing.LinkWatcher()
         }
         }
     }

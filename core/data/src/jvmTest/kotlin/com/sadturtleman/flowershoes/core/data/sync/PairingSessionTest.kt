@@ -11,6 +11,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertIs
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -62,6 +64,8 @@ class PairingSessionTest {
         assertEquals("minjun", jisu.db.coupleDao().get()?.partnerUserId)
         assertEquals("jisu", minjun.db.coupleDao().get()?.partnerUserId)
         assertEquals(listOf("jisu"), cloud.acceptedPushes, "수락되면 보낸 사람에게 푸시")
+        assertTrue(jisu.pairing.isInviter, "보낸 쪽만 연결 모달")
+        assertFalse(minjun.pairing.isInviter)
     }
 
     @Test
@@ -73,6 +77,34 @@ class PairingSessionTest {
         assertEquals("지수", assertIs<PairingState.Accepting>(minjun.pairing.accept(token)).inviterName)
         cloud.releaseAccepts()
         assertIs<PairingState.Linked>(minjun.pairing.poll())
+    }
+
+    @Test
+    fun `링크를 열면 수락하기 전에 보낸 사람 이름을 보여 주고 링크는 그대로 남는다`() = runTest {
+        val jisu = Phone("jisu", "dev-a")
+        val minjun = Phone("minjun", "dev-b")
+        val token = assertIs<PairingState.Waiting>(jisu.pairing.createLink("지수")).token
+
+        val invited = assertIs<PairingState.Invited>(minjun.pairing.preview(token))
+        assertEquals("지수", invited.inviterName)
+        assertEquals(token, invited.token)
+        assertIs<PairingState.Waiting>(jisu.pairing.poll(), "미리 보기만으로는 초대를 쓰지 않는다")
+
+        assertIs<PairingState.Linked>(minjun.pairing.accept(token))
+    }
+
+    @Test
+    fun `미리 보기도 만료 · 자기 링크 · 이미 연결됨을 구분한다`() = runTest {
+        val jisu = Phone("jisu", "dev-a")
+        val token = assertIs<PairingState.Waiting>(jisu.pairing.createLink("지수")).token
+        assertIs<PairingState.OwnLink>(jisu.relaunch().preview(token))
+        assertIs<PairingState.Expired>(Phone("hana", "dev-h").pairing.preview("K7M2Q9XA"))
+
+        val minjun = Phone("minjun", "dev-b")
+        minjun.pairing.accept(token)
+        assertIs<PairingState.Expired>(Phone("mallory", "dev-m").pairing.preview(token))
+        val other = assertIs<PairingState.Waiting>(Phone("hana2", "dev-h2").pairing.createLink("하나")).token
+        assertIs<PairingState.AlreadyLinked>(minjun.relaunch().preview(other))
     }
 
     @Test
