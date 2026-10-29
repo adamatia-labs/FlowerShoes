@@ -156,6 +156,12 @@ class SettingsViewModel(
         setNotify(state.value.notify.copy(anniversary100 = hundreds, anniversaryYear = years), platform)
     }
 
+    /** 3개월마다 기록 받아 두기(설정 › 기기 바꾸기 · 복구). 이 폰이 예약하는 로컬 알림이다. */
+    fun setExportReminder(on: Boolean, platform: PlatformActions) = setNotify(state.value.notify.copy(exportReminder = on), platform)
+
+    /** 내 기록 ZIP 을 공유 시트로 넘겼다: 3개월 알림을 오늘부터 다시 센다. */
+    fun markExported() = viewModelScope.launch { settings.markExported(clock.now().toEpochMilliseconds()) }
+
     fun setMarketing(on: Boolean) = viewModelScope.launch { settings.setMarketingConsent(on) }
 
     fun notice(message: String) {

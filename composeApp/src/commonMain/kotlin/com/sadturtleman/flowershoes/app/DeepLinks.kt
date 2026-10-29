@@ -17,6 +17,8 @@ sealed interface DeepLink {
     /** 그날의 한 줄 쓰기(일정이 끝난 다음 날 알림). */
     data class DayLine(val eventId: String) : DeepLink
     data object Pairing : DeepLink
+    /** 설정 › 기기 바꾸기 · 복구(3개월마다 기록 받아 두기 알림). */
+    data object DeviceRecovery : DeepLink
 
     /** 초대 링크를 열었다 → 받는 쪽 수락 흐름. */
     data class Invite(val token: String) : DeepLink
@@ -33,6 +35,7 @@ sealed interface DeepLink {
                 "calendar" -> Calendar(parts.getOrNull(1))
                 "dayline" -> parts.getOrNull(1)?.let(::DayLine)
                 "pairing" -> Pairing
+                "settings" -> if (parts.getOrNull(1) == "device") DeviceRecovery else null
                 else -> null
             }
         }

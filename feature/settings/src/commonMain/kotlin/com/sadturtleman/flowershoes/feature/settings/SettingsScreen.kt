@@ -124,7 +124,7 @@ object NoPlatformActions : PlatformActions
 
 /** 설정 안의 화면들. 첫 화면은 [MAIN]. */
 enum class SettingsPage {
-    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, WIDGETS, EXPORT,
+    MAIN, LIFETIME, CONNECTION, MILITARY, ANNIVERSARY, THEME, DISPLAY_MODE, WIDGETS, DEVICE, EXPORT,
     ACCOUNT, SIGN_IN_METHODS, DELETE_ACCOUNT, UNLINK, TERMS, LICENSES, INQUIRY, INQUIRY_HISTORY,
 }
 
@@ -160,11 +160,12 @@ fun SettingsRoute(
             SettingsPage.THEME -> ThemePage(state, viewModel, back, open)
             SettingsPage.DISPLAY_MODE -> DisplayModePage(state, viewModel, back)
             SettingsPage.WIDGETS -> WidgetsPage(state, platform, back)
-            SettingsPage.EXPORT -> ExportPage(shareFiles, back) { notice = it }
+            SettingsPage.DEVICE -> DevicePage(state, platform, viewModel, back, open)
+            SettingsPage.EXPORT -> ExportPage(shareFiles, viewModel, back)
             SettingsPage.ACCOUNT -> AccountPage(state, platform, viewModel, back, open)
             SettingsPage.SIGN_IN_METHODS -> SignInMethodsPage(state, viewModel, back)
-            SettingsPage.DELETE_ACCOUNT -> DeleteAccountPage(state, platform, viewModel, back)
-            SettingsPage.UNLINK -> UnlinkPage(state, platform, viewModel, back) { onBack() }
+            SettingsPage.DELETE_ACCOUNT -> DeleteAccountPage(state, platform, viewModel, shareFiles, back)
+            SettingsPage.UNLINK -> UnlinkPage(state, platform, viewModel, shareFiles, back) { onBack() }
             SettingsPage.TERMS -> TermsPage(state, viewModel, back)
             SettingsPage.LICENSES -> LicensesPage(back)
             SettingsPage.INQUIRY -> InquiryPage(
@@ -249,7 +250,7 @@ private const val LIFETIME_PRICE = "7,900원"
 private const val LIFETIME_LIST_PRICE = "9,900원"
 
 /**
- * 설정(Figma 최종 정리 › 설정): 프로필 · 꽃신 평생 + 우리 · 앱 · 데이터 · (광고) · 계정 · 정보.
+ * 설정(Figma 최종 정리 › 설정): 프로필 · 꽃신 평생 + 우리 · 앱 · 데이터와 보안 · (광고) · 계정 · 정보.
  */
 @Composable
 private fun MainPage(
@@ -308,18 +309,19 @@ private fun MainPage(
             val n = state.notify
             SwitchRow("알림 받기", n.letters || n.missYou || n.status || n.eventEve || n.anniversary) { viewModel.setAllNotify(it, platform) }
             Divider()
+            SwitchRow("3개월마다 기록 받아 두기", n.exportReminder) { viewModel.setExportReminder(it, platform) }
+            Divider()
             SwitchRow("이벤트 · 혜택 알림", state.marketing) { viewModel.setMarketing(it) }
             Divider()
             KkListRow("위젯 안내", onClick = { open(SettingsPage.WIDGETS) })
         }
-        Group("데이터") {
-            KkListRow("내 기록 내보내기", onClick = { open(SettingsPage.EXPORT) })
+        Group("데이터와 보안") {
+            KkListRow("기기 바꾸기 · 복구", onClick = { open(SettingsPage.DEVICE) })
         }
         KkAd(KkAdSlot.SETTINGS)
         Group("계정") {
             KkListRow("로그인 계정", value = viewModel.providerLabel(state.provider), onClick = { open(SettingsPage.ACCOUNT) })
             Divider()
-            // 기기 바꾸기 · 복구(#29)는 이 묶음에 들어온다. 새 폰은 로그인하면 기기 교체 요청으로 연결된다(#20).
             if (state.linked) {
                 KkListRow("연결 해제", labelColor = c.danger, onClick = { open(SettingsPage.UNLINK) })
             } else {
@@ -352,7 +354,6 @@ private val LIFETIME_BENEFITS = listOf(
     "광고 전부 제거",
     "글꼴 · 편지지 · 펜 · 색 전체",
     "위젯 꾸미기",
-    "백업 5GB · 마지막 사용 후 10년 보관",
 )
 
 /**
@@ -802,9 +803,20 @@ private fun SignInMethodsPage(state: SettingsState, viewModel: SettingsViewModel
     }
 }
 
-/** 회원 탈퇴(Figma 최종 정리 › 설정 · 회원 탈퇴): 지워지는 것 목록 + "탈퇴" 입력 + 탈퇴하기. */
+/** 회원 탈퇴(Figma 최종 정리 › 설정 · 회원 탈퇴): 기록 받아 두기 권유 → 지워지는 것 목록 + "탈퇴" 입력 + 탈퇴하기. */
 @Composable
-private fun DeleteAccountPage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit) {
+private fun DeleteAccountPage(
+    state: SettingsState,
+    platform: PlatformActions,
+    viewModel: SettingsViewModel,
+    shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?,
+    onBack: () -> Unit,
+) {
+    var prompting by remember { mutableStateOf(true) }
+    if (prompting) {
+        ExportPromptPage("회원 탈퇴", "탈퇴하기 전에 기록을 받아 두세요", "탈퇴하면 다시 받을 수 없어요", shareFiles, viewModel, onBack) { prompting = false }
+        return
+    }
     val c = KkTheme.colors
     val scope = rememberCoroutineScope()
     var confirm by remember { mutableStateOf("") }
@@ -840,9 +852,21 @@ private fun DeleteAccountPage(state: SettingsState, platform: PlatformActions, v
 
 // ── 연결 해제 ─────────────────────────────────────────────────────────────
 
-/** 연결 해제(Figma 6 · 연결 해제 / 설정). */
+/** 연결 해제(Figma 7 · 연결 해제): 해제 전 · 기록 받아 두기 → 선택 · 확인. */
 @Composable
-private fun UnlinkPage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit, onDone: () -> Unit) {
+private fun UnlinkPage(
+    state: SettingsState,
+    platform: PlatformActions,
+    viewModel: SettingsViewModel,
+    shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?,
+    onBack: () -> Unit,
+    onDone: () -> Unit,
+) {
+    var prompting by remember { mutableStateOf(true) }
+    if (prompting) {
+        ExportPromptPage("연결 해제", "해제하기 전에 기록을 받아 두세요", "해제하면 다시 받을 수 없어요", shareFiles, viewModel, onBack) { prompting = false }
+        return
+    }
     val c = KkTheme.colors
     val scope = rememberCoroutineScope()
     var keep by remember { mutableStateOf(true) }
@@ -982,32 +1006,158 @@ private fun LicensesPage(onBack: () -> Unit) {
     }
 }
 
+// ── 기기 바꾸기 · 복구 ───────────────────────────────────────────────────
+
+/**
+ * 기기 바꾸기 · 복구(Figma 8 · 설정 › 기기 바꾸기 · 복구 · 안내). 서버 백업은 없다(planning §5):
+ * 새 폰에서 로그인하면 기기 교체 요청이 가고, 상대가 승인하면 상대 폰에서 기록을 받는다(feature/pairing DeviceChange).
+ * 폰 밖에 남는 사본은 내 기록 내보내기(ZIP)뿐이라 같은 화면에 둔다.
+ */
+@Composable
+private fun DevicePage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit, open: (SettingsPage) -> Unit) {
+    val c = KkTheme.colors
+    val partner = if (state.linked) state.partnerName else "연인"
+    Page("기기 바꾸기 · 복구", onBack) {
+        val shape = RoundedCornerShape(KkRadius.lg)
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+            Text("폰을 바꾸거나 잃어버리면", style = KkTheme.type.caption, color = c.sub)
+            Column(
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+            ) {
+                listOf("새 폰에서 로그인", "$partner 폰에서 승인", "$partner 폰에서 기록 받기").forEachIndexed { i, step ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(c.tag), contentAlignment = Alignment.Center) {
+                            Text("${i + 1}", style = KkTheme.type.labelBold, color = c.ink)
+                        }
+                        Text(step, style = KkTheme.type.body, color = c.ink)
+                    }
+                }
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+            Text("돌아오는 것", style = KkTheme.type.caption, color = c.sub)
+            Column(
+                Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(KkSpacing.xl),
+                verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+            ) {
+                listOf("편지 · 일정", "사진 · 그림").forEach { RecoveryLine(it, KkIcons.Check, c.success) }
+                listOf("기기 설정", "임시저장한 편지", "현재 상태").forEach { RecoveryLine("$it · 안 돌아와요", KkIcons.Close, c.sub) }
+            }
+        }
+        // 되돌릴 수 없는 일 앞 한 줄 경고(design.md 글 규칙이 허용하는 것).
+        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+            KkIcon(KkIcons.Alert, tint = c.danger, size = 20.dp)
+            Text("두 폰을 모두 잃으면 기록을 되찾을 수 없어요", style = KkTheme.type.labelBold, color = c.danger, modifier = Modifier.weight(1f))
+        }
+        Group("내 기록") {
+            KkListRow("내 기록 내보내기", onClick = { open(SettingsPage.EXPORT) })
+            Divider()
+            SwitchRow("3개월마다 기록 받아 두기 알림", state.notify.exportReminder) { viewModel.setExportReminder(it, platform) }
+        }
+    }
+}
+
+/** 돌아오는 것 · 안 돌아오는 것 한 줄(아이콘 칸 20). */
+@Composable
+private fun RecoveryLine(text: String, icon: KkIcons, tint: Color) {
+    Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { KkIcon(icon, tint = tint, size = 14.dp) }
+        Text(text, style = KkTheme.type.body, color = KkTheme.colors.ink)
+    }
+}
+
 // ── 내 기록 내보내기 ─────────────────────────────────────────────────────
+
+/** 내 기록 ZIP: 담기는 것 미리보기 + 만들어 공유 시트로 넘기기. 넘기면 3개월 알림을 다시 센다. */
+private class RecordExport(val preview: com.sadturtleman.flowershoes.core.data.RecordExporter.Preview?, val busy: Boolean, val start: () -> Unit)
+
+@Composable
+private fun rememberRecordExport(
+    shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?,
+    viewModel: SettingsViewModel,
+    onShared: () -> Unit = {},
+): RecordExport {
+    val exporter = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.RecordExporter>()
+    var preview by remember { mutableStateOf<com.sadturtleman.flowershoes.core.data.RecordExporter.Preview?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(exporter) { preview = exporter?.let { runCatching { it.preview() }.getOrNull() } }
+    return RecordExport(preview, busy) {
+        if (exporter == null || shareFiles == null) {
+            viewModel.notice("이 빌드에서는 아직 내보낼 수 없어요")
+        } else if (!busy) {
+            busy = true
+            scope.launch {
+                val zip = runCatching { exporter.zip() }.getOrNull()
+                busy = false
+                if (zip == null) {
+                    viewModel.notice("내보내지 못했어요")
+                } else {
+                    shareFiles(listOf("꽃신_내_기록.zip" to zip))
+                    viewModel.markExported()
+                    onShared()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 연결 해제 · 탈퇴 전 · 기록 받아 두기(Figma 7 · 연결 해제 · 해제 전 · 기록 받아 두기). 내보내거나 건너뛰면 [onNext].
+ */
+@Composable
+private fun ExportPromptPage(
+    title: String,
+    heading: String,
+    warning: String,
+    shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?,
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
+) {
+    val c = KkTheme.colors
+    val export = rememberRecordExport(shareFiles, viewModel, onShared = onNext)
+    Page(title, onBack, bottom = {
+        KkButton("건너뛰기", onNext, Modifier.align(Alignment.CenterHorizontally), style = KkButtonStyle.Ghost, size = com.sadturtleman.flowershoes.core.designsystem.KkButtonSize.M)
+        KkPrimaryButton("내보내기", export.start, Modifier.fillMaxWidth(), loading = export.busy, enabled = export.preview != null)
+    }) {
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+            Text(heading, style = KkTheme.type.title, color = c.ink)
+            Text(warning, style = KkTheme.type.body, color = c.sub)
+        }
+        val shape = RoundedCornerShape(KkRadius.lg)
+        Row(
+            Modifier.fillMaxWidth().clip(shape).background(c.surface).border(1.dp, c.line, shape)
+                .clickable(enabled = export.preview != null, role = androidx.compose.ui.semantics.Role.Button, onClick = export.start)
+                .padding(horizontal = KkSpacing.lg, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(KkSpacing.md), verticalAlignment = Alignment.CenterVertically,
+        ) {
+            KkIcon(KkIcons.Export, tint = c.accent)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("내 기록 내보내기", style = KkTheme.type.labelBold, color = c.ink)
+                Text(
+                    export.preview?.let { "편지 ${it.letters}통 · 사진 ${it.photos}장 · 그림 ${it.drawings}개 · ZIP" } ?: "…",
+                    style = KkTheme.type.caption, color = c.sub,
+                )
+            }
+            KkIcon(KkIcons.ChevronRight, tint = c.sub, size = 20.dp)
+        }
+    }
+}
 
 /**
  * 내 기록 내보내기(Figma 설정 · 내 기록 내보내기, 무료): 담기는 것 · ZIP 크기 + [내보내기].
  * 꾸밈 없는 원본(편지 글 · 그림 · 사진 · 일정 · 만남)을 폰 안에서 묶어 공유 시트로 넘긴다.
  */
 @Composable
-private fun ExportPage(shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?, onBack: () -> Unit, onNotice: (String) -> Unit) {
+private fun ExportPage(shareFiles: ((List<Pair<String, ByteArray>>) -> Unit)?, viewModel: SettingsViewModel, onBack: () -> Unit) {
     val c = KkTheme.colors
-    val exporter = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.RecordExporter>()
-    var preview by remember { mutableStateOf<com.sadturtleman.flowershoes.core.data.RecordExporter.Preview?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    LaunchedEffect(exporter) { preview = exporter?.let { runCatching { it.preview() }.getOrNull() } }
+    val export = rememberRecordExport(shareFiles, viewModel)
     Page("내 기록 내보내기", onBack, bottom = {
-        KkPrimaryButton("내보내기", {
-            if (exporter == null || shareFiles == null) { onNotice("이 빌드에서는 아직 내보낼 수 없어요"); return@KkPrimaryButton }
-            busy = true
-            scope.launch {
-                val zip = runCatching { exporter.zip() }.getOrNull()
-                busy = false
-                if (zip == null) onNotice("내보내지 못했어요") else shareFiles(listOf("꽃신_내_기록.zip" to zip))
-            }
-        }, Modifier.fillMaxWidth(), loading = busy, enabled = preview != null)
+        KkPrimaryButton("내보내기", export.start, Modifier.fillMaxWidth(), loading = export.busy, enabled = export.preview != null)
     }) {
-        val p = preview
+        val p = export.preview
         Group(null) {
             KkListRow("편지", value = p?.let { "${it.letters}통 · 텍스트" } ?: "…", trailing = KkRowTrailing.None)
             Divider()
