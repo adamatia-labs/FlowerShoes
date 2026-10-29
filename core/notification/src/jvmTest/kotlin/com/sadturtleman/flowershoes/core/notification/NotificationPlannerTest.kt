@@ -90,6 +90,7 @@ class NotificationPlannerTest {
         val plan = NotificationPlanner().plan(now, "민준", emptyList(), listOf(birthday), null)
         assertEquals(listOf("anniv-b1-2026", "anniv-b1-2027"), plan.map { it.id })
         assertEquals("오늘은 민준 생일", plan.first().title)
+        assertEquals("25년째 돌아온 날", plan.first().body)
         assertEquals(Instant.parse("2026-11-03T00:00:00Z"), plan.first().at)
     }
 

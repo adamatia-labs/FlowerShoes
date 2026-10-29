@@ -267,16 +267,6 @@ class LeaveRepository(
     fun newId(): String = Uuid.random().toString()
 }
 
-/** 카드 제목: "포상휴가 · 사격 만발" → "포상휴가". */
-val LeaveGrant.title: String get() = name.substringBefore(" · ").ifBlank { kind.label }
-
-/** 카드 아래 줄: "포상휴가 · 사격 만발 · 2026.10.02에 받음". */
-val LeaveGrant.subtitle: String
-    get() {
-        val head = if (name.startsWith(kind.label)) name else kind.label
-        return "$head · ${grantedOn.year}.${grantedOn.month.number.toString().padStart(2, '0')}.${grantedOn.day.toString().padStart(2, '0')}에 받음"
-    }
-
 /** 편지 · 편지 안 그림. 그림만 보내기도 글 없는 편지 한 통이다. */
 class LetterRepository(
     private val db: AppDatabase,

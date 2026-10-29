@@ -5,6 +5,8 @@ import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.model.koreanName
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.daysUntil
 
 /** 휴가 풀에 더해지는 출처 한 줄(휴가 관리 › 출처 내역). */
 sealed interface LeaveSource {
@@ -31,6 +33,15 @@ data class LeavePool(val sources: List<LeaveSource>, val used: Int) {
     val total: Int get() = sources.sumOf { it.days }
     val remaining: Int get() = total - used
     val overdrawn: Boolean get() = remaining < 0
+
+    /**
+     * [from]..[to] 를 휴가로 쓰면 남을 날(일정 추가 › 휴가 · 휴가 쓰기의 "5일 사용 · 남은 휴가 13일").
+     * [replacing] 은 고치는 중인 일정 — 이미 휴가로 센 날은 돌려받고 새 기간만큼 쓴다.
+     */
+    fun remainingAfter(from: LocalDate, to: LocalDate, replacing: Event? = null): Int {
+        val back = replacing?.takeIf { it.type == EventType.VACATION && it.deletedAt == null }?.dayCount ?: 0
+        return remaining + back - (from.daysUntil(to) + 1)
+    }
 
     fun grant(id: String): LeaveGrant? = sources.firstNotNullOfOrNull { (it as? LeaveSource.Granted)?.grant?.takeIf { g -> g.id == id } }
 

@@ -143,8 +143,6 @@ private fun MainShell() {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
     var settingsStart by remember { mutableStateOf(com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN) }
-    // 휴가 관리를 연 곳(설정 › 군 정보면 닫을 때 그리로).
-    var leaveFromSettings by remember { mutableStateOf(false) }
     // 편지 쓰기 · 편지함이 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
@@ -211,7 +209,6 @@ private fun MainShell() {
     BackHandler(enabled = overlay != null || letterOpen || tab != Tab.HOME) {
         when {
             overlay == Overlay.DRAW_FOR_LETTER -> overlay = Overlay.COMPOSE
-            overlay == Overlay.LEAVE && leaveFromSettings -> overlay = Overlay.SETTINGS
             overlay != null -> overlay = null
             letterOpen -> letters.onIntent(LetterIntent.Close)
             else -> tab = Tab.HOME
@@ -287,18 +284,18 @@ private fun MainShell() {
                 startAt = settingsStart,
                 photoPicker = { rememberPhotoPicker(it) },
                 shareFiles = fileShare,
-                onOpenLeave = {
-                    leaveFromSettings = true
-                    settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.MILITARY
-                    overlay = Overlay.LEAVE
-                },
             )
         }
         Overlay.LEAVE -> {
-            com.sadturtleman.flowershoes.feature.calendar.LeaveRoute(onBack = {
-                overlay = if (leaveFromSettings) Overlay.SETTINGS else null
-                leaveFromSettings = false
-            })
+            // 휴가 관리는 캘린더 탭 아래 화면이다 — 닫으면 캘린더로. 쓴 휴가 한 줄은 그 일정 고치기를 연다.
+            com.sadturtleman.flowershoes.feature.calendar.LeaveRoute(
+                onBack = { overlay = null },
+                onOpenEvent = { e ->
+                    overlay = null
+                    tab = Tab.CALENDAR
+                    calendar.onIntent(com.sadturtleman.flowershoes.feature.calendar.CalendarIntent.Edit(e))
+                },
+            )
         }
         null -> {
         val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
@@ -339,10 +336,10 @@ private fun MainShell() {
                         onOpenCalendar = { tab = Tab.CALENDAR },
                         onOpenSettings = { overlay = Overlay.SETTINGS },
                         onWriteLetter = writeLetter,
-                        onOpenLeave = { leaveFromSettings = false; overlay = Overlay.LEAVE },
+                        onOpenLeave = { tab = Tab.CALENDAR; overlay = Overlay.LEAVE },
                         onOpenDayLine = openDayLine,
                     )
-                    Tab.CALENDAR -> CalendarRoute(onWriteDayLine = openDayLine, viewModel = calendar)
+                    Tab.CALENDAR -> CalendarRoute(onOpenLeave = { overlay = Overlay.LEAVE }, onWriteDayLine = openDayLine, viewModel = calendar)
                     Tab.LETTER -> LetterInboxRoute(
                         onWriteLetter = writeLetter,
                         onDraw = { overlay = Overlay.DRAW },
@@ -391,7 +388,6 @@ private fun overlayForward(from: Overlay?, to: Overlay?): Boolean = when {
     to == null -> false
     from == null -> true
     from == Overlay.DRAW_FOR_LETTER && to == Overlay.COMPOSE -> false
-    from == Overlay.LEAVE && to == Overlay.SETTINGS -> false
     else -> true
 }
 

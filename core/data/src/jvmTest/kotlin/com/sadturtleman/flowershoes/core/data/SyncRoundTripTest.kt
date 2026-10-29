@@ -166,8 +166,7 @@ class SyncRoundTripTest {
         deliver(a, b)
 
         val mirrored = b.leave.observeGrants().first().single()
-        assertEquals("포상휴가", mirrored.title)
-        assertEquals("포상휴가 · 사격 만발 · 2026.10.02에 받음", mirrored.subtitle)
+        assertEquals(grant.copy(lamport = mirrored.lamport, lastWriterDevice = mirrored.lastWriterDevice, updatedAt = mirrored.updatedAt), mirrored)
         val use = b.leave.observeUses().first().single()
         assertEquals(EventType.VACATION, use.type)
         assertEquals(2, use.dayCount)
