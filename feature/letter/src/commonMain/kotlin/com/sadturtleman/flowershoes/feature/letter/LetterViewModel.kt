@@ -298,10 +298,8 @@ class LetterViewModel(
             }
             is LetterIntent.ResumeDraft -> resume(intent.id)
             LetterIntent.DismissResume -> ui.update { it.copy(resumeOffer = false) }
-            LetterIntent.LeaveCompose -> {
-                keeper.flush(ui.value.draft)
-                ui.update { it.copy(resumeOffer = false) }
-            }
+            // 시트는 그대로 둔다 — 앱을 잠깐 내렸다 와도 "이어 쓸까요?" 가 남는다.
+            LetterIntent.LeaveCompose -> keeper.flush(ui.value.draft)
             is LetterIntent.DeleteDraft -> {
                 keeper.delete(intent.id)
                 if (intent.id == ui.value.draftId) ui.update { it.freshDraft() }
@@ -369,8 +367,7 @@ class LetterViewModel(
         val d = ui.value.draft
         if (!d.canSend) return
         ui.update { it.copy(draft = d.copy(sending = true)) }
-        // 보낸 편지는 쓰던 편지 목록에서 빠진다. 다음 편지는 새 id.
-        keeper.sent()
+        val draftId = keeper.currentId
         viewModelScope.launch {
             // 글 · 그림 · 사진의 순서: 편지 쓰기 화면의 글 속 자리 그대로.
             val blocks = d.toBlocks()
@@ -379,7 +376,10 @@ class LetterViewModel(
             letters.send(letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font), d.drawings)
             bizLogger.record(BizView.LETTER_COMPOSE, BizEvent.LetterSent(paper = d.paper, font = d.font, scheduled = d.revealAt != null, drawings = d.drawings.size, photos = d.photos.size, reply = false))
             recordSoloQueue(BizView.LETTER_COMPOSE)
-            ui.update { it.freshDraft() }
+            // 보낸 편지는 쓰던 편지 목록에서 빠진다. 아직 이 편지를 보고 있으면 빈 편지지로.
+            val stillHere = keeper.currentId == draftId
+            keeper.sent(draftId)
+            if (stillHere) ui.update { it.freshDraft() }
             if (d.revealAt != null) toast("${d.revealAt.month.ordinal + 1}월 ${d.revealAt.day}일 ${d.revealAt.hour}시에 도착해요")
         }
     }

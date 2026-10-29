@@ -22,14 +22,13 @@ import kotlinx.serialization.json.Json
 data class DraftSummary(
     val id: String,
     val firstLine: String,
-    val updatedAt: Instant,
     val paper: Paper,
     /** "어제 오후 11:40" · "10월 25일". */
     val whenLabel: String,
 )
 
 /**
- * 쓰던 편지 보관(임시저장 여러 통, 이 기기에만). 편지 쓰기 화면이 고칠 때마다 [edited] 를 부르면
+ * 쓰던 편지 보관(임시저장 여러 통, 이 기기에만). 메인 스레드(viewModelScope)에서만 부른다 — 저장 · 지우기만 잠근다. 편지 쓰기 화면이 고칠 때마다 [edited] 를 부르면
  * 입력이 멈추고 2초 뒤에 저장하고, 화면을 나갈 때 [flush] 로 바로 저장한다. 빈 편지는 남기지 않는다.
  *
  * 지금 쓰는 편지는 [currentId] 한 통이다. [startNew] · [resume] 은 다른 편지로 옮겨 가기 전에 하던 저장을 마저 한다.
@@ -55,7 +54,7 @@ internal class DraftKeeper(
         rows.mapNotNull { row ->
             val d = decode(row.json) ?: return@mapNotNull null
             val at = Instant.fromEpochMilliseconds(row.updatedAtMs)
-            DraftSummary(row.id, d.firstLine(), at, Paper.of(d.paper), draftWhen(at, clock.now()))
+            DraftSummary(row.id, d.firstLine(), Paper.of(d.paper), draftWhen(at, clock.now()))
         }
     }
 
@@ -95,14 +94,11 @@ internal class DraftKeeper(
         return draft
     }
 
-    /** 보냈다 — 이 편지는 목록에서 빠진다. 다음 편지는 새 id 로. */
-    fun sent() {
-        pending?.cancel()
-        pendingDraft = null
-        val id = currentId
-        currentId = newId()
-        scope.launch { lock.withLock { saved.remove(id); store.delete(id) } }
-    }
+    /**
+     * [id] 를 보냈다 — 목록에서 빠진다. 보내기가 끝난 뒤에 부른다(실패하면 쓰던 편지가 남아야 한다).
+     * 그 사이 새 편지를 열었으면 [currentId] 는 이미 다른 편지다.
+     */
+    fun sent(id: String) = delete(id)
 
     /** 쓰던 편지 목록 › 지우기. 지금 쓰는 편지면 다음 글은 새 편지로 남는다. */
     fun delete(id: String) {

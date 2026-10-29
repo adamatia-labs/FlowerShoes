@@ -87,8 +87,10 @@ class DraftKeeperTest {
         val d = ComposeDraft(text = "잘 자")
         k.flush(d)
         runCurrent()
-        k.sent()
+        val id = k.currentId
         k.flush(d.copy(sending = true))
+        k.startNew()
+        k.sent(id)
         runCurrent()
         assertEquals(emptyList(), store.rows.value)
     }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,11 @@ internal fun DraftRow(drafts: List<DraftSummary>, onClick: () -> Unit) {
 @Composable
 fun LetterDraftsRoute(onBack: () -> Unit, onResume: (String) -> Unit, viewModel: LetterViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // 마지막 한 통까지 지우면 편지함으로 돌아간다.
+    var seen by remember { mutableStateOf(false) }
+    LaunchedEffect(state.drafts.isEmpty()) {
+        if (state.drafts.isNotEmpty()) seen = true else if (seen) onBack()
+    }
     LetterDraftsScreen(state.drafts, onBack, onResume, onDelete = { viewModel.onIntent(LetterIntent.DeleteDraft(it)) })
 }
 
@@ -137,7 +143,6 @@ internal fun ResumeDraftSheet(drafts: List<DraftSummary>, onResume: (String) -> 
     KkModalSheet(onNew) {
         KkSheetHeader("쓰던 편지를 이어 쓸까요?")
         val single = drafts.size == 1
-        // 여러 통이어도 시트가 스크롤한다.
         Column(
             Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
