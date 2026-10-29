@@ -100,7 +100,7 @@ fun kkotsinModules(
         single { UnlinkService(get(), get(), get(), cloud?.account, wipeAttachmentFiles = { get<AttachmentStore>().deleteAllFiles() }) }
         // 서버 설정이 없는 빌드에서는 등록하지 않는다(화면은 getOrNull 로 "설정 전" 안내를 보여 준다).
         if (cloud != null) {
-            single { PairingSession(get(), get(), get(), cloud.pairing, get()) }
+            single { PairingSession(get(), get(), get(), cloud.pairing, get(), get<DeviceSettings>().pendingInvites) }
             single { SyncClient(get(), get(), get(), cloud.mailbox, cloud.blobs, get(), get(), get(), get()) }
             cloud.relink?.let { r ->
                 single {

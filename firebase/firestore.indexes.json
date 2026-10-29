@@ -2,6 +2,7 @@
   "indexes": [],
   "fieldOverrides": [
     { "collectionGroup": "ops", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "pairings", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "notifyPrefs", "fieldPath": "quietEndUtcMinute", "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }] }
   ]
 }

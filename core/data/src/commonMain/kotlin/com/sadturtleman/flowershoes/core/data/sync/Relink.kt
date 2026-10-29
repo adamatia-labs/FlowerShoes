@@ -4,6 +4,7 @@ import com.sadturtleman.flowershoes.core.crypto.CoupleKey
 import com.sadturtleman.flowershoes.core.crypto.CrockfordCode
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import com.sadturtleman.flowershoes.core.crypto.Pairing
+import com.sadturtleman.flowershoes.core.crypto.RelinkSas
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.CoupleEntity
@@ -15,6 +16,27 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+
+/** 넘겨주기 화면이 그리는 상태. 기기 교체 통합 흐름(#40)이 Relink 와 함께 지운다. */
+sealed interface RelinkState {
+    data object Idle : RelinkState
+
+    /** 넘겨주는 쪽: 코드를 보여 주고 새 폰이 입력하기를 기다린다. */
+    data class ShowCode(val code: String) : RelinkState
+
+    /** 새 폰: 커밋을 올리고 상대 공개키를 기다린다. */
+    data object WaitingPartner : RelinkState
+
+    /** 두 화면에 같은 숫자가 떠야 한다. [device] · [provider]: 새 폰 이름 · 로그인 제공자(새 폰이 알려 준 표시 정보, 서명 밖). */
+    data class CompareSas(val sas: String, val device: String? = null, val provider: String? = null) : RelinkState
+
+    /** 내 쪽은 [맞아요] 를 눌렀고 상대 확인 · 서버의 활성화를 기다린다. */
+    data object WaitingConfirm : RelinkState
+
+    data class Linked(val coupleId: String) : RelinkState
+
+    data class Failed(val reason: String) : RelinkState
+}
 
 /** relinks/{code} 와 그 단계. 활성화 · 옛 기기 폐기는 confirm-inviter 의 서명을 확인한 함수(onRelinkConfirmed)가 한다. */
 interface RelinkTransport {
@@ -53,7 +75,7 @@ class RelinkSession(
     /** 새 폰 이름 · 로그인 제공자(KAKAO · APPLE · GOOGLE) — 넘겨주는 폰의 확인 카드에 보인다. */
     private val deviceInfo: suspend () -> Pair<String, String> = { "" to "" },
 ) {
-    var state: PairingState = PairingState.Idle
+    var state: RelinkState = RelinkState.Idle
         private set
 
     private var code = ""
@@ -87,39 +109,39 @@ class RelinkSession(
 
     // ── 지수(기존 폰) ──
 
-    suspend fun offer(): PairingState {
+    suspend fun offer(): RelinkState {
         val couple = checkNotNull(db.coupleDao().get()) { "연결된 커플이 없다" }
         myKeys()
         giver = true
-        code = CrockfordCode.random(PairingSession.CODE_LENGTH)
+        code = CrockfordCode.random(RelinkSession.CODE_LENGTH)
         transport.create(code, identity.userId, couple.id)
-        return PairingState.ShowCode(code).also { state = it }
+        return RelinkState.ShowCode(code).also { state = it }
     }
 
     // ── 민준(새 폰, 같은 계정으로 로그인) ──
 
-    suspend fun accept(input: String): PairingState {
-        val normalized = CrockfordCode.normalize(input)?.takeIf { it.length == PairingSession.CODE_LENGTH }
-            ?: return PairingState.Failed("코드 8자리를 확인해 주세요").also { state = it }
+    suspend fun accept(input: String): RelinkState {
+        val normalized = CrockfordCode.normalize(input)?.takeIf { it.length == RelinkSession.CODE_LENGTH }
+            ?: return RelinkState.Failed("코드 8자리를 확인해 주세요").also { state = it }
         val keys = myKeys()
         code = normalized
-        nonce = Pairing.newNonce()
-        transport.putStep(code, Steps.JOIN, mapOf("uid" to identity.userId, "commit" to Pairing.commit(Pairing.PublicKeys(keys.signPub, keys.boxPub), nonce).b64()))
-        return PairingState.WaitingPartner.also { state = it }
+        nonce = RelinkSas.newNonce()
+        transport.putStep(code, Steps.JOIN, mapOf("uid" to identity.userId, "commit" to RelinkSas.commit(Pairing.PublicKeys(keys.signPub, keys.boxPub), nonce).b64()))
+        return RelinkState.WaitingPartner.also { state = it }
     }
 
-    suspend fun poll(): PairingState {
+    suspend fun poll(): RelinkState {
         val keys = myKeys()
         val mine = Pairing.PublicKeys(keys.signPub, keys.boxPub)
         state = if (giver) pollGiver(mine) else pollReceiver(mine)
         return state
     }
 
-    private suspend fun pollGiver(mine: Pairing.PublicKeys): PairingState {
-        if (state is PairingState.CompareSas || state is PairingState.Linked) return state
+    private suspend fun pollGiver(mine: Pairing.PublicKeys): RelinkState {
+        if (state is RelinkState.CompareSas || state is RelinkState.Linked) return state
         val join = transport.getStep(code, Steps.JOIN) ?: return state
         if (join["uid"] != db.coupleDao().get()?.partnerUserId) {
-            return PairingState.Failed("연인의 계정이 아니에요. 같은 계정으로 로그인했는지 확인해 주세요")
+            return RelinkState.Failed("연인의 계정이 아니에요. 같은 계정으로 로그인했는지 확인해 주세요")
         }
         if (transport.getStep(code, Steps.INVITER) == null) {
             val counts = localCounts()
@@ -134,17 +156,17 @@ class RelinkSession(
         val reveal = transport.getStep(code, Steps.REVEAL) ?: return state
         val theirs = Pairing.PublicKeys(reveal.getValue("signPub").unb64(), reveal.getValue("boxPub").unb64())
         val theirNonce = reveal.getValue("nonce").unb64()
-        if (!Pairing.verifyCommitment(join.getValue("commit").unb64(), theirs, theirNonce)) {
-            return PairingState.Failed("상대 키가 처음 약속과 달라요. 새 코드로 다시 시도해 주세요")
+        if (!RelinkSas.verifyCommitment(join.getValue("commit").unb64(), theirs, theirNonce)) {
+            return RelinkState.Failed("상대 키가 처음 약속과 달라요. 새 코드로 다시 시도해 주세요")
         }
         newDevice = reveal.getValue("deviceId") to theirs
-        sas = Pairing.sas(code, inviter = mine, joiner = theirs, joinerNonce = theirNonce)
-        return PairingState.CompareSas(sas, reveal["deviceName"]?.takeIf { it.isNotBlank() }, reveal["provider"]?.takeIf { it.isNotBlank() })
+        sas = RelinkSas.sas(code, inviter = mine, joiner = theirs, joinerNonce = theirNonce)
+        return RelinkState.CompareSas(sas, reveal["deviceName"]?.takeIf { it.isNotBlank() }, reveal["provider"]?.takeIf { it.isNotBlank() })
     }
 
-    private suspend fun pollReceiver(mine: Pairing.PublicKeys): PairingState {
-        if (state is PairingState.WaitingConfirm) return finishReceiver()
-        if (state is PairingState.CompareSas) return state
+    private suspend fun pollReceiver(mine: Pairing.PublicKeys): RelinkState {
+        if (state is RelinkState.WaitingConfirm) return finishReceiver()
+        if (state is RelinkState.CompareSas) return state
         val inviter = transport.getStep(code, Steps.INVITER) ?: return state
         if (transport.getStep(code, Steps.REVEAL) == null) {
             val (deviceName, provider) = runCatching { deviceInfo() }.getOrDefault("" to "")
@@ -163,17 +185,17 @@ class RelinkSession(
         )
         relinkCoupleId = relinkCoupleId ?: transport.coupleId(code)
         relinkGiverUid = relinkGiverUid ?: transport.giverUid(code)
-        sas = Pairing.sas(code, inviter = theirs, joiner = mine, joinerNonce = nonce)
-        return PairingState.CompareSas(sas)
+        sas = RelinkSas.sas(code, inviter = theirs, joiner = mine, joinerNonce = nonce)
+        return RelinkState.CompareSas(sas)
     }
 
     /**
      * 지수: [맞아요, 넘겨줄게요]. 화면이 기기 생체 · 암호 인증을 먼저 받는다.
      * 민준: [맞아요].
      */
-    suspend fun confirm(): PairingState = if (giver) confirmGiver() else confirmReceiver()
+    suspend fun confirm(): RelinkState = if (giver) confirmGiver() else confirmReceiver()
 
-    private suspend fun confirmGiver(): PairingState {
+    private suspend fun confirmGiver(): RelinkState {
         val (newDeviceId, newKeys) = newDevice ?: return state
         val couple = checkNotNull(db.coupleDao().get())
         val keys = myKeys()
@@ -202,24 +224,24 @@ class RelinkSession(
         // 공유 데이터 전체를 새 기기로. 다음 push 가 새 키로 새 기기 우편함에 올린다.
         sync?.writeFullSnapshot()
         sync?.syncOnce()
-        return PairingState.Linked(couple.id).also { state = it }
+        return RelinkState.Linked(couple.id).also { state = it }
     }
 
-    private suspend fun confirmReceiver(): PairingState {
+    private suspend fun confirmReceiver(): RelinkState {
         transport.putStep(code, Steps.CONFIRM_JOINER, mapOf("sas" to sas))
-        state = PairingState.WaitingConfirm
+        state = RelinkState.WaitingConfirm
         return finishReceiver()
     }
 
     /** 함수가 새 기기를 활성화하면 커플 키를 풀고 커플 · 기기 행을 만든다. 데이터는 이어지는 동기화로 들어온다. */
-    private suspend fun finishReceiver(): PairingState {
-        val coupleId = relinkCoupleId ?: transport.coupleId(code)?.also { relinkCoupleId = it } ?: return PairingState.WaitingConfirm
-        if (!transport.activated(coupleId, identity.deviceId)) return PairingState.WaitingConfirm
-        val wrapped = transport.wrappedKeyFor(coupleId, identity.deviceId) ?: return PairingState.WaitingConfirm
+    private suspend fun finishReceiver(): RelinkState {
+        val coupleId = relinkCoupleId ?: transport.coupleId(code)?.also { relinkCoupleId = it } ?: return RelinkState.WaitingConfirm
+        if (!transport.activated(coupleId, identity.deviceId)) return RelinkState.WaitingConfirm
+        val wrapped = transport.wrappedKeyFor(coupleId, identity.deviceId) ?: return RelinkState.WaitingConfirm
         val key = CoupleKey.unwrap(myKeys(), wrapped)
         vault.putCoupleKey(key)
         val (giverDeviceId, giverKeys) = checkNotNull(newDevice)
-        val giverUid = relinkGiverUid ?: transport.giverUid(code)?.also { relinkGiverUid = it } ?: return PairingState.WaitingConfirm
+        val giverUid = relinkGiverUid ?: transport.giverUid(code)?.also { relinkGiverUid = it } ?: return RelinkState.WaitingConfirm
         val keys = myKeys()
         val now = clock.now().toEpochMilliseconds()
         db.coupleDao().clear()
@@ -227,11 +249,24 @@ class RelinkSession(
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
         db.deviceDao().upsert(DeviceEntity(giverDeviceId, giverUid, giverUid, giverKeys.signPub, giverKeys.boxPub, DeviceState.ACTIVE.name, now, null))
         sync?.syncOnce()
-        return PairingState.Linked(coupleId)
+        return RelinkState.Linked(coupleId)
+    }
+
+    companion object {
+        const val CODE_LENGTH = 8
     }
 
     private fun cutoffJson(cutoff: Map<String, Long>): String =
         Json.encodeToString(JsonObject.serializer(), buildJsonObject { cutoff.forEach { (k, v) -> put(k, JsonPrimitive(v)) } })
+}
+
+/** 넘겨주기 단계 문서 이름. relinks/{code}/steps/{name} */
+object Steps {
+    const val JOIN = "join"
+    const val INVITER = "inviter"
+    const val REVEAL = "reveal"
+    const val CONFIRM_INVITER = "confirm-inviter"
+    const val CONFIRM_JOINER = "confirm-joiner"
 }
 
 /** 넘겨받는 중 화면의 세 줄(Figma 재연결 / 민준 · 넘겨받는 중): 편지 · 그림 · 일정. */

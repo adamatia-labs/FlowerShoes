@@ -45,47 +45,58 @@ async function seedCouple() {
 
 const op = (from) => ({ kind: 'missyou', from, createdAt: Timestamp.now(), expireAt: later(), size: 10, ct: 'AAAA', sig: 'BBBB', header: 'h' });
 
-// ── 첫 연결 ──────────────────────────────────────────────────────────────
+// ── 첫 연결: 초대 링크 ───────────────────────────────────────────────────
 
-test('초대 코드는 만든 사람 uid 와 만료 시각만 담는다', async () => {
-  await assertSucceeds(setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA'), { uid: 'jisu', expireAt: later() }));
-  await assertFails(setDoc(doc(as('jisu'), 'pairings/AAAA1111'), { uid: 'jisu', expireAt: later(), boxPub: 'x' }));
-  await assertFails(setDoc(doc(as('jisu'), 'pairings/BBBB2222'), { uid: 'minjun', expireAt: later() }));
+const TOKEN = 'lMUx7lUYw_FL1C-F1P9pVA';
+const PUB = 'A'.repeat(88);
+const invite = (uid, extra = {}) => ({ uid, deviceId: 'dev-a', pubKey: PUB, name: '지수', expireAt: later(), ...extra });
+const accept = (uid) => ({ uid, deviceId: 'dev-b', pubKey: PUB });
+const days = (n) => Timestamp.fromMillis(Date.now() + n * 86400 * 1000);
+
+test('초대 문서는 uid · deviceId · pubKey · 이름 · 7일 이하 만료만 담는다', async () => {
+  await assertSucceeds(setDoc(doc(as('jisu'), `pairings/${TOKEN}`), invite('jisu', { expireAt: days(7) })));
+  await assertFails(setDoc(doc(as('jisu'), 'pairings/BBBBBBBBBBBBBBBBBBBBBB'), invite('jisu', { expireAt: days(8) })));
+  await assertFails(setDoc(doc(as('jisu'), 'pairings/CCCCCCCCCCCCCCCCCCCCCC'), invite('jisu', { phone: '010' })));
+  await assertFails(setDoc(doc(as('jisu'), 'pairings/DDDDDDDDDDDDDDDDDDDDDD'), invite('minjun')));
+  await assertFails(setDoc(doc(as('jisu'), 'pairings/EEEEEEEEEEEEEEEEEEEEEE'), invite('jisu', { name: '가'.repeat(41) })));
 });
 
-test('초대 코드 목록은 아무도 조회할 수 없다', async () => {
-  await setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA'), { uid: 'jisu', expireAt: later() });
+test('토큰은 128비트(base64url 22자)여야 한다', async () => {
+  await assertFails(setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA'), invite('jisu')));
+});
+
+test('초대는 토큰을 아는 사람만 읽고 목록은 아무도 못 본다', async () => {
+  await setDoc(doc(as('jisu'), `pairings/${TOKEN}`), invite('jisu'));
+  await assertSucceeds(getDoc(doc(as('minjun'), `pairings/${TOKEN}`)));
   await assertFails(getDocs(collection(as('minjun'), 'pairings')));
-  await assertSucceeds(getDoc(doc(as('minjun'), 'pairings/K7M2Q9XA')));
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `pairings/${TOKEN}`)));
 });
 
-test('커밋 전에는 초대한 사람이 공개키를 올릴 수 없다', async () => {
-  await setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA'), { uid: 'jisu', expireAt: later() });
-  const keys = { deviceId: 'dev-a', signPub: 's', boxPub: 'b' };
-  await assertFails(setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA/steps/inviter'), keys));
-  await assertSucceeds(setDoc(doc(as('minjun'), 'pairings/K7M2Q9XA/steps/join'), { uid: 'minjun', commit: 'c' }));
-  await assertSucceeds(setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA/steps/inviter'), keys));
+test('수락은 받는 사람 본인이 한 번만 쓴다', async () => {
+  await setDoc(doc(as('jisu'), `pairings/${TOKEN}`), invite('jisu'));
+  // 보낸 본인은 자기 링크를 수락할 수 없다.
+  await assertFails(setDoc(doc(as('jisu'), `pairings/${TOKEN}/steps/accept`), accept('jisu')));
+  // 다른 사람인 척 할 수 없다.
+  await assertFails(setDoc(doc(as('mallory'), `pairings/${TOKEN}/steps/accept`), accept('minjun')));
+  // accept 말고 다른 단계는 없다.
+  await assertFails(setDoc(doc(as('minjun'), `pairings/${TOKEN}/steps/join`), accept('minjun')));
+  await assertSucceeds(setDoc(doc(as('minjun'), `pairings/${TOKEN}/steps/accept`), accept('minjun')));
+  // 두 번째 수락(다른 사람이든 같은 사람이든)은 막힌다.
+  await assertFails(setDoc(doc(as('mallory'), `pairings/${TOKEN}/steps/accept`), accept('mallory')));
+  await assertFails(setDoc(doc(as('minjun'), `pairings/${TOKEN}/steps/accept`), { ...accept('minjun'), pubKey: 'B'.repeat(88) }));
 });
 
-test('단계마다 작성자가 정해져 있고 한 번만 쓴다', async () => {
-  await setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA'), { uid: 'jisu', expireAt: later() });
-  // 초대한 본인은 join 할 수 없다.
-  await assertFails(setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA/steps/join'), { uid: 'jisu', commit: 'c' }));
-  await setDoc(doc(as('minjun'), 'pairings/K7M2Q9XA/steps/join'), { uid: 'minjun', commit: 'c' });
-  // 제3자가 inviter 를 대신 쓸 수 없다.
-  await assertFails(setDoc(doc(as('mallory'), 'pairings/K7M2Q9XA/steps/inviter'), { deviceId: 'x', signPub: 's', boxPub: 'b' }));
-  await setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA/steps/inviter'), { deviceId: 'dev-a', signPub: 's', boxPub: 'b' });
-  // reveal 은 join 을 쓴 사람만.
-  const reveal = { deviceId: 'dev-b', signPub: 's', boxPub: 'b', nonce: 'n' };
-  await assertFails(setDoc(doc(as('mallory'), 'pairings/K7M2Q9XA/steps/reveal'), reveal));
-  await assertSucceeds(setDoc(doc(as('minjun'), 'pairings/K7M2Q9XA/steps/reveal'), reveal));
-  // 이미 쓴 단계는 덮어쓸 수 없다(키 바꿔치기 방지).
-  await assertFails(setDoc(doc(as('minjun'), 'pairings/K7M2Q9XA/steps/reveal'), { ...reveal, boxPub: 'evil' }));
+test('만료된 초대 · 없는 초대는 수락할 수 없다', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), `pairings/${TOKEN}`), invite('jisu', { expireAt: Timestamp.fromMillis(Date.now() - 1000) }));
+  });
+  await assertFails(setDoc(doc(as('minjun'), `pairings/${TOKEN}/steps/accept`), accept('minjun')));
+  await assertFails(setDoc(doc(as('minjun'), 'pairings/ZZZZZZZZZZZZZZZZZZZZZZ/steps/accept'), accept('minjun')));
 });
 
 test('익명 로그인은 아무것도 못 한다', async () => {
   const anon = env.authenticatedContext('anon', { firebase: { sign_in_provider: 'anonymous' } }).firestore();
-  await assertFails(setDoc(doc(anon, 'pairings/ZZZZ9999'), { uid: 'anon', expireAt: later() }));
+  await assertFails(setDoc(doc(anon, 'pairings/YYYYYYYYYYYYYYYYYYYYYY'), invite('anon')));
 });
 
 // ── 우편함 · 기기 ────────────────────────────────────────────────────────

@@ -65,25 +65,20 @@ class RelinkTest {
     fun tearDown() = FileSystem.SYSTEM.deleteRecursively(root)
 
     private suspend fun link() {
-        val code = assertIs<PairingState.ShowCode>(jisu.pairing.start()).code
-        minjun.pairing.join(code)
-        jisu.pairing.poll()
-        minjun.pairing.poll()
-        jisu.pairing.poll()
-        jisu.pairing.confirm()
-        minjun.pairing.confirm()
-        jisu.pairing.poll()
+        val token = assertIs<PairingState.Waiting>(jisu.pairing.createLink("지수")).token
+        assertIs<PairingState.Linked>(minjun.pairing.accept(token))
+        assertIs<PairingState.Linked>(jisu.pairing.poll())
     }
 
     private suspend fun handOver(newPhone: Phone): Pair<String, String> {
-        val code = assertIs<PairingState.ShowCode>(jisu.relink.offer()).code
-        assertIs<PairingState.WaitingPartner>(newPhone.relink.accept(code))
+        val code = assertIs<RelinkState.ShowCode>(jisu.relink.offer()).code
+        assertIs<RelinkState.WaitingPartner>(newPhone.relink.accept(code))
         jisu.relink.poll()
-        val sasNew = assertIs<PairingState.CompareSas>(newPhone.relink.poll()).sas
-        val sasJisu = assertIs<PairingState.CompareSas>(jisu.relink.poll()).sas
+        val sasNew = assertIs<RelinkState.CompareSas>(newPhone.relink.poll()).sas
+        val sasJisu = assertIs<RelinkState.CompareSas>(jisu.relink.poll()).sas
         newPhone.relink.confirm()
-        assertIs<PairingState.Linked>(jisu.relink.confirm())
-        assertIs<PairingState.Linked>(newPhone.relink.poll())
+        assertIs<RelinkState.Linked>(jisu.relink.confirm())
+        assertIs<RelinkState.Linked>(newPhone.relink.poll())
         return sasJisu to sasNew
     }
 
@@ -128,8 +123,8 @@ class RelinkTest {
     fun `연인 계정이 아닌 사람은 넘겨받을 수 없다`() = runTest {
         link()
         val stranger = Phone("mallory", "dev-x")
-        val code = assertIs<PairingState.ShowCode>(jisu.relink.offer()).code
+        val code = assertIs<RelinkState.ShowCode>(jisu.relink.offer()).code
         stranger.relink.accept(code)
-        assertTrue(jisu.relink.poll() is PairingState.Failed)
+        assertTrue(jisu.relink.poll() is RelinkState.Failed)
     }
 }

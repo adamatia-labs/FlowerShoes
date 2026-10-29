@@ -93,14 +93,9 @@ class PartnerResendTest {
     fun tearDown() = FileSystem.SYSTEM.deleteRecursively(root)
 
     private suspend fun link() {
-        val code = assertIs<PairingState.ShowCode>(jisu.pairing.start()).code
-        minjun.pairing.join(code)
-        jisu.pairing.poll()
-        minjun.pairing.poll()
-        jisu.pairing.poll()
-        jisu.pairing.confirm()
-        minjun.pairing.confirm()
-        jisu.pairing.poll()
+        val token = assertIs<PairingState.Waiting>(jisu.pairing.createLink("지수")).token
+        assertIs<PairingState.Linked>(minjun.pairing.accept(token))
+        assertIs<PairingState.Linked>(jisu.pairing.poll())
     }
 
     private suspend fun settle() = repeat(2) {
@@ -111,14 +106,14 @@ class PartnerResendTest {
     /** 민준의 새 폰: 같은 계정, 빈 DB, 새 기기 키. 지수 폰이 넘겨주고 새 폰이 한 번 동기화한다. */
     private suspend fun handOverToNewPhone(): Phone {
         val newPhone = Phone("minjun", "dev-b2")
-        val code = assertIs<PairingState.ShowCode>(jisu.relink.offer()).code
-        assertIs<PairingState.WaitingPartner>(newPhone.relink.accept(code))
+        val code = assertIs<RelinkState.ShowCode>(jisu.relink.offer()).code
+        assertIs<RelinkState.WaitingPartner>(newPhone.relink.accept(code))
         jisu.relink.poll()
         newPhone.relink.poll()
         jisu.relink.poll()
         newPhone.relink.confirm()
-        assertIs<PairingState.Linked>(jisu.relink.confirm())
-        assertIs<PairingState.Linked>(newPhone.relink.poll())
+        assertIs<RelinkState.Linked>(jisu.relink.confirm())
+        assertIs<RelinkState.Linked>(newPhone.relink.poll())
         newPhone.sync.syncOnce()
         return newPhone
     }
