@@ -14,8 +14,8 @@ import com.sadturtleman.flowershoes.core.data.sync.KeyVault
 import com.sadturtleman.flowershoes.core.data.sync.SyncScheduler
 import com.sadturtleman.flowershoes.core.notification.NotificationSync
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher
-import com.sadturtleman.flowershoes.featureflag.domain.FeatureFlagProvider
-import com.sadturtleman.flowershoes.logging.domain.BizLogger
+import com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider
+import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.notification.AndroidNotificationScheduler
 import com.sadturtleman.flowershoes.tti.domain.TtiRecorder
 import com.sadturtleman.flowershoes.widget.updateAllWidgets
@@ -80,7 +80,12 @@ class FlowerShoesApplication :
                     devEmailLogin = BuildConfig.DEBUG && BuildConfig.DEV_EMAIL_LOGIN,
                 ),
             )
-            modules(telemetryModules(this@FlowerShoesApplication))
+            modules(
+                telemetryModules(
+                    this@FlowerShoesApplication,
+                    firebase = !localEmulator && com.google.firebase.FirebaseApp.getApps(this@FlowerShoesApplication).isNotEmpty(),
+                ),
+            )
             // 꽃신 평생 결제(RevenueCat). 결제 시트는 MainActivity 가 화면을 넘겨 준다.
             modules(org.koin.dsl.module {
                 if (BuildConfig.DEBUG) single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }

@@ -141,14 +141,11 @@ dependencies {
     implementation(project(":tti:data"))
     implementation(project(":tti:presentation"))
 
-    // 비즈니스 이벤트 로깅. TTI 와 마찬가지로 Application 이 init · destroy 를 잡는다.
-    // domain 은 계약(BizLogger · BizEvent), data 는 Koin 조립과 전송 구현이다.
-    implementation(project(":logging:domain"))
-    implementation(project(":logging:data"))
+    // 비즈니스 이벤트 로깅(GA4). TTI 와 마찬가지로 Application 이 init · destroy 를 잡는다.
+    implementation(project(":core:logging"))
 
-    // 피처 플래그 · AB 테스트. Application 이 init 을 잡고, 환경은 이 모듈이 BuildConfig 에서 읽어 준다.
-    implementation(project(":featureflag:domain"))
-    implementation(project(":featureflag:data"))
+    // 피처 플래그 · AB 테스트(Remote Config). Application 이 init 을 잡고, 환경은 이 모듈이 BuildConfig 에서 읽어 준다.
+    implementation(project(":core:featureflag"))
 
     // 프레임 드랍 계측. Activity 가 JankStats 를 단다.
     implementation(project(":jank:domain"))
