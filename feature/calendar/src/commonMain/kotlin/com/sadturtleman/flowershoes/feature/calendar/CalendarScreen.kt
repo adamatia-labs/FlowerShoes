@@ -79,23 +79,26 @@ import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
+import com.sadturtleman.flowershoes.core.designsystem.KkDialog
+import com.sadturtleman.flowershoes.core.designsystem.KkDialogHost
+import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
-fun CalendarRoute(viewModel: CalendarViewModel = koinViewModel()) {
+fun CalendarRoute(onOpenLeave: () -> Unit = {}, viewModel: CalendarViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    CalendarScreen(state, viewModel::onIntent)
+    CalendarScreen(state, viewModel::onIntent, onOpenLeave)
 }
 
 /**
- * 캘린더(Figma 3 · 캘린더): 다음 만남 카드 · 한 주 띠(접힘) 또는 달력(펼침) · 범례 · 이번 주 / 고른 날 일정.
+ * 캘린더(Figma 3 · 캘린더): 맨 위 휴가 요약 띠(→ 휴가 관리) · 다음 만남 카드 · 한 주 띠(접힘) 또는 달력(펼침) · 범례 · 이번 주 / 고른 날 일정.
  * 일정이 하나도 없으면 빈 화면(Empty State). 달은 달력을 옆으로 밀어 넘긴다.
  */
 @Composable
-fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
+fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onOpenLeave: () -> Unit = {}) {
     val c = KkTheme.colors
     Column(
         Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
@@ -111,6 +114,7 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
                     .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
             )
         }
+        state.pool?.let { LeaveBand(it, onOpenLeave) }
         state.nextMeet?.let { NextMeet(it, state.today, compact = state.expanded) }
         if (state.expanded) MonthCard(state, onIntent) else WeekStrip(state, onIntent)
         if (!state.empty) Legend()
@@ -140,7 +144,24 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
         }
         Spacer(Modifier.height(KkSpacing.lg))
     }
-    state.draft?.let { EventEditor(it, onIntent) }
+    state.draft?.let { EventEditor(it, state, onIntent) }
+}
+
+/** 휴가 요약 띠(Figma 휴가 요약): 종이 태그 바탕 "남은 휴가 18일 / 전체 32일 ›". 넘쳐 쓰면 남은 휴가가 빨간색. */
+@Composable
+private fun LeaveBand(pool: LeavePool, onOpen: () -> Unit) {
+    val c = KkTheme.colors
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.sm)).background(c.tag)
+            .clickable(role = Role.Button, onClick = onOpen)
+            .padding(start = 14.dp, end = KkSpacing.sm, top = KkSpacing.sm, bottom = KkSpacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("남은 휴가 ${pool.remaining}일", style = KkTheme.type.labelBold, color = if (pool.overdrawn) c.danger else c.ink)
+        Text("/ 전체 ${pool.total}일", style = KkTheme.type.label, color = c.ink, modifier = Modifier.weight(1f))
+        KkIcon(KkIcons.ChevronRight, tint = c.ink, contentDescription = "휴가 관리")
+    }
 }
 
 /** 다음 만남 카드(Next Meet): "다음 만남 · 외박" / D-3 / "10월 24일(토) 09:00 · 1박 2일". */
@@ -323,19 +344,22 @@ private fun Modifier.monthSwipe(onIntent: (CalendarIntent) -> Unit): Modifier = 
         )
     }
 
-/** Figma 일정 추가 칩 순서: 면회 · 외박 · 휴가 · 훈련 · 당직 · 기타. */
-private val EDITOR_TYPES = listOf(EventType.VISIT, EventType.OVERNIGHT, EventType.VACATION, EventType.TRAINING, EventType.DUTY, EventType.OTHER)
+/** Figma 일정 추가 종류 6가지(2열 카드): 휴가 · 외박 · 면회 · 훈련 · 당직 · 기념일. 기타는 예전 일정을 고칠 때만 보인다. */
+private val EDITOR_TYPES = listOf(EventType.VACATION, EventType.OVERNIGHT, EventType.VISIT, EventType.TRAINING, EventType.DUTY, EventType.ANNIVERSARY)
 private val EDITOR_MINUTES = listOf(0, 10, 20, 30, 40, 50)
 
 /**
- * 일정 추가 · 고치기(Figma 최종 정리 › 캘린더 · 일정 추가): 전체 화면.
- * 종류 칩 → 제목 → [하루 종일 · 시작 · 끝 · 알림] 카드 → 메모 → 저장.
+ * 일정 추가 · 고치기(Figma 3 · 일정 추가): 전체 화면.
+ * 종류 카드 → 제목 → [하루 종일 · 시작 · 끝 · 알림] 카드(기념일은 [날짜 · 매년 반복 · 알림]) → 메모 → 저장.
+ * 휴가를 고르면 휴가 사용 등록과 같다 — 기간 아래에 "5일 사용 · 남은 휴가 13일"(넘치면 빨간색).
  */
 @Composable
-private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
+private fun EventEditor(draft: EventDraft, state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
     val c = KkTheme.colors
     var picking by remember { mutableStateOf<Boolean?>(null) } // true = 시작, false = 끝
     var alarmSheet by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val anniversary = draft.type == EventType.ANNIVERSARY
     fun change(d: EventDraft) = onIntent(CalendarIntent.ChangeDraft(d))
     androidx.compose.ui.window.Dialog(
         onDismissRequest = { onIntent(CalendarIntent.CloseDraft) },
@@ -345,35 +369,51 @@ private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
             KkTopBar(
                 if (draft.id == null) "일정 추가" else "일정 고치기", onLeading = { onIntent(CalendarIntent.CloseDraft) },
                 leading = KkTopBarLeading.Close,
-                trailingText = if (draft.id != null) "삭제" else null, onTrailing = { onIntent(CalendarIntent.DeleteDraft) },
+                trailingText = if (draft.deletable) "삭제" else null, onTrailing = { confirmDelete = true },
             )
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
                 verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
             ) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
-                    modifier = Modifier.semantics { contentDescription = "일정 종류" },
-                ) {
-                    EDITOR_TYPES.forEach { t ->
-                        val on = draft.type == t
-                        KkStatusChip(t.label(), selected = on, onClick = { change(draft.copy(type = t)) }, dot = if (on) Color.White else c.danger)
+                Text("종류", style = KkTheme.type.labelBold, color = c.ink)
+                val types = when {
+                    draft.coupleAnniversary -> listOf(EventType.ANNIVERSARY)
+                    draft.type in EDITOR_TYPES -> EDITOR_TYPES
+                    else -> EDITOR_TYPES + draft.type
+                }
+                Column(Modifier.semantics { contentDescription = "일정 종류" }, verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+                    types.chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+                            pair.forEach { t -> SelectCard(t.label(), draft.type == t, { change(draft.withType(t)) }, Modifier.weight(1f)) }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
-                KkInput(draft.title, { change(draft.copy(title = it)) }, label = "제목", placeholder = "첫 면회")
+                KkInput(draft.title, { change(draft.copy(title = it)) }, label = "제목")
                 val shape = RoundedCornerShape(KkRadius.lg)
                 Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
-                    KkListRow("하루 종일", trailing = KkRowTrailing.Switch, switchOn = draft.allDay, onClick = { change(draft.copy(allDay = !draft.allDay)) })
-                    fun at(d: LocalDate, t: LocalTime) = "${d.mmdd()} (${d.weekdayKo()})" + if (draft.allDay) "" else " ${t.hhmm()}"
-                    androidx.compose.material3.HorizontalDivider(color = c.line)
-                    KkListRow("시작", value = at(draft.start, draft.startTime), onClick = { picking = true })
-                    androidx.compose.material3.HorizontalDivider(color = c.line)
-                    KkListRow("끝", value = at(draft.end, draft.endTime), onClick = { picking = false })
+                    if (anniversary) {
+                        KkListRow("날짜", value = draft.start.longDate(), onClick = { picking = true })
+                        if (!draft.coupleAnniversary) {
+                            androidx.compose.material3.HorizontalDivider(color = c.line)
+                            KkListRow("매년 반복", trailing = KkRowTrailing.Switch, switchOn = draft.repeatYearly, onClick = { change(draft.toggleRepeat()) })
+                        }
+                    } else {
+                        KkListRow("하루 종일", trailing = KkRowTrailing.Switch, switchOn = draft.allDay, onClick = { change(draft.copy(allDay = !draft.allDay)) })
+                        fun at(d: LocalDate, t: LocalTime) = "${d.mmdd()} (${d.weekdayKo()})" + if (draft.allDay) "" else " ${t.hhmm()}"
+                        androidx.compose.material3.HorizontalDivider(color = c.line)
+                        KkListRow("시작", value = at(draft.start, draft.startTime), onClick = { picking = true })
+                        androidx.compose.material3.HorizontalDivider(color = c.line)
+                        KkListRow("끝", value = at(draft.end, draft.endTime), onClick = { picking = false })
+                    }
                     androidx.compose.material3.HorizontalDivider(color = c.line)
                     KkListRow("알림", value = if (draft.alarm) "전날 20:00" else "없음", onClick = { alarmSheet = true })
                 }
                 if (!draft.valid) Text("끝나는 때가 시작보다 빨라요", style = KkTheme.type.body, color = c.danger)
-                KkInput(draft.memo, { change(draft.copy(memo = it)) }, label = "메모", placeholder = "신분증 챙기기")
+                state.pool?.let { pool -> draft.leaveUse(pool) }?.takeIf { draft.valid }?.let { use ->
+                    Text(use.label, style = KkTheme.type.labelBold, color = if (use.overdrawn) c.danger else c.accent)
+                }
+                KkInput(draft.memo, { change(draft.copy(memo = it)) }, label = "메모")
             }
             Box(Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.sm, bottom = 14.dp)) {
                 KkPrimaryButton("저장", onClick = { onIntent(CalendarIntent.SaveDraft) }, enabled = draft.valid, modifier = Modifier.fillMaxWidth())
@@ -383,9 +423,9 @@ private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
             var date by remember(isStart) { mutableStateOf(if (isStart) draft.start else draft.end) }
             var time by remember(isStart) { mutableStateOf(if (isStart) draft.startTime else draft.endTime) }
             KkModalSheet({ picking = null }) {
-                KkSheetHeader(if (isStart) "시작" else "끝")
+                KkSheetHeader(if (anniversary) "날짜" else if (isStart) "시작" else "끝")
                 KkDatePicker(date, { date = it })
-                if (!draft.allDay) {
+                if (!draft.allDay && !anniversary) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
                         (0..23).forEach { h ->
                             KkStatusChip("${h.toString().padStart(2, '0')}시", selected = time.hour == h, onClick = { time = LocalTime(h, time.minute) })
@@ -402,12 +442,27 @@ private fun EventEditor(draft: EventDraft, onIntent: (CalendarIntent) -> Unit) {
                         if (isStart) {
                             val start = LocalDateTime(date, time)
                             // 시작을 끝 뒤로 옮기면 끝도 같은 길이만큼 따라간다.
-                            if (draft.copy(start = date, startTime = time).valid) draft.copy(start = date, startTime = time)
+                            if (anniversary) draft.copy(start = date, end = date)
+                            else if (draft.copy(start = date, startTime = time).valid) draft.copy(start = date, startTime = time)
                             else draft.copy(start = date, startTime = time, end = start.date, endTime = time)
                         } else draft.copy(end = date, endTime = time),
                     )
                     picking = null
                 }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        if (confirmDelete) {
+            // 지우기 확인(Figma 일정 상세 · 삭제 확인). 저장된 일정이 매년 반복이면 모든 해가 함께 지워진다
+            // (한 해만 지우기는 아직 없다 — 반복 예외를 담을 칸이 필요하다).
+            val body = listOfNotNull(
+                "매년 반복되는 날이 모두 지워져요".takeIf { draft.original?.repeats == true },
+                state.partnerName?.let { "${it}의 캘린더에서도 함께 지워져요" },
+            ).joinToString("\n").ifEmpty { "되돌릴 수 없어요" }
+            KkDialogHost({ confirmDelete = false }) {
+                KkDialog("일정을 지울까요?", body, "지우기", onConfirm = {
+                    confirmDelete = false
+                    onIntent(CalendarIntent.DeleteDraft)
+                }, onCancel = { confirmDelete = false }, destructive = true)
             }
         }
         if (alarmSheet) {
@@ -441,6 +496,9 @@ internal fun EventType.label() = when (this) {
 }
 
 private fun LocalDate.short() = "${month.number}.${day}"
+
+/** "2025년 9월 13일 (토)". */
+private fun LocalDate.longDate() = "${year}년 ${month.number}월 ${day}일 (${weekdayKo()})"
 
 /** "11.01". */
 private fun LocalDate.mmdd() = "${month.number.toString().padStart(2, '0')}.${day.toString().padStart(2, '0')}"

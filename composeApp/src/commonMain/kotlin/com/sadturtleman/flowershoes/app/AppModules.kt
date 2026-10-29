@@ -137,7 +137,7 @@ fun kkotsinModules(
     module {
         viewModel { OnboardingViewModel(get(), get(), get()) }
         viewModel { HomeViewModel(get(), get(), get(), get(), get(), get()) }
-        viewModel { CalendarViewModel(get(), get()) }
+        viewModel { CalendarViewModel(get(), get(), get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }
         viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
