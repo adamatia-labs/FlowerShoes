@@ -136,7 +136,7 @@ fun kkotsinModules(
     },
     module {
         viewModel { OnboardingViewModel(get(), get(), get()) }
-        viewModel { HomeViewModel(get(), get(), get(), get(), get(), get()) }
+        viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), dayLineCards = get<DeviceSettings>().dayLineCards) }
         viewModel { CalendarViewModel(get(), get(), get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }

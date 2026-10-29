@@ -18,7 +18,10 @@ import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.LetterBlock
-import com.sadturtleman.flowershoes.core.model.MeetNote
+import com.sadturtleman.flowershoes.core.model.DayLine
+import com.sadturtleman.flowershoes.core.model.hasDayLine
+import com.sadturtleman.flowershoes.core.model.myDayLine
+import com.sadturtleman.flowershoes.core.model.partnerDayLine
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +37,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.minus
+import kotlinx.datetime.number
 import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
@@ -49,7 +53,7 @@ data class YearMonth(val year: Int, val month: Int) : Comparable<YearMonth> {
     }
 }
 
-/** 장 표지 썸네일: 만남 사진이 있으면 사진, 없으면 그 달 첫 그림. */
+/** 장 표지 썸네일: 그날의 사진이 있으면 사진, 없으면 그 달 첫 그림. */
 sealed interface ChapterCover {
     data class Photo(val attachmentId: String) : ChapterCover
     data class Drawing(val letterId: String) : ChapterCover
@@ -100,7 +104,7 @@ data class MonthLetter(
     val photoId: String?,
 )
 
-/** 만남 카드 · 만남 상세. */
+/** 만남 카드 · 그날의 한 줄(보기 · 쓰기). */
 data class MeetCard(
     val eventId: String,
     val date: LocalDate,
@@ -111,9 +115,11 @@ data class MeetCard(
     /** "10.14 (화) 13:00 – 16:00" · "10.19 – 10.23 · 4박 5일". */
     val time: String,
     val photos: List<String>,
-    /** (이름, 메모) — 나 먼저. */
+    /** (이름, 한 줄) — 나 먼저. 쓴 사람 것만(빈칸은 보여 주지 않는다). */
     val notes: List<Pair<String, String>>,
     val myNote: String,
+    /** "2026.10.19 (월)" · "2026.10.19 (월) – 10.23 (금)". */
+    val dateLabel: String = "",
 )
 
 data class MonthDetail(
@@ -151,9 +157,10 @@ data class BookSummary(
 /** 추억 탭 안에서 덮어 여는 화면(뒤로 가기는 하나씩 닫는다). */
 sealed interface MemoryPage {
     data class Month(val ym: YearMonth) : MemoryPage
+    /** 그날의 한 줄 보기. */
     data class Meet(val eventId: String) : MemoryPage
-    /** 만남 남기기("오늘 어땠어요?"). */
-    data class Note(val eventId: String) : MemoryPage
+    /** 그날의 한 줄 쓰기(다음 날 푸시 · 홈 카드 · 일정 상세 · 추억 위쪽 버튼에서). */
+    data class DayLine(val eventId: String) : MemoryPage
     data object Book : MemoryPage
 }
 
@@ -164,26 +171,31 @@ data class MemoryState(
     val months: Map<YearMonth, MonthDetail> = emptyMap(),
     val summary: BookSummary? = null,
     val stack: List<MemoryPage> = emptyList(),
+    /** 이미 시작한 만남(진행 중 포함) — 그날의 한 줄을 쓸 수 있는 일정. 일정 id → 카드. */
+    val dayLineMeets: Map<String, MeetCard> = emptyMap(),
+    /** 추억 위쪽 [+ 그날의 한 줄] 이 여는 일정: 가장 최근에 끝난(진행 중이면 그것) 만남. */
+    val latestMeet: String? = null,
 ) {
     val empty: Boolean get() = !loading && chapters.none { it.letters + it.meets > 0 }
     val top: MemoryPage? get() = stack.lastOrNull()
 
-    fun meet(eventId: String): MeetCard? = months.values.firstNotNullOfOrNull { m -> m.meets.firstOrNull { it.eventId == eventId } }
+    fun meet(eventId: String): MeetCard? =
+        dayLineMeets[eventId] ?: months.values.firstNotNullOfOrNull { m -> m.meets.firstOrNull { it.eventId == eventId } }
 }
 
 sealed interface MemoryIntent {
     data class Open(val page: MemoryPage) : MemoryIntent
     data object Back : MemoryIntent
-    /** 만남 한 줄 메모(각자 자기 줄). 빈 글이면 지운다. */
-    data class SaveNote(val eventId: String, val text: String) : MemoryIntent
-    /** 만남에 사진을 붙인다(줄인 JPEG). 일정에 실려 상대 폰에도 간다. */
+    /** 그날의 한 줄(각자 자기 줄). 빈 글이면 지운다. */
+    data class SaveDayLine(val eventId: String, val text: String) : MemoryIntent
+    /** 그날에 사진을 붙인다(줄인 JPEG). 일정에 실려 상대 폰에도 간다. */
     data class AddMeetPhoto(val eventId: String, val jpeg: ByteArray) : MemoryIntent
     data class RemoveMeetPhoto(val eventId: String, val attachmentId: String) : MemoryIntent
 }
 
 /**
  * 추억 = 달마다 한 장씩 쌓이는 우리의 책(Figma 5 · 추억, 화면 기능명세 2-7).
- * 표지 카드 + 월별 장 → 한 달(달력 · 편지 · 만남) → 만남 상세 · 만남 남기기, 책으로 보기(펼침 미리보기 + PDF).
+ * 표지 카드 + 월별 장 → 한 달(달력 · 편지 · 만남) → 그날의 한 줄(보기 · 쓰기), 책으로 보기(펼침 미리보기 + PDF).
  * 예약 편지는 공개 전이라 여기에도 없다(편지함과 같은 쿼리).
  */
 class MemoryViewModel(
@@ -199,7 +211,7 @@ class MemoryViewModel(
     private val stack = MutableStateFlow<List<MemoryPage>>(emptyList())
     private val docs = MutableStateFlow<Map<String, DrawingDocument?>>(emptyMap())
 
-    /** 만남 · 편지 사진 원본(첨부 id → JPEG). 화면이 썸네일로 쓴다. */
+    /** 그날의 사진 · 편지 사진 원본(첨부 id → JPEG). 화면이 썸네일로 쓴다. */
     private val _photos = MutableStateFlow<Map<String, ByteArray?>>(emptyMap())
     val photos: StateFlow<Map<String, ByteArray?>> = _photos
 
@@ -245,19 +257,17 @@ class MemoryViewModel(
 
     fun onIntent(intent: MemoryIntent) {
         when (intent) {
-            is MemoryIntent.Open -> stack.update { it + intent.page }
+            // 같은 화면을 거듭 열면(알림 · 홈 카드를 여러 번) 한 장만 둔다.
+            is MemoryIntent.Open -> stack.update { if (it.lastOrNull() == intent.page) it else it + intent.page }
             MemoryIntent.Back -> stack.update { it.dropLast(1) }
-            is MemoryIntent.SaveNote -> viewModelScope.launch {
-                val e = events.get(intent.eventId) ?: return@launch
-                val text = intent.text.trim().take(MeetNote.MAX_CHARS)
-                // 지운 줄도 시각을 남겨야 상대 폰의 옛 줄이 이기지 않는다(빈 글 = 지움).
-                events.save(e.copy(meetNotes = e.meetNotes + (me to MeetNote(text, clock.now().toEpochMilliseconds()))))
-                stack.update { s -> if (s.lastOrNull() is MemoryPage.Note) s.dropLast(1) else s }
+            is MemoryIntent.SaveDayLine -> viewModelScope.launch {
+                events.writeDayLine(intent.eventId, intent.text)
+                stack.update { s -> if (s.lastOrNull() is MemoryPage.DayLine) s.dropLast(1) else s }
             }
             is MemoryIntent.AddMeetPhoto -> viewModelScope.launch {
                 val e = events.get(intent.eventId) ?: return@launch
-                if (e.photoIds.size >= MAX_MEET_PHOTOS) {
-                    _notices.tryEmit("만남 사진은 둘이 합쳐 ${MAX_MEET_PHOTOS}장까지예요")
+                if (e.photoIds.size >= DayLine.MAX_PHOTOS) {
+                    _notices.tryEmit("사진은 둘이 합쳐 ${DayLine.MAX_PHOTOS}장까지예요")
                     return@launch
                 }
                 val id = attachments.put(AttachmentKind.PHOTO, intent.jpeg)
@@ -286,15 +296,18 @@ class MemoryViewModel(
         timeline: ServiceTimeline?,
         thumbs: Map<String, DrawingDocument?>,
     ): MemoryState {
-        val meetEvents = es.filter { it.deletedAt == null && it.type in MEETINGS }.sortedBy { it.start }
+        val meetEvents = es.filter { it.deletedAt == null && it.hasDayLine }.sortedBy { it.start }
         val pastMeets = meetEvents.filter { it.end.date <= today }
         val firstVisit = pastMeets.firstOrNull { it.type == EventType.VISIT }?.id
+        val started = meetEvents.filter { it.start.date <= today }
+        val dayLineMeets = started.associate { it.id to meetCard(it, it.id == firstVisit, my, partner) }
+        val latestMeet = started.maxByOrNull { it.end }?.id
         val nameOf = { id: String -> if (id == me) my else partner }
 
         // 책의 첫 장: 입대한 달(복무 정보가 없으면 첫 편지 · 만남의 달). 마지막 장: 이번 달(전역했으면 전역한 달).
         val contentStart = (ls.map { it.date() } + pastMeets.map { it.start.date }).minOrNull()
         val start = timeline?.enlistDate ?: contentStart
-        if (start == null) return MemoryState(loading = false, stack = pages)
+        if (start == null) return MemoryState(loading = false, stack = pages, dayLineMeets = dayLineMeets, latestMeet = latestMeet)
         val end = timeline?.dischargeDate?.takeIf { it < today } ?: today
         val firstYm = YearMonth.of(minOf(start, contentStart ?: start))
         val lastYm = YearMonth.of(end)
@@ -378,6 +391,8 @@ class MemoryViewModel(
             months = details.associateBy { it.ym },
             summary = summary,
             stack = pages,
+            dayLineMeets = dayLineMeets,
+            latestMeet = latestMeet,
         )
     }
 
@@ -389,21 +404,19 @@ class MemoryViewModel(
             e.allDay() -> "${d.md()} (${weekday(d)})"
             else -> "${d.md()} (${weekday(d)}) ${e.start.time.hhmm()} – ${e.end.time.hhmm()}"
         }
-        val mine = e.meetNotes[me]?.text.orEmpty()
-        val theirs = e.meetNotes.filterKeys { it != me }.values.maxByOrNull { it.at }?.text.orEmpty()
+        val mine = e.myDayLine(me)
+        val theirs = e.partnerDayLine(me)
+        val full = { x: LocalDate -> "${x.year}.${x.month.number.toString().padStart(2, '0')}.${x.day.toString().padStart(2, '0')} (${weekday(x)})" }
         return MeetCard(
             e.id, d, e.type.label(), e.type,
             e.title.ifBlank { if (firstVisit) "첫 면회" else e.type.label() }, time, e.photoIds,
-            notes = listOfNotNull(mine.takeIf { it.isNotBlank() }?.let { my to it }, theirs.takeIf { it.isNotBlank() }?.let { partner to it }),
-            myNote = mine,
+            notes = listOfNotNull(mine?.let { my to it }, theirs?.let { partner to it }),
+            myNote = mine.orEmpty(),
+            dateLabel = if (days > 0) "${full(d)} – ${e.end.date.md()} (${weekday(e.end.date)})" else full(d),
         )
     }
 
     private companion object {
-        val MEETINGS = setOf(EventType.VACATION, EventType.OVERNIGHT, EventType.VISIT)
-
-        /** 만남 사진(둘이 합쳐, 화면 기능명세 2-7 만남 남기기). */
-        const val MAX_MEET_PHOTOS = 10
     }
 }
 

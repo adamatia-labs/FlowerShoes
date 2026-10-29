@@ -67,15 +67,15 @@ data class Event(
     val lamport: Long,
     val lastWriterDevice: String,
     val deletedAt: Instant? = null,
-    /** 만남 사진(추억 › 만남 상세, 둘이 합쳐 최대 10). 첨부 id — 본문은 편지 사진처럼 blob 으로 간다. */
+    /** 그날의 사진(그날의 한 줄, 둘이 합쳐 최대 10). 첨부 id — 본문은 편지 사진처럼 blob 으로 간다. */
     val photoIds: List<String> = emptyList(),
     /** 메모(일정 추가 › 메모). */
     val memo: String = "",
     /**
-     * 만남 한 줄 메모(추억 › 만남 남기기): 사용자 id → 메모. 각자 자기 줄만 고치고, 줄마다 [MeetNote.at] 이 늦은 쪽이 남는다
-     * — 둘이 동시에 같은 일정을 고쳐도 상대의 줄을 덮지 않게 일정 LWW 와 따로 합친다([mergeMeetNotes]).
+     * 그날의 한 줄: 사용자 id → 한 줄. 각자 자기 줄만 고치고, 줄마다 [DayLine.at] 이 늦은 쪽이 남는다
+     * — 둘이 동시에 같은 일정을 고쳐도 상대의 줄을 덮지 않게 일정 LWW 와 따로 합친다([mergeDayLines]).
      */
-    val meetNotes: Map<String, MeetNote> = emptyMap(),
+    val dayLines: Map<String, DayLine> = emptyMap(),
     /** 매년 반복(일정 추가 › 기념일, 기본 켬). [EventType.ANNIVERSARY] 에만 뜻이 있다 — [repeats]. */
     val repeatYearly: Boolean = true,
 ) {
@@ -105,15 +105,6 @@ data class Event(
     }
 }
 
-/** 만남 한 줄 메모(40자). [at] 은 쓴 시각(ms) — 줄 단위 LWW. */
-@Serializable
-data class MeetNote(val text: String, val at: Long) {
-    companion object { const val MAX_CHARS = 40 }
-}
-
-/** 두 메모 묶음을 줄마다 늦은 쪽으로 합친다. */
-fun mergeMeetNotes(a: Map<String, MeetNote>, b: Map<String, MeetNote>): Map<String, MeetNote> =
-    (a.keys + b.keys).associateWith { k -> listOfNotNull(a[k], b[k]).maxBy { it.at } }
 
 /** 받은 휴가 종류(휴가 › 추가). 정기휴가는 군종으로 계산하는 값이라 여기 없다. */
 @Serializable

@@ -134,6 +134,18 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         }
     }
 
+    /** 홈의 그날의 한 줄 카드를 닫은 일정(이 기기에만). 카드는 사흘이면 어차피 사라지니 최근 것만 둔다. */
+    val dayLineCards: DayLineCards = object : DayLineCards {
+        override val dismissed: Flow<Set<String>> = store.data.map { p -> p[DAYLINE_DISMISSED]?.split('|')?.filter { it.isNotEmpty() }?.toSet().orEmpty() }
+
+        override suspend fun dismiss(eventId: String) {
+            store.edit { p ->
+                val ids = p[DAYLINE_DISMISSED]?.split('|')?.filter { it.isNotEmpty() && it != eventId }.orEmpty()
+                p[DAYLINE_DISMISSED] = (ids + eventId).takeLast(DAYLINE_KEEP).joinToString("|")
+            }
+        }
+    }
+
     /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
     suspend fun reset() = store.edit { it.clear() }
 
@@ -154,7 +166,15 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val DISPLAY_MODE = stringPreferencesKey("display_mode")
         val WIDGET_FRAME = stringPreferencesKey("widget_frame")
         val PENDING_INVITE = stringPreferencesKey("pending_invite")
+        val DAYLINE_DISMISSED = stringPreferencesKey("dayline_dismissed")
+        const val DAYLINE_KEEP = 20
     }
+}
+
+/** 홈의 그날의 한 줄 카드에서 닫은 일정 id. */
+interface DayLineCards {
+    val dismissed: Flow<Set<String>>
+    suspend fun dismiss(eventId: String)
 }
 
 /**

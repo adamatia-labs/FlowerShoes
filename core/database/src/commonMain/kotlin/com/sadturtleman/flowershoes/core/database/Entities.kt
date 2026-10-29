@@ -80,11 +80,11 @@ data class EventEntity(
     val lamport: Long,
     val lastWriterDevice: String,
     val deletedAtMs: Long?,
-    /** 만남 사진 첨부 id 들(쉼표로 이음). */
+    /** 그날의 사진 첨부 id 들(쉼표로 이음). */
     val photoIds: String? = null,
     val memo: String? = null,
-    /** 만남 한 줄 메모(JSON 객체: 사용자 id → 메모). */
-    val meetNotes: String? = null,
+    /** 그날의 한 줄(JSON 객체: 사용자 id → 한 줄). */
+    val dayLines: String? = null,
     /** 매년 반복(기념일만 뜻이 있다). */
     val repeatYearly: Boolean = true,
 )

@@ -8,7 +8,7 @@ import kotlinx.datetime.toLocalDateTime
 
 /**
  * 내 기록 내보내기(설정 › 데이터, 무료 — 수익 모델 확정 "원본은 무료로").
- * 편지 글 · 그림(완성 PNG) · 사진 원본 · 일정 · 만남 메모를 ZIP 한 개로 묶는다. 폰 안에서 복호화된 사본으로 만들고 서버를 거치지 않는다.
+ * 편지 글 · 그림(완성 PNG) · 사진 원본 · 일정 · 그날의 한 줄을 ZIP 한 개로 묶는다. 폰 안에서 복호화된 사본으로 만들고 서버를 거치지 않는다.
  * 꾸밈 없는 원본이라 디자인된 추억 책 PDF 와 겹치지 않는다.
  */
 class RecordExporter(
@@ -95,7 +95,7 @@ class RecordExporter(
             listOfNotNull(
                 "$range · ${e.type.name.lowercase()} · ${e.title}",
                 e.memo.takeIf { it.isNotBlank() }?.let { "  메모: $it" },
-                *e.meetNotes.filterValues { it.text.isNotBlank() }.map { (id, n) -> "  ${who[id] ?: "연인"}: ${n.text}" }.toTypedArray(),
+                *e.dayLines.filterValues { it.text.isNotBlank() }.map { (id, n) -> "  ${who[id] ?: "연인"}: ${n.text}" }.toTypedArray(),
             ).joinToString("\n")
         }
     }
@@ -103,7 +103,7 @@ class RecordExporter(
     private companion object {
         const val README = "꽃신에서 내보낸 우리 기록이에요.\n" +
             "편지.txt — 주고받은 편지(날짜 · 쓴 사람 · 제목 · 본문). 본문의 [그림/…] · [사진/…] 은 같은 폴더의 파일이에요.\n" +
-            "일정 · 만남.txt — 캘린더 일정과 만남 한 줄 메모.\n" +
+            "일정 · 만남.txt — 캘린더 일정과 그날의 한 줄.\n" +
             "디자인된 책으로 남기려면 추억 › 책으로 보기 › PDF 받기를 써 주세요."
     }
 }

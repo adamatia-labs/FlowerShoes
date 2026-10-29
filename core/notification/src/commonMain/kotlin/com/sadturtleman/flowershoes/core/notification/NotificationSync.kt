@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 
 /**
@@ -36,8 +37,8 @@ class NotificationSync(
         val today = clock.today()
         combine(
             combine(db.letterDao().observeAll(), prefs) { l, p -> l to p },
-            // 매년 반복 기념일은 원래 날 그대로(planner 가 해마다 옮긴다).
-            db.eventDao().observeRange("${today}T00:00", "${today.plus(DatePeriod(years = 1))}T23:59"),
+            // 매년 반복 기념일은 원래 날 그대로(planner 가 해마다 옮긴다). 어제 끝난 만남은 오늘 10시 그날의 한 줄 알림.
+            db.eventDao().observeRange("${today.minus(DatePeriod(days = 1))}T00:00", "${today.plus(DatePeriod(years = 1))}T23:59"),
             profile.observeTimelines(),
             db.coupleDao().observe(),
             db.userDao().observeAll(),
@@ -53,6 +54,8 @@ class NotificationSync(
                 eventEve = p.eventEve,
                 anniversaryHundreds = p.anniversary && p.anniversary100,
                 anniversaryYears = p.anniversary && p.anniversaryYear,
+                // 그날의 한 줄은 일정 알림을 따른다.
+                dayLineFor = identity.userId.takeIf { p.eventEve },
             )
         }
             .distinctUntilChanged()

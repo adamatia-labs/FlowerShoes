@@ -47,6 +47,7 @@ import com.sadturtleman.flowershoes.core.designsystem.res.logo_mark
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_note
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_brush
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_more
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_plus
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -77,6 +78,7 @@ enum class KkIcons(internal val res: DrawableResource) {
     Note(Res.drawable.ic_note),
     Brush(Res.drawable.ic_brush),
     More(Res.drawable.ic_more),
+    Plus(Res.drawable.ic_plus),
 
     // 컴포넌트 안에서만 쓰는 글리프(크기가 24 가 아니다 — 자리에 맞춰 가운데 둔다)
     Back(Res.drawable.ic_back),

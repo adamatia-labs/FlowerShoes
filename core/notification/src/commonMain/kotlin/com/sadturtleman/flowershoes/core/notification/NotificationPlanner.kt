@@ -6,6 +6,9 @@ import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.Letter
+import com.sadturtleman.flowershoes.core.model.dayLineAsk
+import com.sadturtleman.flowershoes.core.model.hasDayLine
+import com.sadturtleman.flowershoes.core.model.myDayLine
 import com.sadturtleman.flowershoes.core.model.koreanName
 import kotlin.time.Instant
 import kotlinx.datetime.DatePeriod
@@ -34,13 +37,17 @@ data class LocalNotification(
  * - 예약 편지 공개: 받는 폰이 visibleAt 에 알린다(서버 예약이 없다).
  * - 일정 전날 20:00(알림을 켠 일정만). 매년 반복 기념일은 올해 · 내년의 그날 전날.
  * - 기념일: 전역일 · 입대 100일 단위 · 커플 기념일 일정의 100일 단위 · 매년 반복 기념일의 그날 아침.
+ * - 그날의 한 줄: 면회 · 외박 · 휴가가 끝난 다음 날 10:00. 두 폰이 각자 띄우고, 이미 쓴 사람의 폰은 띄우지 않는다.
  *
  * iOS 는 앱당 로컬 알림 64개가 한도다. 가까운 [budget](기본 50)개만 예약하고 나머지는 앱 실행 · 백그라운드 새로고침 때
  * 다시 채운다. 14개는 여유분.
  */
 class NotificationPlanner(private val budget: Int = 50) {
 
-    /** [events] 는 매년 반복 기념일을 원래 날 그대로 받는다(해마다 옮기는 건 여기서). */
+    /**
+     * [events] 는 매년 반복 기념일을 원래 날 그대로 받는다(해마다 옮기는 건 여기서).
+     * [dayLineFor] 는 이 폰 사용자 id — 그날의 한 줄 알림을 누구 기준으로 거를지. null 이면 그날의 한 줄 알림을 띄우지 않는다.
+     */
     fun plan(
         now: Instant,
         partnerName: String,
@@ -50,6 +57,7 @@ class NotificationPlanner(private val budget: Int = 50) {
         eventEve: Boolean = true,
         anniversaryHundreds: Boolean = true,
         anniversaryYears: Boolean = true,
+        dayLineFor: String? = null,
     ): List<LocalNotification> {
         val out = mutableListOf<LocalNotification>()
         val today = now.toLocalDate()
@@ -126,6 +134,20 @@ class NotificationPlanner(private val budget: Int = 50) {
                         )
                     }
                 }
+            }
+        }
+
+        if (dayLineFor != null) live.filter { it.hasDayLine && it.myDayLine(dayLineFor) == null }.forEach { e ->
+            val nextDay = e.end.date.plus(DatePeriod(days = 1))
+            val at = LocalDateTime(nextDay, LocalTime(10, 0)).toInstant(SEOUL)
+            if (at > now) {
+                out += LocalNotification(
+                    id = "dayline-${e.id}",
+                    at = at,
+                    title = e.dayLineAsk(nextDay),
+                    body = e.title.ifBlank { e.type.koreanName },
+                    deepLink = "kkotsin://dayline/${e.id}",
+                )
             }
         }
 

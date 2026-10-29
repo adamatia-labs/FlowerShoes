@@ -84,13 +84,14 @@ import com.sadturtleman.flowershoes.core.designsystem.KkDialogHost
 import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
+import com.sadturtleman.flowershoes.core.model.hasDayLine
 import kotlinx.datetime.LocalDate
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
-fun CalendarRoute(onOpenLeave: () -> Unit = {}, viewModel: CalendarViewModel = koinViewModel()) {
+fun CalendarRoute(onOpenLeave: () -> Unit = {}, onWriteDayLine: (String) -> Unit = {}, viewModel: CalendarViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    CalendarScreen(state, viewModel::onIntent, onOpenLeave)
+    CalendarScreen(state, viewModel::onIntent, onOpenLeave, onWriteDayLine)
 }
 
 /**
@@ -98,7 +99,7 @@ fun CalendarRoute(onOpenLeave: () -> Unit = {}, viewModel: CalendarViewModel = k
  * 일정이 하나도 없으면 빈 화면(Empty State). 달은 달력을 옆으로 밀어 넘긴다.
  */
 @Composable
-fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onOpenLeave: () -> Unit = {}) {
+fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onOpenLeave: () -> Unit = {}, onWriteDayLine: (String) -> Unit = {}) {
     val c = KkTheme.colors
     Column(
         Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
@@ -144,7 +145,12 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onO
         }
         Spacer(Modifier.height(KkSpacing.lg))
     }
-    state.draft?.let { EventEditor(it, state, onIntent) }
+    state.draft?.let { d ->
+        // 그날의 한 줄 남기기: 저장된 면회 · 외박 · 휴가가 시작했으면(지난 일정도 언제든). 고치는 중인 칸이 아니라 저장된 일정으로 본다.
+        val saved = d.id?.let { id -> (state.monthEvents + state.upcoming).firstOrNull { it.id == id } }
+        val dayLine = saved?.takeIf { it.hasDayLine && it.start.date <= state.today }?.id
+        EventEditor(d, state, onIntent, dayLine?.let { id -> { onIntent(CalendarIntent.CloseDraft); onWriteDayLine(id) } })
+    }
 }
 
 /** 휴가 요약 띠(Figma 휴가 요약): 종이 태그 바탕 "남은 휴가 18일 / 전체 32일 ›". 넘쳐 쓰면 남은 휴가가 빨간색. */
@@ -354,7 +360,7 @@ private val EDITOR_MINUTES = listOf(0, 10, 20, 30, 40, 50)
  * 휴가를 고르면 휴가 사용 등록과 같다 — 기간 아래에 "5일 사용 · 남은 휴가 13일"(넘치면 빨간색).
  */
 @Composable
-private fun EventEditor(draft: EventDraft, state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
+private fun EventEditor(draft: EventDraft, state: CalendarState, onIntent: (CalendarIntent) -> Unit, onWriteDayLine: (() -> Unit)?) {
     val c = KkTheme.colors
     var picking by remember { mutableStateOf<Boolean?>(null) } // true = 시작, false = 끝
     var alarmSheet by remember { mutableStateOf(false) }
@@ -414,6 +420,7 @@ private fun EventEditor(draft: EventDraft, state: CalendarState, onIntent: (Cale
                     Text(use.label, style = KkTheme.type.labelBold, color = if (use.overdrawn) c.danger else c.accent)
                 }
                 KkInput(draft.memo, { change(draft.copy(memo = it)) }, label = "메모")
+                if (onWriteDayLine != null) KkButton("그날의 한 줄 남기기", onWriteDayLine, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary)
             }
             Box(Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.sm, bottom = 14.dp)) {
                 KkPrimaryButton("저장", onClick = { onIntent(CalendarIntent.SaveDraft) }, enabled = draft.valid, modifier = Modifier.fillMaxWidth())

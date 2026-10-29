@@ -7,6 +7,8 @@ import com.sadturtleman.flowershoes.core.database.UserEntity
 import com.sadturtleman.flowershoes.core.military.LeavePool
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
+import com.sadturtleman.flowershoes.core.model.DayLine
+import com.sadturtleman.flowershoes.core.model.hasDayLine
 import com.sadturtleman.flowershoes.core.model.Event
 import com.sadturtleman.flowershoes.core.model.EventType
 import com.sadturtleman.flowershoes.core.model.LeaveGrant
@@ -31,7 +33,10 @@ import kotlinx.coroutines.delay
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlinx.datetime.atTime
 import kotlinx.datetime.number
 import kotlinx.datetime.TimeZone
@@ -178,6 +183,25 @@ class EventRepository(
 
     private fun stamp(event: Event, lamport: Long) =
         event.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = clock.now())
+
+    /**
+     * 그날의 한 줄: 내 줄만 고친다(40자, 빈 글 = 지움). 지운 줄도 시각을 남겨야 상대 폰의 옛 줄이 이기지 않는다.
+     * 지운 일정 · 만남이 아닌 일정에는 쓰지 않는다(되살리지 않게).
+     */
+    suspend fun writeDayLine(eventId: String, text: String) {
+        val e = db.eventDao().get(eventId)?.toModel()?.takeIf { it.deletedAt == null && it.hasDayLine } ?: return
+        val line = DayLine(text.trim().take(DayLine.MAX_CHARS), clock.now().toEpochMilliseconds())
+        save(e.copy(dayLines = e.dayLines + (identity.userId to line)))
+    }
+
+    /** [year]년 [month]월에 시작한 만남 중 누군가 그날의 한 줄을 남긴 것(추억 책의 한 달 쪽). */
+    fun observeDayLinesIn(year: Int, month: Int): Flow<List<Event>> {
+        val first = LocalDate(year, month, 1)
+        val last = first.plus(DatePeriod(months = 1)).minus(DatePeriod(days = 1))
+        return db.eventDao().observeDayLines("${first}T00:00", "${last}T23:59:59.999").map { list ->
+            list.map { it.toModel() }.filter { e -> e.dayLines.values.any { it.text.isNotBlank() } }
+        }
+    }
 
     fun newId(): String = Uuid.random().toString()
 }

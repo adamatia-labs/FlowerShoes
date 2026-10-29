@@ -53,7 +53,7 @@ i32be keyEpoch
 |---|---|---|
 | `missyou` | 보고싶어 한 번 | 추가 전용 |
 | `status` | 지금 상태 | 작성자만, 최신 하나 |
-| `event` | 일정 `Event` (+ 만남 사진 `photos`) | 행 LWW(lamport, lastWriterDevice), 만남 한 줄은 줄마다 늦은 쪽 |
+| `event` | 일정 `Event` (+ 그날의 사진 `photos`) | 행 LWW(lamport, lastWriterDevice), 그날의 한 줄은 줄마다 늦은 쪽 |
 | `leave` | 받은 휴가 `LeaveGrant` | 행 LWW · tombstone |
 | `letter` | 편지 + 그림 메타 · 사진 참조 | 추가 전용 |
 | `receipt` | 읽음 · 처음 봄 · 하트 | 먼저 온 값 유지 |
@@ -68,9 +68,12 @@ i32be keyEpoch
 - `repeatYearly`(기본 `true`): `ANNIVERSARY` 일 때만 뜻이 있다. 원래 날 그대로 보내고, 받는 쪽이 해마다 옮겨 놓는다(2월 29일은 평년 2월 28일).
 - 커플 기념일은 id `anniversary-couple` 인 `ANNIVERSARY` 일정 하나다. 두 폰이 같은 id 로 쓰므로 동시에 고쳐도 LWW 로 하나만 남는다.
 - 휴가 사용 = `VACATION` 일정. 일수는 시작 · 끝 · 주말 포함, 출처(받은 휴가)를 가리키지 않는다.
+- `dayLines`(그날의 한 줄): `{ "<사용자 id>": { "text": "…", "at": <쓴 시각 ms> } }`. 40자, 빈 `text` 는 지운 줄. 각자 자기 줄만 쓰고, 받는 쪽은 일정 LWW 와 상관없이 사용자마다 `at` 이 늦은 줄을 남긴다. `VISIT` · `OVERNIGHT` · `VACATION` 에만 쓴다.
 
 ### 휴가 하나의 풀
 
 전체 = 정기휴가(군종 계산값 — 저장 · 전송하지 않는다) + `leave` 합, 사용 = `VACATION` 일정 일수 합. 초과 사용을 막지 않는다(남은 휴가가 음수).
 
 Room DB 7 과 함께 없앤 것: `t = "anniversary"`(커플 기념일 필드), `event.leaveGrantId`, `LeaveKind.REGULAR`. 출시 전이라 호환을 두지 않는다.
+
+Room DB 9: `event.meetNotes` → `event.dayLines`(같은 모양, 이름만). 옛 이름은 읽지 않는다.
