@@ -83,6 +83,8 @@ fun KkButton(
     enabled: Boolean = true,
     loading: Boolean = false,
     danger: Boolean = false,
+    /** 보내는 중처럼 기다리는 동안 스피너 옆에 둘 글자(예: "보내는 중…"). 없으면 스피너만. */
+    loadingText: String? = null,
 ) {
     val c = KkTheme.colors
     val interaction = remember { MutableInteractionSource() }
@@ -113,7 +115,12 @@ fun KkButton(
             .padding(horizontal = if (size == KkButtonSize.L) KkSpacing.xxl else KkSpacing.lg),
         contentAlignment = Alignment.Center,
     ) {
-        if (loading) {
+        if (loading && loadingText != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                KkSpinner(fg, if (size == KkButtonSize.L) 20.dp else 16.dp)
+                Text(loadingText, style = if (size == KkButtonSize.L) KkTheme.type.labelBold else KkTheme.type.label, color = fg, maxLines = 1)
+            }
+        } else if (loading) {
             KkSpinner(fg, if (size == KkButtonSize.L) 20.dp else 16.dp)
         } else {
             Text(text, style = if (size == KkButtonSize.L) KkTheme.type.labelBold else KkTheme.type.label, color = fg, maxLines = 1)
@@ -769,7 +776,7 @@ fun KkDialog(
         verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
     ) {
         Text(title, style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
-        Text(body, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
+        if (body.isNotEmpty()) Text(body, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
             KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Ghost)
             KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive)
@@ -823,7 +830,7 @@ fun KkEmptyState(
 /**
  * 안내 띠(Figma Banner): paper/tag 바탕 · 알림 아이콘 · 제목(굵게) + 한 줄 · 오른쪽 텍스트 동작.
  * 화면 위쪽에서 꼭 알아야 할 것 하나(입대 전 연결 · 동기화 · 오프라인)에만 쓴다.
- * [body] 는 사실 한 줄일 때만 넣는다 — 설명 문구는 쓰지 않는다(design.md 카피 규칙). null 이면 제목만.
+ * [body] 는 사실 한 줄일 때만 넣는다 — 설명 문구는 쓰지 않는다(design.md 카피 규칙). null · 빈 문자열이면 제목만.
  */
 @Composable
 fun KkBanner(title: String, body: String? = null, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
@@ -838,7 +845,7 @@ fun KkBanner(title: String, body: String? = null, modifier: Modifier = Modifier,
         KkIcon(KkIcons.Alert, tint = c.ink, size = 22.dp)
         Column(Modifier.weight(1f).padding(vertical = KkSpacing.md), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
             Text(title, style = KkTheme.type.labelBold, color = c.ink)
-            if (body != null) Text(body, style = KkTheme.type.caption, color = c.sub)
+            if (!body.isNullOrEmpty()) Text(body, style = KkTheme.type.caption, color = c.sub)
         }
         if (action != null) {
             Text(

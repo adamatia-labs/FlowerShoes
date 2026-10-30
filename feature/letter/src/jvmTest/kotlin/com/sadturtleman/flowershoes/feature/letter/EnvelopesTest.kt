@@ -79,4 +79,26 @@ class EnvelopesTest {
         assertEquals("11시간 48분", countdown(LocalDateTime(2026, 10, 31, 21, 12), at))
         assertEquals("1분", countdown(LocalDateTime(2026, 11, 1, 8, 59, 30), at))
     }
+
+    @Test
+    fun `혼자 모드에서 내가 쓴 편지는 대기 우표`() {
+        assertEquals(Envelope.Waiting, envelopeOf(mine = true, unread = false, hasDrawing = true, on = today, discharge = discharge, queued = true))
+    }
+
+    @Test
+    fun `보낼 편지 봉투 아래 줄은 내 이름과 쓴 날`() {
+        assertEquals("지수 · 10.27 씀", queuedMeta("지수", LocalDateTime(2026, 10, 27, 23, 40)))
+    }
+
+    @Test
+    fun `연결 전 안내는 이름에 맞는 조사`() {
+        assertEquals("아직 민준과 연결 전이에요", soloBannerTitle("민준"))
+        assertEquals("아직 지수와 연결 전이에요", soloBannerTitle("지수"))
+    }
+
+    @Test
+    fun `예약해 둔 편지는 도착 날짜와 시각`() {
+        assertEquals("11월 1일 (일) 오전 9시 도착", arrivalLabel(LocalDateTime(2026, 11, 1, 9, 0)))
+        assertEquals("11월 1일 (일) 오후 9시 30분 도착", arrivalLabel(LocalDateTime(2026, 11, 1, 21, 30)))
+    }
 }

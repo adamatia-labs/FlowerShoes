@@ -72,7 +72,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
 import com.sadturtleman.flowershoes.core.designsystem.KkPolaroid
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
-import com.sadturtleman.flowershoes.core.designsystem.KkScheduleSheet
+import com.sadturtleman.flowershoes.core.designsystem.KkScheduleDialogs
 import com.sadturtleman.flowershoes.core.designsystem.KkSegmentedControl
 import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
 import com.sadturtleman.flowershoes.core.designsystem.KkSlider
@@ -656,11 +656,10 @@ fun DrawingSendScreen(state: DrawingEditorState, onIntent: (DrawingIntent) -> Un
         }
     }
     if (scheduling) {
-        KkScheduleSheet(
+        KkScheduleDialogs(
             initial = state.revealAt,
             onDismiss = { scheduling = false },
             onPick = { onIntent(DrawingIntent.Schedule(it)); scheduling = false },
-            confirmLabel = "이 시각으로 예약",
         )
     }
 }

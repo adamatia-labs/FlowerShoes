@@ -8,6 +8,7 @@ import kotlinx.datetime.toInstant
 
 /**
  * 편지함 봉투 표시(design.md): 봉인("새") = 안 읽은 편지 · 폴라로이드 = 그림이 든 편지 · 소인("보냄") = 내가 보낸 편지 · 우표(D-day) = 그 밖의 받은 편지.
+ * 혼자 모드(연결 전)에서 내가 쓴 편지는 "대기" 우표 — 연결하는 순간 한꺼번에 간다.
  * 화면은 이것을 [com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeMark] 로 그린다(폴라로이드에는 실제 그림).
  */
 sealed interface Envelope {
@@ -15,10 +16,14 @@ sealed interface Envelope {
     data object Drawing : Envelope
     data class Sent(val date: String) : Envelope
     data class Received(val stamp: String) : Envelope
+    data object Waiting : Envelope
 }
 
-/** 봉투 표시. 앞의 것이 이긴다: 내가 보냄 → 안 읽음 → 그림 → 그 밖. 우표는 편지를 받은 날([on])의 전역 D-day. */
-internal fun envelopeOf(mine: Boolean, unread: Boolean, hasDrawing: Boolean, on: LocalDate, discharge: LocalDate?): Envelope = when {
+/**
+ * 봉투 표시. 앞의 것이 이긴다: 내가 보냄(연결 전이면 [queued] 대기) → 안 읽음 → 그림 → 그 밖. 우표는 편지를 받은 날([on])의 전역 D-day.
+ */
+internal fun envelopeOf(mine: Boolean, unread: Boolean, hasDrawing: Boolean, on: LocalDate, discharge: LocalDate?, queued: Boolean = false): Envelope = when {
+    mine && queued -> Envelope.Waiting
     mine -> Envelope.Sent(postmarkDate(on))
     unread -> Envelope.New(stampText(discharge, on))
     hasDrawing -> Envelope.Drawing
@@ -47,6 +52,18 @@ internal fun envelopeMeta(sender: String, mine: Boolean, at: LocalDateTime, now:
         else -> postmarkDate(at.date)
     }
     return (if (mine) "보낸 편지" else sender) + " · " + `when`
+}
+
+/** 보낼 편지(혼자 모드) 봉투 아래 줄: "지수 · 10.27 씀". */
+internal fun queuedMeta(me: String, at: LocalDateTime) = "$me · ${mmdd(at.date)} 씀"
+
+/** 혼자 모드 편지함 안내 띠: "아직 민준과 연결 전이에요". */
+internal fun soloBannerTitle(partner: String) = "아직 ${partner.withAnd()} 연결 전이에요"
+
+/** 예약해 둔 편지(편지 쓰기 › 예약 · 설정됨): "11월 1일 (일) 오전 9시 도착". */
+internal fun arrivalLabel(at: LocalDateTime): String {
+    val minute = if (at.minute == 0) "" else " ${at.minute}분"
+    return "${at.month.ordinal + 1}월 ${at.day}일 (${weekday(at.date)}) ${ampm(at)} ${hour12(at)}시$minute 도착"
 }
 
 /** 월 머리: 올해는 "10월", 지난해는 "2025년 12월". */

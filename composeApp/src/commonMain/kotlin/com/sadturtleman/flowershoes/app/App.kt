@@ -258,10 +258,15 @@ private fun MainShell() {
                 onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
                 onClose = { overlay = null },
                 photoPicker = { rememberPhotoPicker(it) },
-                // 잠긴 편지지 → 설정 › 꽃신 평생(쓰던 편지는 화면을 나갈 때 저장된다).
+                // 평생 안내 시트 › 꽃신 평생 보기 → 설정 › 꽃신 평생(쓰던 편지는 화면을 나갈 때 저장된다).
                 onOpenLifetime = {
                     settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.LIFETIME
                     overlay = Overlay.SETTINGS
+                },
+                // 보냄 화면 › 편지함으로.
+                onOpenInbox = {
+                    overlay = null
+                    tab = Tab.LETTER
                 },
                 viewModel = letters,
             )
@@ -387,6 +392,8 @@ private fun MainShell() {
                             letters.onIntent(LetterIntent.Close)
                             overlay = Overlay.DRAW
                         },
+                        // 혼자 모드 › 연결하기: 홈의 연결 권유와 같은 초대 화면.
+                        onConnect = { overlay = Overlay.PAIRING },
                         viewModel = letters,
                     )
                     Tab.MEMORY -> MemoryRoute(

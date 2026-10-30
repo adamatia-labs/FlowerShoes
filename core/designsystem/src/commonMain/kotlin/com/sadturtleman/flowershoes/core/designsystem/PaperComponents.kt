@@ -286,6 +286,9 @@ sealed interface KkEnvelopeMark {
 
     /** 우표 = 그 밖의 받은 편지. [text] 는 우표 글자(예: "D-479"). */
     data class Stamp(val text: String) : KkEnvelopeMark
+
+    /** 우표 "대기" = 혼자 모드(연결 전)에 쓴 내 편지. 연결하면 한꺼번에 간다. */
+    data object Waiting : KkEnvelopeMark
 }
 
 /**
@@ -311,6 +314,7 @@ fun KkEnvelopeRow(
         is KkEnvelopeMark.Polaroid -> "그림 편지"
         is KkEnvelopeMark.Postmark -> "보낸 편지"
         is KkEnvelopeMark.Stamp -> "받은 편지"
+        KkEnvelopeMark.Waiting -> "보낼 편지"
     }
     // 봉인은 봉투 모서리 밖으로 걸쳐서, 테두리 위에 그려지도록 봉투 바깥 Box 에 둔다.
     Box(
@@ -334,6 +338,7 @@ fun KkEnvelopeRow(
                 is KkEnvelopeMark.Polaroid -> MiniPolaroid(mark.drawing, deco.padding(top = 7.dp, end = 13.dp).rotate(-4f))
                 is KkEnvelopeMark.Postmark -> KkPostmark("보냄", mark.date, deco.padding(top = 20.dp, end = 19.dp).rotate(-9f))
                 is KkEnvelopeMark.Stamp -> PostageStamp(mark.text, deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
+                KkEnvelopeMark.Waiting -> PostageStamp("대기", deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
             }
         }
         if (mark is KkEnvelopeMark.Seal) {
