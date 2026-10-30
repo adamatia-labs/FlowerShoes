@@ -4,4 +4,6 @@
     <string name="widget_missyou_desc">누르면 바로 보고싶어를 보내요</string>
     <string name="widget_next_desc">다음 만남까지 남은 날</string>
     <string name="widget_drawing_desc">받은 그림</string>
+    <string name="widget_status_desc">연인의 지금 상태</string>
+    <string name="widget_overview_desc">D-day · 다음 일정 · 편지를 한눈에</string>
 </resources>

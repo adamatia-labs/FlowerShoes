@@ -58,6 +58,7 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_export
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_lock
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_offline
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_gear
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_frame
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -95,6 +96,7 @@ enum class KkIcons(internal val res: DrawableResource) {
     Lock(Res.drawable.ic_lock),
     Alert(Res.drawable.ic_alert),
     Export(Res.drawable.ic_export),
+    Frame(Res.drawable.ic_frame),
     Book(Res.drawable.ic_book),
     /** 공통 상태 · 네트워크 없음(Phosphor). */
     Offline(Res.drawable.ic_offline),

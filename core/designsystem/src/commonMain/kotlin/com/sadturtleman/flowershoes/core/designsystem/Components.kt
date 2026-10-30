@@ -503,6 +503,8 @@ fun KkTopBar(
     trailingButton: String? = null,
     trailingEnabled: Boolean = true,
     onTrailing: () -> Unit = {},
+    /** 있으면 제목을 왼쪽에 두고 그 아래 부제(Caption)를 단다. */
+    subtitle: String? = null,
 ) {
     val c = KkTheme.colors
     Box(modifier.fillMaxWidth().height(48.dp)) {
@@ -521,7 +523,15 @@ fun KkTopBar(
                 KkIcon(KkIcons.Close, tint = c.ink, size = 13.8.dp)
             }
         }
-        Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.align(Alignment.Center), maxLines = 1)
+        if (subtitle == null) {
+            Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.align(Alignment.Center), maxLines = 1)
+        } else {
+            // Figma Top Bar · Back(titles): 제목 + 작은 부제(날짜)를 왼쪽에 쌓는다.
+            Column(Modifier.align(Alignment.CenterStart).padding(start = 52.dp)) {
+                Text(title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
+                Text(subtitle, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+            }
+        }
         Box(Modifier.align(Alignment.CenterEnd)) {
             when {
                 trailingText != null -> Box(

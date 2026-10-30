@@ -107,6 +107,10 @@ interface MissYouDao {
     @Query("SELECT COUNT(*) FROM miss_you WHERE authorId = :authorId AND sentAtMs >= :sinceMs")
     fun observeCountSince(authorId: String, sinceMs: Long): Flow<Int>
 
+    /** [authorId] 가 마지막으로 보낸 시각(위젯 "보냈어요"). */
+    @Query("SELECT MAX(sentAtMs) FROM miss_you WHERE authorId = :authorId")
+    fun observeLastSentAt(authorId: String): Flow<Long?>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(missYou: MissYouEntity)
 
