@@ -45,7 +45,7 @@ packages:
     from: 5.0.0
 settings:
   base:
-    DEVELOPMENT_TEAM: ""   # 팀 id 를 넣는다
+    DEVELOPMENT_TEAM: F88SA5KHB4
     # Kotlin 프레임워크는 arm64 시뮬레이터만 만든다(Apple Silicon). Intel 시뮬레이터는 빌드하지 않는다.
     EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
     SWIFT_VERSION: "5.10"
@@ -161,7 +161,7 @@ targets:
         RevenueCatAPIKey: $(REVENUECAT_API_KEY)
         # 피처 플래그 환경(DEV · QA · PROD, Config.xcconfig 의 APP_ENV). 비어 있으면 PROD.
         KkotsinAppEnv: $(APP_ENV)
-        # 업데이트 필요 › 업데이트하기가 여는 App Store ID(Config.xcconfig 의 APP_STORE_ID). 비어 있으면 TODO_APP_STORE_ID.
+        # 업데이트 필요 › 업데이트하기가 여는 App Store ID(Config.xcconfig 의 APP_STORE_ID). 비어 있으면 6827034603.
         KkotsinAppStoreId: $(APP_STORE_ID)
         # GA4 가 광고 개인화 신호를 내지 않는다. AdMob 이 AdSupport 를 링크하므로 Core 변형만으로는 막을 수 없다.
         GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS: false

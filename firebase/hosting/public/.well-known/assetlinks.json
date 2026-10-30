@@ -4,7 +4,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.sadturtleman.flowershoes",
-      "sha256_cert_fingerprints": ["TODO_PLAY_APP_SIGNING_SHA256"]
+      "sha256_cert_fingerprints": ["F3:4E:3F:F0:C7:C0:84:35:9F:49:DD:38:3F:2E:02:35:F7:F1:43:1A:7D:B8:AC:BA:90:00:D2:3B:E4:57:65:85"]
     }
   },
   {
@@ -12,7 +12,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.sadturtleman.flowershoes.dev",
-      "sha256_cert_fingerprints": ["TODO_DEV_SIGNING_SHA256"]
+      "sha256_cert_fingerprints": ["C6:C7:4F:C8:EF:37:58:26:A9:A4:68:62:7E:A8:C7:6D:CD:3C:7F:2D:2A:30:41:AC:68:87:C9:80:17:BB:73:EE"]
     }
   },
   {
@@ -20,7 +20,7 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.sadturtleman.flowershoes.qa",
-      "sha256_cert_fingerprints": ["TODO_QA_SIGNING_SHA256"]
+      "sha256_cert_fingerprints": ["C6:C7:4F:C8:EF:37:58:26:A9:A4:68:62:7E:A8:C7:6D:CD:3C:7F:2D:2A:30:41:AC:68:87:C9:80:17:BB:73:EE"]
     }
   }
 ]

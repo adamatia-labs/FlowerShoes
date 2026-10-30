@@ -174,7 +174,7 @@ export const morningDigest = onSchedule({ schedule: 'every 15 minutes', region: 
 // ── 첫 연결: 초대 링크(#15) ─────────────────────────────────────────────────
 
 const PLAY_STORE_URL = defineString('PLAY_STORE_URL', { default: 'https://play.google.com/store/apps/details?id=com.sadturtleman.flowershoes' });
-const APP_STORE_URL = defineString('APP_STORE_URL', { default: 'https://apps.apple.com/app/idTODO_APP_STORE_ID' });
+const APP_STORE_URL = defineString('APP_STORE_URL', { default: 'https://apps.apple.com/app/id6827034603' });
 
 function inviteOf(snap: DocumentSnapshot): InviteDoc | undefined {
   if (!snap.exists) return undefined;

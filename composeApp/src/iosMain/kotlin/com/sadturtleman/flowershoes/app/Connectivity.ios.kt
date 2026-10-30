@@ -30,6 +30,6 @@ internal actual fun rememberOnline(): State<Boolean> = produceState(initialValue
 internal actual val storeUrl: String
     get() {
         val id = (NSBundle.mainBundle.objectForInfoDictionaryKey("KkotsinAppStoreId") as? String)?.trim()
-            ?.takeIf { it.isNotEmpty() && !it.startsWith("$(") } ?: "TODO_APP_STORE_ID"
+            ?.takeIf { it.isNotEmpty() && !it.startsWith("$(") } ?: "6827034603"
         return "https://apps.apple.com/app/id$id"
     }
