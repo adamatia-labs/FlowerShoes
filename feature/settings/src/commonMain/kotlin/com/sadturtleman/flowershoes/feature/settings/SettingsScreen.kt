@@ -211,11 +211,12 @@ private fun Page(
     leading: KkTopBarLeading = KkTopBarLeading.Back,
     trailingText: String? = null,
     onTrailing: () -> Unit = {},
+    trailingEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = KkTheme.colors
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
-        KkTopBar(title, onLeading = onBack, leading = leading, trailingText = trailingText, onTrailing = onTrailing)
+        KkTopBar(title, onLeading = onBack, leading = leading, trailingText = trailingText, onTrailing = onTrailing, trailingEnabled = trailingEnabled)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.lg, bottom = KkSpacing.xxxl),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.xl),
@@ -581,7 +582,7 @@ private fun MilitaryEdit(
     val months = ServiceRulesTable.BUNDLED.ruleFor(branch, enlist ?: Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths
     val save = { enlist?.let { onSave(branch, it, discharge) }; Unit }
     Page(
-        "군 정보", onBack, trailingText = "저장", onTrailing = save,
+        "군 정보", onBack, trailingText = "저장", onTrailing = save, trailingEnabled = enlist != null,
         bottom = { KkPrimaryButton("저장하기", save, Modifier.fillMaxWidth(), enabled = enlist != null) },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
@@ -597,7 +598,8 @@ private fun MilitaryEdit(
             KkSheetHeader("군종")
             Branch.entries.forEach { b ->
                 val m = ServiceRulesTable.BUNDLED.ruleFor(b, enlist ?: Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths
-                KkSheetOption(b.koreanName, branch == b, { branch = b; sheet = null }, meta = "${m}개월")
+                // 군종 · 입대일이 바뀌면 전역일은 다시 계산한 날을 따른다.
+                KkSheetOption(b.koreanName, branch == b, { if (branch != b) discharge = null; branch = b; sheet = null }, meta = "${m}개월")
             }
         }
         "enlist", "discharge" -> {
@@ -607,7 +609,13 @@ private fun MilitaryEdit(
                 KkSheetHeader(if (isEnlist) "입대일" else "전역일")
                 KkDatePicker(pick, { pick = it })
                 KkPrimaryButton("선택 완료", {
-                    if (isEnlist) enlist = pick else discharge = pick
+                    if (isEnlist) {
+                        if (enlist != pick) discharge = null
+                        enlist = pick
+                    } else {
+                        // 계산한 날을 고르면 직접 고친 값을 지운다(조기 전역 · 연장을 되돌리는 길).
+                        discharge = enlist?.let { dischargeOverrideFor(branch, it, pick) }
+                    }
                     sheet = null
                 }, Modifier.fillMaxWidth())
             }

@@ -196,7 +196,9 @@ internal fun InquiryPage(
     }
 }
 
-private fun emailValid(email: String) = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email.trim())
+private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+
+private fun emailValid(email: String) = EMAIL.matches(email.trim())
 
 /** 여러 줄 입력(150 높이, 반경 10). 누르면 2px 포커스 테두리. 글자 수는 아래 도움말 줄에. */
 @Composable

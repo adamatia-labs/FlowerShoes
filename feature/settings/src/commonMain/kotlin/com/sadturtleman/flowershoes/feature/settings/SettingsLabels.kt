@@ -22,9 +22,11 @@ import kotlinx.datetime.plus
 internal val NotificationPrefs.notifyMasterOn: Boolean
     get() = letters || missYou || status || eventEve || anniversary
 
-/** 받을 종류를 한꺼번에 켜고 끈다. 3개월 기록 알림 · 조용한 시간 · 묶음은 건드리지 않는다. */
+/**
+ * 받을 종류를 한꺼번에 켜고 끈다(기념일 100일 · 주년 포함 — 따로 끄는 줄은 없다). 3개월 기록 알림 · 조용한 시간 · 묶음은 건드리지 않는다.
+ */
 internal fun NotificationPrefs.withNotifyMaster(on: Boolean): NotificationPrefs =
-    copy(letters = on, missYou = on, status = on, eventEve = on, anniversary = on)
+    copy(letters = on, missYou = on, status = on, eventEve = on, anniversary = on, anniversary100 = on, anniversaryYear = on)
 
 /** 프로필 › 함께한 날: 커플 기념일이 1일째. */
 internal fun daysTogetherLabel(days: Int?): String = days?.let { "${it}일째" } ?: "정하기"
