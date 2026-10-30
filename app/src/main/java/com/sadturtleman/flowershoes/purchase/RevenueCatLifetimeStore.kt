@@ -96,9 +96,16 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
             update(result.customerInfo)
             if (has()) PurchaseOutcome.Purchased else PurchaseOutcome.Failed("결제는 됐지만 이용권을 확인하지 못했어요. 구매 복원을 눌러 주세요")
         } catch (e: PurchasesTransactionException) {
-            if (e.userCancelled) PurchaseOutcome.Cancelled else PurchaseOutcome.Failed(message(e.code))
+            when {
+                e.userCancelled -> PurchaseOutcome.Cancelled
+                e.code in NOT_CHARGED -> PurchaseOutcome.Failed(NOT_CHARGED_MESSAGE)
+                // 결제 뒤 확인이 끊겼을 수도 있는 오류(네트워크 · 스토어 · 모름)엔 "돈이 안 나갔다"고 하지 않는다.
+                e.code in SPECIFIC -> PurchaseOutcome.Failed(message(e.code))
+                else -> PurchaseOutcome.Failed("결제를 확인하지 못했어요. 돈이 나갔다면 구매 복원을 눌러 주세요")
+            }
         } catch (e: PurchasesException) {
-            PurchaseOutcome.Failed(message(e.code))
+            // 결제 창을 열기 전(계정 맞추기 · 상품 읽기)이라 돈은 나가지 않았다.
+            if (e.code in SPECIFIC) PurchaseOutcome.Failed(message(e.code)) else PurchaseOutcome.Failed(NOT_CHARGED_MESSAGE)
         }
     }
 
@@ -116,11 +123,30 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
     }
 
     private companion object {
+        /** 구매 실패 토스트(Figma 8 · 꽃신 평생 · 실패). 결제가 시작되지 않았거나 스토어가 거절한 것이 확실할 때만. */
+        const val NOT_CHARGED_MESSAGE = "결제가 안 됐어요. 돈은 나가지 않았어요"
+
+        /** 스토어가 결제를 받지 않은 오류(상품 · 요청이 잘못됨). */
+        val NOT_CHARGED = setOf(
+            PurchasesErrorCode.PurchaseInvalidError,
+            PurchasesErrorCode.ProductNotAvailableForPurchaseError,
+        )
+
+        /** 따로 알릴 문구가 있는 오류([message]). */
+        val SPECIFIC = setOf(
+            PurchasesErrorCode.NetworkError,
+            PurchasesErrorCode.ProductAlreadyPurchasedError,
+            PurchasesErrorCode.PaymentPendingError,
+            PurchasesErrorCode.StoreProblemError,
+            PurchasesErrorCode.PurchaseNotAllowedError,
+        )
+
         /** RevenueCat 대시보드: 추억 책 PDF 의 Offering · entitlement id. */
         const val BOOK_OFFERING = "memory_book"
         const val BOOK_ENTITLEMENT = "memory_book"
     }
 
+    /** 오류마다 정해진 문구(구매 · 복원 공통). */
     private fun message(code: PurchasesErrorCode): String = when (code) {
         PurchasesErrorCode.NetworkError -> "인터넷 연결을 확인해 주세요"
         PurchasesErrorCode.ProductAlreadyPurchasedError -> "이미 산 상품이에요. 구매 복원을 눌러 주세요"

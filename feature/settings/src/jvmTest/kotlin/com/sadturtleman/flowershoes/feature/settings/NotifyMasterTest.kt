@@ -9,10 +9,13 @@ import kotlin.test.assertTrue
 class NotifyMasterTest {
 
     @Test
-    fun `큰 스위치를 끄면 편지 · 보고싶어 · 일정 알림이 모두 꺼지고 3개월 기록 알림은 그대로다`() {
+    fun `큰 스위치를 끄면 편지 · 보고싶어 · 일정 · 기념일 알림이 모두 꺼지고 3개월 기록 알림은 그대로다`() {
         val off = NotificationPrefs().withNotifyMaster(false)
         assertEquals(
-            NotificationPrefs(letters = false, missYou = false, status = false, eventEve = false, anniversary = false, exportReminder = true),
+            NotificationPrefs(
+                letters = false, missYou = false, status = false, eventEve = false, anniversary = false,
+                anniversary100 = false, anniversaryYear = false, exportReminder = true,
+            ),
             off,
         )
         assertFalse(off.notifyMasterOn)
@@ -26,7 +29,9 @@ class NotifyMasterTest {
 
     @Test
     fun `큰 스위치를 다시 켜면 모두 켜진다`() {
-        val on = NotificationPrefs(letters = false, missYou = false, status = false, eventEve = false, anniversary = false).withNotifyMaster(true)
+        // 기념일 100일 · 주년 따로 끄는 줄은 Figma 기념일 화면에서 빠졌다 — 큰 스위치로 다시 켤 수 있어야 한다.
+        val on = NotificationPrefs(letters = false, missYou = false, status = false, eventEve = false, anniversary = false, anniversary100 = false, anniversaryYear = false)
+            .withNotifyMaster(true)
         assertEquals(NotificationPrefs(), on)
     }
 }

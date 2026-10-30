@@ -183,10 +183,22 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     /** 내 기록 ZIP 을 만들어 공유 시트로 넘겼다. */
     suspend fun markExported(atMs: Long) = store.edit { it[LAST_EXPORT] = atMs }
 
-    /** 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다. */
-    suspend fun reset() = store.edit { it.clear() }
+    /**
+     * 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다.
+     * 같은 쓰기에서 [farewellPending] 을 세운다 — 처음 화면이 탈퇴 완료 화면을 먼저 한 번 보인다(앱이 꺼져도 남는다).
+     */
+    suspend fun reset() = store.edit {
+        it.clear()
+        it[FAREWELL] = 1
+    }
+
+    /** 탈퇴 완료 화면("그동안 고마웠어요")을 아직 보이지 않았다. */
+    val farewellPending: Flow<Boolean> = store.data.map { it[FAREWELL] == 1 }
+
+    suspend fun setFarewellPending(on: Boolean) = store.edit { if (on) it[FAREWELL] = 1 else it.remove(FAREWELL) }
 
     private companion object {
+        val FAREWELL = intPreferencesKey("farewell_pending")
         val USER_ID = stringPreferencesKey("user_id")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val ROLE = stringPreferencesKey("role")
