@@ -245,7 +245,7 @@ private fun LeaveEditScreen(
     val editing = initial.id != null
     Screen(if (editing) "받은 휴가 고치기" else "받은 휴가 등록", KkTopBarLeading.Close, onClose, footer = {
         KkPrimaryButton("저장", { onSave(d) }, Modifier.fillMaxWidth(), enabled = d.valid)
-        if (onDelete != null) KkButton("휴가 지우기", { confirmDelete = true }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost, danger = true)
+        if (onDelete != null) KkButton("휴가 지우기", { confirmDelete = true }, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary, danger = true)
     }) {
         Text("종류", style = KkTheme.type.labelBold, color = c.ink)
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {

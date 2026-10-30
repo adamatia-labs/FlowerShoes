@@ -68,11 +68,11 @@ private fun Modifier.focusRing(focused: Boolean, shape: androidx.compose.ui.grap
 
 // ── Button ────────────────────────────────────────────────────────────────
 
-enum class KkButtonStyle { Primary, Secondary, Ghost }
+enum class KkButtonStyle { Primary, Secondary }
 enum class KkButtonSize { L, M }
 
 /**
- * 버튼. Primary(한 화면에 하나) · Secondary(보조) · Ghost(취소). L=52(하단 CTA) · M=44.
+ * 버튼. Primary(한 화면에 하나) · Secondary(보조 · 취소). L=52(하단 CTA) · M=44.
  * 누르면 한 단계 진하게 + 그림자 없음, Loading 은 라벨 대신 스피너(너비 유지), Disabled 는 40% 투명.
  */
 @Composable
@@ -97,7 +97,6 @@ fun KkButton(
     val bg = when (style) {
         KkButtonStyle.Primary -> if (!enabled) c.line else if (danger) c.danger else c.accent
         KkButtonStyle.Secondary -> if (pressed) c.line else Color.Transparent
-        KkButtonStyle.Ghost -> if (pressed) c.line else Color.Transparent
     }
     val fg = when {
         !enabled -> c.sub
@@ -114,7 +113,6 @@ fun KkButton(
             .then(
                 when (style) {
                     KkButtonStyle.Secondary -> Modifier.border(1.2.dp, c.line, shape)
-                    KkButtonStyle.Ghost -> Modifier.border(1.dp, c.line, shape)
                     KkButtonStyle.Primary -> Modifier
                 },
             )
@@ -151,10 +149,6 @@ fun KkPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
 @Composable
 fun KkSecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
     KkButton(text, onClick, modifier.fillMaxWidth(), KkButtonStyle.Secondary, KkButtonSize.L, enabled)
-
-@Composable
-fun KkGhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
-    KkButton(text, onClick, modifier.fillMaxWidth(), KkButtonStyle.Ghost, KkButtonSize.L, enabled)
 
 /** 소셜 버튼 한 벌의 색. [logoTint] 가 null 이면 로고 고유색(카카오 말풍선 · Google 4색 G). */
 class KkSocialColors(val bg: Color, val fg: Color, val border: Color? = null, val logoTint: Color? = null)
@@ -507,7 +501,7 @@ fun KkSegmentedControl(items: List<String>, selected: Int, onSelect: (Int) -> Un
 enum class KkTopBarLeading { Back, Close }
 
 /**
- * 상단 바(높이 48). Leading: 뒤로 · 닫기(44 터치), 가운데 제목(Title/S), Trailing: 글자(brand) · 버튼 · 없음.
+ * 상단 바(높이 48). Leading: 뒤로 · 닫기(44 터치), 제목(Title/S — 뒤로는 왼쪽, 닫기는 가운데), Trailing: 글자(brand) · 버튼 · 없음.
  */
 @Composable
 fun KkTopBar(
@@ -540,13 +534,14 @@ fun KkTopBar(
                 KkIcon(KkIcons.Close, tint = c.ink, size = 13.8.dp)
             }
         }
-        if (subtitle == null) {
+        if (leading == KkTopBarLeading.Close && subtitle == null) {
+            // Figma Top Bar · Close(덮어 띄운 화면): 제목 가운데.
             Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.align(Alignment.Center), maxLines = 1)
         } else {
-            // Figma Top Bar · Back(titles): 제목 + 작은 부제(날짜)를 왼쪽에 쌓는다.
+            // Figma Top Bar · Back(하위 화면 `341:92`): 제목(+ 작은 부제)을 뒤로 가기 옆 왼쪽에 쌓는다.
             Column(Modifier.align(Alignment.CenterStart).padding(start = 52.dp)) {
                 Text(title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
-                Text(subtitle, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+                if (subtitle != null) Text(subtitle, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
             }
         }
         Box(Modifier.align(Alignment.CenterEnd)) {
@@ -810,7 +805,7 @@ fun KkDialog(
         Text(title, style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
         if (body.isNotEmpty()) Text(body, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Ghost)
+            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Secondary)
             KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive)
         }
     }

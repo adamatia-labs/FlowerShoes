@@ -64,7 +64,9 @@ class CalendarLargeScreenTest {
     fun `폰은 한 줄로 쌓고 다가오는 일정 칸이 없다`() = runComposeUiTest {
         setContent { Screen(360, 760) }
         waitForIdle()
-        onAllNodesWithText("캘린더").assertCountEquals(1)
+        // 머리(Figma 3 · 캘린더 `354:1267`): "2026년 10월" + 추가 아이콘 — 글자 "+ 추가" 는 없다.
+        onAllNodesWithText("2026년 10월").assertCountEquals(1)
+        onAllNodesWithText("+ 추가").assertCountEquals(0)
         onAllNodesWithText("다가오는 일정").assertCountEquals(0)
     }
 

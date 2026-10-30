@@ -130,7 +130,7 @@ internal fun ArrivalDialog(letters: Int, onOpen: () -> Unit, onClose: () -> Unit
             KkIcon(KkIcons.Mail, tint = c.stamp, size = 32.dp)
             Text(arrivalTitle(letters), style = KkTheme.type.title, color = c.ink)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, Alignment.End)) {
-                KkButton("닫기", onClose, style = KkButtonStyle.Ghost, size = KkButtonSize.M)
+                KkButton("닫기", onClose, style = KkButtonStyle.Secondary, size = KkButtonSize.M)
                 KkButton("편지함 열기", onOpen, size = KkButtonSize.M)
             }
         }

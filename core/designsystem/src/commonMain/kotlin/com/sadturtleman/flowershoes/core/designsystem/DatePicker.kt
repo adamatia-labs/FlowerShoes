@@ -151,8 +151,8 @@ fun KkDateRangeDialog(
             }
             RangeGrid(month, range) { range = range.pick(it) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs, Alignment.End)) {
-                KkButton("취소", onDismiss, style = KkButtonStyle.Ghost, size = KkButtonSize.M)
-                KkButton("확인", { onConfirm(range.start, range.end) }, style = KkButtonStyle.Ghost, size = KkButtonSize.M)
+                KkButton("취소", onDismiss, style = KkButtonStyle.Secondary, size = KkButtonSize.M)
+                KkButton("확인", { onConfirm(range.start, range.end) }, style = KkButtonStyle.Secondary, size = KkButtonSize.M)
             }
         }
     }

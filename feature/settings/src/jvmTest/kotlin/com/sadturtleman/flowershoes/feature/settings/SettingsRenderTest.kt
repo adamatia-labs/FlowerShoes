@@ -16,7 +16,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-/** Figma 10 · 다크 확인(386:5350) "설정 · 무료 · 위"를 4개 모드 · 글자 200% 로 build/render 에 그린다. */
+/** Figma 10 · 다크 확인(386:5350) "설정 · 무료 · 위"를 4개 모드 · 글자 200% 로 build/render 에 그린다(제목은 왼쪽 `376:4461`). */
 class SettingsRenderTest {
     private val today = LocalDate(2026, 10, 28)
     private val service = Service("s", Branch.AIR_FORCE, LocalDate(2026, 4, 20), 1)

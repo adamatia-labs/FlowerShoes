@@ -160,7 +160,7 @@ private fun SendScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit, o
                         }
                     },
                     Modifier.fillMaxWidth(),
-                    style = KkButtonStyle.Ghost,
+                    style = KkButtonStyle.Secondary,
                     enabled = url != null,
                 )
             }
@@ -195,7 +195,7 @@ private fun InvitedScreen(inviterName: String, accepting: Boolean, onAccept: () 
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             KkPrimaryButton(if (accepting) "연결하는 중…" else "수락하고 연결하기", onAccept, enabled = !accepting, loading = accepting)
-            KkButton("나중에 할게요", onLater, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+            KkButton("나중에 할게요", onLater, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary)
         }
     }
 }
@@ -227,7 +227,7 @@ private fun Notice(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             content = {
                 KkPrimaryButton(primary.first, primary.second, enabled = !busy, loading = busy)
-                secondary?.let { (label, action) -> KkButton(label, action, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost) }
+                secondary?.let { (label, action) -> KkButton(label, action, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary) }
             },
         )
     }
