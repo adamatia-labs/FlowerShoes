@@ -61,6 +61,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeMark
 import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeRow
+import com.sadturtleman.flowershoes.core.designsystem.KkFixedFontScale
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkInput
@@ -176,7 +177,7 @@ fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: 
 @Composable
 private fun MemoryTopBar(onBook: (() -> Unit)?) {
     val c = KkTheme.colors
-    Row(Modifier.fillMaxWidth().height(56.dp).padding(start = KkSpacing.lg, end = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = KkSpacing.lg, end = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
         Text("추억", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
         Box(
             Modifier.size(48.dp).clip(CircleShape)
@@ -217,20 +218,23 @@ private fun MonthPageCard(ch: Chapter, month: MonthDetail, page: MonthPage, phot
         ) {
             Text("${ch.ym.month}월", style = KkTheme.type.handL, color = c.ink)
             Text(month.counts(), style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.sm))
-            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                when (val cover = ch.cover) {
-                    is ChapterCover.Photo -> KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
-                        PhotoImage(photos[cover.attachmentId], Modifier.fillMaxSize())
-                    }
-                    is ChapterCover.Drawing -> month.letters.firstOrNull { it.id == cover.letterId }?.thumb?.let { doc ->
-                        KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
-                            Box(Modifier.fillMaxSize().background(c.bar)) { DrawingView(doc, Modifier.fillMaxSize()) }
+            // 붙인 물건(폴라로이드 · 봉투 · 꼬리표)은 보여 주기만 하는 작은 견본이라 글자 확대를 따르지 않는다 — 수는 위 줄에 있다.
+            KkFixedFontScale {
+                Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    when (val cover = ch.cover) {
+                        is ChapterCover.Photo -> KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
+                            PhotoImage(photos[cover.attachmentId], Modifier.fillMaxSize())
                         }
+                        is ChapterCover.Drawing -> month.letters.firstOrNull { it.id == cover.letterId }?.thumb?.let { doc ->
+                            KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
+                                Box(Modifier.fillMaxSize().background(c.bar)) { DrawingView(doc, Modifier.fillMaxSize()) }
+                            }
+                        }
+                        null -> Unit
                     }
-                    null -> Unit
+                    page.envelope?.let { SmallEnvelope(it, tilt = if (tilt > 0) -2f else 2f) }
+                    page.meet?.let { MeetTicket("${it.date.md()} ${it.tag}", it.title, Modifier.widthIn(min = 104.dp, max = 120.dp), tilt = if (tilt > 0) 2f else -1.5f) }
                 }
-                page.envelope?.let { SmallEnvelope(it, tilt = if (tilt > 0) -2f else 2f) }
-                page.meet?.let { MeetTicket("${it.date.md()} ${it.tag}", it.title, Modifier.widthIn(min = 104.dp, max = 120.dp), tilt = if (tilt > 0) 2f else -1.5f) }
             }
             page.lastLine?.let { (date, text) ->
                 Text(
@@ -339,7 +343,7 @@ internal fun MonthScreen(m: MonthDetail, photos: Map<String, ByteArray?>, onInte
     val c = KkTheme.colors
     val days = remember(m) { monthTimeline(m) }
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { onIntent(MemoryIntent.Back) }.semantics { contentDescription = "뒤로 가기" },
                 contentAlignment = Alignment.Center,
@@ -368,7 +372,7 @@ private val TIMELINE_X = 64.dp
 private fun TimelineDayRow(day: TimelineDay, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit) {
     val c = KkTheme.colors
     Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(40.dp).padding(top = 2.dp)) {
+        Column(Modifier.widthIn(min = 40.dp).padding(top = 2.dp)) {
             Text(day.date.md(), style = KkTheme.type.labelBold, color = c.ink, maxLines = 1, softWrap = false)
             Text(weekday(day.date), style = KkTheme.type.caption, color = c.sub)
         }
@@ -432,7 +436,7 @@ private fun DrawingLetter(l: MonthLetter, photos: Map<String, ByteArray?>, onOpe
                 Box(
                     Modifier.align(Alignment.TopEnd).offset(x = 6.dp).size(28.dp).clip(CircleShape).background(c.accent).clearAndSetSemantics { contentDescription = "새 편지" },
                     contentAlignment = Alignment.Center,
-                ) { Text("새", style = KkTheme.type.labelBold, color = c.canvas) }
+                ) { KkFixedFontScale { Text("새", style = KkTheme.type.labelBold, color = c.canvas) } }
             }
         }
         Column(Modifier.padding(top = 22.dp)) {

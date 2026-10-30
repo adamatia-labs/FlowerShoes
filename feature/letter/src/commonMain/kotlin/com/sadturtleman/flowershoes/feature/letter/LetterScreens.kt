@@ -409,7 +409,7 @@ fun LetterReadScreen(
 private fun ReadTopBar(title: String, subtitle: String, onBack: (() -> Unit)?, trailing: String? = null, onTrailing: () -> Unit = {}) {
     val c = KkTheme.colors
     Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(start = if (onBack == null) KkSpacing.lg else KkSpacing.xs, end = KkSpacing.lg),
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = if (onBack == null) KkSpacing.lg else KkSpacing.xs, end = KkSpacing.lg),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
     ) {

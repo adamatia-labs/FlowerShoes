@@ -48,12 +48,14 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -90,26 +92,32 @@ fun KkButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val focused by interaction.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(KkRadius.md)
+    // Figma Button(340:154): 둥근 알약. Primary 는 accent 바탕 · canvas 글자, Secondary 는 line 테두리 · ink 글자(누르면 line 바탕).
+    val shape = RoundedCornerShape(KkRadius.full)
     val bg = when (style) {
-        KkButtonStyle.Primary -> if (danger) c.danger else if (pressed) c.accent else c.accent
-        KkButtonStyle.Secondary -> if (pressed) c.line else c.bar
+        KkButtonStyle.Primary -> if (!enabled) c.line else if (danger) c.danger else c.accent
+        KkButtonStyle.Secondary -> if (pressed) c.line else Color.Transparent
         KkButtonStyle.Ghost -> if (pressed) c.line else Color.Transparent
     }
-    val fg = when (style) {
-        KkButtonStyle.Primary -> c.surface
-        KkButtonStyle.Secondary -> c.accent
-        KkButtonStyle.Ghost -> c.ink
+    val fg = when {
+        !enabled -> c.sub
+        style == KkButtonStyle.Primary -> c.canvas
+        else -> c.ink
     }
-    val elevated = style != KkButtonStyle.Ghost && !pressed && enabled
+    val elevated = style == KkButtonStyle.Primary && !pressed && enabled
     Box(
         modifier = modifier
             .height(if (size == KkButtonSize.L) 52.dp else 44.dp)
-            .alpha(if (enabled) 1f else 0.4f)
             .then(if (elevated) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
             .clip(shape)
             .background(bg)
-            .then(if (style == KkButtonStyle.Ghost) Modifier.border(1.dp, c.line, shape) else Modifier)
+            .then(
+                when (style) {
+                    KkButtonStyle.Secondary -> Modifier.border(1.2.dp, c.line, shape)
+                    KkButtonStyle.Ghost -> Modifier.border(1.dp, c.line, shape)
+                    KkButtonStyle.Primary -> Modifier
+                },
+            )
             .focusRing(focused, shape)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled && !loading, role = Role.Button, onClick = onClick)
             .padding(horizontal = if (size == KkButtonSize.L) KkSpacing.xxl else KkSpacing.lg),
@@ -514,7 +522,8 @@ fun KkTopBar(
     subtitle: String? = null,
 ) {
     val c = KkTheme.colors
-    Box(modifier.fillMaxWidth().height(48.dp)) {
+    // 높이 48 은 최소 — 글자를 키우면(부제 줄) 함께 자란다.
+    Box(modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Box(
             Modifier
                 .align(Alignment.CenterStart)
@@ -578,7 +587,7 @@ fun KkTabBar(tabs: List<KkTab>, selected: Int, onSelect: (Int) -> Unit, modifier
             Column(
                 Modifier
                     .width(72.dp)
-                    .height(56.dp)
+                    .heightIn(min = 56.dp)
                     .clickable(role = Role.Tab) { onSelect(i) }
                     .semantics { stateDescription = if (active) "선택됨" else "" },
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -655,8 +664,28 @@ fun KkListRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = KkTheme.type.body, color = labelColor ?: c.ink, modifier = Modifier.weight(1f))
-        if (value != null) Text(value, style = KkTheme.type.body, color = c.sub, maxLines = 1)
+        if (value == null) {
+            Text(label, style = KkTheme.type.body, color = labelColor ?: c.ink, modifier = Modifier.weight(1f))
+        } else {
+            // 값이 길거나 글자를 키우면 값은 폭의 60% 까지만 쓰고 줄을 바꾼다 — 이름이 한 글자씩 쪼개지지 않게.
+            Layout(
+                content = {
+                    Text(label, style = KkTheme.type.body, color = labelColor ?: c.ink)
+                    Text(value, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.End)
+                },
+                modifier = Modifier.weight(1f),
+            ) { measurables, constraints ->
+                val gap = 8.dp.roundToPx()
+                val w = constraints.maxWidth
+                val v = measurables[1].measure(Constraints(maxWidth = (w * 0.6f).toInt()))
+                val l = measurables[0].measure(Constraints(maxWidth = (w - v.width - gap).coerceAtLeast(0)))
+                val h = maxOf(l.height, v.height, constraints.minHeight)
+                layout(w, h) {
+                    l.place(0, (h - l.height) / 2)
+                    v.place(w - v.width, (h - v.height) / 2)
+                }
+            }
+        }
         when (trailing) {
             KkRowTrailing.Chevron -> KkIcon(KkIcons.ChevronRight, tint = c.sub)
             KkRowTrailing.Switch -> KkSwitch(switchOn, enabled = enabled)
@@ -908,7 +937,8 @@ fun KkMissYouButton(sentToday: Int, onClick: () -> Unit, modifier: Modifier = Mo
         verticalArrangement = Arrangement.spacedBy(KkSpacing.xs, Alignment.CenterVertically),
     ) {
         KkIcon(KkIcons.Heart, tint = if (sent) c.love else c.loveOn, size = 32.dp)
-        Text(if (sent) "보냈어요 · $sentToday" else "보고싶어", style = KkTheme.type.label, color = if (sent) c.love else c.loveOn)
+        // 보낸 뒤 글자는 ink: love 는 다크의 bar 위에서 3:1 남짓이라 본문 대비(4.5:1)에 못 미친다.
+        Text(if (sent) "보냈어요 · $sentToday" else "보고싶어", style = KkTheme.type.label, color = if (sent) c.ink else c.loveOn)
     }
 }
 

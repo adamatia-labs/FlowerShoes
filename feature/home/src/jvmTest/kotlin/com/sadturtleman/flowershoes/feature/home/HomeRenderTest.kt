@@ -54,11 +54,13 @@ class HomeRenderTest {
 
     @Test
     fun `홈 상태를 그린다`() {
-        for (dark in listOf(false, true)) {
-            val mode = if (dark) "dark" else "light"
-            render("home_linked_gomsin_$mode", linked, AppTheme.GOMSIN, dark)
-            render("home_linked_soldier_$mode", soldier, AppTheme.SOLDIER, dark)
+        // Figma 10 · 다크 확인(386:5350) "홈 · 연결됨 · 기본": 같은 곰신 데이터를 4개 모드로.
+        for (theme in AppTheme.entries) for (dark in listOf(false, true)) {
+            render("home_linked_${theme.name.lowercase()}_${if (dark) "dark" else "light"}", linked, theme, dark)
         }
+        render("home_linked_soldier_role_dark", soldier, AppTheme.SOLDIER, dark = true)
+        // 글자 200%: 잘리는 곳이 없는지 본다.
+        render("home_linked_font200", linked, AppTheme.GOMSIN, fontScale = 2f)
         render("home_no_letter", linked.copy(letter = null), AppTheme.GOMSIN)
         render("home_day_line", linked.copy(dayLine = DayLinePrompt("e", "어제 면회, 그날의 한 줄 남길까요?")), AppTheme.GOMSIN)
         render("home_solo_gomsin", soloGomsin, AppTheme.GOMSIN)
@@ -71,8 +73,8 @@ class HomeRenderTest {
         render("home_no_enlist_date", soloGomsin.copy(hero = null, pendingLetters = emptyList()), AppTheme.GOMSIN)
     }
 
-    private fun render(name: String, state: HomeState, theme: AppTheme, dark: Boolean = false) {
-        val png = ImageComposeScene(width = 360 * 2, height = 716 * 2, density = Density(2f)) {
+    private fun render(name: String, state: HomeState, theme: AppTheme, dark: Boolean = false, fontScale: Float = 1f) {
+        val png = ImageComposeScene(width = 360 * 2, height = 716 * 2, density = Density(2f, fontScale)) {
             KkotsinTheme(theme = theme, dark = dark) { HomeScreen(state, {}, {}) }
         }.use { scene ->
             scene.render()

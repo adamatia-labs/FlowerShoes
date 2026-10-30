@@ -35,6 +35,8 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))
+            // 설정 견본 그림(4개 모드 · 글자 200%).
+            implementation(compose.desktop.currentOs)
         }
     }
 }

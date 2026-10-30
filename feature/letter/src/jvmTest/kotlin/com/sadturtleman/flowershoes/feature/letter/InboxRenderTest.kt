@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.feature.letter
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.use
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
@@ -11,9 +12,12 @@ import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.Role
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -71,6 +75,45 @@ class InboxRenderTest {
         }
     }
 
+    /** Figma 10 · 다크 확인(386:5350) "받은 편지 · 그림 포함": 군인이 보낸 군사우편 편지. */
+    private val readDrawing = read.copy(
+        letter = Letter(
+            "7", "partner", null,
+            listOf(
+                LetterBlock.Text("지수에게\n쉬는 시간에 너 그려 봤어."), LetterBlock.DrawingRef("d-7"),
+                LetterBlock.Text("닮았지? 다음엔 더 잘 그릴게.\n— 민준이가"),
+            ),
+            Paper.MAIL.id, Instant.parse("2026-10-27T11:40:00Z"),
+        ),
+        subtitle = "10월 27일 (화) 오후 8:40", postmark = "2026.10.27", captions = mapOf("d-7" to "민준이 그려준 나"),
+    )
+
+    @Test
+    fun `편지함과 받은 편지를 4개 모드로 그린다`() {
+        for (theme in AppTheme.entries) for (dark in listOf(false, true)) {
+            val mode = "${theme.name.lowercase()}_${if (dark) "dark" else "light"}"
+            render("inbox_all_$mode", theme, dark) { LetterInboxScreen(inbox, {}, {}, {}, {}) }
+            render("read_drawing_$mode", theme, dark) { LetterReadScreen(readDrawing, {}, {}) }
+        }
+        render("inbox_all_font200", fontScale = 2f) { LetterInboxScreen(inbox, {}, {}, {}, {}) }
+        render("read_drawing_font200", fontScale = 2f) { LetterReadScreen(readDrawing, {}, {}) }
+    }
+
+    @Test
+    fun `편지지는 읽는 사람의 테마 · 다크 모드와 상관없이 보낸 편지지 색 그대로다`() {
+        val paper = Paper.MAIL.look().background.toArgb()
+        for (theme in AppTheme.entries) for (dark in listOf(false, true)) {
+            val image = image(theme, dark) { LetterReadScreen(readDrawing, {}, {}) }
+            // 화면 가운데에서 가장 많은 색 = 편지지 바탕.
+            val counts = HashMap<Int, Int>()
+            for (y in image.height / 4 until image.height * 3 / 4 step 3) for (x in image.width / 10 until image.width * 9 / 10 step 3) {
+                counts.merge(image.getColor(x, y), 1, Int::plus)
+            }
+            val dominant = counts.maxBy { it.value }.key
+            assertEquals("%08X".format(paper), "%08X".format(dominant), "$theme dark=$dark")
+        }
+    }
+
     private val solo = LetterState(
         loading = false, today = today, solo = true,
         inbox = listOf(
@@ -108,13 +151,16 @@ class InboxRenderTest {
         render("compose_sent_solo") { LetterSentScreen(ComposeDone.Sent("보고 싶은 밤", "지수 · 오늘 오후 10:03", "대기", "연인", queued = true, queuedCount = 4), {}) }
     }
 
-    private fun render(name: String, theme: AppTheme = AppTheme.GOMSIN, dark: Boolean = false, content: @Composable () -> Unit) {
-        val png = ImageComposeScene(width = 360 * 2, height = 760 * 2, density = Density(2f)) {
+    private fun image(theme: AppTheme, dark: Boolean, fontScale: Float = 1f, content: @Composable () -> Unit): Bitmap =
+        ImageComposeScene(width = 360 * 2, height = 760 * 2, density = Density(2f, fontScale)) {
             KkotsinTheme(theme = theme, dark = dark) { content() }
         }.use { scene ->
             scene.render()
-            scene.render(1_000_000_000L).encodeToData(EncodedImageFormat.PNG)!!.bytes
+            Bitmap.makeFromImage(scene.render(1_000_000_000L))
         }
+
+    private fun render(name: String, theme: AppTheme = AppTheme.GOMSIN, dark: Boolean = false, fontScale: Float = 1f, content: @Composable () -> Unit) {
+        val png = Image.makeFromBitmap(image(theme, dark, fontScale, content)).encodeToData(EncodedImageFormat.PNG)!!.bytes
         val out = File("build/render/$name.png").apply { parentFile.mkdirs(); writeBytes(png) }
         assertTrue(out.length() > 0)
     }
