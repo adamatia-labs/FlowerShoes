@@ -43,11 +43,17 @@ final class NotificationService: UNNotificationServiceExtension {
         case "missyou":
             SharedStore.updateSnapshot { $0.missYouFromPartnerToday += 1 }
         case "status":
-            if let status = (json?["status"] as? [String: Any])?["label"] as? String {
+            let put = json?["status"] as? [String: Any]
+            if let status = put?["label"] as? String {
                 // 설정 › 알림 › 미리보기 숨기기: 문구는 서버 기본 그대로(위젯만 갱신).
                 let hidden = FileManager.default.fileExists(atPath: SharedStore.container.appendingPathComponent("prefs/hide_preview").path)
                 if !hidden { content.body = "상태: \(status)" }
-                SharedStore.updateSnapshot { $0.partnerStatus = status }
+                // 끝나는 시각 문구("내일 08:00까지")는 앱이 다음에 스냅샷을 다시 쓸 때 채운다.
+                SharedStore.updateSnapshot {
+                    $0.partnerStatus = status
+                    $0.partnerStatusColor = (put?["color"] as? NSNumber)?.int64Value
+                    $0.partnerStatusUntil = nil
+                }
             }
         default:
             break

@@ -402,6 +402,9 @@ class MissYouRepository(
         return db.missYouDao().observeCountSince(authorId, start)
     }
 
+    /** 내가 마지막으로 보낸 보고싶어 시각(위젯 "보냈어요"). */
+    fun observeMyLastSentAt(): Flow<Long?> = db.missYouDao().observeLastSentAt(identity.userId)
+
     suspend fun send() {
         val m = MissYou(Uuid.random().toString(), identity.userId, clock.now())
         writer.write(
