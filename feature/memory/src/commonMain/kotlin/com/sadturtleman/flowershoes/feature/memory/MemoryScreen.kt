@@ -61,6 +61,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeMark
 import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeRow
+import com.sadturtleman.flowershoes.core.designsystem.KkFixedFontScale
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkInput
@@ -176,7 +177,7 @@ fun MemoryScreen(state: MemoryState, photos: Map<String, ByteArray?>, onIntent: 
 @Composable
 private fun MemoryTopBar(onBook: (() -> Unit)?) {
     val c = KkTheme.colors
-    Row(Modifier.fillMaxWidth().height(56.dp).padding(start = KkSpacing.lg, end = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = KkSpacing.lg, end = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
         Text("추억", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
         Box(
             Modifier.size(48.dp).clip(CircleShape)
@@ -252,11 +253,14 @@ private fun SmallEnvelope(label: String, tilt: Float) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.sm)
     Column(
-        Modifier.rotate(tilt).size(78.dp, 54.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.tag).padding(top = KkSpacing.sm, start = 6.dp, end = 6.dp),
+        Modifier.rotate(tilt).width(78.dp).heightIn(min = 54.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.tag).padding(top = KkSpacing.sm, start = 6.dp, end = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
     ) {
         KkIcon(KkIcons.Mail, tint = c.accent, size = 22.dp)
-        Text(label, style = KkTheme.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Text(
+            label, style = KkTheme.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            modifier = Modifier.padding(bottom = KkSpacing.xs),
+        )
     }
 }
 
@@ -339,7 +343,7 @@ internal fun MonthScreen(m: MonthDetail, photos: Map<String, ByteArray?>, onInte
     val c = KkTheme.colors
     val days = remember(m) { monthTimeline(m) }
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { onIntent(MemoryIntent.Back) }.semantics { contentDescription = "뒤로 가기" },
                 contentAlignment = Alignment.Center,
@@ -368,7 +372,7 @@ private val TIMELINE_X = 64.dp
 private fun TimelineDayRow(day: TimelineDay, photos: Map<String, ByteArray?>, onIntent: (MemoryIntent) -> Unit, onOpenLetter: (String) -> Unit) {
     val c = KkTheme.colors
     Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(40.dp).padding(top = 2.dp)) {
+        Column(Modifier.widthIn(min = 40.dp).padding(top = 2.dp)) {
             Text(day.date.md(), style = KkTheme.type.labelBold, color = c.ink, maxLines = 1, softWrap = false)
             Text(weekday(day.date), style = KkTheme.type.caption, color = c.sub)
         }
@@ -432,7 +436,7 @@ private fun DrawingLetter(l: MonthLetter, photos: Map<String, ByteArray?>, onOpe
                 Box(
                     Modifier.align(Alignment.TopEnd).offset(x = 6.dp).size(28.dp).clip(CircleShape).background(c.accent).clearAndSetSemantics { contentDescription = "새 편지" },
                     contentAlignment = Alignment.Center,
-                ) { Text("새", style = KkTheme.type.labelBold, color = c.canvas) }
+                ) { KkFixedFontScale { Text("새", style = KkTheme.type.labelBold, color = c.canvas) } }
             }
         }
         Column(Modifier.padding(top = 22.dp)) {

@@ -30,7 +30,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -217,7 +216,7 @@ private fun LeaveUseScreen(
         KkInput("${start.md()} – ${end.md()}", {}, label = "기간", onClick = { picking = true })
         Text(use.label, style = KkTheme.type.body, color = if (use.overdrawn) c.danger else c.ink)
         if (state.partnerName != null) {
-            KkStatusChip("${state.partnerName}에게 알리기", selected = notify, onClick = { notify = !notify }, dot = if (notify) Color.White else c.danger)
+            KkStatusChip("${state.partnerName}에게 알리기", selected = notify, onClick = { notify = !notify }, dot = c.danger)
         }
     }
     if (picking) {

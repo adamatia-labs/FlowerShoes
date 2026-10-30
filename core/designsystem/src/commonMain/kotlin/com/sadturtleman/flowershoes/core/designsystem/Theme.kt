@@ -9,10 +9,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -190,4 +192,14 @@ fun KkotsinTheme(
     CompositionLocalProvider(LocalKkColors provides colors, LocalKkFonts provides fonts, LocalKkTypography provides type, LocalKkAppTheme provides theme) {
         MaterialTheme(colorScheme = material, content = content)
     }
+}
+
+/**
+ * 안의 글자를 글자 크기 설정(시스템 글자 확대)과 상관없이 1배로 그린다. 우표 · 소인 · 봉인처럼 정해진 틀 안의
+ * 장식 글자에만 쓴다(design.md 접근성: 장식 글자 예외) — 읽어야 하는 글자는 늘 커져야 한다.
+ */
+@Composable
+fun KkFixedFontScale(content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1f), content = content)
 }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -117,16 +119,15 @@ fun KkPaperTag(
     val c = KkTheme.colors
     val t = KkTheme.type
     Box(modifier.rotate(tilt)) {
-        Box(
-            Modifier.widthIn(min = 140.dp).height(66.dp).kkElevation(KkElevation.Low, RectangleShape).background(c.tag),
+        // 높이는 66 이 최소 — 글자를 키우면 태그가 함께 자란다(잘리지 않게).
+        Column(
+            Modifier.widthIn(min = 140.dp).heightIn(min = 66.dp).kkElevation(KkElevation.Low, RectangleShape).background(c.tag)
+                .padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = KkSpacing.xs),
+            // 값은 태그 위에서 28(Figma): 라벨 줄 높이(≈19)가 그 앞 16 을 조금 넘어 살짝 겹쳐 올린다.
+            verticalArrangement = Arrangement.spacedBy((-3).dp),
         ) {
-            Text(label, style = t.label, color = c.ink, maxLines = 1, modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp))
-            Text(
-                value,
-                style = if (valueStyle == KkPaperTagStyle.Number) t.ddayS else t.handL,
-                color = c.ink, maxLines = 1,
-                modifier = Modifier.padding(start = 14.dp, top = 28.dp, end = 14.dp),
-            )
+            Text(label, style = t.label, color = c.ink, maxLines = 1)
+            Text(value, style = if (valueStyle == KkPaperTagStyle.Number) t.ddayS else t.handL, color = c.ink, maxLines = 1)
         }
         KkTape(Modifier.align(Alignment.TopCenter).offset(y = (-8).dp).rotate(4f))
     }
@@ -322,30 +323,34 @@ fun KkEnvelopeRow(
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { stateDescription = state },
     ) {
-        Box(Modifier.fillMaxWidth().height(100.dp).kkElevation(KkElevation.Low, RectangleShape).background(c.surface).border(1.dp, c.line)) {
+        // 높이 100 은 최소 — 글자를 키우면 봉투가 함께 자란다.
+        Box(Modifier.fillMaxWidth().heightIn(min = 100.dp).kkElevation(KkElevation.Low, RectangleShape).background(c.surface).border(1.dp, c.line)) {
             Canvas(Modifier.fillMaxWidth().height(40.dp)) {
                 val flap = Path().apply { moveTo(0f, 0f); lineTo(size.width / 2f, 34.dp.toPx()); lineTo(size.width, 0f) }
                 drawPath(flap, c.line, style = Stroke(width = 1.dp.toPx()))
             }
-            Text(
-                line, style = KkTheme.type.handLetter, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 17.dp, top = 35.dp, end = 80.dp),
-            )
-            Text(meta, style = KkTheme.type.caption, color = c.sub, maxLines = 1, modifier = Modifier.padding(start = 17.dp, top = 73.dp, end = 80.dp))
+            // 첫 줄 위 35 · 보낸 이 위 73(Figma): 첫 줄(28) 아래 10.
+            Column(Modifier.padding(start = 17.dp, top = 35.dp, end = 80.dp, bottom = 11.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(line, style = KkTheme.type.handLetter, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(meta, style = KkTheme.type.caption, color = c.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             val deco = Modifier.align(Alignment.TopEnd).clearAndSetSemantics {}
-            when (mark) {
-                is KkEnvelopeMark.Seal -> PostageStamp(mark.stamp, deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
-                is KkEnvelopeMark.Polaroid -> MiniPolaroid(mark.drawing, deco.padding(top = 7.dp, end = 13.dp).rotate(-4f))
-                is KkEnvelopeMark.Postmark -> KkPostmark("보냄", mark.date, deco.padding(top = 20.dp, end = 19.dp).rotate(-9f))
-                is KkEnvelopeMark.Stamp -> PostageStamp(mark.text, deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
-                KkEnvelopeMark.Waiting -> PostageStamp("대기", deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
+            // 우표 · 소인 · 봉인은 그림(장식 글자)이라 글자 크기 설정을 따라 커지지 않는다 — 틀 밖으로 잘리지 않게.
+            KkFixedFontScale {
+                when (mark) {
+                    is KkEnvelopeMark.Seal -> PostageStamp(mark.stamp, deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
+                    is KkEnvelopeMark.Polaroid -> MiniPolaroid(mark.drawing, deco.padding(top = 7.dp, end = 13.dp).rotate(-4f))
+                    is KkEnvelopeMark.Postmark -> KkPostmark("보냄", mark.date, deco.padding(top = 20.dp, end = 19.dp).rotate(-9f))
+                    is KkEnvelopeMark.Stamp -> PostageStamp(mark.text, deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
+                    KkEnvelopeMark.Waiting -> PostageStamp("대기", deco.padding(top = 12.dp, end = 16.dp).rotate(-3f))
+                }
             }
         }
         if (mark is KkEnvelopeMark.Seal) {
             Box(
                 Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-11).dp).size(28.dp).clip(CircleShape).background(c.accent).clearAndSetSemantics {},
                 contentAlignment = Alignment.Center,
-            ) { Text("새", style = KkTheme.type.labelBold, color = c.canvas) }
+            ) { KkFixedFontScale { Text("새", style = KkTheme.type.labelBold, color = c.canvas) } }
         }
     }
 }
@@ -450,6 +455,19 @@ private fun ProgressLabels(progress: Float, start: String, percent: String, end:
         val (s, p, e) = measurables.map { it.measure(loose) }
         val w = constraints.maxWidth
         val gap = 8.dp.roundToPx()
+        // 글자를 키워 한 줄에 셋이 안 들어가면 겹치지 않게 줄을 나눈다: 입대 · 진행률 / 전역(그래도 넘치면 한 줄에 하나씩).
+        if (s.width + p.width + e.width + gap * 2 > w) {
+            val twoRows = s.width + gap + p.width <= w
+            val rows = if (twoRows) listOf(maxOf(s.height, p.height) to listOf(s, p), e.height to listOf(e)) else listOf(s, p, e).map { it.height to listOf(it) }
+            return@Layout layout(w, rows.sumOf { it.first }) {
+                var y = 0
+                rows.forEach { (h, items) ->
+                    items.first().place(0, y)
+                    if (items.size > 1) items[1].place(w - items[1].width, y)
+                    y += h
+                }
+            }
+        }
         val ideal = (progress * w - p.width / 2f).roundToInt()
         val lo = s.width + gap
         val hi = w - e.width - gap - p.width
@@ -526,7 +544,8 @@ fun KkSkeleton(modifier: Modifier = Modifier) {
 @Composable
 fun KkUnderlineTabs(items: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = KkTheme.colors
-    Row(modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
+    // 글자를 키워 폭을 넘으면 옆으로 밀어 본다(잘리지 않게).
+    Row(modifier.horizontalScroll(rememberScrollState()).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
         items.forEachIndexed { i, label ->
             val on = i == selected
             Column(

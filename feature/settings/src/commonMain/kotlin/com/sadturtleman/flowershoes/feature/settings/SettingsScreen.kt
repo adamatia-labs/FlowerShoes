@@ -276,6 +276,30 @@ private fun MainPage(
     onOpenPairing: () -> Unit,
     viewModel: SettingsViewModel,
 ) {
+    val koin = org.koin.compose.getKoin()
+    val owned by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.owned
+        ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
+    val shared by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
+        ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
+    SettingsMainScreen(
+        state, platform.appVersion, viewModel.providerLabel(state.provider), lifetimeLabel(owned, shared, LIFETIME_PRICE),
+        open, onBack, onOpenPairing, viewModel::setNickname, viewModel::setAnniversary,
+    )
+}
+
+/** 설정 첫 화면 그리기(ViewModel · Koin 없이 — 견본 그림도 이것을 그린다). */
+@Composable
+internal fun SettingsMainScreen(
+    state: SettingsState,
+    appVersion: String,
+    providerLabel: String,
+    lifetime: String,
+    open: (SettingsPage) -> Unit,
+    onBack: () -> Unit,
+    onOpenPairing: () -> Unit,
+    onNickname: (String) -> Unit,
+    onAnniversary: (LocalDate) -> Unit,
+) {
     val c = KkTheme.colors
     var sheet by remember { mutableStateOf<String?>(null) }
     Page("설정", onBack) {
@@ -299,12 +323,7 @@ private fun MainPage(
             )
         }
         Group("꾸미기") {
-            val koin = org.koin.compose.getKoin()
-            val owned by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.owned
-                ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
-            val shared by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
-                ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
-            KkListRow("꽃신 평생", value = lifetimeLabel(owned, shared, LIFETIME_PRICE), onClick = { open(SettingsPage.LIFETIME) })
+            KkListRow("꽃신 평생", value = lifetime, onClick = { open(SettingsPage.LIFETIME) })
             Divider()
             KkListRow("테마", value = state.theme.koreanName, onClick = { open(SettingsPage.THEME) })
             Divider()
@@ -324,10 +343,10 @@ private fun MainPage(
             Divider()
             KkListRow("약관과 라이선스", onClick = { open(SettingsPage.TERMS) })
             Divider()
-            KkListRow("버전", value = platform.appVersion, trailing = KkRowTrailing.None)
+            KkListRow("버전", value = appVersion, trailing = KkRowTrailing.None)
         }
         Group("계정") {
-            KkListRow("로그인", value = viewModel.providerLabel(state.provider), onClick = { open(SettingsPage.ACCOUNT) })
+            KkListRow("로그인", value = providerLabel, onClick = { open(SettingsPage.ACCOUNT) })
             Divider()
             if (state.linked) {
                 KkListRow("연결 해제", onClick = { open(SettingsPage.UNLINK) })
@@ -345,7 +364,7 @@ private fun MainPage(
             KkModalSheet({ sheet = null }) {
                 KkSheetHeader("이름")
                 KkInput(name, { name = it.take(NICKNAME_MAX) }, label = "이름", helper = "${name.length} / $NICKNAME_MAX")
-                KkPrimaryButton("저장", { viewModel.setNickname(name); sheet = null }, Modifier.fillMaxWidth(), enabled = name.isNotBlank())
+                KkPrimaryButton("저장", { onNickname(name); sheet = null }, Modifier.fillMaxWidth(), enabled = name.isNotBlank())
             }
         }
         "together" -> {
@@ -354,7 +373,7 @@ private fun MainPage(
             KkModalSheet({ sheet = null }) {
                 KkSheetHeader("함께한 날")
                 KkDatePicker(pick, { pick = it })
-                KkPrimaryButton("선택 완료", { viewModel.setAnniversary(pick); sheet = null }, Modifier.fillMaxWidth())
+                KkPrimaryButton("선택 완료", { onAnniversary(pick); sheet = null }, Modifier.fillMaxWidth())
             }
         }
     }

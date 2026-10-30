@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -172,8 +174,12 @@ private fun Hero(hero: HomeHero?, onOpenSettings: () -> Unit) {
         maxLines = 1,
         modifier = Modifier.padding(start = KkSpacing.xxs),
     )
-    // D-day/L 은 글자 앞 여백이 있어 Figma 처럼 4 왼쪽으로 당긴다.
-    Text(hero.value, style = KkTheme.type.ddayL, color = c.ink, maxLines = 1, softWrap = false, modifier = Modifier.offset(x = (-4).dp))
+    // D-day/L 은 글자 앞 여백이 있어 Figma 처럼 4 왼쪽으로 당긴다. 글자를 키워 폭을 넘으면 한 줄에 들어가게 줄인다.
+    BasicText(
+        hero.value, style = KkTheme.type.ddayL.copy(color = c.ink), maxLines = 1, softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = KkTheme.type.ddayS.fontSize, maxFontSize = KkTheme.type.ddayL.fontSize),
+        modifier = Modifier.offset(x = (-4).dp),
+    )
     when {
         hero.phase == HomePhase.SERVING || hero.phase == HomePhase.DISCHARGE_DAY -> KkServiceProgress(
             progress = hero.progress, start = hero.start, end = hero.end, percent = hero.percent,

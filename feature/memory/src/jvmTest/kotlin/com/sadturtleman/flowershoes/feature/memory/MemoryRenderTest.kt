@@ -57,9 +57,19 @@ class MemoryRenderTest {
         render("memory_month") { MonthScreen(october, emptyMap(), {}, {}) }
     }
 
-    private fun render(name: String, content: @Composable () -> Unit) {
-        val png = ImageComposeScene(width = 360 * 2, height = 760 * 2, density = Density(2f)) {
-            KkotsinTheme(theme = AppTheme.GOMSIN, dark = false) { content() }
+    @Test
+    fun `추억 목록을 4개 모드와 글자 200%로 그린다`() {
+        // Figma 10 · 다크 확인(386:5350) "추억 · 목록".
+        for (theme in AppTheme.entries) for (dark in listOf(false, true)) {
+            render("memory_list_${theme.name.lowercase()}_${if (dark) "dark" else "light"}", theme, dark) { MemoryScreen(list, emptyMap(), {}, {}) }
+        }
+        render("memory_list_font200", fontScale = 2f) { MemoryScreen(list, emptyMap(), {}, {}) }
+        render("memory_month_font200", fontScale = 2f) { MonthScreen(october, emptyMap(), {}, {}) }
+    }
+
+    private fun render(name: String, theme: AppTheme = AppTheme.GOMSIN, dark: Boolean = false, fontScale: Float = 1f, content: @Composable () -> Unit) {
+        val png = ImageComposeScene(width = 360 * 2, height = 760 * 2, density = Density(2f, fontScale)) {
+            KkotsinTheme(theme = theme, dark = dark) { content() }
         }.use { scene ->
             scene.render()
             scene.render(1_000_000_000L).encodeToData(EncodedImageFormat.PNG)!!.bytes
