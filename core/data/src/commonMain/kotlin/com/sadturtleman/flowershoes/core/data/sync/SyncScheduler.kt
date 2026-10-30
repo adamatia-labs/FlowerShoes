@@ -27,6 +27,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CancellationException
 
 /**
+ * 동기화가 실패하고 있다.
+ *
+ * @param code 전송 계층이 준 서버 오류 코드(예: Firestore UNAVAILABLE). 시간 초과면 null.
+ * @param since 이번 실패가 처음 일어난 때. 실패가 이어지는 동안 바뀌지 않는다 — 화면이 "닫은 실패" 를 이것으로 가린다.
+ * @param last 가장 최근에 실패한 때. 다시 연결된 뒤에도 실패했는지(오프라인 탓이 아닌지)를 화면이 이것으로 본다.
+ */
+data class SyncFailure(val code: String?, val since: kotlin.time.Instant, val last: kotlin.time.Instant)
+
+/**
  * 언제 동기화를 돌릴지(설계 6-2).
  *
  * - 앱이 뜰 때 · 앞으로 나올 때 · 푸시를 받았을 때: [requestNow]
@@ -47,7 +56,17 @@ class SyncScheduler(
     private val partnerGone: suspend () -> Boolean = { false },
     private val retryBase: Duration = 5.seconds,
     private val syncTimeout: Duration = 30.seconds,
+    private val clock: kotlin.time.Clock = kotlin.time.Clock.System,
 ) {
+    private val _failure = kotlinx.coroutines.flow.MutableStateFlow<SyncFailure?>(null)
+
+    /**
+     * 지금 동기화가 실패 중인가(공통 상태 · 서버 오류, #72). 다음 차례가 성공하면 null 로 돌아간다.
+     * 다시 시도는 따로 두지 않는다 — 실패는 원래처럼 다음 차례(재시도 · 1분 · 푸시)가 다시 돈다.
+     * 오프라인이어도 실패하므로, 화면은 다시 연결된 뒤에 실패한 것([SyncFailure.last])만 서버 오류로 보인다.
+     */
+    val failure: kotlinx.coroutines.flow.StateFlow<SyncFailure?> = _failure
+
     private val _partnerUnlinked = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     /** 상대가 연결을 해제했다. 화면이 "연결을 해제했어요"(보관 · 지우기 고르기)를 띄우고 [partnerUnlinkHandled] 를 부른다. */
@@ -111,7 +130,11 @@ class SyncScheduler(
     suspend fun runOnce(): SyncReport? = running.withLock {
         var finished = false
         val report = withTimeoutOrNull(syncTimeout) { syncOnce().also { finished = true } }
-        if (!finished) withTimeoutOrNull(5.seconds) { attempt { client.reconnect() } }
+        if (!finished) {
+            // 서버가 시간 안에 답하지 않았다 — 이것도 서버 오류 화면에 보인다(코드 없음).
+            failed(null)
+            withTimeoutOrNull(5.seconds) { attempt { client.reconnect() } }
+        }
         val awaitingAcknowledgement = db.coupleDao().get()?.partnerUserId?.isNotBlank() == true && db.syncDao().streamsWithLog().isNotEmpty()
         retryNeeded.value = report == null || awaitingAcknowledgement
         report
@@ -121,8 +144,26 @@ class SyncScheduler(
         throw cancelled
     } catch (_: Exception) { null }
 
+    /** 이번 실패를 적는다. 이미 실패 중이면 시작 시각은 그대로 두고 코드 · 마지막 시각만 바꾼다. */
+    private fun failed(code: String?) {
+        val now = clock.now()
+        _failure.value = SyncFailure(code, _failure.value?.since ?: now, now)
+    }
+
     private suspend fun syncOnce(): SyncReport? {
-        val report = attempt { client.syncOnce() }?.also { lastReport = it }
+        val report = try {
+            client.syncOnce()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            // 서버 쪽 실패(우편함이 코드를 준 것)만 적는다. 권한 창 · 복호화 같은 것은 다음 차례에 조용히 다시 돈다.
+            client.errorCode(e)?.let(::failed)
+            null
+        }
+        if (report != null) {
+            lastReport = report
+            _failure.value = null
+        }
         approver?.let { a -> attempt { a.prompts() }?.let { p -> _deviceChanges.value = p.filterNot { it.request.id in dismissed } } }
         if (!_partnerUnlinked.value && attempt { partnerGone() } == true) _partnerUnlinked.value = true
         return report

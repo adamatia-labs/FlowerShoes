@@ -72,6 +72,9 @@ class SyncClient(
 
     suspend fun reconnect() = mailbox.reconnect()
 
+    /** 동기화가 실패한 까닭을 서버 오류 화면에 보일 코드로. 우편함 구현이 안다. */
+    fun errorCode(error: Throwable): String? = mailbox.errorCode(error)
+
     /**
      * 이번 바퀴에서 한도를 넘어 건너뛴 항목 수. 동기화 루프와 승인 화면이 함께 부를 수 있어
      * 인스턴스가 아니라 그 호출의 코루틴 문맥에 센다.

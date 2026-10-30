@@ -135,6 +135,8 @@ dependencies {
     implementation(libs.revenuecat)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.biometric)
+    // 시작 화면(Figma 9 · 공통 상태 · 앱 시작): 시스템 스플래시 → 공유 셸의 스플래시로 이어진다.
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.glance.material3)
 
     implementation(project(":common:di"))

@@ -6,6 +6,8 @@ GOOGLE_REVERSED_CLIENT_ID =
 REVENUECAT_API_KEY =
 // 피처 플래그 환경(DEV · QA · PROD). 비우면 PROD.
 APP_ENV =
+// 업데이트 필요 화면이 여는 App Store ID(숫자). functions 의 APP_STORE_URL 과 같은 값.
+APP_STORE_ID = TODO_APP_STORE_ID
 // 초대 링크(#39): Firebase Hosting 사이트(Universal Links 호스트 · 링크 모양)와 카카오 사용자 정의 피드 템플릿 ID.
 // 템플릿 ID 가 비면 카카오 대신 공유 시트로 보낸다.
 INVITE_HOST = TODO_HOSTING_SITE.web.app

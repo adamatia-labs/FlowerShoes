@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -42,6 +43,8 @@ class MainActivity : FragmentActivity() {
     private var jankStats: JankStats? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 시스템 스플래시(Theme.FlowerShoes.Starting). 첫 프레임에서 걷히고 셸의 스플래시가 이어받는다.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
         // 프레임 계측은 화면이 앞에 있는 동안만 돈다. 뒤로 내려간 뒤의 프레임은 사용자가 보지 않는다.

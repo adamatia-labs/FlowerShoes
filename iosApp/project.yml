@@ -137,8 +137,12 @@ targets:
         # Compose Multiplatform: 120Hz 화면에서 프레임 제한을 풀어야 한다(없으면 시작 시 검사에서 멈춘다).
         CADisableMinimumFrameDurationOnPhone: true
         # 실행 화면이 없으면 iOS 가 구형 호환(레터박스) 모드로 띄운다 — 전체 화면을 쓰려면 필요.
+        # 실행 화면은 Android 시스템 스플래시와 같다(Figma 9 · 공통 상태 · 앱 시작): canvas 바탕 + 말린 꽃 가지.
+        # 그다음 셸의 스플래시(꽃신 · 슬로건)가 이어받는다. 색 · 그림은 App/Assets.xcassets(다크 포함).
         UILaunchScreen:
-          UIColorName: ""
+          UIColorName: LaunchBackground
+          UIImageName: LaunchSprig
+          UIImageRespectsSafeAreaInsets: true
         # 키는 Config.xcconfig(커밋하지 않음)에서: KAKAO_NATIVE_APP_KEY, GOOGLE_CLIENT_ID, GOOGLE_REVERSED_CLIENT_ID
         KakaoNativeAppKey: $(KAKAO_NATIVE_APP_KEY)
         # 초대 링크 호스트 · 카카오 피드 템플릿 ID(Config.xcconfig 의 INVITE_HOST · KAKAO_INVITE_TEMPLATE_ID)
@@ -157,6 +161,8 @@ targets:
         RevenueCatAPIKey: $(REVENUECAT_API_KEY)
         # 피처 플래그 환경(DEV · QA · PROD, Config.xcconfig 의 APP_ENV). 비어 있으면 PROD.
         KkotsinAppEnv: $(APP_ENV)
+        # 업데이트 필요 › 업데이트하기가 여는 App Store ID(Config.xcconfig 의 APP_STORE_ID). 비어 있으면 TODO_APP_STORE_ID.
+        KkotsinAppStoreId: $(APP_STORE_ID)
         # GA4 가 광고 개인화 신호를 내지 않는다. AdMob 이 AdSupport 를 링크하므로 Core 변형만으로는 막을 수 없다.
         GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS: false
         # 디버그 구성은 NO(위 configs) — 개발 중의 자동 수집 이벤트가 GA4 지표에 섞이지 않게.

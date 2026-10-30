@@ -19,6 +19,8 @@ sealed interface DeepLink {
     data object Pairing : DeepLink
     /** 설정 › 기기 바꾸기 · 복구(3개월마다 기록 받아 두기 알림). */
     data object DeviceRecovery : DeepLink
+    /** 설정 › 문의하기(서버 오류 화면의 문의하기). */
+    data object Inquiry : DeepLink
 
     /** 초대 링크를 열었다 → 받는 쪽 수락 흐름. */
     data class Invite(val token: String) : DeepLink
@@ -35,12 +37,19 @@ sealed interface DeepLink {
                 "calendar" -> Calendar(parts.getOrNull(1))
                 "dayline" -> parts.getOrNull(1)?.let(::DayLine)
                 "pairing" -> Pairing
-                "settings" -> if (parts.getOrNull(1) == "device") DeviceRecovery else null
+                "settings" -> when (parts.getOrNull(1)) {
+                    "device" -> DeviceRecovery
+                    "inquiry" -> Inquiry
+                    else -> null
+                }
                 else -> null
             }
         }
 
         const val SCHEME = "kkotsin"
+
+        /** 설정 › 문의하기([Inquiry]). */
+        const val INQUIRY_URI = "$SCHEME://settings/inquiry"
     }
 }
 

@@ -56,6 +56,8 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_phone
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_alert
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_export
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_lock
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_offline
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_gear
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_frame
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -96,6 +98,10 @@ enum class KkIcons(internal val res: DrawableResource) {
     Export(Res.drawable.ic_export),
     Frame(Res.drawable.ic_frame),
     Book(Res.drawable.ic_book),
+    /** 공통 상태 · 네트워크 없음(Phosphor). */
+    Offline(Res.drawable.ic_offline),
+    /** 공통 상태 · 점검 중(Phosphor 톱니). 설정 줄의 [Settings] 와 생김새가 다르다. */
+    Gear(Res.drawable.ic_gear),
 
     // 컴포넌트 안에서만 쓰는 글리프(크기가 24 가 아니다 — 자리에 맞춰 가운데 둔다)
     Back(Res.drawable.ic_back),

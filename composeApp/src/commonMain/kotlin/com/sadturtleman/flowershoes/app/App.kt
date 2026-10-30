@@ -59,6 +59,15 @@ import org.koin.compose.koinInject
 import com.sadturtleman.flowershoes.feature.settings.NoPlatformActions
 import com.sadturtleman.flowershoes.feature.settings.PlatformActions
 import com.sadturtleman.flowershoes.feature.settings.SettingsRoute
+import com.sadturtleman.flowershoes.core.featureflag.AppGate
+import com.sadturtleman.flowershoes.core.featureflag.FeatureFlagProvider
+import com.sadturtleman.flowershoes.core.featureflag.appGate
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import kotlinx.coroutines.delay
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Duration.Companion.seconds
 
 /** 하단 탭. 화면 이동은 여기서만 정한다 — feature 끼리는 서로 모른다. */
 enum class Tab(val label: String, val icon: com.sadturtleman.flowershoes.core.designsystem.KkIcons) {
@@ -106,13 +115,131 @@ fun KkotsinApp() {
             com.sadturtleman.flowershoes.feature.pairing.LocalInviteShare provides rememberInviteShare(),
             com.sadturtleman.flowershoes.core.drawingui.LocalDrawingPhotoLoader provides photoLoader,
         ) {
-            when {
-                current == null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas))
-                !current.onboarded -> OnboardingFlow()
-                else -> MainShell()
+            val gate = rememberAppGate()
+            Box(Modifier.fillMaxSize()) {
+                // 업데이트 필요 · 점검 중은 앱 자체를 그리지 않는다 — 연결 모달 · 편지 도착 창 · 책 권유까지 모두 막힌다.
+                when (val g = gate.state) {
+                    is AppGate.UpdateRequired -> {
+                        val uri = LocalUriHandler.current
+                        UpdateRequiredScreen(g.minVersion) { runCatching { uri.openUri(storeUrl) } }
+                    }
+                    AppGate.Maintenance -> MaintenanceScreen(gate.recheck)
+                    else -> {
+                        when {
+                            current == null || gate.holdSplash -> ShellSplash()
+                            !current.onboarded -> OnboardingFlow()
+                            else -> MainShell()
+                        }
+                        if (current != null && !gate.holdSplash) ConnectionStates(onboarded = current.onboarded)
+                    }
+                }
             }
         }
     }
+}
+
+/** 앱 막기 판단. [state] 가 null 이면 아직 읽는 중이다. */
+private class GateUi(val state: AppGate?, val holdSplash: Boolean, val recheck: () -> Unit)
+
+/**
+ * Remote Config `min_version` · `maintenance` 로 앱을 막을지(#72). 켤 때 · 앞으로 나올 때 · 점검 화면의 다시 시도에서 다시 읽는다.
+ *
+ * 스플래시는 첫 판단을 [GATE_SPLASH_WAIT] 까지만 기다린다 — 리모트가 늦으면 앱을 먼저 열고, 판단이 나오는 대로 막는다.
+ * 플래그 제공자가 없는 빌드(테스트)에서는 막지 않는다.
+ */
+@Composable
+private fun rememberAppGate(): GateUi {
+    val flags = getKoin().getOrNull<FeatureFlagProvider>()
+    val version = (getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions).appVersion
+    var state by remember { mutableStateOf<AppGate?>(if (flags == null) AppGate.Open else null) }
+    var waited by remember { mutableStateOf(flags == null) }
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val check: () -> Unit = remember(flags, version) {
+        {
+            // 늦게 끝난 옛 판단이 새 판단을 덮지 않게 앞의 것을 거둔다.
+            if (flags != null) {
+                checking?.cancel()
+                checking = scope.launch { state = flags.appGate(version) }
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        delay(GATE_SPLASH_WAIT)
+        waited = true
+    }
+    LifecycleResumeEffect(check) {
+        check()
+        onPauseOrDispose {}
+    }
+    return GateUi(state, holdSplash = state == null && !waited, recheck = check)
+}
+
+/** 스플래시가 앱 막기 판단을 기다리는 최대 시간. 리모트 왕복은 보통 이 안에 끝난다. */
+private val GATE_SPLASH_WAIT = 2.seconds
+
+/**
+ * 네트워크 없음 · 서버 오류(#72). 앱 위에 덮어 띄우지만 막지는 않는다 — 뒤로 가기나 다시 시도로 닫으면
+ * 같은 끊김 · 같은 실패가 이어지는 동안 다시 뜨지 않고, 다시 연결되거나 동기화가 성공하면 저절로 사라진다.
+ * 덮개(연결 모달 · 편지 도착 창 · 책 권유)는 아래에 그대로 둔다.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun ConnectionStates(onboarded: Boolean) {
+    val online by rememberOnline()
+    val scheduler = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.sync.SyncScheduler>()
+    val scope = rememberCoroutineScope()
+    var offlineClosed by remember { mutableStateOf(false) }
+    // 마지막으로 다시 연결된 때. 끊겨 있던 동안의 실패는 오프라인 탓이라 서버 오류로 보이지 않는다.
+    var onlineSince by remember { mutableStateOf<kotlin.time.Instant?>(null) }
+    // 닫은 서버 오류(그 실패가 시작된 때). 실패가 끝나고 새로 시작되면 시각이 달라 다시 뜬다.
+    var closedSince by remember { mutableStateOf<kotlin.time.Instant?>(null) }
+    var retrying by remember { mutableStateOf(false) }
+    var wasOffline by remember { mutableStateOf(false) }
+    LaunchedEffect(online) {
+        if (online) {
+            offlineClosed = false
+            if (wasOffline) onlineSince = kotlin.time.Clock.System.now()
+        }
+        wasOffline = !online
+    }
+    if (!online) {
+        if (!offlineClosed) {
+            BackHandler { offlineClosed = true }
+            // 다시 시도: 화면을 닫고 동기화를 한 번 부른다(iOS 에는 뒤로 가기 버튼이 없다). 써 둔 것은 연결되면 나간다.
+            OfflineScreen(onRetry = {
+                offlineClosed = true
+                scheduler?.requestNow()
+            })
+        }
+        return
+    }
+    // 서버 오류는 동기화가 도는 화면(연결 뒤 셸)에서만. 실패는 동기화가 이미 잡고 있는 것을 그대로 보인다.
+    if (scheduler == null || !onboarded) return
+    val failure = scheduler.failure.collectAsState().value ?: return
+    if (failure.since == closedSince || onlineSince?.let { failure.last < it } == true) return
+    BackHandler { closedSince = failure.since }
+    ServerErrorScreen(
+        detail = failure.detail(),
+        retrying = retrying,
+        onRetry = {
+            if (!retrying) scope.launch {
+                retrying = true
+                try { scheduler.runOnce() } finally { retrying = false }
+            }
+        },
+        onContact = {
+            closedSince = failure.since
+            DeepLinks.open(DeepLink.INQUIRY_URI)
+        },
+    )
+}
+
+/** "오류 코드 UNAVAILABLE · 10:42"(Figma). 시간 초과처럼 코드가 없으면 시각만. */
+private fun com.sadturtleman.flowershoes.core.data.sync.SyncFailure.detail(): String {
+    val time = since.toLocalDateTime(TimeZone.currentSystemDefault()).time
+    val clock = "${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}"
+    return code?.let { "오류 코드 $it · $clock" } ?: clock
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -231,6 +358,11 @@ private fun MainShell() {
             DeepLink.DeviceRecovery -> {
                 letters.onIntent(LetterIntent.Close)
                 settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.DEVICE
+                overlay = Overlay.SETTINGS
+            }
+            DeepLink.Inquiry -> {
+                letters.onIntent(LetterIntent.Close)
+                settingsStart = com.sadturtleman.flowershoes.feature.settings.SettingsPage.INQUIRY
                 overlay = Overlay.SETTINGS
             }
             is DeepLink.Invite -> {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 시스템 스플래시(곰신 · 다크 paper/canvas · deco/plant). -->
+    <color name="kk_splash_canvas">#FF1F1A17</color>
+    <color name="kk_splash_plant">#FFA3B07F</color>
+</resources>
