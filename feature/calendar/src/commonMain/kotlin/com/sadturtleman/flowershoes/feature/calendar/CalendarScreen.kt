@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -390,7 +391,8 @@ private fun EventRow(e: Event, onClick: () -> Unit) {
         Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.sm))
             .background(color.copy(alpha = EVENT_FILL_ALPHA))
             .clickable(role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) {}
+            // 종류 태그가 없으니 종류는 색과 함께 읽어 준다.
+            .semantics { stateDescription = e.type.label() }
             .height(IntrinsicSize.Min)
             .padding(end = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
