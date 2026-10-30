@@ -47,6 +47,8 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import com.sadturtleman.flowershoes.core.designsystem.LocalKkWindowWidth
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -100,6 +102,18 @@ fun CalendarRoute(onOpenLeave: () -> Unit = {}, onWriteDayLine: (String) -> Unit
  */
 @Composable
 fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onOpenLeave: () -> Unit = {}, onWriteDayLine: (String) -> Unit = {}) {
+    if (LocalKkWindowWidth.current.twoPane) CalendarTwoPane(state, onIntent, onOpenLeave) else CalendarOnePane(state, onIntent, onOpenLeave)
+    state.draft?.let { d ->
+        // 그날의 한 줄 남기기: 저장된 면회 · 외박 · 휴가가 시작했으면(지난 일정도 언제든). 고치는 중인 칸이 아니라 저장된 일정으로 본다.
+        val saved = d.id?.let { id -> (state.monthEvents + state.upcoming).firstOrNull { it.id == id } }
+        val dayLine = saved?.takeIf { it.hasDayLine && it.start.date <= state.today }?.id
+        EventEditor(d, state, onIntent, dayLine?.let { id -> { onIntent(CalendarIntent.CloseDraft); onWriteDayLine(id) } })
+    }
+}
+
+/** 폰 · 중간 폭: 한 줄로 쌓는다. */
+@Composable
+private fun CalendarOnePane(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onOpenLeave: () -> Unit) {
     val c = KkTheme.colors
     Column(
         Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
@@ -145,13 +159,74 @@ fun CalendarScreen(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onO
         }
         Spacer(Modifier.height(KkSpacing.lg))
     }
-    state.draft?.let { d ->
-        // 그날의 한 줄 남기기: 저장된 면회 · 외박 · 휴가가 시작했으면(지난 일정도 언제든). 고치는 중인 칸이 아니라 저장된 일정으로 본다.
-        val saved = d.id?.let { id -> (state.monthEvents + state.upcoming).firstOrNull { it.id == id } }
-        val dayLine = saved?.takeIf { it.hasDayLine && it.start.date <= state.today }?.id
-        EventEditor(d, state, onIntent, dayLine?.let { id -> { onIntent(CalendarIntent.CloseDraft); onWriteDayLine(id) } })
+}
+
+/**
+ * 큰 화면(840dp 이상, Figma 11 · 캘린더 + 일정 `429:10850`): 왼쪽은 "2026년 10월" + 추가 + 늘 펼친 달력,
+ * 오른쪽은 휴가 요약 띠 · 고른 날 일정 · 다가오는 일정 · 광고.
+ */
+@Composable
+private fun CalendarTwoPane(state: CalendarState, onIntent: (CalendarIntent) -> Unit, onOpenLeave: () -> Unit) {
+    val c = KkTheme.colors
+    Row(Modifier.fillMaxSize().background(c.canvas)) {
+        Column(
+            Modifier.width(CALENDAR_PANE_WIDTH).fillMaxHeight().verticalScroll(rememberScrollState())
+                .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${state.month.year}년 ${state.month.month.number}월", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { onIntent(CalendarIntent.NewEvent(state.selected)) }
+                        .semantics { contentDescription = "일정 추가" },
+                    contentAlignment = Alignment.Center,
+                ) { KkIcon(KkIcons.Plus, tint = c.ink) }
+            }
+            MonthCard(state, onIntent, flat = true)
+            if (!state.empty) Legend()
+        }
+        com.sadturtleman.flowershoes.core.designsystem.KkPaneDivider()
+        Column(
+            Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())
+                .padding(start = KkSpacing.xxxl, end = KkSpacing.xxxl, top = 72.dp, bottom = KkSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+        ) {
+            state.pool?.let { LeaveBand(it, onOpenLeave) }
+            if (state.empty) {
+                KkEmptyState(
+                    title = "등록된 일정이 없어요",
+                    description = "",
+                    icon = KkIcons.Calendar,
+                    action = "일정 추가",
+                    onAction = { onIntent(CalendarIntent.NewEvent(state.selected)) },
+                )
+            } else {
+                val d = state.selected
+                val onDay = state.eventsOn(d)
+                Text(
+                    "${d.month.number}월 ${d.day}일 (${d.weekdayKo()})", style = KkTheme.type.labelBold, color = c.ink,
+                    modifier = Modifier.padding(top = KkSpacing.md),
+                )
+                if (onDay.isEmpty()) NoEvents("이 날은 일정이 없어요")
+                onDay.forEach { e -> EventRow(e) { onIntent(CalendarIntent.Edit(e)) } }
+                // 다가오는 일정: 고른 날 뒤에 시작하는 것(고른 날 목록과 겹치지 않게).
+                val next = state.upcoming.filter { it.start.date > d }.sortedBy { it.start }.take(UPCOMING_COUNT)
+                if (next.isNotEmpty()) {
+                    Text("다가오는 일정", style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.padding(top = KkSpacing.md))
+                    next.forEach { e -> EventRow(e) { onIntent(CalendarIntent.Edit(e)) } }
+                }
+            }
+            Spacer(Modifier.height(KkSpacing.md))
+            KkAd(KkAdSlot.CALENDAR)
+        }
     }
 }
+
+/** 큰 화면 달력 칸의 폭(Figma 캘린더 + 일정). */
+private val CALENDAR_PANE_WIDTH = 380.dp
+
+/** 큰 화면 다가오는 일정 줄 수. */
+private const val UPCOMING_COUNT = 5
 
 /** 휴가 요약 띠(Figma 휴가 요약): 종이 태그 바탕 "남은 휴가 18일 / 전체 32일 ›". 넘쳐 쓰면 남은 휴가가 빨간색. */
 @Composable
@@ -223,11 +298,12 @@ private fun WeekStrip(state: CalendarState, onIntent: (CalendarIntent) -> Unit) 
 
 /** 펼친 달력(Calendar Card · Month Grid). 오늘 = 연한 브랜드 원, 고른 날 = 브랜드 원, 일요일 = 빨강. */
 @Composable
-private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
+private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit, flat: Boolean = false) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface)
+        // 큰 화면([flat])은 카드 없이 바탕 위에 바로 놓는다(Figma 캘린더 + 일정).
+        Modifier.fillMaxWidth().then(if (flat) Modifier else Modifier.kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface))
             .monthSwipe(onIntent)
             .padding(horizontal = KkSpacing.md, vertical = KkSpacing.lg),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),

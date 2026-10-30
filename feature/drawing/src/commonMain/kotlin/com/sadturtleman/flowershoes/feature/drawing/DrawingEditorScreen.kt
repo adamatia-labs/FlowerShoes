@@ -21,6 +21,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import com.sadturtleman.flowershoes.core.designsystem.LocalKkWindowWidth
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -157,21 +161,26 @@ fun DrawingEditorScreen(
             onTrailing = { onIntent(DrawingIntent.Next) },
             modifier = Modifier.statusBarsPadding().padding(horizontal = KkSpacing.lg),
         )
-        Column(
-            Modifier.weight(1f).fillMaxWidth().background(c.surface).padding(KkSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.md, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // 위젯 모양은 그리기 전에만 바꿀 수 있다.
-            if (!state.canUndo) {
-                KkSegmentedControl(
-                    listOf("2x2 정사각", "4x2 가로"), state.shape.ordinal,
-                    { onIntent(DrawingIntent.SetShape(WidgetShape.entries[it])) },
-                )
+        // 태블릿(840dp 이상, Figma 11 · 그림 그리기 태블릿 가로): 아래 툴바 대신 오른쪽 도구 칸, 캔버스는 남은 자리에 꽉 맞춘다.
+        val tablet = LocalKkWindowWidth.current.twoPane
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            Column(
+                Modifier.weight(1f).fillMaxHeight().background(c.surface).padding(KkSpacing.lg),
+                verticalArrangement = Arrangement.spacedBy(KkSpacing.md, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // 위젯 모양은 그리기 전에만 바꿀 수 있다.
+                if (!state.canUndo) {
+                    KkSegmentedControl(
+                        listOf("2x2 정사각", "4x2 가로"), state.shape.ordinal,
+                        { onIntent(DrawingIntent.SetShape(WidgetShape.entries[it])) },
+                    )
+                }
+                DrawingCanvas(state, onIntent, if (tablet) Modifier.weight(1f, fill = false) else Modifier.fillMaxWidth())
             }
-            DrawingCanvas(state, onIntent)
+            if (tablet) ToolPane(state, onIntent)
         }
-        Toolbar(state, onIntent)
+        if (!tablet) Toolbar(state, onIntent)
     }
     when (state.sheet) {
         EditorSheet.PEN -> PenSheet(state, onIntent)
@@ -196,14 +205,14 @@ fun DrawingEditorScreen(
  * 비어 있으면 "손가락으로 그려 보세요".
  */
 @Composable
-private fun DrawingCanvas(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
+private fun DrawingCanvas(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.md)
     var zoom by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var drawing by remember { mutableStateOf(false) }
     Box(
-        Modifier.fillMaxWidth().aspectRatio(state.shape.width.toFloat() / state.shape.height)
+        modifier.aspectRatio(state.shape.width.toFloat() / state.shape.height)
             .kkElevation(KkElevation.Low, shape).clip(shape).background(Color.White)
             .semantics { contentDescription = "그림 캔버스" }
             .pointerInput(state.shape) {
@@ -291,6 +300,95 @@ private fun Toolbar(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit
         }
     }
 }
+
+/**
+ * 태블릿 도구 칸(Figma tools · supporting pane `430:11168`): 폭 320, surface + 왼쪽 선. 도구 · 굵기 · 색 · 되돌리기를 펼쳐 둔다.
+ * 펜 종류 · 색 묶음 · 밝기는 폰과 같이 붓을 한 번 더 눌러 여는 펜 시트에서.
+ */
+@Composable
+private fun ToolPane(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
+    val c = KkTheme.colors
+    Row(Modifier.width(TOOL_PANE_WIDTH).fillMaxHeight()) {
+        com.sadturtleman.flowershoes.core.designsystem.KkPaneDivider()
+        Column(
+            Modifier.weight(1f).fillMaxHeight().background(c.surface).verticalScroll(rememberScrollState())
+                .navigationBarsPadding().padding(KkSpacing.xxl),
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.xxl),
+        ) {
+            PaneSection("도구") {
+                TOOLS.forEach { (item, icon, label) ->
+                    PaneCell(label, state.highlighted(item), onClick = { onIntent(DrawingIntent.Tap(item)) }) { KkIcon(icon, tint = c.ink) }
+                }
+            }
+            PaneSection("굵기") {
+                BrushSize.entries.forEach { b ->
+                    PaneCell(BRUSH_LABEL.getValue(b), state.brush == b && state.tool.isPen, onClick = { onIntent(DrawingIntent.SetBrush(b)) }) {
+                        Box(Modifier.size(BRUSH_DOT.getValue(b)).clip(CircleShape).background(c.ink))
+                    }
+                }
+            }
+            PaneSection("색") {
+                PEN_COLORS.forEachIndexed { i, argb ->
+                    val on = state.tool != EditorTool.ERASER && state.color in shadesOf(argb)
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape)
+                            .then(if (on) Modifier.border(2.dp, c.ink, CircleShape) else Modifier)
+                            .clickable(role = Role.RadioButton) { onIntent(DrawingIntent.SetColor(argb)) }
+                            .semantics { contentDescription = PEN_COLOR_NAMES[i]; selected = on },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.size(28.dp).clip(CircleShape).background(Color(argb.toInt()))
+                                .border(1.dp, if (argb == 0xFFFFFFFF) c.line else Color.Transparent, CircleShape),
+                        )
+                    }
+                }
+            }
+            PaneSection("되돌리기") {
+                PaneCell("되돌리기", false, enabled = state.canUndo, onClick = { onIntent(DrawingIntent.Undo) }) {
+                    KkIcon(KkIcons.Undo, tint = if (state.canUndo) c.ink else c.line)
+                }
+                PaneCell("다시 하기", false, enabled = state.canRedo, onClick = { onIntent(DrawingIntent.Redo) }) {
+                    KkIcon(KkIcons.Redo, tint = if (state.canRedo) c.ink else c.line)
+                }
+            }
+        }
+    }
+}
+
+/** 도구 칸 한 묶음: Caption 이름 + 칸들(넘치면 다음 줄). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PaneSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+        Text(title, style = KkTheme.type.caption, color = KkTheme.colors.sub)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) { content() }
+    }
+}
+
+/** 도구 칸 한 칸: 48, 모서리 12, 고르면 종이 태그색. */
+@Composable
+private fun PaneCell(label: String, on: Boolean, enabled: Boolean = true, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier.size(48.dp).clip(RoundedCornerShape(KkRadius.lg)).background(if (on) KkTheme.colors.tag else Color.Transparent)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label; selected = on },
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+private val TOOL_PANE_WIDTH = 320.dp
+
+private val TOOLS = listOf(
+    Triple(ToolbarItem.BRUSH, KkIcons.Brush, "붓"),
+    Triple(ToolbarItem.ERASER, KkIcons.Eraser, "지우개"),
+    Triple(ToolbarItem.STICKER, KkIcons.Sticker, "스티커"),
+    Triple(ToolbarItem.PHOTO, KkIcons.Photo, "사진"),
+    Triple(ToolbarItem.FRAME, KkIcons.Frame, "틀"),
+)
+
+/** 굵기 칸의 점 지름(Figma size 4 · 8 · 14). */
+private val BRUSH_DOT = mapOf(BrushSize.S to 4.dp, BrushSize.M to 8.dp, BrushSize.L to 14.dp)
 
 /** 툴바 한 칸: 40 판(고르면 tag) + 24 아이콘, 46 간격. [dot] 은 칸 아래 지금 색 점. */
 @Composable
