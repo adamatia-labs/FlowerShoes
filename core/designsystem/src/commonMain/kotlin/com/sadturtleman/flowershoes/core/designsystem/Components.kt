@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -68,11 +69,11 @@ private fun Modifier.focusRing(focused: Boolean, shape: androidx.compose.ui.grap
 
 // ── Button ────────────────────────────────────────────────────────────────
 
-enum class KkButtonStyle { Primary, Secondary, Ghost }
+enum class KkButtonStyle { Primary, Secondary, Text }
 enum class KkButtonSize { L, M }
 
 /**
- * 버튼. Primary(한 화면에 하나) · Secondary(보조) · Ghost(취소). L=52(하단 CTA) · M=44.
+ * 버튼. Primary(한 화면에 하나) · Secondary(보조 · 취소) · Text(창 안 동작, 글자만). L=52(하단 CTA) · M=44(터치 영역은 48).
  * 누르면 한 단계 진하게 + 그림자 없음, Loading 은 라벨 대신 스피너(너비 유지), Disabled 는 40% 투명.
  */
 @Composable
@@ -92,49 +93,70 @@ fun KkButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val focused by interaction.collectIsFocusedAsState()
-    // Figma Button(340:154): 둥근 알약. Primary 는 accent 바탕 · canvas 글자, Secondary 는 line 테두리 · ink 글자(누르면 line 바탕).
+    // Figma Button(340:154): 둥근 알약.
     val shape = RoundedCornerShape(KkRadius.full)
-    val bg = when (style) {
-        KkButtonStyle.Primary -> if (!enabled) c.line else if (danger) c.danger else c.accent
-        KkButtonStyle.Secondary -> if (pressed) c.line else Color.Transparent
-        KkButtonStyle.Ghost -> if (pressed) c.line else Color.Transparent
-    }
-    val fg = when {
-        !enabled -> c.sub
-        style == KkButtonStyle.Primary -> c.canvas
-        else -> c.ink
-    }
+    val look = kkButtonLook(c, style, danger, enabled, pressed)
+    val bg = look.bg
+    val fg = look.fg
     val elevated = style == KkButtonStyle.Primary && !pressed && enabled
+    // 터치 영역은 48dp 이상(M 은 알약 44 위아래로 2씩), 알약은 그 가운데에 그린다.
     Box(
         modifier = modifier
-            .height(if (size == KkButtonSize.L) 52.dp else 44.dp)
-            .then(if (elevated) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
-            .clip(shape)
-            .background(bg)
-            .then(
-                when (style) {
-                    KkButtonStyle.Secondary -> Modifier.border(1.2.dp, c.line, shape)
-                    KkButtonStyle.Ghost -> Modifier.border(1.dp, c.line, shape)
-                    KkButtonStyle.Primary -> Modifier
-                },
-            )
-            .focusRing(focused, shape)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled && !loading, role = Role.Button, onClick = onClick)
-            .padding(horizontal = if (size == KkButtonSize.L) KkSpacing.xxl else KkSpacing.lg),
+            .minimumInteractiveComponentSize(),
         contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
     ) {
-        if (loading && loadingText != null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .height(if (size == KkButtonSize.L) 52.dp else 44.dp)
+                .then(if (elevated) Modifier.kkElevation(KkElevation.Low, shape) else Modifier)
+                .clip(shape)
+                .background(bg)
+                .then(look.border?.let { Modifier.border(1.2.dp, it, shape) } ?: Modifier)
+                .focusRing(focused, shape)
+                .padding(horizontal = if (size == KkButtonSize.L) KkSpacing.xxl else KkSpacing.lg),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading && loadingText != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                    KkSpinner(fg, if (size == KkButtonSize.L) 20.dp else 16.dp)
+                    Text(loadingText, style = if (size == KkButtonSize.L) KkTheme.type.labelBold else KkTheme.type.label, color = fg, maxLines = 1)
+                }
+            } else if (loading) {
                 KkSpinner(fg, if (size == KkButtonSize.L) 20.dp else 16.dp)
-                Text(loadingText, style = if (size == KkButtonSize.L) KkTheme.type.labelBold else KkTheme.type.label, color = fg, maxLines = 1)
+            } else {
+                Text(text, style = if (size == KkButtonSize.L) KkTheme.type.labelBold else KkTheme.type.label, color = fg, maxLines = 1)
             }
-        } else if (loading) {
-            KkSpinner(fg, if (size == KkButtonSize.L) 20.dp else 16.dp)
-        } else {
-            Text(text, style = if (size == KkButtonSize.L) KkTheme.type.labelBold else KkTheme.type.label, color = fg, maxLines = 1)
         }
     }
 }
+
+/** 버튼 한 벌의 색. [border] 가 null 이면 테두리 없음. */
+internal class KkButtonLook(val bg: Color, val fg: Color, val border: Color?)
+
+/**
+ * Primary 는 accent 바탕 · canvas 글자(위험하면 danger 바탕), Secondary 는 line 테두리 · ink 글자(누르면 line 바탕).
+ * 위험한 Secondary(지우기 · 해제)는 글자와 테두리를 danger 로. Text 는 테두리 없이 accent 글자. 꺼지면 바탕 line · 글자 sub.
+ */
+internal fun kkButtonLook(c: KkColors, style: KkButtonStyle, danger: Boolean, enabled: Boolean, pressed: Boolean): KkButtonLook =
+    when (style) {
+        KkButtonStyle.Primary -> KkButtonLook(
+            bg = if (!enabled) c.line else if (danger) c.danger else c.accent,
+            fg = if (!enabled) c.sub else c.canvas,
+            border = null,
+        )
+        KkButtonStyle.Secondary -> KkButtonLook(
+            bg = if (pressed) c.line else Color.Transparent,
+            fg = if (!enabled) c.sub else if (danger) c.danger else c.ink,
+            border = if (enabled && danger) c.danger else c.line,
+        )
+        KkButtonStyle.Text -> KkButtonLook(
+            bg = if (pressed) c.line else Color.Transparent,
+            fg = if (!enabled) c.sub else if (danger) c.danger else c.accent,
+            border = null,
+        )
+    }
 
 @Composable
 fun KkSpinner(color: Color, size: Dp = 20.dp) {
@@ -151,10 +173,6 @@ fun KkPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
 @Composable
 fun KkSecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
     KkButton(text, onClick, modifier.fillMaxWidth(), KkButtonStyle.Secondary, KkButtonSize.L, enabled)
-
-@Composable
-fun KkGhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
-    KkButton(text, onClick, modifier.fillMaxWidth(), KkButtonStyle.Ghost, KkButtonSize.L, enabled)
 
 /** 소셜 버튼 한 벌의 색. [logoTint] 가 null 이면 로고 고유색(카카오 말풍선 · Google 4색 G). */
 class KkSocialColors(val bg: Color, val fg: Color, val border: Color? = null, val logoTint: Color? = null)
@@ -507,7 +525,7 @@ fun KkSegmentedControl(items: List<String>, selected: Int, onSelect: (Int) -> Un
 enum class KkTopBarLeading { Back, Close }
 
 /**
- * 상단 바(높이 48). Leading: 뒤로 · 닫기(44 터치), 가운데 제목(Title/S), Trailing: 글자(brand) · 버튼 · 없음.
+ * 상단 바(높이 48). Leading: 뒤로 · 닫기(44 터치), 제목(Title/S — 뒤로는 왼쪽, 닫기는 가운데), Trailing: 글자(brand) · 버튼 · 없음.
  */
 @Composable
 fun KkTopBar(
@@ -540,13 +558,14 @@ fun KkTopBar(
                 KkIcon(KkIcons.Close, tint = c.ink, size = 13.8.dp)
             }
         }
-        if (subtitle == null) {
+        if (leading == KkTopBarLeading.Close && subtitle == null) {
+            // Figma Top Bar · Close(덮어 띄운 화면): 제목 가운데.
             Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.align(Alignment.Center), maxLines = 1)
         } else {
-            // Figma Top Bar · Back(titles): 제목 + 작은 부제(날짜)를 왼쪽에 쌓는다.
+            // Figma Top Bar · Back(하위 화면 `341:92`): 제목(+ 작은 부제)을 뒤로 가기 옆 왼쪽에 쌓는다.
             Column(Modifier.align(Alignment.CenterStart).padding(start = 52.dp)) {
                 Text(title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
-                Text(subtitle, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+                if (subtitle != null) Text(subtitle, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
             }
         }
         Box(Modifier.align(Alignment.CenterEnd)) {
@@ -810,7 +829,7 @@ fun KkDialog(
         Text(title, style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
         if (body.isNotEmpty()) Text(body, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Ghost)
+            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Secondary)
             KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive)
         }
     }

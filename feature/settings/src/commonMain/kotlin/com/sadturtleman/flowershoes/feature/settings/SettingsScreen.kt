@@ -442,7 +442,7 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
             KkPrimaryButton("${price}으로 평생 쓰기", { run(buy = true) { it.buy() } }, Modifier.fillMaxWidth(), enabled = !busy)
             KkButton(
                 "구매 복원", { run(buy = false) { it.restore() } }, Modifier.align(Alignment.CenterHorizontally),
-                style = KkButtonStyle.Ghost, size = com.sadturtleman.flowershoes.core.designsystem.KkButtonSize.M, enabled = !busy,
+                style = KkButtonStyle.Secondary, size = com.sadturtleman.flowershoes.core.designsystem.KkButtonSize.M, enabled = !busy,
             )
         }
     }) {
@@ -719,7 +719,7 @@ private fun AnniversarySheet(initial: AnniversaryDraft, today: LocalDate, onDism
         KkInput(d.date?.dotted().orEmpty(), {}, label = "날짜", onClick = { picking = true })
         SwitchRow("매년 반복", d.repeats) { d = d.copy(repeats = it) }
         KkPrimaryButton(if (d.id == null) "추가하기" else "저장", { onSave(d) }, Modifier.fillMaxWidth(), enabled = d.title.isNotBlank() && d.date != null)
-        if (onDelete != null) KkButton("지우기", onDelete, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+        if (onDelete != null) KkButton("지우기", onDelete, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary)
     }
 }
 
@@ -1170,7 +1170,7 @@ private fun TermsPage(state: SettingsState, viewModel: SettingsViewModel, onBack
             KkSheetHeader("광고성 정보 수신")
             KkChoice("동의함", state.marketing, { viewModel.setMarketing(true); marketingSheet = false }, radio = true)
             KkChoice("동의 안 함", !state.marketing, { viewModel.setMarketing(false); marketingSheet = false }, radio = true)
-            KkButton("전문 보기", { marketingSheet = false; doc = TermsDoc.MARKETING }, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+            KkButton("전문 보기", { marketingSheet = false; doc = TermsDoc.MARKETING }, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary)
         }
     }
 }
@@ -1331,7 +1331,7 @@ private fun ExportPromptPage(
     val c = KkTheme.colors
     val export = rememberRecordExport(shareFiles, viewModel, onShared = onNext)
     Page(title, onBack, bottom = {
-        KkButton("건너뛰기", onNext, Modifier.align(Alignment.CenterHorizontally), style = KkButtonStyle.Ghost, size = com.sadturtleman.flowershoes.core.designsystem.KkButtonSize.M)
+        KkButton("건너뛰기", onNext, Modifier.align(Alignment.CenterHorizontally), style = KkButtonStyle.Secondary, size = com.sadturtleman.flowershoes.core.designsystem.KkButtonSize.M)
         KkPrimaryButton("내보내기", export.start, Modifier.fillMaxWidth(), loading = export.busy, enabled = export.preview != null)
     }) {
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {

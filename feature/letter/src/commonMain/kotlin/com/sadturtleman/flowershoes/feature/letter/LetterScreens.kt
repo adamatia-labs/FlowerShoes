@@ -756,7 +756,7 @@ private fun LeaveDialog(onDiscard: () -> Unit, onSave: () -> Unit, onStay: () ->
         ) {
             Text("쓰던 편지는 임시저장할까요?", style = KkTheme.type.title, color = c.ink)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm, Alignment.End)) {
-                KkButton("지우기", onDiscard, style = KkButtonStyle.Ghost, size = KkButtonSize.M)
+                KkButton("지우기", onDiscard, style = KkButtonStyle.Secondary, size = KkButtonSize.M)
                 KkButton("저장하고 나가기", onSave, size = KkButtonSize.M)
             }
             Box(
@@ -806,7 +806,7 @@ fun LetterComposeScreen(
             else PaperRow(paper, onPick = { onIntent(LetterIntent.ChoosePaper(it)) }, onMore = onMorePapers)
             ComposeTools(d, canPhoto = canPhoto, onDrawing = onDrawing, onPhoto = onPhoto, onSticker = onSticker, onFont = onFont)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-                KkButton("예약", onSchedule, Modifier.width(100.dp), style = KkButtonStyle.Ghost, enabled = !d.sending)
+                KkButton("예약", onSchedule, Modifier.width(100.dp), style = KkButtonStyle.Secondary, enabled = !d.sending)
                 KkButton(
                     if (at != null) "예약해서 보내기" else "${state.partnerName}에게 보내기",
                     { onIntent(LetterIntent.Send) }, Modifier.weight(1f),

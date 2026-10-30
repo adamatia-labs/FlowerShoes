@@ -50,7 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.designsystem.KkBanner
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
-import com.sadturtleman.flowershoes.core.designsystem.KkGhostButton
+import com.sadturtleman.flowershoes.core.designsystem.KkSecondaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkChoice
 import com.sadturtleman.flowershoes.core.designsystem.KkCheckbox
 import com.sadturtleman.flowershoes.core.designsystem.KkDdayCard
@@ -147,7 +147,7 @@ private fun AccountDeletedScreen(onDone: () -> Unit) {
             Text("그동안 고마웠어요", style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center)
             Text("기록을 모두 지웠어요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
         }
-        KkButton("처음 화면으로", onDone, Modifier.fillMaxWidth().padding(vertical = KkSpacing.lg), style = com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle.Ghost)
+        KkButton("처음 화면으로", onDone, Modifier.fillMaxWidth().padding(vertical = KkSpacing.lg), style = com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle.Secondary)
     }
 }
 
@@ -212,7 +212,7 @@ fun OnboardingScreen(
                     OnboardingStep.SERVICE -> {
                         KkPrimaryButton("다음", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
                         // 곰신은 연인 입대일을 몰라도 시작한다(345:642).
-                        if (state.role == Role.GOMSIN) KkGhostButton("나중에 넣을게요", { onIntent(OnboardingIntent.SkipService) })
+                        if (state.role == Role.GOMSIN) KkSecondaryButton("나중에 넣을게요", { onIntent(OnboardingIntent.SkipService) })
                     }
                     else -> KkPrimaryButton("다음", { onIntent(OnboardingIntent.Next) }, enabled = state.canProceed)
                 }

@@ -44,7 +44,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -73,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -120,15 +122,7 @@ private fun CalendarOnePane(state: CalendarState, onIntent: (CalendarIntent) -> 
             .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(if (state.expanded) KkSpacing.sm else KkSpacing.lg),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("캘린더", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
-            Text(
-                "+ 추가", style = KkTheme.type.label, color = c.accent,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.sm))
-                    .clickable(role = Role.Button) { onIntent(CalendarIntent.NewEvent(state.selected)) }
-                    .padding(vertical = KkSpacing.md, horizontal = KkSpacing.xs),
-            )
-        }
+        MonthHeader(state, onIntent)
         state.pool?.let { LeaveBand(it, onOpenLeave) }
         state.nextMeet?.let { NextMeet(it, state.today, compact = state.expanded) }
         if (state.expanded) MonthCard(state, onIntent) else WeekStrip(state, onIntent)
@@ -174,14 +168,7 @@ private fun CalendarTwoPane(state: CalendarState, onIntent: (CalendarIntent) -> 
                 .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.sm),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${state.month.year}년 ${state.month.month.number}월", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { onIntent(CalendarIntent.NewEvent(state.selected)) }
-                        .semantics { contentDescription = "일정 추가" },
-                    contentAlignment = Alignment.Center,
-                ) { KkIcon(KkIcons.Plus, tint = c.ink) }
-            }
+            MonthHeader(state, onIntent)
             MonthCard(state, onIntent, flat = true)
             if (!state.empty) Legend()
         }
@@ -219,6 +206,20 @@ private fun CalendarTwoPane(state: CalendarState, onIntent: (CalendarIntent) -> 
             Spacer(Modifier.height(KkSpacing.md))
             KkAd(KkAdSlot.CALENDAR)
         }
+    }
+}
+
+/** 머리(Figma Top Bar · Root): 보는 달 "2026년 10월" + 일정 추가(+). */
+@Composable
+private fun MonthHeader(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
+    val c = KkTheme.colors
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("${state.month.year}년 ${state.month.month.number}월", style = KkTheme.type.title, color = c.ink, modifier = Modifier.weight(1f))
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { onIntent(CalendarIntent.NewEvent(state.selected)) }
+                .semantics { contentDescription = "일정 추가" },
+            contentAlignment = Alignment.Center,
+        ) { KkIcon(KkIcons.Plus, tint = c.ink) }
     }
 }
 
@@ -267,36 +268,18 @@ private fun NextMeet(e: Event, today: LocalDate, compact: Boolean) {
     }
 }
 
-/** 접힌 달력: 고른 날이 있는 한 주(Week Strip). 고른 날은 반전색. */
+/** 접힌 달력(Figma 캘린더 · 접힘): 요일 머리 + 고른 날이 있는 한 주. 칸은 펼친 달력과 같다. */
 @Composable
 private fun WeekStrip(state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
-    val c = KkTheme.colors
-    val cellPadding = if (LocalDensity.current.fontScale > 1.3f) 2.dp else KkSpacing.sm
-    Row(Modifier.fillMaxWidth().monthSwipe(onIntent), horizontalArrangement = Arrangement.SpaceBetween) {
-        state.week.forEach { day ->
-            val on = day == state.selected
-            val shape = RoundedCornerShape(KkRadius.md)
-            val events = state.eventsOn(day)
-            Column(
-                Modifier.width(44.dp)
-                    .then(if (on) Modifier else Modifier.kkElevation(KkElevation.Low, shape))
-                    .clip(shape)
-                    .background(if (on) c.ink else c.surface)
-                    .clickable(role = Role.Button) { onIntent(CalendarIntent.Select(day)) }
-                    .semantics { contentDescription = day.a11y(events.size, on) }
-                    .padding(horizontal = cellPadding, vertical = KkSpacing.sm),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs),
-            ) {
-                Text(day.weekdayKo(), style = KkTheme.type.caption, color = if (on) c.canvas else c.sub)
-                Text("${day.day}", maxLines = 1, softWrap = false, style = KkTheme.type.label, color = if (on) c.canvas else c.ink)
-                Dots(events)
-            }
+    Column(Modifier.fillMaxWidth().monthSwipe(onIntent), verticalArrangement = Arrangement.spacedBy(KkSpacing.xs)) {
+        WeekdayHeader()
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            state.week.forEach { day -> DayCell(day, state, onIntent) }
         }
     }
 }
 
-/** 펼친 달력(Calendar Card · Month Grid). 오늘 = 연한 브랜드 원, 고른 날 = 브랜드 원, 일요일 = 빨강. */
+/** 펼친 달력(Calendar Card · Month Grid). 칸은 [DayCell]. */
 @Composable
 private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit, flat: Boolean = false) {
     val c = KkTheme.colors
@@ -308,55 +291,69 @@ private fun MonthCard(state: CalendarState, onIntent: (CalendarIntent) -> Unit, 
             .padding(horizontal = KkSpacing.md, vertical = KkSpacing.lg),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            WEEKDAYS_SUN_FIRST.forEach {
-                Box(Modifier.width(44.dp).heightIn(min = 20.dp), contentAlignment = Alignment.TopCenter) {
-                    Text(it, style = KkTheme.type.caption, color = c.sub)
-                }
-            }
-        }
+        WeekdayHeader()
         state.cells.chunked(7).forEach { week ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 week.forEach { day ->
-                    val inMonth = day.month == state.month.month
-                    val selected = day == state.selected
-                    val events = if (inMonth) state.eventsOn(day) else emptyList()
-                    Column(
-                        Modifier.width(44.dp).heightIn(min = 48.dp).then(
-                            if (inMonth) Modifier.clip(RoundedCornerShape(KkRadius.sm))
-                                .clickable(role = Role.Button) { onIntent(CalendarIntent.Select(day)) }
-                                .semantics { contentDescription = day.a11y(events.size, selected) }
-                            else Modifier,
-                        ),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs),
-                    ) {
-                        if (inMonth) {
-                            Box(
-                                Modifier.sizeIn(minWidth = 28.dp, minHeight = 28.dp).clip(CircleShape).background(
-                                    when {
-                                        selected -> c.accent
-                                        day == state.today -> c.line
-                                        else -> Color.Transparent
-                                    },
-                                ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "${day.day}", maxLines = 1, softWrap = false, style = KkTheme.type.label,
-                                    color = when {
-                                        selected -> c.surface
-                                        day.dayOfWeek == DayOfWeek.SUNDAY -> c.danger
-                                        else -> c.ink
-                                    },
-                                )
-                            }
-                            Dots(events)
-                        }
-                    }
+                    if (day.month == state.month.month) DayCell(day, state, onIntent) else Spacer(Modifier.width(44.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WeekdayHeader() {
+    val c = KkTheme.colors
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        WEEKDAYS_SUN_FIRST.forEach {
+            Box(Modifier.width(44.dp).heightIn(min = 20.dp), contentAlignment = Alignment.TopCenter) {
+                Text(it, style = KkTheme.type.caption, color = c.sub)
+            }
+        }
+    }
+}
+
+/**
+ * 달력 칸(Figma Calendar Day `341:1066`): 30 원 안의 날짜 + 일정 점.
+ * 오늘 = accent 테두리 원, 고른 날(오늘이 아닐 때) = accent 원 · canvas 글자, 일요일 = 빨강.
+ */
+@Composable
+private fun DayCell(day: LocalDate, state: CalendarState, onIntent: (CalendarIntent) -> Unit) {
+    val c = KkTheme.colors
+    val today = day == state.today
+    val selected = day == state.selected
+    val events = state.eventsOn(day)
+    Column(
+        Modifier.width(44.dp).heightIn(min = 52.dp).clip(RoundedCornerShape(KkRadius.sm))
+            .clickable(role = Role.Button) { onIntent(CalendarIntent.Select(day)) }
+            .semantics { contentDescription = day.a11y(events.size, selected) }
+            .padding(vertical = KkSpacing.xs),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
+    ) {
+        val filled = selected && !today
+        Box(
+            Modifier.sizeIn(minWidth = 30.dp, minHeight = 30.dp).clip(CircleShape)
+                .then(
+                    when {
+                        filled -> Modifier.background(c.accent)
+                        today -> Modifier.border(1.5.dp, c.accent, CircleShape)
+                        else -> Modifier
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "${day.day}", maxLines = 1, softWrap = false, style = KkTheme.type.label,
+                color = when {
+                    filled -> c.canvas
+                    day.dayOfWeek == DayOfWeek.SUNDAY -> c.danger
+                    else -> c.ink
+                },
+            )
+        }
+        Dots(events)
     }
 }
 
@@ -385,27 +382,33 @@ private fun NoEvents(text: String) {
     Text(text, style = KkTheme.type.body, color = KkTheme.colors.sub, modifier = Modifier.padding(vertical = KkSpacing.sm))
 }
 
-/** 일정 한 줄(Event): 색 막대 · 제목 · 기간 · 종류 태그. */
+/** 일정 한 줄(Figma Event Chip `341:1100`): 일정 색을 옅게 채운 줄 + 왼쪽 색 막대 · 제목 · 기간. */
 @Composable
 private fun EventRow(e: Event, onClick: () -> Unit) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
+    val color = c.eventColor(e.type)
     Row(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(KkRadius.sm))
+            .background(color.copy(alpha = EVENT_FILL_ALPHA))
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
-        horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
+            // 종류 태그가 없으니 종류는 색과 함께 읽어 준다.
+            .semantics { stateDescription = e.type.label() }
+            .height(IntrinsicSize.Min)
+            .padding(end = KkSpacing.md),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(4.dp).height(36.dp).clip(RoundedCornerShape(2.dp)).background(c.eventColor(e.type)))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
+        Box(Modifier.width(4.dp).fillMaxHeight().padding(vertical = KkSpacing.sm).background(color))
+        Column(Modifier.weight(1f).padding(vertical = KkSpacing.sm)) {
             val title = e.title.ifBlank { e.type.label() }
-            Text(e.nightsLabel()?.let { "$title · $it" } ?: title, style = KkTheme.type.body, color = c.ink, maxLines = 1)
+            Text(e.nightsLabel()?.let { "$title · $it" } ?: title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
             Text(e.rangeLabel(), style = KkTheme.type.caption, color = c.sub, maxLines = 1)
         }
-        KkEventTag(e.type.label(), c.eventColor(e.type))
     }
 }
+
+/** Event Chip 바탕: 일정 색 12%(Figma 견본에서 잰 값). */
+private const val EVENT_FILL_ALPHA = 0.12f
 
 /** 옆으로 밀어 달 넘기기 + 스크린리더용 이전 달 · 다음 달 동작. */
 private fun Modifier.monthSwipe(onIntent: (CalendarIntent) -> Unit): Modifier = this

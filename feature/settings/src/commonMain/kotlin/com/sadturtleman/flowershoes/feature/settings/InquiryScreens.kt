@@ -257,7 +257,7 @@ internal fun InquiryHistoryPage(transport: InquiryTransport?, onBack: () -> Unit
         if (items != null) {
             Column(Modifier.padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg)) {
                 if (items.isEmpty()) KkPrimaryButton("문의하기", onNew, Modifier.fillMaxWidth(), enabled = transport != null)
-                else KkButton("새로 문의하기", onNew, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+                else KkButton("새로 문의하기", onNew, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary)
             }
         }
     }
