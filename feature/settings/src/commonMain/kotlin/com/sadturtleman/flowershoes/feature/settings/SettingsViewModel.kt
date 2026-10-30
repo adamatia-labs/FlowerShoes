@@ -3,7 +3,11 @@ package com.sadturtleman.flowershoes.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.Identity
+import com.sadturtleman.flowershoes.core.model.Event
+import com.sadturtleman.flowershoes.core.model.EventType
+import kotlinx.datetime.atTime
 import com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER
 import com.sadturtleman.flowershoes.core.data.NotificationPrefs
 import com.sadturtleman.flowershoes.core.data.NotifyPrefsTransport
@@ -45,6 +49,8 @@ data class SettingsState(
     val linked: Boolean = false,
     val linkedSince: LocalDate? = null,
     val anniversary: LocalDate? = null,
+    /** 직접 추가한 기념일(생일 · 처음 만난 날). 커플 기념일은 [anniversary]. */
+    val customAnniversaries: List<Event> = emptyList(),
     val daysTogether: Int? = null,
     val service: Service? = null,
     val timeline: ServiceTimeline? = null,
@@ -62,12 +68,16 @@ class SettingsViewModel(
     private val profile: ProfileRepository,
     private val unlink: UnlinkService,
     private val identity: Identity,
+    private val events: EventRepository,
     private val notifyTransport: NotifyPrefsTransport? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
 
-    private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 2)
-    val notices: SharedFlow<String> = _notices
+    /** 토스트 한 번. [error] 면 오류 토스트(구매 실패 등). */
+    data class Notice(val message: String, val error: Boolean = false)
+
+    private val _notices = MutableSharedFlow<Notice>(extraBufferCapacity = 2)
+    val notices: SharedFlow<Notice> = _notices
 
     private val people = combine(profile.observeCouple(), profile.observeUsers(), profile.observeAnniversary()) { couple, users, anniversary ->
         Triple(couple, users, anniversary)
@@ -75,10 +85,10 @@ class SettingsViewModel(
 
     val state: StateFlow<SettingsState> = combine(
         combine(settings.state, settings.displayMode, settings.accountProvider) { d, mode, provider -> Triple(d, mode, provider) },
-        profile.observeTimelines(),
+        combine(profile.observeTimelines(), events.observeAnniversaries()) { t, a -> t to a },
         people,
         combine(settings.notifyPrefs, settings.marketingConsent) { n, m -> n to m },
-    ) { (d, mode, provider), timelines, (couple, users, anniversary), (notify, marketing) ->
+    ) { (d, mode, provider), (timelines, customAnniversaries), (couple, users, anniversary), (notify, marketing) ->
         val me = identity.userId
         val partnerId = couple?.partnerUserId?.takeIf { it.isNotBlank() }
         val today = clock.today()
@@ -94,6 +104,7 @@ class SettingsViewModel(
             linked = partnerId != null,
             linkedSince = since,
             anniversary = anniversary,
+            customAnniversaries = customAnniversaries,
             daysTogether = (anniversary ?: since)?.let { it.daysUntil(today) + 1 },
             service = timelines.firstOrNull()?.first,
             timeline = timelines.firstOrNull()?.second,
@@ -117,29 +128,37 @@ class SettingsViewModel(
     fun setAnniversary(date: LocalDate?) = viewModelScope.launch { profile.setAnniversary(date) }
 
     /**
-     * 군종 · 입대일 고치기(공유 데이터, LWW — 연인 폰에도 같이 바뀐다).
-     * 아직 없으면(곰신이 온보딩에서 "나중에 넣을게요") 입대일을 고를 때 새로 만든다: 군인 것 자리는 군인 uid,
-     * 연결 전 곰신이면 [PENDING_SOLDIER].
+     * 군 정보 › 수정 › 저장: 군종 · 입대일 · 전역일을 한 번에(공유 데이터, LWW — 연인 폰에도 같이 바뀐다).
+     * 전역일은 계산한 날과 다를 때만 사용자 수정값(조기 전역 · 연장)으로 남는다.
+     * 아직 없으면(곰신이 온보딩에서 "나중에 넣을게요") 새로 만든다: 군인 것 자리는 군인 uid, 연결 전 곰신이면 [PENDING_SOLDIER].
      */
-    fun updateService(branch: Branch? = null, enlist: LocalDate? = null) {
+    fun saveMilitary(branch: Branch, enlist: LocalDate, discharge: LocalDate?) {
         val s = state.value.service
+        val override = dischargeOverrideFor(branch, enlist, discharge)
         viewModelScope.launch {
-            if (s != null) {
-                profile.saveService(s.copy(branch = branch ?: s.branch, enlistDate = enlist ?: s.enlistDate))
-                return@launch
+            val base = s ?: run {
+                val owner = if (state.value.role == Role.SOLDIER) identity.userId
+                else profile.observePartnerId().first()?.takeIf { it.isNotBlank() } ?: PENDING_SOLDIER
+                Service(owner, branch, enlist, ServiceRulesTable.BUNDLED.version)
             }
-            val date = enlist ?: return@launch
-            val owner = if (state.value.role == Role.SOLDIER) identity.userId
-            else profile.observePartnerId().first()?.takeIf { it.isNotBlank() } ?: PENDING_SOLDIER
-            profile.saveService(Service(owner, branch ?: Branch.ARMY, date, ServiceRulesTable.BUNDLED.version))
+            profile.saveService(base.copy(branch = branch, enlistDate = enlist, dischargeOverride = override))
         }
     }
 
-    /** 조기 전역 · 연장 같은 사용자 수정값. null 이면 규칙으로 계산한 날로 돌아간다. */
-    fun overrideDischarge(date: LocalDate?) {
-        val s = state.value.service ?: return
-        viewModelScope.launch { profile.saveService(s.copy(dischargeOverride = date)) }
+    /** 기념일 › 직접 추가한 날: 새로 넣거나([id] null) 고친다. 기념일 일정 하나(캘린더에도 보인다). */
+    fun saveAnniversary(id: String?, title: String, date: LocalDate, repeats: Boolean) {
+        val name = title.trim().ifBlank { return }
+        viewModelScope.launch {
+            val old = id?.let { events.get(it) }
+            val base = old ?: Event(
+                id = events.newId(), type = EventType.ANNIVERSARY, title = name, start = date.atTime(0, 0), end = date.atTime(23, 59),
+                alarm = false, updatedAt = clock.now(), lamport = 0, lastWriterDevice = "",
+            )
+            events.save(base.copy(title = name, start = date.atTime(0, 0), end = date.atTime(23, 59), repeatYearly = repeats, updatedAt = clock.now()))
+        }
     }
+
+    fun deleteAnniversary(id: String) = viewModelScope.launch { events.delete(id) }
 
     /** 알림 설정: 이 기기에 저장하고 서버(받을 종류 · 조용한 시간 · 묶음)에 올린다. */
     fun setNotify(prefs: NotificationPrefs, platform: PlatformActions) {
@@ -153,10 +172,6 @@ class SettingsViewModel(
     /** 설정 › 알림 "편지 · 보고싶어 · 일정 알림": 받을 종류를 한꺼번에 바꾼다(3개월 기록 알림은 따로). */
     fun setNotifyMaster(on: Boolean, platform: PlatformActions) = setNotify(state.value.notify.withNotifyMaster(on), platform)
 
-    fun setAnniversaryAlerts(hundreds: Boolean, years: Boolean, platform: PlatformActions) {
-        setNotify(state.value.notify.copy(anniversary100 = hundreds, anniversaryYear = years), platform)
-    }
-
     /** 3개월마다 기록 받아 두기(설정 › 알림). 이 폰이 예약하는 로컬 알림이다. */
     fun setExportReminder(on: Boolean, platform: PlatformActions) = setNotify(state.value.notify.copy(exportReminder = on), platform)
 
@@ -165,8 +180,8 @@ class SettingsViewModel(
 
     fun setMarketing(on: Boolean) = viewModelScope.launch { settings.setMarketingConsent(on) }
 
-    fun notice(message: String) {
-        _notices.tryEmit(message)
+    fun notice(message: String, error: Boolean = false) {
+        _notices.tryEmit(Notice(message, error))
     }
 
     /** 되돌릴 수 없다. 화면이 확인 문구 입력(+ 기기 인증)을 받은 뒤에만 부른다. */
@@ -176,7 +191,12 @@ class SettingsViewModel(
     fun afterPartnerUnlinked(after: AfterUnlink) = viewModelScope.launch { unlink.onPartnerUnlinked(after) }
 
     /** 탈퇴. 끝나면 설정이 비워져 셸이 처음 화면(로그인)으로 돌아간다. */
-    fun deleteAccount() = viewModelScope.launch { unlink.deleteAccount() }
+    fun deleteAccount() = viewModelScope.launch {
+        runCatching { unlink.deleteAccount() }.onFailure {
+            if (it is kotlinx.coroutines.CancellationException) throw it
+            notice("탈퇴하지 못했어요. 연결을 확인하고 다시 해 주세요", error = true)
+        }
+    }
 
     /** 로그인 제공자 이름(로그인 계정 · 기기 교체 "카카오 계정 비밀번호 바꾸기"). */
     fun providerLabel(provider: String?): String = when (provider) {

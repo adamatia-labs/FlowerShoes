@@ -4,6 +4,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
+/** 꽃신 평생 값(planning §6). 스토어 가격을 못 읽었을 때 설정 › 꽃신 평생 · 편지 쓰기 평생 시트가 쓴다. */
+const val LIFETIME_PRICE = "7,900원"
+
+/** 꽃신 평생으로 여는 편지지 수(planning §6). :feature:letter 의 편지지 목록과 테스트로 맞춰 본다. */
+const val LIFETIME_PAPERS = 5
+
 /** 결제 결과(설정 › 꽃신 평생). */
 sealed interface PurchaseOutcome {
     data object Purchased : PurchaseOutcome

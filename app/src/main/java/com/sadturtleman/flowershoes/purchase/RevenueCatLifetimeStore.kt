@@ -96,9 +96,9 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
             update(result.customerInfo)
             if (has()) PurchaseOutcome.Purchased else PurchaseOutcome.Failed("결제는 됐지만 이용권을 확인하지 못했어요. 구매 복원을 눌러 주세요")
         } catch (e: PurchasesTransactionException) {
-            if (e.userCancelled) PurchaseOutcome.Cancelled else PurchaseOutcome.Failed(message(e.code))
+            if (e.userCancelled) PurchaseOutcome.Cancelled else PurchaseOutcome.Failed(message(e.code, buying = true))
         } catch (e: PurchasesException) {
-            PurchaseOutcome.Failed(message(e.code))
+            PurchaseOutcome.Failed(message(e.code, buying = true))
         }
     }
 
@@ -121,12 +121,18 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
         const val BOOK_ENTITLEMENT = "memory_book"
     }
 
-    private fun message(code: PurchasesErrorCode): String = when (code) {
-        PurchasesErrorCode.NetworkError -> "인터넷 연결을 확인해 주세요"
+    /**
+     * 실패 토스트 문구. 결제가 끝나지 않은 오류(Play 결제가 완료되지 않음)라 돈은 나가지 않았다 —
+     * 구매 실패는 Figma 8 · 꽃신 평생 · 실패 문구로 그렇게 알린다. 결제 대기 · 이미 산 상품은 따로.
+     */
+    private fun message(code: PurchasesErrorCode, buying: Boolean = false): String = when (code) {
         PurchasesErrorCode.ProductAlreadyPurchasedError -> "이미 산 상품이에요. 구매 복원을 눌러 주세요"
         PurchasesErrorCode.PaymentPendingError -> "결제를 확인하는 중이에요. 끝나면 바로 열려요"
-        PurchasesErrorCode.StoreProblemError -> "스토어에 문제가 있어요. 잠시 뒤 다시 해 주세요"
         PurchasesErrorCode.PurchaseNotAllowedError -> "이 기기에서는 결제할 수 없어요"
-        else -> "결제하지 못했어요. 잠시 뒤 다시 해 주세요"
+        else -> if (buying) "결제가 안 됐어요. 돈은 나가지 않았어요" else when (code) {
+            PurchasesErrorCode.NetworkError -> "인터넷 연결을 확인해 주세요"
+            PurchasesErrorCode.StoreProblemError -> "스토어에 문제가 있어요. 잠시 뒤 다시 해 주세요"
+            else -> "구매 기록을 불러오지 못했어요. 잠시 뒤 다시 해 주세요"
+        }
     }
 }

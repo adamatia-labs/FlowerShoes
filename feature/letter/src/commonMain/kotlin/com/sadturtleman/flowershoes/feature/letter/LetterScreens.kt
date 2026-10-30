@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sadturtleman.flowershoes.core.data.LIFETIME_PRICE
 import com.sadturtleman.flowershoes.core.data.SEOUL
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
@@ -690,8 +691,6 @@ private fun LeaveDialog(onDiscard: () -> Unit, onSave: () -> Unit, onStay: () ->
     }
 }
 
-/** 스토어 가격을 못 읽었을 때(설정 › 꽃신 평생과 같은 값). */
-private const val LIFETIME_PRICE = "7,900원"
 
 /**
  * 편지 쓰기 화면 몸통(시트 · 확인 창 빼고). 화면 상태는 [state] 하나로 정해진다 — 빈 편지지 · 쓰는 중 · 예약 · 설정됨 · 보내는 중.

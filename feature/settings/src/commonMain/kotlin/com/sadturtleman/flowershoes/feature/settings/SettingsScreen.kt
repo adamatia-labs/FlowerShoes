@@ -72,8 +72,11 @@ import com.sadturtleman.flowershoes.core.designsystem.KkSheetOption
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTermsScreen
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
-import com.sadturtleman.flowershoes.core.designsystem.KkThemeCard
 import com.sadturtleman.flowershoes.core.designsystem.KkToast
+import com.sadturtleman.flowershoes.core.designsystem.KkToastType
+import com.sadturtleman.flowershoes.core.designsystem.KkServiceProgress
+import kotlin.math.roundToInt
+import com.sadturtleman.flowershoes.core.data.LIFETIME_PRICE
 import com.sadturtleman.flowershoes.core.designsystem.KkTopBar
 import com.sadturtleman.flowershoes.core.designsystem.TermsDoc
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
@@ -146,7 +149,7 @@ fun SettingsRoute(
     val inquiries = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.InquiryTransport>()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val stack = remember { mutableStateListOf(startAt) }
-    var notice by remember { mutableStateOf<String?>(null) }
+    var notice by remember { mutableStateOf<SettingsViewModel.Notice?>(null) }
     LaunchedEffect(viewModel) { viewModel.notices.collect { notice = it } }
     LaunchedEffect(notice) { if (notice != null) { delay(2_500); notice = null } }
     val back: () -> Unit = { if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack() }
@@ -161,7 +164,7 @@ fun SettingsRoute(
             SettingsPage.LIFETIME -> LifetimePage(state, viewModel, back)
             SettingsPage.CONNECTION -> ConnectionPage(state, back, onOpenPairing, open)
             SettingsPage.MILITARY -> MilitaryPage(state, viewModel, back)
-            SettingsPage.ANNIVERSARY -> AnniversaryPage(state, platform, viewModel, back)
+            SettingsPage.ANNIVERSARY -> AnniversaryPage(state, viewModel, back)
             SettingsPage.THEME -> ThemePage(state, viewModel, back)
             SettingsPage.DISPLAY_MODE -> DisplayModePage(state, viewModel, back)
             SettingsPage.WIDGETS -> WidgetsPage(state, platform, back)
@@ -182,10 +185,18 @@ fun SettingsRoute(
                     if (sent) stack[stack.lastIndex] = SettingsPage.INQUIRY_HISTORY
                 },
             )
-            SettingsPage.INQUIRY_HISTORY -> InquiryHistoryPage(inquiries, back)
+            SettingsPage.INQUIRY_HISTORY -> InquiryHistoryPage(inquiries, back, onNew = {
+                // 문의하기 › 내역에서 왔으면 돌아가고, 보낸 뒤 바로 온 내역이면 문의하기로 바꾼다.
+                if (stack.getOrNull(stack.lastIndex - 1) == SettingsPage.INQUIRY) back() else stack[stack.lastIndex] = SettingsPage.INQUIRY
+            })
         }
         }
-        notice?.let { KkToast(it, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg)) }
+        notice?.let {
+            KkToast(
+                it.message, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
+                type = if (it.error) KkToastType.Error else KkToastType.Default,
+            )
+        }
     }
 }
 
@@ -198,11 +209,13 @@ private fun Page(
     onBack: () -> Unit,
     bottom: (@Composable ColumnScope.() -> Unit)? = null,
     leading: KkTopBarLeading = KkTopBarLeading.Back,
+    trailingText: String? = null,
+    onTrailing: () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = KkTheme.colors
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
-        KkTopBar(title, onLeading = onBack, leading = leading)
+        KkTopBar(title, onLeading = onBack, leading = leading, trailingText = trailingText, onTrailing = onTrailing)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.lg, bottom = KkSpacing.xxxl),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.xl),
@@ -230,7 +243,6 @@ private fun Divider() = Box(Modifier.fillMaxWidth().height(1.dp).background(KkTh
 private fun SwitchRow(label: String, on: Boolean, onChange: (Boolean) -> Unit) =
     KkListRow(label, trailing = KkRowTrailing.Switch, switchOn = on, onClick = { onChange(!on) })
 
-private fun LocalDate.dotted() = "$year.${month.number.toString().padStart(2, '0')}.${day.toString().padStart(2, '0')}"
 
 /** "지수와" · "민준과". */
 private fun String.withAnd(): String {
@@ -249,9 +261,6 @@ internal fun String.withSubject(): String {
 private fun hm(minute: Int) = "${(minute / 60).toString().padStart(2, '0')}:${(minute % 60).toString().padStart(2, '0')}"
 
 // ── 설정(첫 화면) ─────────────────────────────────────────────────────────
-
-/** 꽃신 평생 값(출시 기념가). 결제는 스토어 결제 연결과 함께 열린다. */
-private const val LIFETIME_PRICE = "7,900원"
 
 /**
  * 설정(Figma 8 · 설정 `376:4461`): 프로필 · 우리 · 꾸미기 · 알림 · 데이터와 보안 · 도움 · 계정 + 광고 칸.
@@ -283,7 +292,10 @@ private fun MainPage(
                 onClick = { open(SettingsPage.MILITARY) },
             )
             Divider()
-            KkListRow("기념일", value = state.anniversary?.dotted() ?: "정하기", onClick = { open(SettingsPage.ANNIVERSARY) })
+            KkListRow(
+                "기념일", value = anniversaryCountLabel(state.anniversary != null, state.customAnniversaries.size),
+                onClick = { open(SettingsPage.ANNIVERSARY) },
+            )
         }
         Group("꾸미기") {
             val koin = org.koin.compose.getKoin()
@@ -369,15 +381,9 @@ private fun NotificationsPage(state: SettingsState, platform: PlatformActions, v
 
 // ── 꽃신 평생 ─────────────────────────────────────────────────────────────
 
-private val LIFETIME_BENEFITS = listOf(
-    "광고 제거",
-    "손글씨 글꼴 · 편지지 전체",
-    "펜 · 색 · 위젯 꾸미기",
-)
-
 /**
- * 꽃신 평생(Figma 8 · 꽃신 평생 `377:4834`): 한 번 결제(Android: RevenueCat). 구매 전 · 구매 완료.
- * 결제가 없는 빌드(iOS 아직)에서는 "앱 출시와 함께" 안내만.
+ * 꽃신 평생(Figma 8 · 꽃신 평생 `377:4834`): 한 번 결제(Android: RevenueCat). 구매 전 · 구매 중 · 구매 완료 · 구매 복원 · 실패.
+ * 결제가 없는 빌드(iOS 아직)에서는 "앱 출시와 함께" 안내만. 실패 문구는 스토어 쪽(돈이 나갔는지 아는 곳)이 정해 오류 토스트로 띄운다.
  */
 @Composable
 private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
@@ -387,30 +393,35 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
     val owned by (store?.owned ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsStateWithLifecycle()
     var storePrice by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var buying by remember { mutableStateOf(false) }
     LaunchedEffect(store) { storePrice = store?.price() }
-    fun run(action: suspend (com.sadturtleman.flowershoes.core.data.LifetimeStore) -> com.sadturtleman.flowershoes.core.data.PurchaseOutcome) {
+    fun run(buy: Boolean, action: suspend (com.sadturtleman.flowershoes.core.data.LifetimeStore) -> com.sadturtleman.flowershoes.core.data.PurchaseOutcome) {
         if (store == null) { viewModel.notice("결제는 앱 출시와 함께 열려요"); return }
         if (busy) return
         busy = true
+        buying = buy
         scope.launch {
             when (val r = action(store)) {
-                com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Purchased -> Unit // 구매 완료 화면으로 바뀐다.
+                // 구매 완료 화면으로 바뀐다. 복원이면 되찾았다고 한 번 알린다.
+                com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Purchased -> if (!buy) viewModel.notice("꽃신 평생을 되찾았어요")
                 com.sadturtleman.flowershoes.core.data.PurchaseOutcome.NothingToRestore -> viewModel.notice("이 계정으로 산 기록이 없어요")
                 com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Cancelled -> Unit
-                is com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Failed -> viewModel.notice(r.message)
+                is com.sadturtleman.flowershoes.core.data.PurchaseOutcome.Failed -> viewModel.notice(r.message, error = true)
             }
             busy = false
+            buying = false
         }
     }
     val price = storePrice ?: LIFETIME_PRICE
     val partner = if (state.linked) state.partnerName else "연인"
+    Box(Modifier.fillMaxSize()) {
     Page("꽃신 평생", onBack, leading = KkTopBarLeading.Close, bottom = {
         if (owned) {
             KkPrimaryButton("좋아요", onBack, Modifier.fillMaxWidth())
         } else {
-            KkPrimaryButton("${price}으로 평생 쓰기", { run { it.buy() } }, Modifier.fillMaxWidth(), loading = busy)
+            KkPrimaryButton("${price}으로 평생 쓰기", { run(buy = true) { it.buy() } }, Modifier.fillMaxWidth(), enabled = !busy)
             KkButton(
-                "구매 복원", { run { it.restore() } }, Modifier.align(Alignment.CenterHorizontally),
+                "구매 복원", { run(buy = false) { it.restore() } }, Modifier.align(Alignment.CenterHorizontally),
                 style = KkButtonStyle.Ghost, size = com.sadturtleman.flowershoes.core.designsystem.KkButtonSize.M, enabled = !busy,
             )
         }
@@ -432,7 +443,7 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
         }
         Text("한 번 사면 평생, 둘이 함께", style = KkTheme.type.handL, color = c.ink, modifier = Modifier.align(Alignment.CenterHorizontally))
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
-            (LIFETIME_BENEFITS + "연결된 ${partner}도 함께").forEach { b ->
+            lifetimeBenefits(partner).forEach { b ->
                 Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
                     KkIcon(KkIcons.Check, tint = c.accent, size = 16.dp)
                     Text(b, style = KkTheme.type.body, color = c.ink)
@@ -440,6 +451,23 @@ private fun LifetimePage(state: SettingsState, viewModel: SettingsViewModel, onB
             }
         }
         Text("구독 아니에요 · 한 번만 결제해요", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.align(Alignment.CenterHorizontally))
+    }
+    // 구매 중(Figma 8 · 꽃신 평생 · 구매 중): 스토어 결제 창이 닫히고 확인을 기다리는 동안 화면을 막는다.
+    if (buying) {
+        Box(
+            Modifier.fillMaxSize().background(c.ink.copy(alpha = 0.35f)).clickable(enabled = true, onClick = {}),
+            contentAlignment = Alignment.Center,
+        ) {
+            val shape = RoundedCornerShape(KkRadius.xl)
+            Column(
+                Modifier.kkElevation(KkElevation.High, shape).clip(shape).background(c.surface).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.xxl),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
+            ) {
+                com.sadturtleman.flowershoes.core.designsystem.KkSpinner(c.accent, 28.dp)
+                Text("결제를 확인하고 있어요", style = KkTheme.type.labelBold, color = c.ink)
+            }
+        }
+    }
     }
 }
 
@@ -484,78 +512,102 @@ private fun ConnectionPage(
 
 // ── 군 정보 ───────────────────────────────────────────────────────────────
 
-/** 군 정보(Figma 7 · 군 정보): 역할 · 군종 · 입대일 · 전역일, 전역일 직접 고치기. */
+/**
+ * 군 정보(Figma 8 · 군 정보 `379:4970`): 기본(진행 막대 · 군종 · 계급 · 입대일 · 전역일 · 진급일) → "수정" → 수정 중(군종 · 입대일 · 전역일 + 저장).
+ * 전역일은 계산한 날과 다르게 고르면 사용자 수정값(조기 전역 · 연장)으로 남는다 — 따로 켜는 스위치는 없다.
+ * 진급일 입력은 출시 뒤(#32: 진급 누락 입력은 출시 뒤, 지금은 "예정"만).
+ */
 @Composable
 private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
-    val c = KkTheme.colors
-    var sheet by remember { mutableStateOf<String?>(null) }
     val s = state.service
     val t = state.timeline
-    var draftBranch by remember { mutableStateOf(Branch.ARMY) }
-    Page("군 정보", onBack) {
-        if (s == null || t == null) {
-            // 아직 없으면 군종을 먼저 고르고(이 화면에만 기억) 입대일을 고르면 저장한다.
-            Group(null) {
-                KkListRow("군종", value = "${draftBranch.koreanName} · ${ServiceRulesTable.BUNDLED.ruleFor(draftBranch, Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths}개월", onClick = { sheet = "branch" })
-                Divider()
-                KkListRow("입대일", value = "", onClick = { sheet = "enlist" })
-            }
-            return@Page
+    // 아직 없으면 수정 중으로 보인다(곰신이 온보딩에서 "나중에 넣을게요"를 고른 경우).
+    var editing by remember { mutableStateOf(false) }
+    if (editing || s == null || t == null) {
+        MilitaryEdit(s, onBack = { if (s != null) editing = false else onBack() }) { branch, enlist, discharge ->
+            viewModel.saveMilitary(branch, enlist, discharge)
+            editing = false
         }
-        val months = ServiceRulesTable.BUNDLED.ruleFor(s.branch, s.enlistDate).serviceMonths
-        val today = state.today ?: s.enlistDate
+        return
+    }
+    val c = KkTheme.colors
+    val today = state.today ?: s.enlistDate
+    Page("군 정보", onBack, trailingText = "수정", onTrailing = { editing = true }) {
+        val progress = t.progress(today)
+        KkServiceProgress(
+            progress.toFloat(), "입대 ${s.enlistDate.dotted()}", "전역 ${t.dischargeDate.dotted()}",
+            "${(progress * 1000).roundToInt() / 10.0}%", style = com.sadturtleman.flowershoes.core.designsystem.KkServiceProgressStyle.Path,
+        )
         Group(null) {
-            KkListRow("군종", value = "${s.branch.koreanName} · ${months}개월", onClick = { sheet = "branch" })
-            Divider()
+            KkListRow("군종", value = s.branch.koreanName, trailing = KkRowTrailing.None)
             t.rankAt(today)?.let {
-                KkListRow("계급", value = it.rank.expectedName, trailing = KkRowTrailing.None)
                 Divider()
+                KkListRow("계급", value = it.rank.expectedName, trailing = KkRowTrailing.None)
             }
-            KkListRow("입대일", value = s.enlistDate.dotted(), onClick = { sheet = "enlist" })
             Divider()
-            KkListRow(
-                "전역일", value = "${t.dischargeDate.dotted()} · ${ddayLabel(today, t.dischargeDate)}",
-                trailing = if (t.isOverridden) KkRowTrailing.Chevron else KkRowTrailing.None,
-                onClick = if (t.isOverridden) ({ sheet = "discharge" }) else null,
-            )
+            KkListRow("입대일", value = s.enlistDate.dotted(), trailing = KkRowTrailing.None)
+            Divider()
+            KkListRow("전역일", value = "${t.dischargeDate.dotted()} · ${ddayLabel(today, t.dischargeDate)}", trailing = KkRowTrailing.None)
         }
-        // 진급일(Figma 8 · 군 정보 · 기본): 이병 다음 계급부터.
+        // 진급일: 이병 다음 계급부터.
         val promotions = t.ranks.drop(1)
         if (promotions.isNotEmpty()) {
-            Group("진급일") {
-                promotions.forEachIndexed { i, step ->
-                    if (i > 0) Divider()
-                    KkListRow(step.rank.rankName, value = "${step.from.dotted()} · ${ddayLabel(today, step.from)}", trailing = KkRowTrailing.None)
+            Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+                Text("진급일", style = KkTheme.type.labelBold, color = c.ink)
+                Group(null) {
+                    promotions.forEachIndexed { i, step ->
+                        if (i > 0) Divider()
+                        KkListRow(step.rank.rankName, value = "${step.from.dotted()} · ${ddayLabel(today, step.from)}", trailing = KkRowTrailing.None)
+                    }
                 }
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("전역일이 달라졌나요?", style = KkTheme.type.label, color = c.sub)
-            Group(null) {
-                SwitchRow("전역일 직접 고치기", t.isOverridden) { on -> if (on) sheet = "discharge" else viewModel.overrideDischarge(null) }
+    }
+}
+
+/** 군 정보 · 수정 중: 군종(시트) · 입대일 · 전역일(달력 피커). 저장은 위 "저장"과 아래 "저장하기" 둘 다. */
+@Composable
+private fun MilitaryEdit(
+    service: com.sadturtleman.flowershoes.core.model.Service?,
+    onBack: () -> Unit,
+    onSave: (Branch, LocalDate, LocalDate?) -> Unit,
+) {
+    var branch by remember { mutableStateOf(service?.branch ?: Branch.ARMY) }
+    var enlist by remember { mutableStateOf(service?.enlistDate) }
+    // null 이면 계산한 날을 따른다(군종 · 입대일을 바꾸면 같이 바뀐다).
+    var discharge by remember { mutableStateOf(service?.dischargeOverride) }
+    var sheet by remember { mutableStateOf<String?>(null) }
+    val shown = discharge ?: enlist?.let { computedDischarge(branch, it) }
+    val months = ServiceRulesTable.BUNDLED.ruleFor(branch, enlist ?: Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths
+    val save = { enlist?.let { onSave(branch, it, discharge) }; Unit }
+    Page(
+        "군 정보", onBack, trailingText = "저장", onTrailing = save,
+        bottom = { KkPrimaryButton("저장하기", save, Modifier.fillMaxWidth(), enabled = enlist != null) },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
+            KkInput(branch.koreanName, {}, label = "군종", onClick = { sheet = "branch" })
+            KkInput(enlist?.dotted().orEmpty(), {}, label = "입대일", onClick = { sheet = "enlist" })
+            if (enlist != null) {
+                KkInput(shown?.dotted().orEmpty(), {}, label = "전역일", helper = "${branch.koreanName} ${months}개월 기준", onClick = { sheet = "discharge" })
             }
         }
     }
     when (sheet) {
         "branch" -> KkModalSheet({ sheet = null }) {
-            KkSheetHeader("군종", "복무 기간이 군종마다 달라요")
+            KkSheetHeader("군종")
             Branch.entries.forEach { b ->
-                val m = ServiceRulesTable.BUNDLED.ruleFor(b, s?.enlistDate ?: Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths
-                KkSheetOption(b.koreanName, (s?.branch ?: draftBranch) == b, {
-                    if (s == null) draftBranch = b else viewModel.updateService(branch = b)
-                    sheet = null
-                }, meta = "${m}개월")
+                val m = ServiceRulesTable.BUNDLED.ruleFor(b, enlist ?: Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths
+                KkSheetOption(b.koreanName, branch == b, { branch = b; sheet = null }, meta = "${m}개월")
             }
         }
         "enlist", "discharge" -> {
-            val enlist = sheet == "enlist"
-            val initial = if (enlist) s?.enlistDate else t?.dischargeDate
-            var pick by remember(sheet) { mutableStateOf(initial ?: Clock.System.now().toLocalDateTime(SEOUL).date) }
+            val isEnlist = sheet == "enlist"
+            var pick by remember(sheet) { mutableStateOf((if (isEnlist) enlist else shown) ?: Clock.System.now().toLocalDateTime(SEOUL).date) }
             KkModalSheet({ sheet = null }) {
-                KkSheetHeader(if (enlist) "입대일" else "전역일", if (enlist) "훈련소 입소일을 골라 주세요" else "조기 전역 · 연장처럼 바뀐 날을 골라요. 연인 폰에도 같이 바뀌어요")
+                KkSheetHeader(if (isEnlist) "입대일" else "전역일")
                 KkDatePicker(pick, { pick = it })
                 KkPrimaryButton("선택 완료", {
-                    if (enlist) viewModel.updateService(branch = if (s == null) draftBranch else null, enlist = pick) else viewModel.overrideDischarge(pick)
+                    if (isEnlist) enlist = pick else discharge = pick
                     sheet = null
                 }, Modifier.fillMaxWidth())
             }
@@ -565,55 +617,156 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
 
 // ── 기념일 ───────────────────────────────────────────────────────────────
 
-/** 기념일(Figma 최종 정리 › 설정 · 기념일): 사귄 날 + 기념일 알림(100일 단위 · 1년 단위) + 저장. */
+/** 기념일 · 추가 시트에서 고치는 것. [id] 가 null 이면 새로 추가. */
+private data class AnniversaryDraft(val id: String?, val title: String, val date: LocalDate?, val repeats: Boolean)
+
+/**
+ * 기념일(Figma 8 · 기념일 `379:5058`): 사귄 날 종이 태그(누르면 고르기) · 자동으로 챙겨요(100일 · 주년) · 직접 추가한 날 + "추가" 시트.
+ * 직접 추가한 날은 기념일 일정이라 캘린더에도 보이고 매년 반복 알림을 받는다.
+ */
 @Composable
-private fun AnniversaryPage(state: SettingsState, platform: PlatformActions, viewModel: SettingsViewModel, onBack: () -> Unit) {
+private fun AnniversaryPage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
     val c = KkTheme.colors
-    var date by remember { mutableStateOf(state.anniversary) }
-    var hundreds by remember { mutableStateOf(state.notify.anniversary100) }
-    var years by remember { mutableStateOf(state.notify.anniversaryYear) }
     var picking by remember { mutableStateOf(false) }
-    Page("기념일", onBack, bottom = {
-        KkPrimaryButton("저장", {
-            if (date != state.anniversary) viewModel.setAnniversary(date)
-            viewModel.setAnniversaryAlerts(hundreds, years, platform)
-            onBack()
-        }, Modifier.fillMaxWidth())
-    }) {
-        KkInput(date?.dotted() ?: "", {}, label = "사귄 날", onClick = { picking = true })
-        Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            Text("기념일 알림", style = KkTheme.type.label, color = c.sub)
-            Group(null) {
-                SwitchRow("100일 단위", hundreds) { hundreds = it }
-                Divider()
-                SwitchRow("1년 단위", years) { years = it }
+    var draft by remember { mutableStateOf<AnniversaryDraft?>(null) }
+    val today = state.today ?: Clock.System.now().toLocalDateTime(SEOUL).date
+    Page("기념일", onBack, trailingText = "추가", onTrailing = { draft = AnniversaryDraft(null, "", null, true) }) {
+        Box(
+            Modifier.fillMaxWidth().padding(top = KkSpacing.md)
+                .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = "사귄 날 고르기") { picking = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            // 보여 주기만 하는 종이 태그라 살짝 기울인다(design.md).
+            KkPaperTag("사귄 날", state.anniversary?.dotted() ?: "정하기", valueStyle = KkPaperTagStyle.Hand, tilt = 2f)
+        }
+        state.anniversary?.let { a ->
+            Column {
+                Text("자동으로 챙겨요", style = KkTheme.type.labelBold, color = c.ink)
+                anniversaryMilestones(a, today).forEach { m ->
+                    KkListRow(m.label, value = "${m.date.dotted()} · ${ddayLabel(today, m.date)}", trailing = KkRowTrailing.None)
+                    Divider()
+                }
+            }
+        }
+        if (state.customAnniversaries.isNotEmpty()) {
+            Column {
+                Text("직접 추가한 날", style = KkTheme.type.labelBold, color = c.ink)
+                state.customAnniversaries.forEach { e ->
+                    KkListRow(e.title.ifBlank { "기념일" }, value = customAnniversaryLabel(e.start.date, e.repeats), onClick = {
+                        draft = AnniversaryDraft(e.id, e.title, e.start.date, e.repeatYearly)
+                    })
+                    Divider()
+                }
             }
         }
     }
     if (picking) {
-        var pick by remember { mutableStateOf(date ?: state.linkedSince ?: Clock.System.now().toLocalDateTime(SEOUL).date) }
+        var pick by remember { mutableStateOf(state.anniversary ?: state.linkedSince ?: today) }
         KkModalSheet({ picking = false }) {
             KkSheetHeader("사귄 날")
             KkDatePicker(pick, { pick = it })
-            KkPrimaryButton("선택 완료", { date = pick; picking = false }, Modifier.fillMaxWidth())
+            KkPrimaryButton("선택 완료", { viewModel.setAnniversary(pick); picking = false }, Modifier.fillMaxWidth())
+        }
+    }
+    draft?.let { d -> AnniversarySheet(d, today, onDismiss = { draft = null }, onDelete = d.id?.let { id -> { viewModel.deleteAnniversary(id); draft = null } }) { saved ->
+        viewModel.saveAnniversary(saved.id, saved.title, saved.date ?: return@AnniversarySheet, saved.repeats)
+        draft = null
+    } }
+}
+
+/** 기념일 추가 · 고치기 시트(Figma 8 · 기념일 · 추가 시트): 이름 · 날짜 · 매년 반복 + 추가하기(고칠 때는 저장 · 지우기). */
+@Composable
+private fun AnniversarySheet(initial: AnniversaryDraft, today: LocalDate, onDismiss: () -> Unit, onDelete: (() -> Unit)?, onSave: (AnniversaryDraft) -> Unit) {
+    var d by remember(initial) { mutableStateOf(initial) }
+    var picking by remember { mutableStateOf(false) }
+    KkModalSheet(onDismiss) {
+        if (picking) {
+            var pick by remember { mutableStateOf(d.date ?: today) }
+            KkSheetHeader("날짜")
+            KkDatePicker(pick, { pick = it })
+            KkPrimaryButton("선택 완료", { d = d.copy(date = pick); picking = false }, Modifier.fillMaxWidth())
+            return@KkModalSheet
+        }
+        KkSheetHeader(if (d.id == null) "기념일 추가" else "기념일")
+        KkInput(d.title, { d = d.copy(title = it.take(ANNIVERSARY_TITLE_MAX)) }, label = "이름")
+        KkInput(d.date?.dotted().orEmpty(), {}, label = "날짜", onClick = { picking = true })
+        SwitchRow("매년 반복", d.repeats) { d = d.copy(repeats = it) }
+        KkPrimaryButton(if (d.id == null) "추가하기" else "저장", { onSave(d) }, Modifier.fillMaxWidth(), enabled = d.title.isNotBlank() && d.date != null)
+        if (onDelete != null) KkButton("지우기", onDelete, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
+    }
+}
+
+private const val ANNIVERSARY_TITLE_MAX = 20
+
+// ── 테마 · 화면 모드 ──────────────────────────────────────────────────────
+
+/**
+ * 테마(Figma 8 · 테마 `377:5050`): 두 테마 홈 미리보기를 나란히. 고르면 화면이 그 테마로 바뀌어 보이고, "이 테마로 할게요"로 정한다.
+ * 화면 모드(라이트 · 다크)는 설정 메인 › 꾸미기에 따로 있다.
+ */
+@Composable
+private fun ThemePage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
+    var pick by remember(state.theme) { mutableStateOf(state.theme) }
+    val dark = when (state.displayMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> androidx.compose.foundation.isSystemInDarkTheme()
+    }
+    val label = if (state.role == Role.GOMSIN && state.linked) "${state.partnerName.withSubject()} 전역까지" else "전역까지"
+    val dday = state.timeline?.let { t -> state.today?.let { "D-${t.daysLeft(it).coerceAtLeast(0)}" } } ?: "D-day"
+    // 고른 테마로 화면 전체를 미리 보여 준다.
+    com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme(pick, dark) {
+        Page("테마", onBack, bottom = {
+            KkPrimaryButton("이 테마로 할게요", { viewModel.setTheme(pick); onBack() }, Modifier.fillMaxWidth())
+        }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.lg)) {
+                AppTheme.entries.forEach { theme ->
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.md)) {
+                        ThemePreview(theme, dark, selected = pick == theme, label = if (theme == AppTheme.GOMSIN) label else "전역까지", dday = dday) { pick = theme }
+                        Row(horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                            if (pick == theme) KkIcon(KkIcons.Check, tint = KkTheme.colors.accent, size = 16.dp)
+                            Text(
+                                theme.koreanName, style = if (pick == theme) KkTheme.type.labelBold else KkTheme.type.label,
+                                color = if (pick == theme) KkTheme.colors.ink else KkTheme.colors.sub,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-// ── 테마 · 화면 모드 ──────────────────────────────────────────────────────
-
-/** 테마(Figma 7 · 테마): 테마 카드. 화면 모드는 설정 메인 › 꾸미기에 따로 있다. */
+/** 테마 미리보기 카드: 그 테마 색 · 글꼴로 그린 작은 홈(D-day · 진행 막대 · 다음 휴가 태그 · 보고싶어 · 탭 바). */
 @Composable
-private fun ThemePage(state: SettingsState, viewModel: SettingsViewModel, onBack: () -> Unit) {
-    val recommended = state.role?.let { AppTheme.defaultFor(it) }
-    Page("테마", onBack) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            AppTheme.entries.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { theme ->
-                        KkThemeCard(theme, selected = state.theme == theme, recommended = theme == recommended, modifier = Modifier.weight(1f)) { viewModel.setTheme(theme) }
-                    }
+private fun ThemePreview(theme: AppTheme, dark: Boolean, selected: Boolean, label: String, dday: String, onClick: () -> Unit) {
+    com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme(theme, dark) {
+        val c = KkTheme.colors
+        val shape = RoundedCornerShape(KkRadius.lg)
+        Column(
+            Modifier.fillMaxWidth().clip(shape).background(c.canvas)
+                .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.line, shape)
+                .clickable(role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
+                .semantics { this.selected = selected },
+        ) {
+            Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(label, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+                Text(dday, style = KkTheme.type.ddayS, color = c.ink, maxLines = 1)
+                Spacer(Modifier.height(KkSpacing.xl))
+                Box(Modifier.fillMaxWidth().height(2.dp).background(c.line)) {
+                    Box(Modifier.fillMaxWidth(0.3f).height(2.dp).background(c.accent))
                 }
+                Box(Modifier.fillMaxWidth().height(48.dp)) {
+                    Column(Modifier.align(Alignment.BottomStart).background(c.tag).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                        Text("다음 휴가", style = KkTheme.type.caption, color = c.ink)
+                        Text("D-17", style = KkTheme.type.labelBold, color = c.ink)
+                    }
+                    Box(Modifier.align(Alignment.BottomEnd).size(width = 52.dp, height = 18.dp).clip(RoundedCornerShape(KkRadius.full)).background(c.love))
+                }
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
+            Row(Modifier.fillMaxWidth().background(c.bar).padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                repeat(4) { i -> Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(if (i == 0) c.ink else c.sub)) }
             }
         }
     }

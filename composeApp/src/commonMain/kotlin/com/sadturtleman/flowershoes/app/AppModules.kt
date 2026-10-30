@@ -154,6 +154,6 @@ fun kkotsinModules(
         viewModel { com.sadturtleman.flowershoes.feature.pairing.DeviceChangeViewModel(getOrNull(), getOrNull(), get(), bizLogger = get()) }
         viewModel { com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel(getOrNull(), get(), getOrNull(), get(), bizLogger = get()) }
         viewModel { com.sadturtleman.flowershoes.feature.pairing.SoloArrivalViewModel(get(), get(), get()) }
-        viewModel { SettingsViewModel(get(), get(), get(), get(), getOrNull()) }
+        viewModel { SettingsViewModel(get(), get(), get(), get(), get(), getOrNull()) }
     },
 )

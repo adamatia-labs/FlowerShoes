@@ -90,6 +90,7 @@ import kotlinx.datetime.isoDayNumber
 import kotlinx.datetime.minus
 import kotlinx.datetime.number
 import kotlinx.datetime.plus
+import kotlinx.coroutines.launch
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -121,7 +122,33 @@ fun OnboardingRoute(
     LaunchedEffect(state.step, invited) {
         if (state.step == OnboardingStep.CONNECT && invited) viewModel.onIntent(OnboardingIntent.StartPairing)
     }
-    OnboardingScreen(state, viewModel::onIntent)
+    // 방금 탈퇴했으면 처음 화면 앞에 탈퇴 완료를 한 번(탈퇴가 설정을 비우며 세운 표시).
+    val settings = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
+    val farewell by (settings?.farewellPending ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(null)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    when (farewell) {
+        null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas))
+        true -> AccountDeletedScreen { scope.launch { settings?.setFarewellPending(false) } }
+        false -> OnboardingScreen(state, viewModel::onIntent)
+    }
+}
+
+/** 탈퇴 완료(Figma 8 · 회원 탈퇴 · 탈퇴 완료 `381:5420`): 말린 꽃 가지 · "그동안 고마웠어요" · "기록을 모두 지웠어요" · 처음 화면으로. */
+@Composable
+private fun AccountDeletedScreen(onDone: () -> Unit) {
+    val c = KkTheme.colors
+    Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xxl)) {
+        Column(
+            Modifier.weight(1f).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg, Alignment.CenterVertically),
+        ) {
+            KkIcon(KkIcons.Sprig, tint = c.plant, size = 60.dp)
+            Text("그동안 고마웠어요", style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center)
+            Text("기록을 모두 지웠어요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
+        }
+        KkButton("처음 화면으로", onDone, Modifier.fillMaxWidth().padding(vertical = KkSpacing.lg), style = com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle.Ghost)
+    }
 }
 
 @Composable

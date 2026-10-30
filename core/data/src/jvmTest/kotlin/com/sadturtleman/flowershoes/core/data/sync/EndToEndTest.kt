@@ -272,6 +272,9 @@ class EndToEndTest {
         assertNull(jisu.db.userDao().get("jisu"))
         assertNull(jisu.db.coupleDao().get())
         assertEquals("", settings.state.first().userId, "다음 실행은 처음 화면부터")
+        assertEquals(true, settings.farewellPending.first(), "처음 화면 앞에 탈퇴 완료 화면을 한 번 보인다")
+        settings.setFarewellPending(false)
+        assertEquals(false, settings.farewellPending.first())
         assertEquals(1, cloud.unlinked.size + 0, "연결 해제와 별개로 서버 탈퇴 callable 이 불렸다")
     }
 }

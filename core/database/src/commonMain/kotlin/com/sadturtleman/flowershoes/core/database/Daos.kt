@@ -135,6 +135,10 @@ interface EventDao {
     @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND start >= :from ORDER BY start LIMIT 1")
     fun observeNext(from: String): Flow<EventEntity?>
 
+    /** 설정 › 기념일 › 직접 추가한 날: 커플 기념일을 뺀 기념일 일정(원래 날짜 그대로). */
+    @Query("SELECT * FROM event WHERE deletedAtMs IS NULL AND type = 'ANNIVERSARY' AND id != 'anniversary-couple' ORDER BY start")
+    fun observeAnniversaries(): Flow<List<EventEntity>>
+
     @Query("SELECT * FROM event WHERE id = :id")
     suspend fun get(id: String): EventEntity?
 

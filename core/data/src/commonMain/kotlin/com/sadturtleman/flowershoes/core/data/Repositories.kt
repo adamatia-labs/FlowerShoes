@@ -167,6 +167,9 @@ class EventRepository(
 
     suspend fun get(id: String): Event? = db.eventDao().get(id)?.toModel()
 
+    /** 직접 추가한 기념일(설정 › 기념일). 커플 기념일은 [ProfileRepository.observeAnniversary]. */
+    fun observeAnniversaries(): Flow<List<Event>> = db.eventDao().observeAnniversaries().map { list -> list.map { it.toModel() } }
+
     fun observeNext(): Flow<Event?> =
         db.eventDao().observeNext("${clock.today()}T00:00").map { it?.toModel() }
 

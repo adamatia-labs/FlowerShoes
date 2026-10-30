@@ -49,7 +49,11 @@ import com.sadturtleman.flowershoes.core.data.INQUIRY_TYPES
 import com.sadturtleman.flowershoes.core.data.Inquiry
 import com.sadturtleman.flowershoes.core.data.InquiryTransport
 import com.sadturtleman.flowershoes.core.data.SEOUL
+import com.sadturtleman.flowershoes.core.designsystem.KkButton
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
+import com.sadturtleman.flowershoes.core.designsystem.KkIcon
+import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkInput
 import com.sadturtleman.flowershoes.core.designsystem.KkListRow
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
@@ -98,8 +102,8 @@ internal fun InquiryPage(
     val device = listOf("앱 버전 ${platform.appVersion}", platform.deviceName, platform.osVersion).filter { it.isNotBlank() }.joinToString(" · ")
     val shots = remember { mutableStateListOf<ByteArray>() }
     val pick = photoPicker?.invoke { if (shots.size < MAX_SHOTS) shots.add(it) }
-    val emailOk = email.isBlank() || Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email.trim())
-    val canSend = transport != null && body.isNotBlank() && email.isNotBlank() && emailOk && !sending
+    var emailSheet by remember { mutableStateOf(false) }
+    val canSend = transport != null && body.isNotBlank() && emailValid(email) && !sending
 
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar(
@@ -114,8 +118,11 @@ internal fun InquiryPage(
                 Text("이 빌드에는 서버 설정이 없어 문의를 보낼 수 없어요.", style = KkTheme.type.body, color = c.danger)
             }
             val shape = RoundedCornerShape(KkRadius.lg)
+            // 답변 받을 이메일은 Figma 작성 화면에 칸이 없어 종류 아래 줄로 둔다(계정 이메일이 있으면 미리 채운다).
             Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
                 KkListRow("종류", value = type, onClick = { typeSheet = true })
+                Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
+                KkListRow("답변 받을 이메일", value = email.ifBlank { "정하기" }, onClick = { emailSheet = true })
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("내용", style = KkTheme.type.caption, color = c.sub)
@@ -152,11 +159,6 @@ internal fun InquiryPage(
                     }
                 }
             }
-            KkInput(
-                email, { email = it.take(200) }, label = "답변 받을 이메일",
-                error = if (!emailOk) "이메일 주소를 확인해 주세요" else null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            )
             // Figma: 기기 정보는 고르지 않고 함께 간다(무엇이 가는지만 한 줄).
             Text("${device.ifBlank { "기기" }} 정보가 함께 가요.", style = KkTheme.type.caption, color = c.sub)
         }
@@ -179,7 +181,22 @@ internal fun InquiryPage(
             INQUIRY_TYPES.forEach { t -> KkSheetOption(t, t == type, { type = t; typeSheet = false }) }
         }
     }
+    if (emailSheet) {
+        var draft by remember { mutableStateOf(email) }
+        val ok = draft.isBlank() || emailValid(draft)
+        KkModalSheet({ emailSheet = false }) {
+            KkSheetHeader("답변 받을 이메일")
+            KkInput(
+                draft, { draft = it.take(200) }, label = "이메일",
+                error = if (!ok) "이메일 주소를 확인해 주세요" else null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            )
+            KkPrimaryButton("저장", { email = draft.trim(); emailSheet = false }, Modifier.fillMaxWidth(), enabled = emailValid(draft))
+        }
+    }
 }
+
+private fun emailValid(email: String) = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email.trim())
 
 /** 여러 줄 입력(150 높이, 반경 10). 누르면 2px 포커스 테두리. 글자 수는 아래 도움말 줄에. */
 @Composable
@@ -203,63 +220,89 @@ private fun TextArea(value: String, onValueChange: (String) -> Unit) {
     }
 }
 
-/** 문의 내역(Figma 7 · 설정 · 문의 내역): 유형 · 날짜 · 답변 상태, 답변이 있으면 아래 회색 칸. */
+/**
+ * 문의 내역(Figma 8 · 문의 내역 `380:5236`): 제목 · 날짜 · 종류 + 답변 칩(대기 · 완료), 누르면 답변. 아래 "새로 문의하기".
+ * 비어 있으면 봉투 + "아직 문의한 적이 없어요" + "문의하기"(설명 문장은 design.md 글 규칙대로 뺀다).
+ */
 @Composable
-internal fun InquiryHistoryPage(transport: InquiryTransport?, onBack: () -> Unit) {
+internal fun InquiryHistoryPage(transport: InquiryTransport?, onBack: () -> Unit, onNew: () -> Unit) {
     val c = KkTheme.colors
     val flow = remember(transport) { transport?.observeMine() ?: emptyFlow() }
     var list by remember { mutableStateOf<List<Inquiry>?>(null) }
+    var open by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(flow) { runCatching { flow.collect { list = it } }.onFailure { if (list == null) list = emptyList() } }
+    val items = list
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
         KkTopBar("문의 내역", onLeading = onBack)
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
         ) {
-            val items = list
             when {
                 items == null -> Unit
-                items.isEmpty() -> Text("아직 보낸 문의가 없어요.", style = KkTheme.type.body, color = c.sub)
-                else -> items.forEach { InquiryCard(it) }
+                items.isEmpty() -> Column(
+                    Modifier.fillMaxWidth().padding(top = 96.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
+                ) {
+                    KkIcon(KkIcons.Mail, tint = c.sub, size = 48.dp)
+                    Text("아직 문의한 적이 없어요", style = KkTheme.type.handL, color = c.ink)
+                }
+                else -> items.forEach { q ->
+                    InquiryRow(q, expanded = open == q.id) { open = if (open == q.id) null else q.id }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
+                }
+            }
+        }
+        if (items != null) {
+            Column(Modifier.padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg)) {
+                if (items.isEmpty()) KkPrimaryButton("문의하기", onNew, Modifier.fillMaxWidth(), enabled = transport != null)
+                else KkButton("새로 문의하기", onNew, Modifier.fillMaxWidth(), style = KkButtonStyle.Ghost)
             }
         }
     }
 }
 
+/** 문의 한 줄: 제목(Body) + "10.28 · 오류 신고"(Caption) + 답변 칩. 답변이 있으면 눌러서 펼친다. */
 @Composable
-private fun InquiryCard(q: Inquiry) {
+private fun InquiryRow(q: Inquiry, expanded: Boolean, onToggle: () -> Unit) {
     val c = KkTheme.colors
-    val shape = RoundedCornerShape(KkRadius.lg)
+    val answered = q.answer != null
     Column(
-        Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface).padding(horizontal = 20.dp, vertical = 18.dp),
+        Modifier.fillMaxWidth()
+            .then(if (answered) Modifier.clickable(role = Role.Button, onClick = onToggle) else Modifier)
+            .padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${q.type} · ${md(q.createdAtMs)}", style = KkTheme.type.caption, color = c.sub, modifier = Modifier.weight(1f))
-            val answered = q.answer != null
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(q.title, style = KkTheme.type.body, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text("${md(q.createdAtMs)} · ${q.type}", style = KkTheme.type.caption, color = c.sub)
+            }
+            val chip = RoundedCornerShape(KkRadius.full)
             Text(
                 if (answered) "답변 완료" else "답변 대기",
                 style = KkTheme.type.label,
-                color = if (answered) c.accent else c.sub,
-                modifier = Modifier.clip(RoundedCornerShape(KkRadius.full)).background(if (answered) c.bar else c.line)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                color = if (answered) c.success else c.ink,
+                modifier = Modifier.clip(chip)
+                    .then(if (answered) Modifier.border(1.dp, c.success, chip) else Modifier.background(c.tag))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }
-        Text(q.title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-        q.answer?.let { a ->
+        val answer = q.answer
+        if (expanded && answer != null) {
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.line).padding(horizontal = 14.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(KkRadius.md)).background(c.surface).padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text("꽃신 답변" + (q.answeredAtMs?.let { " · ${md(it)}" } ?: ""), style = KkTheme.type.caption, color = c.sub)
-                Text(a, style = KkTheme.type.body, color = c.ink)
+                Text(answer, style = KkTheme.type.body, color = c.ink)
             }
         }
     }
 }
 
+/** "10.28" · "09.21"(Figma 문의 내역). 서버 시각이 아직 없으면 "방금". */
 private fun md(ms: Long): String {
     if (ms <= 0) return "방금"
     val d = Instant.fromEpochMilliseconds(ms).toLocalDateTime(SEOUL).date
-    return "${d.month.number}.${d.day}"
+    return "${d.month.number.toString().padStart(2, '0')}.${d.day.toString().padStart(2, '0')}"
 }
