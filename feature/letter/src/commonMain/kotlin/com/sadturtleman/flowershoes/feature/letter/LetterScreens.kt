@@ -19,6 +19,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.foundation.layout.fillMaxHeight
+import com.sadturtleman.flowershoes.core.designsystem.LocalKkWindowWidth
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import com.sadturtleman.flowershoes.core.designsystem.KkLetterFont
 import com.sadturtleman.flowershoes.core.designsystem.family
@@ -164,16 +167,66 @@ fun LetterInboxRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Box(Modifier.fillMaxSize()) {
+        LetterInboxPanes(state, viewModel::onIntent, onWriteLetter, onDraw, onOpenDrafts, onReply, onReplyDrawing, onConnect)
+        ToastHost(viewModel.toasts, viewModel::toastShown) { viewModel.onIntent(LetterIntent.Open(it)) }
+    }
+}
+
+/**
+ * 편지함 칸 나누기. 폰 · 중간 폭은 편지를 열면 같은 자리에서 읽기로 바뀌고,
+ * 큰 화면(840dp 이상, Figma 11 · 편지함 2단 `429:10732`)은 왼쪽 목록(360) | 오른쪽 읽기. 고른 편지는 목록에서 종이 태그색 판으로 표시한다.
+ */
+@Composable
+fun LetterInboxPanes(
+    state: LetterState,
+    onIntent: (LetterIntent) -> Unit,
+    onWriteLetter: () -> Unit,
+    onDraw: () -> Unit,
+    onOpenDrafts: () -> Unit,
+    onReply: () -> Unit,
+    onReplyDrawing: () -> Unit,
+    onConnect: () -> Unit = {},
+) {
+    if (!LocalKkWindowWidth.current.twoPane) {
         // 편지를 열면 편지함 장이 넘어가고, 닫으면 다시 덮인다.
         KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "inbox" }, isForward = { _, to -> to != null }) { open ->
             when {
-                open != null && open.drawingOnly -> DrawingLetterScreen(open, viewModel::onIntent, onReplyDrawing)
-                open != null -> LetterReadScreen(open, viewModel::onIntent, onReply, onReplyDrawing)
-                else -> LetterInboxScreen(state, viewModel::onIntent, onWriteLetter, onDraw, onOpenDrafts, onConnect)
+                open != null && open.drawingOnly -> DrawingLetterScreen(open, onIntent, onReplyDrawing)
+                open != null -> LetterReadScreen(open, onIntent, onReply, onReplyDrawing)
+                else -> LetterInboxScreen(state, onIntent, onWriteLetter, onDraw, onOpenDrafts, onConnect)
             }
         }
-        ToastHost(viewModel.toasts, viewModel::toastShown) { viewModel.onIntent(LetterIntent.Open(it)) }
+        return
     }
+    val c = KkTheme.colors
+    Row(Modifier.fillMaxSize().background(c.canvas)) {
+        Box(Modifier.width(INBOX_LIST_WIDTH).fillMaxHeight()) {
+            LetterInboxScreen(state, onIntent, onWriteLetter, onDraw, onOpenDrafts, onConnect, selected = state.open?.letter?.id)
+        }
+        Box(Modifier.width(1.dp).fillMaxHeight().background(c.line))
+        Box(Modifier.weight(1f).fillMaxHeight()) {
+            // 아무 편지도 안 열었으면 읽기 칸은 바탕만(안내 문구는 두지 않는다).
+            KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "none" }, isForward = { _, to -> to != null }) { open ->
+                when {
+                    open == null -> Box(Modifier.fillMaxSize().background(c.canvas))
+                    open.drawingOnly -> DrawingLetterScreen(open, onIntent, onReplyDrawing)
+                    else -> LetterReadScreen(open, onIntent, onReply, onReplyDrawing, pane = true)
+                }
+            }
+        }
+    }
+}
+
+/** 큰 화면 편지함 목록 칸의 폭(Figma 편지함 2단). */
+private val INBOX_LIST_WIDTH = 360.dp
+
+/** 자리는 원래 크기만 차지하고, 그리기는 좌우 [x] · 위아래 [y] 만큼 밖으로 넓힌다. */
+private fun Modifier.outset(x: androidx.compose.ui.unit.Dp, y: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
+    val dx = x.roundToPx()
+    val dy = y.roundToPx()
+    val w = constraints.maxWidth + dx * 2
+    val p = measurable.measure(constraints.copy(minWidth = w, maxWidth = w, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
+    layout(constraints.maxWidth, (p.height - dy * 2).coerceAtLeast(0)) { p.place(-dx, -dy) }
 }
 
 @Composable
@@ -184,6 +237,8 @@ fun LetterInboxScreen(
     onDraw: () -> Unit,
     onOpenDrafts: () -> Unit,
     onConnect: () -> Unit = {},
+    /** 큰 화면 2단에서 오른쪽에 열려 있는 편지. */
+    selected: String? = null,
 ) {
     val c = KkTheme.colors
     var writeMenu by remember { mutableStateOf(false) }
@@ -231,7 +286,16 @@ fun LetterInboxScreen(
             )
             else -> state.months.forEach { (month, cards) ->
                 Text(month, style = KkTheme.type.handL, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
-                cards.forEach { card -> InboxEnvelope(card) { onIntent(LetterIntent.Open(card.letter.id)) } }
+                cards.forEach { card ->
+                    if (card.letter.id == selected) {
+                        // 고른 편지(Figma selected): 봉투 둘레로 좌우 12 · 위아래 6 넓힌 종이 태그색 판. 줄 간격은 그대로 둔다.
+                        Box(Modifier.outset(KkSpacing.md, 6.dp).clip(RoundedCornerShape(KkRadius.lg)).background(c.tag).padding(KkSpacing.md, 6.dp)) {
+                            InboxEnvelope(card) { onIntent(LetterIntent.Open(card.letter.id)) }
+                        }
+                    } else {
+                        InboxEnvelope(card) { onIntent(LetterIntent.Open(card.letter.id)) }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(KkSpacing.lg))
@@ -290,7 +354,14 @@ private fun EnvelopeSkeleton() {
  * 편지지는 콘텐츠라 읽는 사람의 테마 · 다크 모드와 무관하게 [paperLook] 색 그대로다. 그림은 폴라로이드로 붙는다.
  */
 @Composable
-fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply: () -> Unit, onReplyDrawing: () -> Unit = {}) {
+fun LetterReadScreen(
+    open: OpenLetter,
+    onIntent: (LetterIntent) -> Unit,
+    onReply: () -> Unit,
+    onReplyDrawing: () -> Unit = {},
+    /** 큰 화면 2단의 읽기 칸(Figma 편지함 2단): 뒤로 가기 없이 위 오른쪽에 답장 쓰기, 아래에는 고마워만. */
+    pane: Boolean = false,
+) {
     if (open.locked) {
         LockedLetterScreen(open, onIntent)
         return
@@ -299,8 +370,13 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
     // 읽는 화면은 탭 바 없이 전체(Figma) — 아래 버튼이 제스처 바에 걸리지 않게.
     Column(Modifier.fillMaxSize().background(c.canvas).navigationBarsPadding()) {
         ReadTopBar(
-            open.title, open.subtitle, onBack = { onIntent(LetterIntent.Close) },
-            trailing = if (open.mine) "삭제" else null, onTrailing = { onIntent(LetterIntent.Delete(open.letter.id)) },
+            open.title, open.subtitle, onBack = if (pane) null else ({ onIntent(LetterIntent.Close) }),
+            trailing = when {
+                open.mine -> "삭제"
+                pane -> "답장 쓰기"
+                else -> null
+            },
+            onTrailing = { if (open.mine) onIntent(LetterIntent.Delete(open.letter.id)) else onReply() },
         )
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = KkSpacing.md, bottom = KkSpacing.lg)) {
             LetterSheet(open, onIntent)
@@ -320,7 +396,7 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
                         if (open.thanked) "고마워를 보냈어요" else "고마워",
                         onClick = { onIntent(LetterIntent.Thanks) }, modifier = Modifier.weight(if (open.thanked) 1.2f else 1f), enabled = !open.thanked,
                     )
-                    KkPrimaryButton("답장 쓰기", onClick = onReply, modifier = Modifier.weight(if (open.thanked) 1f else 1.5f))
+                    if (!pane) KkPrimaryButton("답장 쓰기", onClick = onReply, modifier = Modifier.weight(if (open.thanked) 1f else 1.5f))
                 }
             }
         }
@@ -329,14 +405,14 @@ fun LetterReadScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onReply
 
 /** 읽기 위 막대(Figma Top Bar · Back): 뒤로 + 제목(Label/Bold) · 아래 줄(Caption) + 선택적 글자 동작. */
 @Composable
-private fun ReadTopBar(title: String, subtitle: String, onBack: () -> Unit, trailing: String? = null, onTrailing: () -> Unit = {}) {
+private fun ReadTopBar(title: String, subtitle: String, onBack: (() -> Unit)?, trailing: String? = null, onTrailing: () -> Unit = {}) {
     val c = KkTheme.colors
     Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(start = KkSpacing.xs, end = KkSpacing.lg),
+        Modifier.fillMaxWidth().height(56.dp).padding(start = if (onBack == null) KkSpacing.lg else KkSpacing.xs, end = KkSpacing.lg),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.xs),
     ) {
-        Box(
+        if (onBack != null) Box(
             Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onBack).semantics { contentDescription = "뒤로 가기" },
             contentAlignment = Alignment.Center,
         ) { KkIcon(KkIcons.Back, tint = c.ink, size = 15.8.dp, modifier = Modifier.width(8.8.dp)) }

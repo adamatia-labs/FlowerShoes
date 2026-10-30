@@ -41,6 +41,10 @@ import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
+import com.sadturtleman.flowershoes.core.designsystem.KkContentWidth
+import com.sadturtleman.flowershoes.core.designsystem.KkNavScaffold
+import com.sadturtleman.flowershoes.core.designsystem.KkWindowSizeProvider
+import com.sadturtleman.flowershoes.core.designsystem.LocalKkWindowWidth
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
 import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.feature.calendar.CalendarRoute
@@ -116,6 +120,8 @@ fun KkotsinApp() {
             com.sadturtleman.flowershoes.core.drawingui.LocalDrawingPhotoLoader provides photoLoader,
         ) {
             val gate = rememberAppGate()
+            // 큰 화면(Figma 11): 창 폭을 한 번 재서 셸 · 화면들이 Nav Rail · 2단 · 최대 폭을 고른다.
+            KkWindowSizeProvider {
             Box(Modifier.fillMaxSize()) {
                 // 업데이트 필요 · 점검 중은 앱 자체를 그리지 않는다 — 연결 모달 · 편지 도착 창 · 책 권유까지 모두 막힌다.
                 when (val g = gate.state) {
@@ -133,6 +139,7 @@ fun KkotsinApp() {
                         if (current != null && !gate.holdSplash) ConnectionStates(onboarded = current.onboarded)
                     }
                 }
+            }
             }
         }
     }
@@ -258,6 +265,7 @@ private fun OnboardingFlow() {
     // 연결 화면에서 뒤로 가면 온보딩으로.
     BackHandler(enabled = overlay != null) { closePairing() }
     KkPageFlip(overlay, pageKey = { it ?: "onboarding" }, isForward = ::overlayForward) { shown ->
+    KkContentWidth {
     when (shown) {
         null -> OnboardingRoute(
             // 온보딩 완료는 DeviceSettings.onboarded 로 바뀌어 셸이 알아서 바뀐다.
@@ -280,6 +288,7 @@ private fun OnboardingFlow() {
         else -> ComingSoon(shown!!.title(), onBack = { overlay = null })
     }
     }
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -296,7 +305,7 @@ private fun MainShell() {
     val letters = koinViewModel<LetterViewModel>()
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
     val imageSaver = rememberImageSaver()
-    val c = KkTheme.colors
+    val window = LocalKkWindowWidth.current
     val letterOpen = letters.state.collectAsState().value.open != null
     val memory = koinViewModel<com.sadturtleman.flowershoes.feature.memory.MemoryViewModel>()
     val memoryDetail = memory.state.collectAsState().value.stack.isNotEmpty()
@@ -385,7 +394,7 @@ private fun MainShell() {
 
     KkPageFlip(overlay, pageKey = { it ?: "main" }, isForward = ::overlayForward) { shown ->
     when (shown) {
-        Overlay.COMPOSE -> {
+        Overlay.COMPOSE -> KkContentWidth {
             LetterComposeRoute(
                 onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
                 onClose = { overlay = null },
@@ -429,7 +438,7 @@ private fun MainShell() {
                 onClose = { overlay = null },
             )
         }
-        Overlay.DRAFTS -> {
+        Overlay.DRAFTS -> KkContentWidth {
             com.sadturtleman.flowershoes.feature.letter.LetterDraftsRoute(
                 onBack = { overlay = null },
                 onResume = {
@@ -439,7 +448,7 @@ private fun MainShell() {
                 viewModel = letters,
             )
         }
-        Overlay.PAIRING -> {
+        Overlay.PAIRING -> KkContentWidth {
             val closePairing = {
                 overlay = null
                 inviteToken = null
@@ -447,8 +456,8 @@ private fun MainShell() {
             PairingRoute(onDone = closePairing, onBack = closePairing, invite = inviteToken)
         }
         // 셸에서는 열지 않는다(연결된 폰은 교체 요청을 받는 쪽이다). 온보딩과 같은 화면.
-        Overlay.DEVICE_CHANGE -> com.sadturtleman.flowershoes.feature.pairing.DeviceChangeRoute(onDone = { overlay = null }, onBack = { overlay = null })
-        Overlay.SETTINGS -> {
+        Overlay.DEVICE_CHANGE -> KkContentWidth { com.sadturtleman.flowershoes.feature.pairing.DeviceChangeRoute(onDone = { overlay = null }, onBack = { overlay = null }) }
+        Overlay.SETTINGS -> KkContentWidth {
             SettingsRoute(
                 platform = getKoin().getOrNull<PlatformActions>() ?: NoPlatformActions,
                 onOpenPairing = { overlay = Overlay.PAIRING },
@@ -458,7 +467,7 @@ private fun MainShell() {
                 shareFiles = fileShare,
             )
         }
-        Overlay.LEAVE -> {
+        Overlay.LEAVE -> KkContentWidth {
             // 휴가 관리는 캘린더 탭 아래 화면이다 — 닫으면 캘린더로. 쓴 휴가 한 줄은 그 일정 고치기를 연다.
             com.sadturtleman.flowershoes.feature.calendar.LeaveRoute(
                 onBack = { overlay = null },
@@ -475,30 +484,45 @@ private fun MainShell() {
         val settingsState by settingsVm.state.collectAsState()
         // 상대가 연결을 해제했다(Figma 6 · 연결 해제 / 상대 폰): 사본을 어떻게 할지 고를 때까지 다른 화면을 막는다.
         if (scheduler?.partnerUnlinked?.collectAsState()?.value == true) {
-            com.sadturtleman.flowershoes.feature.settings.PartnerUnlinkedScreen(settingsState.partnerName) { after ->
-                settingsVm.afterPartnerUnlinked(after)
-                scheduler.partnerUnlinkHandled()
+            KkContentWidth {
+                com.sadturtleman.flowershoes.feature.settings.PartnerUnlinkedScreen(settingsState.partnerName) { after ->
+                    settingsVm.afterPartnerUnlinked(after)
+                    scheduler.partnerUnlinkHandled()
+                }
             }
             return@KkPageFlip
         }
         // 기기 교체(Figma 7 · 연인 폰 · 옛 폰): 상대의 "새 폰 맞나요?" · 내 계정의 "새 폰에서 로그인했어요".
         val change = heldChange ?: scheduler?.deviceChanges?.collectAsState()?.value?.firstOrNull()
         if (change != null) {
-            com.sadturtleman.flowershoes.feature.pairing.DeviceChangePromptRoute(
-                prompt = change,
-                partnerName = settingsState.partnerName,
-                provider = settingsState.provider?.let(settingsVm::providerLabel),
-                onActed = { heldChange = change },
-            ) {
-                heldChange = null
-                scheduler?.deviceChangeHandled(change.request.id)
+            KkContentWidth {
+                com.sadturtleman.flowershoes.feature.pairing.DeviceChangePromptRoute(
+                    prompt = change,
+                    partnerName = settingsState.partnerName,
+                    provider = settingsState.provider?.let(settingsVm::providerLabel),
+                    onActed = { heldChange = change },
+                ) {
+                    heldChange = null
+                    scheduler?.deviceChangeHandled(change.request.id)
+                }
             }
             return@KkPageFlip
         }
         Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding()) {
-            Box(Modifier.weight(1f)) {
+        // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 그날의 한 줄 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
+        // 큰 화면 편지함은 목록 | 읽기 2단이라 편지를 열어도 Nav Rail 을 둔다.
+        val reading = (tab == Tab.LETTER && letterOpen && !window.twoPane) || (tab == Tab.MEMORY && memoryDetail)
+        // 폰은 하단 탭 바, 큰 화면(600dp 이상)은 Nav Rail(Figma 11 · 큰 화면).
+        KkNavScaffold(
+            tabs = Tab.entries.map { com.sadturtleman.flowershoes.core.designsystem.KkTab(it.label, it.icon) },
+            selected = tab.ordinal,
+            onSelect = { tab = Tab.entries[it] },
+            showNav = !reading,
+        ) {
                 Crossfade(tab, animationSpec = tween(TAB_FADE_MS), label = "tab") { t ->
+                // 한 칸 화면은 최대 600 가운데. 캘린더 · 편지함은 큰 화면에서 스스로 2단으로 나눈다.
+                val wide = window.twoPane && (t == Tab.CALENDAR || t == Tab.LETTER)
+                val content: @Composable () -> Unit = {
                 when (t) {
                     Tab.HOME -> HomeRoute(
                         onOpenPairing = { overlay = Overlay.PAIRING },
@@ -543,10 +567,8 @@ private fun MainShell() {
                     )
                 }
                 }
-            }
-            // 받은 편지 · 그림 · 추억 안쪽 화면(한 달 · 그날의 한 줄 · 책으로 보기)은 탭 바 없이 전체 화면(Figma).
-            val reading = (tab == Tab.LETTER && letterOpen) || (tab == Tab.MEMORY && memoryDetail)
-            if (!reading) BottomBar(tab, onSelect = { tab = it })
+                if (wide) content() else KkContentWidth(content)
+                }
         }
         // 추억 책 권유(전역 D-30 · 전역일, 각자 폰 한 번씩): 홈 위 가운데 팝업. 홈 화면은 그대로 둔다.
         // 연결 모달 · 보내는 중 화면이 떠 있으면 권유 팝업은 띄우지 않는다(연결이 이긴다 — 두 덮개가 겹치지 않게).
@@ -593,16 +615,6 @@ private fun overlayForward(from: Overlay?, to: Overlay?): Boolean = when {
     from == null -> true
     from == Overlay.DRAW_FOR_LETTER && to == Overlay.COMPOSE -> false
     else -> true
-}
-
-/** 하단 탭 바(Figma Tab Bar): 홈 · 캘린더 · 편지 · 추억. */
-@Composable
-private fun BottomBar(current: Tab, onSelect: (Tab) -> Unit) {
-    com.sadturtleman.flowershoes.core.designsystem.KkTabBar(
-        tabs = Tab.entries.map { com.sadturtleman.flowershoes.core.designsystem.KkTab(it.label, it.icon) },
-        selected = current.ordinal,
-        onSelect = { onSelect(Tab.entries[it]) },
-    )
 }
 
 /** 아직 붙지 않은 화면. 개발 순서(설계 10장)대로 채운다. */

@@ -39,6 +39,8 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)
+            // 큰 화면 2단을 화면에 보이는 글로 확인한다.
+            implementation(compose.desktop.uiTestJUnit4)
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
         }

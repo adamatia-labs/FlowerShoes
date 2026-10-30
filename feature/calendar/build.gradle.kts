@@ -35,6 +35,9 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))
+            // 큰 화면(달력 | 일정) 견본 그림 · 보이는 글 확인.
+            implementation(compose.desktop.currentOs)
+            implementation(compose.desktop.uiTestJUnit4)
         }
     }
 }
