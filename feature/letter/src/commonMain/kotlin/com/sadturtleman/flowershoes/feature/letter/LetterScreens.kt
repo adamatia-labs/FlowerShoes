@@ -203,7 +203,7 @@ fun LetterInboxPanes(
         Box(Modifier.width(INBOX_LIST_WIDTH).fillMaxHeight()) {
             LetterInboxScreen(state, onIntent, onWriteLetter, onDraw, onOpenDrafts, onConnect, selected = state.open?.letter?.id)
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(c.line))
+        com.sadturtleman.flowershoes.core.designsystem.KkPaneDivider()
         Box(Modifier.weight(1f).fillMaxHeight()) {
             // 아무 편지도 안 열었으면 읽기 칸은 바탕만(안내 문구는 두지 않는다).
             KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "none" }, isForward = { _, to -> to != null }) { open ->
@@ -219,6 +219,9 @@ fun LetterInboxPanes(
 
 /** 큰 화면 편지함 목록 칸의 폭(Figma 편지함 2단). */
 private val INBOX_LIST_WIDTH = 360.dp
+
+/** 고른 편지 판이 봉투 위아래로 넘치는 만큼(Figma selected 112 = 봉투 100 + 6 · 6). */
+private val SELECTED_OUTSET_Y = 6.dp
 
 /** 자리는 원래 크기만 차지하고, 그리기는 좌우 [x] · 위아래 [y] 만큼 밖으로 넓힌다. */
 private fun Modifier.outset(x: androidx.compose.ui.unit.Dp, y: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
@@ -287,14 +290,11 @@ fun LetterInboxScreen(
             else -> state.months.forEach { (month, cards) ->
                 Text(month, style = KkTheme.type.handL, color = c.ink, modifier = Modifier.padding(top = KkSpacing.sm))
                 cards.forEach { card ->
-                    if (card.letter.id == selected) {
-                        // 고른 편지(Figma selected): 봉투 둘레로 좌우 12 · 위아래 6 넓힌 종이 태그색 판. 줄 간격은 그대로 둔다.
-                        Box(Modifier.outset(KkSpacing.md, 6.dp).clip(RoundedCornerShape(KkRadius.lg)).background(c.tag).padding(KkSpacing.md, 6.dp)) {
-                            InboxEnvelope(card) { onIntent(LetterIntent.Open(card.letter.id)) }
-                        }
-                    } else {
-                        InboxEnvelope(card) { onIntent(LetterIntent.Open(card.letter.id)) }
-                    }
+                    // 고른 편지(Figma selected): 봉투 둘레로 좌우 12 · 위아래 6 넓힌 종이 태그색 판. 줄 간격은 그대로 둔다.
+                    val highlight = if (card.letter.id != selected) Modifier else Modifier
+                        .outset(KkSpacing.md, SELECTED_OUTSET_Y).clip(RoundedCornerShape(KkRadius.lg)).background(c.tag)
+                        .padding(KkSpacing.md, SELECTED_OUTSET_Y)
+                    Box(highlight) { InboxEnvelope(card) { onIntent(LetterIntent.Open(card.letter.id)) } }
                 }
             }
         }

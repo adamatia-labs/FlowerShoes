@@ -383,11 +383,13 @@ private fun MainShell() {
     }
 
     // 뒤로 가기: 덮어 띄운 화면 → 읽던 편지 → 홈 탭 순서로 닫는다. 홈에서는 시스템에 맡긴다(앱 나가기).
-    BackHandler(enabled = overlay != null || letterOpen || tab != Tab.HOME) {
+    // 큰 화면은 편지를 연 채 다른 탭으로 갈 수 있다 — 보이지 않는 편지를 닫느라 뒤로 가기를 쓰지 않게 편지 탭에서만 닫는다.
+    val letterShown = letterOpen && tab == Tab.LETTER
+    BackHandler(enabled = overlay != null || letterShown || tab != Tab.HOME) {
         when {
             overlay == Overlay.DRAW_FOR_LETTER -> overlay = Overlay.COMPOSE
             overlay != null -> overlay = null
-            letterOpen -> letters.onIntent(LetterIntent.Close)
+            letterShown -> letters.onIntent(LetterIntent.Close)
             else -> tab = Tab.HOME
         }
     }
@@ -567,7 +569,8 @@ private fun MainShell() {
                     )
                 }
                 }
-                if (wide) content() else KkContentWidth(content)
+                // 폭만 바꿔 같은 자리에 둔다 — 접고 펼쳐 840 을 넘나들어도 화면 상태(스크롤 등)가 남는다.
+                KkContentWidth(maxWidth = if (wide) androidx.compose.ui.unit.Dp.Unspecified else com.sadturtleman.flowershoes.core.designsystem.KkContentMaxWidth, content = content)
                 }
         }
         // 추억 책 권유(전역 D-30 · 전역일, 각자 폰 한 번씩): 홈 위 가운데 팝업. 홈 화면은 그대로 둔다.

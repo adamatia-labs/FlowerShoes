@@ -70,12 +70,19 @@ val KkContentMaxWidth: Dp = 600.dp
 /**
  * 한 칸짜리 화면을 최대 [KkContentMaxWidth] 로 가운데 둔다. 양옆은 바탕색. 폰에서는 그대로 전체 폭이다.
  * 화면이 자기 바탕을 fillMaxSize 로 칠하므로 바깥 바탕도 같은 canvas 로 칠한다.
+ * 2단처럼 전체 폭을 쓸 때는 [maxWidth] 를 [Dp.Unspecified] 로 — 같은 자리에서 폭만 바뀌어 접고 펼 때 화면 상태가 남는다.
  */
 @Composable
-fun KkContentWidth(content: @Composable () -> Unit) {
+fun KkContentWidth(maxWidth: Dp = KkContentMaxWidth, content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas), contentAlignment = Alignment.TopCenter) {
-        Box(Modifier.fillMaxHeight().widthIn(max = KkContentMaxWidth)) { content() }
+        Box(Modifier.fillMaxHeight().widthIn(max = maxWidth)) { content() }
     }
+}
+
+/** 두 칸 사이 세로 선(line 1). */
+@Composable
+fun KkPaneDivider() {
+    Box(Modifier.width(1.dp).fillMaxHeight().background(KkTheme.colors.line))
 }
 
 /**
@@ -85,6 +92,7 @@ fun KkContentWidth(content: @Composable () -> Unit) {
 @Composable
 fun KkNavRail(tabs: List<KkTab>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val c = KkTheme.colors
+    // 칸 79 + 오른쪽 선 1 = Figma 폭 80.
     Row(modifier.fillMaxHeight()) {
         Column(
             Modifier.width(79.dp).fillMaxHeight().background(c.surface).statusBarsPadding().padding(top = KkSpacing.xxl),
@@ -108,7 +116,7 @@ fun KkNavRail(tabs: List<KkTab>, selected: Int, onSelect: (Int) -> Unit, modifie
                 }
             }
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(c.line))
+        KkPaneDivider()
     }
 }
 

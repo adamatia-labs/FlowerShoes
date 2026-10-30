@@ -185,7 +185,7 @@ private fun CalendarTwoPane(state: CalendarState, onIntent: (CalendarIntent) -> 
             MonthCard(state, onIntent, flat = true)
             if (!state.empty) Legend()
         }
-        Box(Modifier.width(1.dp).fillMaxHeight().background(c.line))
+        com.sadturtleman.flowershoes.core.designsystem.KkPaneDivider()
         Column(
             Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())
                 .padding(start = KkSpacing.xxxl, end = KkSpacing.xxxl, top = 72.dp, bottom = KkSpacing.lg),

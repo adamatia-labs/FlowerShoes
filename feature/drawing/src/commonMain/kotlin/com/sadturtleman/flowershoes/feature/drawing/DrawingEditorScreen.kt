@@ -309,7 +309,7 @@ private fun Toolbar(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit
 private fun ToolPane(state: DrawingEditorState, onIntent: (DrawingIntent) -> Unit) {
     val c = KkTheme.colors
     Row(Modifier.width(TOOL_PANE_WIDTH).fillMaxHeight()) {
-        Box(Modifier.width(1.dp).fillMaxHeight().background(c.line))
+        com.sadturtleman.flowershoes.core.designsystem.KkPaneDivider()
         Column(
             Modifier.weight(1f).fillMaxHeight().background(c.surface).verticalScroll(rememberScrollState())
                 .navigationBarsPadding().padding(KkSpacing.xxl),
