@@ -44,7 +44,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sadturtleman.flowershoes.core.data.INQUIRY_TYPES
 import com.sadturtleman.flowershoes.core.data.Inquiry
@@ -55,11 +54,14 @@ import com.sadturtleman.flowershoes.core.designsystem.KkInput
 import com.sadturtleman.flowershoes.core.designsystem.KkListRow
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
-import com.sadturtleman.flowershoes.core.designsystem.KkRowTrailing
 import com.sadturtleman.flowershoes.core.designsystem.KkSpacing
 import com.sadturtleman.flowershoes.core.designsystem.KkStatusChip
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.KkTopBar
+import com.sadturtleman.flowershoes.core.designsystem.KkTopBarLeading
+import com.sadturtleman.flowershoes.core.designsystem.KkModalSheet
+import com.sadturtleman.flowershoes.core.designsystem.KkSheetHeader
+import com.sadturtleman.flowershoes.core.designsystem.KkSheetOption
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import kotlin.time.Instant
 import kotlinx.coroutines.flow.emptyFlow
@@ -87,19 +89,23 @@ internal fun InquiryPage(
 ) {
     val c = KkTheme.colors
     val scope = rememberCoroutineScope()
-    // Figma 최종 정리: 유형 고르기 없이 내용만 — 서버 규칙의 유형 값은 "기타"로 보낸다.
-    val type = INQUIRY_TYPES.last()
+    // Figma 8 · 문의하기 · 작성: 종류 › (기본 오류 신고) · 내용 · 스크린샷 · 기기 정보 한 줄.
+    var type by remember { mutableStateOf(INQUIRY_TYPES.first()) }
+    var typeSheet by remember { mutableStateOf(false) }
     var body by remember { mutableStateOf("") }
     var email by remember { mutableStateOf(transport?.accountEmail().orEmpty()) }
-    var withDevice by remember { mutableStateOf(true) }
     var sending by remember { mutableStateOf(false) }
+    val device = listOf("앱 버전 ${platform.appVersion}", platform.deviceName, platform.osVersion).filter { it.isNotBlank() }.joinToString(" · ")
     val shots = remember { mutableStateListOf<ByteArray>() }
     val pick = photoPicker?.invoke { if (shots.size < MAX_SHOTS) shots.add(it) }
     val emailOk = email.isBlank() || Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email.trim())
     val canSend = transport != null && body.isNotBlank() && email.isNotBlank() && emailOk && !sending
 
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding()) {
-        KkTopBar("문의하기", onLeading = onBack, trailingText = "내역", onTrailing = onHistory, trailingEnabled = transport != null)
+        KkTopBar(
+            "문의하기", onLeading = onBack, leading = KkTopBarLeading.Close,
+            trailingText = "내역", onTrailing = onHistory, trailingEnabled = transport != null,
+        )
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(KkSpacing.lg),
@@ -107,9 +113,17 @@ internal fun InquiryPage(
             if (transport == null) {
                 Text("이 빌드에는 서버 설정이 없어 문의를 보낼 수 없어요.", style = KkTheme.type.body, color = c.danger)
             }
-            Text("내용", style = KkTheme.type.label, color = c.sub)
-            TextArea(body, { body = it.take(MAX_BODY) }, placeholder = "어떤 일이 있었는지 적어 주세요. 언제 · 어느 화면에서인지 알려 주시면 더 빨리 도와드릴 수 있어요.")
+            val shape = RoundedCornerShape(KkRadius.lg)
+            Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
+                KkListRow("종류", value = type, onClick = { typeSheet = true })
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("내용", style = KkTheme.type.caption, color = c.sub)
+                TextArea(body, { body = it.take(MAX_BODY) })
+                Text("편지 내용 같은 개인적인 글은 적지 말아 주세요 · ${body.length}/$MAX_BODY", style = KkTheme.type.caption, color = c.sub)
+            }
             if (pick != null) {
+                Text("스크린샷 (${shots.size}/$MAX_SHOTS)", style = KkTheme.type.labelBold, color = c.ink)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     shots.forEachIndexed { i, bytes ->
                         val bitmap = remember(bytes) { runCatching { bytes.decodeToImageBitmap() }.getOrNull() }
@@ -133,40 +147,43 @@ internal fun InquiryPage(
                             verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
                         ) {
                             Text("+", style = KkTheme.type.title, color = c.sub)
-                            Text("${shots.size} / $MAX_SHOTS", style = KkTheme.type.caption, color = c.sub)
+                            Text("추가", style = KkTheme.type.caption, color = c.sub)
                         }
                     }
                 }
             }
             KkInput(
-                email, { email = it.take(200) }, label = "답변 받을 이메일", placeholder = "minjun@example.com",
+                email, { email = it.take(200) }, label = "답변 받을 이메일",
                 error = if (!emailOk) "이메일 주소를 확인해 주세요" else null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             )
-            val shape = RoundedCornerShape(KkRadius.lg)
-            Column(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(c.surface)) {
-                KkListRow("기기 정보 함께 보내기", value = "기종 · OS · 앱 버전", trailing = KkRowTrailing.Switch, switchOn = withDevice, onClick = { withDevice = !withDevice })
-            }
+            // Figma: 기기 정보는 고르지 않고 함께 간다(무엇이 가는지만 한 줄).
+            Text("${device.ifBlank { "기기" }} 정보가 함께 가요.", style = KkTheme.type.caption, color = c.sub)
         }
         Column(Modifier.padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp)) {
             KkPrimaryButton("보내기", {
                 val t = transport ?: return@KkPrimaryButton
                 sending = true
                 scope.launch {
-                    val device = if (withDevice) listOf(platform.deviceName, platform.osVersion, "꽃신 ${platform.appVersion}").filter { it.isNotBlank() }.joinToString(" · ") else null
-                    runCatching { t.submit(type, body.trim(), email.trim(), device, shots.toList()) }
-                        .onSuccess { onSent("문의를 보냈어요. 답변이 오면 알려 드릴게요", true) }
+                    runCatching { t.submit(type, body.trim(), email.trim(), device.ifBlank { null }, shots.toList()) }
+                        .onSuccess { onSent("문의를 보냈어요. 보통 하루 안에 답해요", true) }
                         .onFailure { onSent("보내지 못했어요. 연결을 확인하고 다시 해 주세요", false) }
                     sending = false
                 }
             }, Modifier.fillMaxWidth(), enabled = canSend, loading = sending)
         }
     }
+    if (typeSheet) {
+        KkModalSheet({ typeSheet = false }) {
+            KkSheetHeader("종류")
+            INQUIRY_TYPES.forEach { t -> KkSheetOption(t, t == type, { type = t; typeSheet = false }) }
+        }
+    }
 }
 
-/** 여러 줄 입력(150 높이, 반경 10). 누르면 2px 포커스 테두리, 오른쪽 아래 글자 수. */
+/** 여러 줄 입력(150 높이, 반경 10). 누르면 2px 포커스 테두리. 글자 수는 아래 도움말 줄에. */
 @Composable
-private fun TextArea(value: String, onValueChange: (String) -> Unit, placeholder: String) {
+private fun TextArea(value: String, onValueChange: (String) -> Unit) {
     val c = KkTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -175,19 +192,14 @@ private fun TextArea(value: String, onValueChange: (String) -> Unit, placeholder
         Modifier.fillMaxWidth().height(150.dp).clip(shape).background(c.surface)
             .border(if (focused) 2.dp else 1.dp, if (focused) c.accent else c.line, shape)
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (value.isEmpty()) Text(placeholder, style = KkTheme.type.body, color = c.sub)
-            BasicTextField(
-                value, onValueChange,
-                textStyle = KkTheme.type.body.copy(color = c.ink),
-                cursorBrush = SolidColor(c.accent),
-                interactionSource = interaction,
-                modifier = Modifier.fillMaxSize().semantics { contentDescription = "내용" },
-            )
-        }
-        Text("${value.length} / $MAX_BODY", style = KkTheme.type.caption, color = c.sub, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+        BasicTextField(
+            value, onValueChange,
+            textStyle = KkTheme.type.body.copy(color = c.ink),
+            cursorBrush = SolidColor(c.accent),
+            interactionSource = interaction,
+            modifier = Modifier.fillMaxSize().semantics { contentDescription = "내용" },
+        )
     }
 }
 

@@ -370,10 +370,12 @@ private fun MainShell() {
                 when (t) {
                     Tab.HOME -> HomeRoute(
                         onOpenPairing = { overlay = Overlay.PAIRING },
-                        onOpenCalendar = { tab = Tab.CALENDAR },
                         onOpenSettings = { overlay = Overlay.SETTINGS },
                         onWriteLetter = writeLetter,
-                        onOpenLeave = { tab = Tab.CALENDAR; overlay = Overlay.LEAVE },
+                        onOpenLetter = {
+                            letters.onIntent(LetterIntent.Open(it))
+                            tab = Tab.LETTER
+                        },
                         onOpenDayLine = openDayLine,
                     )
                     Tab.CALENDAR -> CalendarRoute(onOpenLeave = { overlay = Overlay.LEAVE }, onWriteDayLine = openDayLine, viewModel = calendar)

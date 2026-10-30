@@ -33,6 +33,7 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_social_apple
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_social_google
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_social_kakao
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_spinner
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_sprig
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_sticker
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_toast_error
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_toast_info
@@ -55,6 +56,7 @@ import com.sadturtleman.flowershoes.core.designsystem.res.ic_phone
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_alert
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_export
 import com.sadturtleman.flowershoes.core.designsystem.res.ic_lock
+import com.sadturtleman.flowershoes.core.designsystem.res.ic_frame
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -92,6 +94,7 @@ enum class KkIcons(internal val res: DrawableResource) {
     Lock(Res.drawable.ic_lock),
     Alert(Res.drawable.ic_alert),
     Export(Res.drawable.ic_export),
+    Frame(Res.drawable.ic_frame),
     Book(Res.drawable.ic_book),
 
     // 컴포넌트 안에서만 쓰는 글리프(크기가 24 가 아니다 — 자리에 맞춰 가운데 둔다)
@@ -104,6 +107,9 @@ enum class KkIcons(internal val res: DrawableResource) {
     ToastSuccess(Res.drawable.ic_toast_success),
     ToastError(Res.drawable.ic_toast_error),
     Spinner(Res.drawable.ic_spinner),
+
+    /** 홈 머리말 말린 꽃 가지(곰신 테마, 60×60, deco/plant). */
+    Sprig(Res.drawable.ic_sprig),
 
     // 소셜 로그인 공식 로고(색이 정해져 있어 tint 없이 쓴다)
     SocialKakao(Res.drawable.ic_social_kakao),

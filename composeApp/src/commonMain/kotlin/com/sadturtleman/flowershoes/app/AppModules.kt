@@ -144,7 +144,7 @@ fun kkotsinModules(
     },
     module {
         viewModel { OnboardingViewModel(get(), get(), get(), linkedElsewhere = { getOrNull<DeviceChangeSession>()?.linkedElsewhere() != null }) }
-        viewModel { HomeViewModel(get(), get(), get(), get(), get(), get(), pendingInvite = get<DeviceSettings>().pendingInvite, dayLineCards = get<DeviceSettings>().dayLineCards) }
+        viewModel { HomeViewModel(get(), get(), get(), get(), pendingInvite = get<DeviceSettings>().pendingInvite, dayLineCards = get<DeviceSettings>().dayLineCards) }
         viewModel { CalendarViewModel(get(), get(), get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }

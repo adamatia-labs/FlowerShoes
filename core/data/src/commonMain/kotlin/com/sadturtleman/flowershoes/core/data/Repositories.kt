@@ -304,6 +304,11 @@ class LetterRepository(
             }.sortedBy { it.visibleAtMs }.map { it.toModel() }
         }.distinctUntilChanged()
 
+    /** 내가 쓴 편지(예약 편지 포함, 지운 것 빼고). 혼자 모드 홈 "연결되면 보낼 편지 N통". */
+    fun observeMine(): Flow<List<Letter>> =
+        db.letterDao().observeAll().map { list -> list.filter { it.authorId == identity.userId && it.deletedAtMs == null }.map { it.toModel() } }
+            .distinctUntilChanged()
+
     suspend fun drawingsOf(letterId: String): List<DrawingEntity> = db.drawingDao().forLetter(letterId)
 
     /**
@@ -396,6 +401,9 @@ class MissYouRepository(
         val start = clock.today().atStartOfDayIn(SEOUL).toEpochMilliseconds()
         return db.missYouDao().observeCountSince(authorId, start)
     }
+
+    /** 내가 마지막으로 보낸 보고싶어 시각(위젯 "보냈어요"). */
+    fun observeMyLastSentAt(): Flow<Long?> = db.missYouDao().observeLastSentAt(identity.userId)
 
     suspend fun send() {
         val m = MissYou(Uuid.random().toString(), identity.userId, clock.now())

@@ -213,7 +213,7 @@ fun LetterInboxScreen(
         }
         KkUnderlineTabs(LetterFilter.entries.map { it.label }, state.filter.ordinal, { onIntent(LetterIntent.Filter(LetterFilter.entries[it])) })
         // 혼자 모드(Figma 편지함 · 혼자 모드): 연결 전 안내 + 연결하기. 보조 설명 줄은 없다(design.md).
-        if (state.solo && !state.loading) KkBanner(soloBannerTitle(state.partnerName), body = "", action = "연결하기", onAction = onConnect)
+        if (state.solo && !state.loading) KkBanner(soloBannerTitle(state.partnerName), action = "연결하기", onAction = onConnect)
         if (state.drafts.isNotEmpty()) DraftRow(state.drafts, onOpenDrafts)
         when {
             state.loading -> repeat(4) { EnvelopeSkeleton() }

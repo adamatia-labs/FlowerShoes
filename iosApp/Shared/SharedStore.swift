@@ -21,23 +21,53 @@ enum SharedStore {
 
     // MARK: 위젯 스냅샷 — :core:widget-bridge WidgetSnapshot 과 같은 필드
 
+    struct WidgetTag: Codable {
+        var label: String
+        var value: String
+    }
+
+    /// 글자는 Kotlin(widgetSnapshot)이 만들어 둔다 — 위젯은 그대로 그린다.
     struct WidgetSnapshot: Codable {
         var version: Int
         var theme: String
-        var daysLeft: Int?
-        var dischargeDate: String?
+        var ddayCaption: String?
+        var ddayValue: String?
+        var ddayFoot: String?
         var progress: Double?
-        var rank: String?
-        var nextEventTitle: String?
-        var nextEventDays: Int?
+        var progressStart: String?
+        var progressPercent: String?
+        var progressEnd: String?
+        var tagLeave: WidgetTag?
+        var tagMeet: WidgetTag?
+        var tagRank: WidgetTag?
+        var partnerName: String?
+        var partnerStatusCaption: String?
         var partnerStatus: String?
+        /// 상대가 고른 상태 색(ARGB).
+        var partnerStatusColor: Int64?
+        var partnerStatusUntil: String?
+        var nextEventDays: Int?
+        var nextEventValue: String?
+        var nextEventType: String?
+        var nextEventLine: String?
+        var nextEventWhen: String?
+        // v2 에서 생긴 수는 옛 스냅샷에 없을 수 있어 선택값이다(앱이 다시 쓰기 전에도 위젯 · NSE 가 읽히게).
+        var unreadLetters: Int?
+        var letterLine: String?
+        var letterMeta: String?
+        var letterId: String?
         var missYouFromPartnerToday: Int
+        var missYouSentToday: Int?
+        /// 방금(1분 안) 보낸 보고싶어 시각 — 위젯이 "보냈어요" 상태로 그린다.
+        var missYouJustSentAtMs: Int64?
         var linked: Bool
         var drawingDocPath: String?
         var drawingPngPath: String?
         var drawingShape: String?
         var drawingLetterId: String?
         var drawingId: String?
+        var drawingCaption: String?
+        var drawingMeta: String?
         /// 받은 그림 위젯 프레임(BASIC · BLOSSOM · KRAFT · POLAROID · NIGHT, 꽃신 평생).
         var widgetFrame: String?
         var updatedAtMs: Int64

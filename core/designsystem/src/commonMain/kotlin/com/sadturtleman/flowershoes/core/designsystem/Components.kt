@@ -510,6 +510,8 @@ fun KkTopBar(
     trailingButton: String? = null,
     trailingEnabled: Boolean = true,
     onTrailing: () -> Unit = {},
+    /** 있으면 제목을 왼쪽에 두고 그 아래 부제(Caption)를 단다. */
+    subtitle: String? = null,
 ) {
     val c = KkTheme.colors
     Box(modifier.fillMaxWidth().height(48.dp)) {
@@ -528,7 +530,15 @@ fun KkTopBar(
                 KkIcon(KkIcons.Close, tint = c.ink, size = 13.8.dp)
             }
         }
-        Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.align(Alignment.Center), maxLines = 1)
+        if (subtitle == null) {
+            Text(title, style = KkTheme.type.labelBold, color = c.ink, modifier = Modifier.align(Alignment.Center), maxLines = 1)
+        } else {
+            // Figma Top Bar · Back(titles): 제목 + 작은 부제(날짜)를 왼쪽에 쌓는다.
+            Column(Modifier.align(Alignment.CenterStart).padding(start = 52.dp)) {
+                Text(title, style = KkTheme.type.labelBold, color = c.ink, maxLines = 1)
+                Text(subtitle, style = KkTheme.type.caption, color = c.sub, maxLines = 1)
+            }
+        }
         Box(Modifier.align(Alignment.CenterEnd)) {
             when {
                 trailingText != null -> Box(
@@ -820,9 +830,10 @@ fun KkEmptyState(
 /**
  * 안내 띠(Figma Banner): paper/tag 바탕 · 알림 아이콘 · 제목(굵게) + 한 줄 · 오른쪽 텍스트 동작.
  * 화면 위쪽에서 꼭 알아야 할 것 하나(입대 전 연결 · 동기화 · 오프라인)에만 쓴다.
+ * [body] 는 사실 한 줄일 때만 넣는다 — 설명 문구는 쓰지 않는다(design.md 카피 규칙). null · 빈 문자열이면 제목만.
  */
 @Composable
-fun KkBanner(title: String, body: String, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
+fun KkBanner(title: String, body: String? = null, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
     Row(
@@ -834,7 +845,7 @@ fun KkBanner(title: String, body: String, modifier: Modifier = Modifier, action:
         KkIcon(KkIcons.Alert, tint = c.ink, size = 22.dp)
         Column(Modifier.weight(1f).padding(vertical = KkSpacing.md), verticalArrangement = Arrangement.spacedBy(KkSpacing.xxs)) {
             Text(title, style = KkTheme.type.labelBold, color = c.ink)
-            if (body.isNotEmpty()) Text(body, style = KkTheme.type.caption, color = c.sub)
+            if (!body.isNullOrEmpty()) Text(body, style = KkTheme.type.caption, color = c.sub)
         }
         if (action != null) {
             Text(
