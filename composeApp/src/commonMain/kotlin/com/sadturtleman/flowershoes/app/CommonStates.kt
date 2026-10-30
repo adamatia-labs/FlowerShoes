@@ -65,7 +65,6 @@ internal fun OfflineScreen(onRetry: () -> Unit) {
     StateFrame(actions = { KkPrimaryButton("다시 시도", onRetry) }) {
         KkIcon(KkIcons.Offline, tint = c.sub, size = 56.dp)
         StateTitle("인터넷이 끊겼어요")
-        StateBody("써 둔 편지는 폰에 저장돼 있어요. 다시 연결되면 바로 보내요.")
     }
 }
 
@@ -82,7 +81,6 @@ internal fun ServerErrorScreen(detail: String, retrying: Boolean, onRetry: () ->
     }) {
         KkIcon(KkIcons.Alert, tint = c.danger, size = 56.dp)
         StateTitle("잠깐 문제가 생겼어요")
-        StateBody("꽃신 서버가 답하지 않아요. 편지와 사진은 폰에 그대로 있어요.")
         Text(detail, style = KkTheme.type.caption, color = c.sub, textAlign = TextAlign.Center)
     }
 }
