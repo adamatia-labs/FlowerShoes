@@ -2,7 +2,7 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["TODO_APPLE_TEAM_ID.com.sadturtleman.kkotsin"],
+        "appIDs": ["F88SA5KHB4.com.sadturtleman.kkotsin"],
         "components": [{ "/": "/i/*" }]
       }
     ]
