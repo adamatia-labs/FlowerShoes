@@ -218,23 +218,20 @@ private fun MonthPageCard(ch: Chapter, month: MonthDetail, page: MonthPage, phot
         ) {
             Text("${ch.ym.month}월", style = KkTheme.type.handL, color = c.ink)
             Text(month.counts(), style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.sm))
-            // 붙인 물건(폴라로이드 · 봉투 · 꼬리표)은 보여 주기만 하는 작은 견본이라 글자 확대를 따르지 않는다 — 수는 위 줄에 있다.
-            KkFixedFontScale {
-                Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    when (val cover = ch.cover) {
-                        is ChapterCover.Photo -> KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
-                            PhotoImage(photos[cover.attachmentId], Modifier.fillMaxSize())
-                        }
-                        is ChapterCover.Drawing -> month.letters.firstOrNull { it.id == cover.letterId }?.thumb?.let { doc ->
-                            KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
-                                Box(Modifier.fillMaxSize().background(c.bar)) { DrawingView(doc, Modifier.fillMaxSize()) }
-                            }
-                        }
-                        null -> Unit
+            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                when (val cover = ch.cover) {
+                    is ChapterCover.Photo -> KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
+                        PhotoImage(photos[cover.attachmentId], Modifier.fillMaxSize())
                     }
-                    page.envelope?.let { SmallEnvelope(it, tilt = if (tilt > 0) -2f else 2f) }
-                    page.meet?.let { MeetTicket("${it.date.md()} ${it.tag}", it.title, Modifier.widthIn(min = 104.dp, max = 120.dp), tilt = if (tilt > 0) 2f else -1.5f) }
+                    is ChapterCover.Drawing -> month.letters.firstOrNull { it.id == cover.letterId }?.thumb?.let { doc ->
+                        KkPolaroid(Modifier.width(75.dp), tilt = if (tilt > 0) 3f else -2f, size = KkPolaroidSize.Compact) {
+                            Box(Modifier.fillMaxSize().background(c.bar)) { DrawingView(doc, Modifier.fillMaxSize()) }
+                        }
+                    }
+                    null -> Unit
                 }
+                page.envelope?.let { SmallEnvelope(it, tilt = if (tilt > 0) -2f else 2f) }
+                page.meet?.let { MeetTicket("${it.date.md()} ${it.tag}", it.title, Modifier.widthIn(min = 104.dp, max = 120.dp), tilt = if (tilt > 0) 2f else -1.5f) }
             }
             page.lastLine?.let { (date, text) ->
                 Text(
@@ -256,11 +253,14 @@ private fun SmallEnvelope(label: String, tilt: Float) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.sm)
     Column(
-        Modifier.rotate(tilt).size(78.dp, 54.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.tag).padding(top = KkSpacing.sm, start = 6.dp, end = 6.dp),
+        Modifier.rotate(tilt).width(78.dp).heightIn(min = 54.dp).kkElevation(KkElevation.Low, shape).clip(shape).background(c.tag).padding(top = KkSpacing.sm, start = 6.dp, end = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(KkSpacing.xs),
     ) {
         KkIcon(KkIcons.Mail, tint = c.accent, size = 22.dp)
-        Text(label, style = KkTheme.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        Text(
+            label, style = KkTheme.type.caption, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            modifier = Modifier.padding(bottom = KkSpacing.xs),
+        )
     }
 }
 

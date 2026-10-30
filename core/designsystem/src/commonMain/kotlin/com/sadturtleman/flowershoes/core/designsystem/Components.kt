@@ -402,7 +402,8 @@ fun KkSwitch(on: Boolean, modifier: Modifier = Modifier, enabled: Boolean = true
             .background(if (on) c.accent else c.line),
         contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
-        Box(Modifier.padding(horizontal = 3.dp).size(20.dp).clip(CircleShape).background(Color.White))
+        // 손잡이는 모드와 상관없이 흰색(Figma Switch · 플랫폼 스위치와 같게): 다크에서도 accent · line 트랙 위에 보인다.
+        Box(Modifier.padding(horizontal = 3.dp).size(20.dp).clip(CircleShape).background(Palette.PaperWhite))
     }
 }
 
@@ -667,7 +668,8 @@ fun KkListRow(
         if (value == null) {
             Text(label, style = KkTheme.type.body, color = labelColor ?: c.ink, modifier = Modifier.weight(1f))
         } else {
-            // 값이 길거나 글자를 키우면 값은 폭의 60% 까지만 쓰고 줄을 바꾼다 — 이름이 한 글자씩 쪼개지지 않게.
+            // 값은 이름이 차지하고 남은 폭을 쓰되, 이름에 적어도 (이름 폭과 40% 중 작은 것)을 남긴다 —
+            // 값이 길거나 글자를 키우면 값이 줄을 바꾸고 이름이 한 글자씩 쪼개지지 않는다.
             Layout(
                 content = {
                     Text(label, style = KkTheme.type.body, color = labelColor ?: c.ink)
@@ -677,7 +679,8 @@ fun KkListRow(
             ) { measurables, constraints ->
                 val gap = 8.dp.roundToPx()
                 val w = constraints.maxWidth
-                val v = measurables[1].measure(Constraints(maxWidth = (w * 0.6f).toInt()))
+                val labelKeep = minOf(measurables[0].maxIntrinsicWidth(constraints.maxHeight), (w * 0.4f).toInt())
+                val v = measurables[1].measure(Constraints(maxWidth = (w - gap - labelKeep).coerceAtLeast(0)))
                 val l = measurables[0].measure(Constraints(maxWidth = (w - v.width - gap).coerceAtLeast(0)))
                 val h = maxOf(l.height, v.height, constraints.minHeight)
                 layout(w, h) {

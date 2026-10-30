@@ -3,6 +3,7 @@ package com.sadturtleman.flowershoes.feature.settings
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.use
+import com.sadturtleman.flowershoes.core.data.LIFETIME_PRICE
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
 import com.sadturtleman.flowershoes.core.model.AppTheme
@@ -37,7 +38,11 @@ class SettingsRenderTest {
     private fun render(name: String, theme: AppTheme, dark: Boolean, fontScale: Float = 1f) {
         val png = ImageComposeScene(width = 360 * 2, height = 760 * 2, density = Density(2f, fontScale)) {
             KkotsinTheme(theme = theme, dark = dark) {
-                SettingsMainScreen(state.copy(theme = theme), "1.0.0", "카카오", "7,900원", {}, {}, {}, {}, {})
+                SettingsMainScreen(
+                    state.copy(theme = theme), appVersion = "1.0.0", providerLabel = "카카오",
+                    lifetime = lifetimeLabel(owned = false, shared = false, price = LIFETIME_PRICE),
+                    open = {}, onBack = {}, onOpenPairing = {}, onNickname = {}, onAnniversary = {},
+                )
             }
         }.use { scene ->
             scene.render()

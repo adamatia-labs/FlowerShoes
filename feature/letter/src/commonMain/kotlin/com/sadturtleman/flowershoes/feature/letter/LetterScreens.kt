@@ -1074,6 +1074,7 @@ private fun PaperCard(
                         InlineObject(key, thumbs, photos, Modifier.fillMaxSize())
                         if (selectedObj == index) {
                             Box(Modifier.fillMaxSize().border(1.5.dp, c.accent))
+                            // 모서리 손잡이는 편지지(콘텐츠) 위에 놓여 편지지처럼 모드와 상관없이 흰색.
                             listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomStart, Alignment.BottomEnd).forEach { a ->
                                 Box(Modifier.align(a).size(8.dp).background(Color.White).border(1.5.dp, c.accent))
                             }

@@ -31,7 +31,7 @@ class ThemeV2ContrastTest {
         "loveOn/love" to (loveOn to love),
     )
 
-    /** 글자가 아닌 표시(일정 점 · 소인 테두리 · 장식 식물, 3:1). */
+    /** 글자가 아닌 표시(일정 점 · 소인 테두리 · 장식 식물 · 하트, 3:1). */
     private fun KkColors.graphicPairs() = buildMap {
         for ((name, color) in listOf(
             "stamp" to stamp, "plant" to plant, "eventVacation" to eventVacation, "eventOvernight" to eventOvernight,
@@ -40,6 +40,8 @@ class ThemeV2ContrastTest {
             put("$name/canvas", color to canvas)
             put("$name/surface", color to surface)
         }
+        // 보고싶어 · 보낸 뒤: bar 위 love 하트.
+        put("love/bar", love to bar)
     }
 
     private fun check(minimum: Double, pairs: KkColors.() -> Map<String, Pair<Color, Color>>) {
