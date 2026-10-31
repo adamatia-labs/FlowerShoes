@@ -97,10 +97,10 @@ fun Modifier.paperDeco(look: PaperLook): Modifier = if (look.deco == PaperDeco.N
 private fun DrawScope.deco(look: PaperLook) {
     when (look.deco) {
         PaperDeco.NONE -> Unit
-        // Figma 하늘 수채: 폭 324 종이의 (260, 30)에 220×140 타원, 15 흐림 → 가장자리가 사라지는 타원 번짐.
+        // Figma 하늘 수채: 폭 324 종이의 (260, 30)에 220×140 타원, 15 흐림 → 가장자리가 사라지는 타원 번짐. 견본에서도 같도록 폭에 비례한다.
         PaperDeco.WASH -> {
-            val center = Offset(size.width - 64.dp.toPx(), 30.dp.toPx())
-            val r = 140.dp.toPx()
+            val center = Offset(size.width * 260f / 324f, size.width * 30f / 324f)
+            val r = size.width * 140f / 324f
             scale(1f, 70f / 110f, pivot = center) {
                 drawCircle(Brush.radialGradient(0f to look.decoColor, 0.55f to look.decoColor, 1f to look.decoColor.copy(alpha = 0f), center = center, radius = r), r, center)
             }
