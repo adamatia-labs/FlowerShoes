@@ -389,7 +389,7 @@ class LetterRepository(
         )
     }
 
-    fun newLetter(blocks: List<LetterBlock>, paper: String = "plain", title: String? = null, visibleAt: kotlin.time.Instant = clock.now(), font: String? = null) =
+    fun newLetter(blocks: List<LetterBlock>, paper: String = "rose", title: String? = null, visibleAt: kotlin.time.Instant = clock.now(), font: String? = null) =
         Letter(Uuid.random().toString(), identity.userId, title, blocks, paper, visibleAt, font = font)
 }
 

@@ -439,22 +439,22 @@ private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
     val body = KkTheme.type.body.copy(fontFamily = font.family(), fontSize = size, lineHeight = size * 1.7f, color = look.ink)
     Box(
         Modifier.fillMaxWidth().heightIn(min = 480.dp).kkElevation(KkElevation.Low, RectangleShape)
-            .background(look.background).border(1.dp, look.edge),
+            .background(look.background).paperDeco(look).border(1.dp, look.edge),
     ) {
         Column(Modifier.fillMaxWidth().padding(start = KkSpacing.xxl, end = KkSpacing.xxl, top = KkSpacing.lg, bottom = KkSpacing.xxxl)) {
             // 소인 자리(64)만큼 위를 비운다. 군사우편 편지지는 왼쪽 위에 "군사우편" 표시.
             Box(Modifier.fillMaxWidth().height(48.dp)) {
-                if (paper == Paper.MAIL) {
+                look.mark?.let { mark ->
                     Text(
-                        "군사우편", style = KkTheme.type.labelBold, color = look.mark, maxLines = 1,
-                        modifier = Modifier.border(1.dp, look.mark).padding(horizontal = 10.dp, vertical = KkSpacing.xxs),
+                        "군사우편", style = KkTheme.type.labelBold, color = mark, maxLines = 1,
+                        modifier = Modifier.border(1.dp, mark).padding(horizontal = 10.dp, vertical = KkSpacing.xxs),
                     )
                 }
             }
-            open.letter.title?.takeIf { it.isNotBlank() }?.let { RuledText(it, body.copy(fontWeight = FontWeight.Bold), look.rule) }
+            open.letter.title?.takeIf { it.isNotBlank() }?.let { RuledText(it, body.copy(fontWeight = FontWeight.Bold), look) }
             open.letter.blocks.forEach { block ->
                 when (block) {
-                    is LetterBlock.Text -> RuledText(block.text, body, look.rule)
+                    is LetterBlock.Text -> RuledText(block.text, body, look)
                     is LetterBlock.DrawingRef -> {
                         val doc = open.drawings[block.drawingId]
                         Box(Modifier.fillMaxWidth().padding(vertical = KkSpacing.xl), contentAlignment = Alignment.Center) {
@@ -492,18 +492,15 @@ private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
     }
 }
 
-/** 편지지 줄 위의 글: 줄마다 아래에 괘선을 긋는다(글자 크기가 바뀌어도 글줄에 맞는다). */
+/** 편지지 줄 위의 글: 줄마다 편지지 무늬(괘선 · 원고지 칸 · 모눈)를 긋는다(글자 크기가 바뀌어도 글줄에 맞는다). */
 @Composable
-private fun RuledText(text: String, style: TextStyle, rule: Color) {
+private fun RuledText(text: String, style: TextStyle, look: PaperLook) {
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     Text(
         text, style = style, onTextLayout = { layout = it },
         modifier = Modifier.fillMaxWidth().drawBehind {
             val l = layout ?: return@drawBehind
-            for (i in 0 until l.lineCount) {
-                val y = l.getLineBottom(i)
-                drawLine(rule, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
-            }
+            for (i in 0 until l.lineCount) drawPaperRow(look, l.getLineTop(i), l.getLineBottom(i))
         },
     )
 }
@@ -985,7 +982,7 @@ private fun PaperCard(
     val ink = look.ink
     val hint = look.ink.copy(alpha = 0.5f)
     Column(
-        Modifier.fillMaxWidth().heightIn(min = 480.dp).kkElevation(KkElevation.Low, RectangleShape).background(look.background).border(1.dp, look.edge)
+        Modifier.fillMaxWidth().heightIn(min = 480.dp).kkElevation(KkElevation.Low, RectangleShape).background(look.background).paperDeco(look).border(1.dp, look.edge)
             .padding(horizontal = KkSpacing.xxl, vertical = KkSpacing.xl),
         verticalArrangement = Arrangement.spacedBy(KkSpacing.md),
     ) {
@@ -1025,18 +1022,17 @@ private fun PaperCard(
                 visualTransformation = objectStyle,
                 onTextLayout = { layout = it },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 380.dp).drawBehind {
-                    // 괘선: 글줄마다, 글이 끝난 뒤로는 같은 간격으로 종이 끝까지.
+                    // 편지지 무늬: 글줄마다, 글이 끝난 뒤로는 같은 간격으로 종이 끝까지.
                     val l = layout ?: return@drawBehind
-                    val stroke = 1.dp.toPx()
                     var y = 0f
                     for (i in 0 until l.lineCount) {
                         y = l.getLineBottom(i)
-                        drawLine(look.rule, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
+                        drawPaperRow(look, l.getLineTop(i), y)
                     }
                     val step = if (l.lineCount > 0) l.getLineBottom(0) - l.getLineTop(0) else 0f
                     if (step > 0f) while (y + step <= size.height) {
+                        drawPaperRow(look, y, y + step)
                         y += step
-                        drawLine(look.rule, Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
                     }
                 }.semantics {
                     contentDescription = "편지 내용"

@@ -56,8 +56,8 @@ struct WidgetPalette {
     /// 받은 그림 프레임(설정 › 위젯, 꽃신 평생). 편지지처럼 콘텐츠라 테마 · 다크와 무관하다. 기본은 nil — 테마 표면.
     static func frame(_ frame: String?) -> Color? {
         switch frame {
-        case "BLOSSOM": return Color(hex: 0xFFE0E7)
-        case "KRAFT": return Color(hex: 0xE9DCC4)
+        case "BLOSSOM": return Color(hex: 0xFFF4F5)
+        case "KRAFT": return Color(hex: 0xD9C4A3)
         case "POLAROID": return Color(hex: 0xFFFFFF)
         case "NIGHT": return Color(hex: 0x1B2235)
         default: return nil
