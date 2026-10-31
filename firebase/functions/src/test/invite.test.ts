@@ -63,6 +63,17 @@ test('이름은 HTML 로 이스케이프한다', () => {
   assert.ok(html.includes('&lt;script&gt;&quot;&amp;'));
 });
 
+test('OG 이미지는 초대 호스트의 절대 주소 1200×630, 설명은 슬로건', () => {
+  for (const expired of [false, true]) {
+    const html = invitePageHtml({ name: '지수', expired, url: 'https://kkotsin-dev.web.app/i/t', stores });
+    assert.match(html, /<meta property="og:image" content="https:\/\/kkotsin-dev\.web\.app\/og\/invite-1200x630\.png">/);
+    assert.match(html, /<meta property="og:image:width" content="1200">/);
+    assert.match(html, /<meta property="og:image:height" content="630">/);
+    assert.match(html, /<meta property="og:description" content="편지로 이어지는 우리 둘만의 달력">/);
+    assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);
+  }
+});
+
 test('이름이 비면 중립 제목', () => {
   const html = invitePageHtml({ name: '', expired: false, url: 'https://x.web.app/i/t', stores });
   assert.match(html, /연인이 꽃신에 초대했어요/);

@@ -58,6 +58,9 @@ export interface StoreUrls {
   appStore: string;
 }
 
+/** design.md 의 슬로건. 카카오 피드 설명 · OG 설명이 같다. */
+const SLOGAN = '편지로 이어지는 우리 둘만의 달력';
+
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
@@ -70,6 +73,8 @@ export function invitePageHtml(p: { name: string | undefined; expired: boolean; 
   const heading = p.expired ? '이 초대 링크는 만료됐어요' : title;
   const note = p.expired ? '' : '<p class="note">설치 후 이 링크를 다시 눌러 주세요</p>';
   const t = escapeHtml(title);
+  // 이름 없는 공용 이미지(hosting/public/og). 미리보기 크롤러가 따라가도록 초대 호스트의 절대 주소.
+  const ogImage = `${new URL(p.url).origin}/og/invite-1200x630.png`;
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -79,7 +84,12 @@ export function invitePageHtml(p: { name: string | undefined; expired: boolean; 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="꽃신">
 <meta property="og:title" content="${t}">
+<meta property="og:description" content="${SLOGAN}">
 <meta property="og:url" content="${escapeHtml(p.url)}">
+<meta property="og:image" content="${escapeHtml(ogImage)}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="robots" content="noindex">
 <style>
   /* 테마 v2 곰신 토큰(core/designsystem Colors.kt): canvas · ink · sub · accent, 라이트 / 다크 */
