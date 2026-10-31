@@ -37,23 +37,25 @@ import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
 
-/** 편지지(Figma Paper Picker). [id] 는 [Letter.paper] 에 그대로 저장한다. */
-/** 편지지(화면 기능명세 2-10): 무료 다섯 + 꽃신 평생 다섯([lifetime]). 받는 사람은 이용권 없이도 그대로 보인다. */
+/**
+ * 편지지(Figma 편지 쓰기 · 편지지 시트): 무료 다섯 + 꽃신 평생 다섯([lifetime]). 받는 사람은 이용권 없이도 그대로 보인다.
+ * [id] 는 [Letter.paper] 에 그대로 저장 · 동기화한다.
+ */
 enum class Paper(val id: String, val label: String, val lifetime: Boolean = false) {
-    PLAIN("plain", "기본"),
-    BLOSSOM("blossom", "벚꽃"),
-    OLIVE("olive", "올리브"),
-    GRID("grid", "모눈"),
-    NIGHT("night", "밤하늘"),
-    MANUSCRIPT("manuscript", "원고지", lifetime = true),
-    KRAFT("kraft", "크라프트", lifetime = true),
-    MAIL("mail", "군사우편", lifetime = true),
-    NOTE("note", "줄노트", lifetime = true),
-    SKY("sky", "수채 하늘", lifetime = true),
+    ROSE("rose", "로즈 줄노트"),
+    MAIL("mail", "군사우편"),
+    MANUSCRIPT("manuscript", "원고지"),
+    KRAFT("kraft", "크라프트"),
+    SKY("sky", "하늘 수채"),
+    BLOSSOM("blossom", "벚꽃 엽서", lifetime = true),
+    NIGHT("night", "밤하늘", lifetime = true),
+    CHECK("check", "체크 노트", lifetime = true),
+    TYPEWRITER("typewriter", "빈티지 타자", lifetime = true),
+    LAVENDER("lavender", "라벤더 수채", lifetime = true),
     ;
 
     companion object {
-        fun of(id: String?): Paper = entries.firstOrNull { it.id == id } ?: PLAIN
+        fun of(id: String?): Paper = entries.firstOrNull { it.id == id } ?: ROSE
     }
 }
 
@@ -80,7 +82,7 @@ data class LetterCard(
 data class ComposeDraft(
     val title: String = "",
     val text: String = "",
-    val paper: String = Paper.BLOSSOM.id,
+    val paper: String = Paper.ROSE.id,
     val drawings: List<DrawingMeta> = emptyList(),
     /** 예약 공개 시각(서울). null 이면 바로. */
     val revealAt: LocalDateTime? = null,
@@ -402,7 +404,7 @@ class LetterViewModel(
                 thanked(true)
                 viewModelScope.launch {
                     try {
-                        letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.BLOSSOM.id), emptyList())
+                        letters.send(letters.newLetter(listOf(LetterBlock.Text("고마워 💗")), paper = Paper.ROSE.id), emptyList())
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -417,7 +419,7 @@ class LetterViewModel(
                         throw e
                     } catch (_: Exception) {
                     }
-                    bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.BLOSSOM.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
+                    bizLogger.record(BizView.LETTER_READ, BizEvent.LetterSent(paper = Paper.ROSE.id, font = com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id, scheduled = false, drawings = 0, photos = 0, reply = true))
                     toast("${names.first().second}에게 고마워를 보냈어요")
                 }
             }
@@ -432,7 +434,7 @@ class LetterViewModel(
             LetterIntent.Close -> ui.update { it.copy(open = null) }
             is LetterIntent.SendDrawing -> viewModelScope.launch {
                 val visibleAt = intent.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
-                val letter = letters.newLetter(listOf(LetterBlock.DrawingRef(intent.meta.id)), paper = Paper.PLAIN.id, title = intent.caption, visibleAt = visibleAt)
+                val letter = letters.newLetter(listOf(LetterBlock.DrawingRef(intent.meta.id)), paper = Paper.ROSE.id, title = intent.caption, visibleAt = visibleAt)
                 letters.send(letter, listOf(intent.meta))
                 bizLogger.record(BizView.DRAWING_SEND, BizEvent.DrawingSent(scheduled = intent.revealAt != null, withCaption = !intent.caption.isNullOrBlank()))
                 recordSoloQueue(BizView.DRAWING_SEND)

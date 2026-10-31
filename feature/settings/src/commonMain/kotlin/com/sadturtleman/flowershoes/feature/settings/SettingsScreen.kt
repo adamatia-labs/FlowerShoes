@@ -942,8 +942,8 @@ private fun WidgetFramePicker() {
 
 private val WIDGET_FRAMES: List<Triple<String, String, Color?>> = listOf(
     Triple("BASIC", "기본", null),
-    Triple("BLOSSOM", "벚꽃", Color(0xFFFFE0E7)),
-    Triple("KRAFT", "크라프트", Color(0xFFE9DCC4)),
+    Triple("BLOSSOM", "벚꽃", Color(0xFFFFF4F5)),
+    Triple("KRAFT", "크라프트", Color(0xFFD9C4A3)),
     Triple("POLAROID", "폴라로이드", Color(0xFFFFFFFF)),
     Triple("NIGHT", "밤하늘", Color(0xFF1B2235)),
 )

@@ -62,7 +62,7 @@ class InboxRenderTest {
         render("read_thanked") { LetterReadScreen(read.copy(thanked = true), {}, {}) }
         // 군인이 읽는 곰신 편지: 편지지는 보낸 사람 것 그대로, 소인은 "꽃신 우편".
         render("read_by_soldier_dark", AppTheme.SOLDIER, dark = true) {
-            LetterReadScreen(read.copy(letter = read.letter.copy(paper = "plain"), title = "지수가 보낸 편지", senderRole = Role.GOMSIN), {}, {})
+            LetterReadScreen(read.copy(letter = read.letter.copy(paper = "rose"), title = "지수가 보낸 편지", senderRole = Role.GOMSIN), {}, {})
         }
         render("read_locked") {
             LetterReadScreen(
@@ -133,7 +133,7 @@ class InboxRenderTest {
         draft = ComposeDraft(
             title = "보고 싶은 밤",
             text = "민준아, 오늘은 유난히 네 생각이 많이 났어. 퇴근길에 우리 자주 가던 떡볶이집 앞을 지나는데 괜히 혼자 웃었어.\n\n이번 휴가 때 꼭 같이 가자.\n훈련 다치지 말고, 밥 잘 챙겨 먹어!",
-            paper = Paper.PLAIN.id,
+            paper = Paper.ROSE.id,
         ),
     )
 

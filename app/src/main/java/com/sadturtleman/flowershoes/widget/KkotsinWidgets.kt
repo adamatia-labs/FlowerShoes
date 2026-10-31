@@ -112,8 +112,8 @@ private class WidgetPalette(s: WidgetSnapshot?) {
 
     /** 그림 프레임 바탕 + (옆, 아래) 여백. 기본은 null — 테마 표면을 쓴다. */
     fun frame(frame: String?) = when (frame) {
-        "BLOSSOM" -> fixed(0xFFFFE0E7) to (14.dp to 14.dp)
-        "KRAFT" -> fixed(0xFFE9DCC4) to (14.dp to 14.dp)
+        "BLOSSOM" -> fixed(0xFFFFF4F5) to (14.dp to 14.dp)
+        "KRAFT" -> fixed(0xFFD9C4A3) to (14.dp to 14.dp)
         "POLAROID" -> fixed(0xFFFFFFFF) to (10.dp to 30.dp)
         "NIGHT" -> fixed(0xFF1B2235) to (14.dp to 14.dp)
         else -> null
