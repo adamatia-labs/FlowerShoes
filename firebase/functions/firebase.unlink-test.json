@@ -1,0 +1,10 @@
+{
+  "firestore": { "rules": ".unlink-firestore.rules" },
+  "storage": { "rules": ".unlink-storage.rules" },
+  "emulators": {
+    "firestore": { "port": 8186 },
+    "storage": { "port": 9299 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  }
+}
