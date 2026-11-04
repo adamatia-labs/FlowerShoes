@@ -454,8 +454,12 @@ class DrawingWidget : GlanceAppWidget() {
         val s = snapshotStore(context).read()
         val p = WidgetPalette(s)
         // 완성 PNG 가 있으면 그대로, 없으면(옛 그림) 문서를 그 자리에서 그린다.
-        val bitmap: Bitmap? = s?.drawingPngPath?.let { android.graphics.BitmapFactory.decodeFile(it) }
-            ?: s?.drawingDocPath?.let { DrawingBitmap.render(it, widthPx = 680) }
+        val attachments = context.filesDir.resolve("attachments").absolutePath.toPath()
+        fun safeFile(raw: String?): String? = com.sadturtleman.flowershoes.core.data.AttachmentStore.safeExistingPath(attachments, raw)?.toString()
+        val bitmap: Bitmap? = s?.drawingId?.takeIf { com.sadturtleman.flowershoes.core.data.AttachmentStore.isSafeId(it) }?.let {
+            safeFile(s.drawingPngPath)?.let { path -> android.graphics.BitmapFactory.decodeFile(path) }
+                ?: safeFile(s.drawingDocPath)?.let { path -> DrawingBitmap.render(path, widthPx = 680) }
+        }
         provideContent {
             GlanceTheme {
                 val open = s?.drawingLetterId?.let { context.openUri("kkotsin://letter/$it") } ?: context.openApp()

@@ -263,6 +263,8 @@ class SyncClient(
 
     private suspend fun download(couple: CoupleEntity, blobId: String?, key: String?, attachmentId: String?, kind: AttachmentKind) {
         if (blobId == null || key == null || attachmentId == null) return
+        // 잘못된 첨부 참조는 그 항목만 건너뛰어 나머지 기록과 스트림은 계속 처리한다.
+        if (!AttachmentStore.isSafeId(blobId) || !AttachmentStore.isSafeId(attachmentId)) return
         val sealed = blobs.get(couple.id, blobId) ?: return
         attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
         blobs.delete(couple.id, blobId)

@@ -75,6 +75,23 @@ enum SharedStore {
 
     static var snapshotURL: URL { container.appendingPathComponent("widget/snapshot.json") }
 
+    /// 예전 스냅샷도 App Group의 위젯 그림 폴더 밖은 읽지 않는다.
+    static func safeWidgetImageURL(_ path: String?, directory: URL) -> URL? {
+        guard let path else { return nil }
+        let root = directory.standardizedFileURL.resolvingSymlinksInPath()
+        let file = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+        guard file.deletingLastPathComponent().path == root.path,
+              file.lastPathComponent.hasPrefix("drawing-"), file.pathExtension == "png" else { return nil }
+        return file
+    }
+
+    static func isSafeWidgetDrawingID(_ id: String?) -> Bool {
+        guard let id, !id.isEmpty, id != ".", id != "..", id.utf8.count <= 255 else { return false }
+        return !id.unicodeScalars.contains { scalar in
+            scalar == "/" || scalar == "\\" || scalar == ":" || scalar.value < 32 || scalar.value == 127
+        }
+    }
+
     static func readSnapshot() -> WidgetSnapshot? {
         guard let data = try? Data(contentsOf: snapshotURL) else { return nil }
         return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)

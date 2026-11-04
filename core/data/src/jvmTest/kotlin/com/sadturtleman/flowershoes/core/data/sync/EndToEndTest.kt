@@ -9,6 +9,9 @@ import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.MissYouRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER
+import com.sadturtleman.flowershoes.core.data.OpCodec
+import com.sadturtleman.flowershoes.core.data.OpPayload
+import com.sadturtleman.flowershoes.core.data.PhotoRef
 import com.sadturtleman.flowershoes.core.data.SyncWriter
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.buildKkotsin
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import okio.FileSystem
+import okio.ByteString.Companion.toByteString
 import kotlin.uuid.Uuid
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -31,6 +35,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -85,6 +90,45 @@ class EndToEndTest {
         jisu.sync.syncOnce()
         minjun.sync.syncOnce()
         jisu.sync.syncOnce()
+    }
+
+    @Test
+    fun `경로를 벗어나는 첨부는 건너뛰고 뒤의 정상 편지는 계속 받는다`() = runTest {
+        link()
+        val couple = jisu.db.coupleDao().get()!!
+        val outside = root / "outside"
+        FileSystem.SYSTEM.createDirectories(root)
+        FileSystem.SYSTEM.write(outside) { writeUtf8("original") }
+        val key = Sodium.random(com.sadturtleman.flowershoes.core.crypto.Aead.KEY_BYTES)
+        val encrypted = com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, "changed".encodeToByteArray())
+        cloud.put(couple.id, "blob-safe", encrypted)
+        cloud.put(couple.id, "../bad-blob", encrypted)
+        cloud.put(couple.id, "valid-blob", encrypted)
+        val bad = jisu.letters.newLetter(listOf(LetterBlock.Text("잘못된 첨부"), LetterBlock.Photo("../outside"), LetterBlock.Photo("safe-ref"), LetterBlock.Photo("valid-photo")))
+        val good = jisu.letters.newLetter(listOf(LetterBlock.Text("다음 편지")))
+        suspend fun deliver(seq: Long, payload: OpPayload) {
+            val opId = Uuid.random().toString()
+            val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(opId, "dev-a:app", seq, 1)
+            val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(
+                header, Plain(seq, OpCodec.encode(payload)).encode(),
+                jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!,
+            )
+            cloud.put(couple.id, "dev-b", MailItem(opId, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature))
+        }
+        deliver(1, OpPayload.LetterPut(bad, photos = listOf(
+            PhotoRef("../outside", "blob-safe", key.toByteString().base64()),
+            PhotoRef("safe-ref", "../bad-blob", key.toByteString().base64()),
+            PhotoRef("valid-photo", "valid-blob", key.toByteString().base64()),
+        )))
+        deliver(2, OpPayload.LetterPut(good))
+        minjun.sync.syncOnce()
+        assertContentEquals("original".encodeToByteArray(), FileSystem.SYSTEM.read(outside) { readByteArray() })
+        assertNull(minjun.attachments.read("../outside"))
+        assertNull(minjun.attachments.read("safe-ref"))
+        assertContentEquals("changed".encodeToByteArray(), minjun.attachments.read("valid-photo"))
+        assertNotNull(minjun.db.letterDao().get(bad.id))
+        assertNotNull(minjun.db.letterDao().get(good.id))
+        assertEquals(2L, minjun.db.syncDao().cursors().first { it.stream == "dev-a:app" }.contiguousSeq)
     }
 
     private suspend fun widgetItem(seq: Long): MailItem {
