@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -125,18 +126,21 @@ fun OnboardingRoute(
     // 방금 탈퇴했으면 처음 화면 앞에 탈퇴 완료를 한 번(탈퇴가 설정을 비우며 세운 표시).
     val settings = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.DeviceSettings>()
     val farewell by (settings?.farewellPending ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(null)
+    val appleInstructions by (settings?.farewellAppleInstructions ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(null)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     when (farewell) {
         null -> Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas))
-        true -> AccountDeletedScreen { scope.launch { settings?.setFarewellPending(false) } }
+        true -> if (appleInstructions == null) Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas)) else
+            AccountDeletedScreen(appleInstructions == true) { scope.launch { settings?.setFarewellPending(false) } }
         false -> OnboardingScreen(state, viewModel::onIntent)
     }
 }
 
 /** 탈퇴 완료(Figma 8 · 회원 탈퇴 · 탈퇴 완료 `381:5420`): 말린 꽃 가지 · "그동안 고마웠어요" · "기록을 모두 지웠어요" · 처음 화면으로. */
 @Composable
-private fun AccountDeletedScreen(onDone: () -> Unit) {
+internal fun AccountDeletedScreen(showAppleInstructions: Boolean, onDone: () -> Unit) {
     val c = KkTheme.colors
+    val uri = LocalUriHandler.current
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xxl)) {
         Column(
             Modifier.weight(1f).fillMaxWidth(),
@@ -146,6 +150,10 @@ private fun AccountDeletedScreen(onDone: () -> Unit) {
             KkIcon(KkIcons.Sprig, tint = c.plant, size = 60.dp)
             Text("그동안 고마웠어요", style = KkTheme.type.handL, color = c.ink, textAlign = TextAlign.Center)
             Text("기록을 모두 지웠어요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
+            if (showAppleInstructions) {
+                Text("Apple 계정 연결은 직접 확인해 주세요. iPhone 설정에서 이름 → Apple로 로그인 → 꽃신을 선택해 사용을 중단할 수 있어요.", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
+                KkSecondaryButton("Apple 계정 연결 해제 방법", { runCatching { uri.openUri("https://support.apple.com/ko-kr/102571") } })
+            }
         }
         KkButton("처음 화면으로", onDone, Modifier.fillMaxWidth().padding(vertical = KkSpacing.lg), style = com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle.Secondary)
     }
