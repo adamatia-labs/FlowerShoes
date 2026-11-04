@@ -5,6 +5,15 @@ export const REQUEST_TTL_MS = 7 * 24 * 3600 * 1000;
 
 const DAY_MS = 24 * 3600 * 1000;
 
+/** 서버 생성 시각이 같을 때도 요청 ID로 일관된 선후 관계를 정한다. */
+export interface RequestOrder { id: string; seconds: number; nanoseconds: number }
+
+export function compareRequestOrder(a: RequestOrder, b: RequestOrder): number {
+  if (a.seconds !== b.seconds) return a.seconds < b.seconds ? -1 : 1;
+  if (a.nanoseconds !== b.nanoseconds) return a.nanoseconds < b.nanoseconds ? -1 : 1;
+  return a.id === b.id ? 0 : a.id < b.id ? -1 : 1;
+}
+
 export interface RequestState {
   uid: string;
   newDeviceId: string;
