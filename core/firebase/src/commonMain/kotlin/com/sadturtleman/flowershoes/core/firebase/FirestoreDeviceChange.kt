@@ -176,13 +176,27 @@ class FirestoreDeviceChange(
 }
 
 /** 연결 해제 · 탈퇴 callable. 서버 데이터 삭제 · 상대 알림은 함수가 한다. */
+@Serializable
+private data class DeleteAccountResponse(val ok: Boolean = true, val appleRevocation: String? = null)
+
 class FunctionsAccount(private val region: String = "asia-northeast3") : com.sadturtleman.flowershoes.core.data.sync.AccountTransport {
     override suspend fun unlinkCouple(coupleId: String) {
         Firebase.functions(region).httpsCallable("unlinkCouple").invoke(mapOf("coupleId" to coupleId))
     }
 
     override suspend fun deleteAccount() {
-        Firebase.functions(region).httpsCallable("deleteAccount").invoke()
+        deleteAccountWithOutcome()
+    }
+
+    override suspend fun deleteAccountWithOutcome(): com.sadturtleman.flowershoes.core.data.sync.AppleRevocation {
+        val response = Firebase.functions(region).httpsCallable("deleteAccount").invoke()
+        val value = runCatching { response.data(DeleteAccountResponse.serializer()).appleRevocation }.getOrNull()
+        return when (value) {
+            "not_required" -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.NOT_REQUIRED
+            "revoked" -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.REVOKED
+            "manual" -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.MANUAL
+            else -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.UNKNOWN
+        }
     }
 
     override suspend fun signInWithCustomToken(token: String) {
