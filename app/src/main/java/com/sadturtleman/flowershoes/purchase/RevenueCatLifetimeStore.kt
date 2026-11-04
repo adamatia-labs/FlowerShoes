@@ -32,7 +32,16 @@ import kotlinx.coroutines.flow.StateFlow
  * 추억 책 PDF 는 Offering [BOOK_OFFERING] 의 첫 상품, entitlement [BOOK_ENTITLEMENT] 이다([book]).
  * RevenueCat 사용자 id 는 꽃신 계정 id 와 같게 맞춰, 폰을 바꿔도(같은 계정이면) 이용권이 따라온다.
  */
-class RevenueCatLifetimeStore(app: Application, apiKey: String, private val identity: Identity, debug: Boolean) : LifetimeStore {
+class RevenueCatLifetimeStore internal constructor(
+    private val identity: Identity,
+    register: ((Set<String>) -> Unit) -> Unit,
+) : LifetimeStore {
+
+    constructor(app: Application, apiKey: String, identity: Identity, debug: Boolean) : this(identity, { onUpdate ->
+        if (debug) Purchases.logLevel = LogLevel.DEBUG
+        Purchases.configure(PurchasesConfiguration.Builder(app, apiKey).build())
+        Purchases.sharedInstance.updatedCustomerInfoListener = UpdatedCustomerInfoListener { onUpdate(it.entitlements.active.keys) }
+    })
 
     private val _owned = MutableStateFlow(false)
     private val _bookOwned = MutableStateFlow(false)
@@ -42,13 +51,12 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
     var activity: WeakReference<Activity> = WeakReference(null)
 
     init {
-        if (debug) Purchases.logLevel = LogLevel.DEBUG
-        Purchases.configure(PurchasesConfiguration.Builder(app, apiKey).build())
-        Purchases.sharedInstance.updatedCustomerInfoListener = UpdatedCustomerInfoListener { update(it) }
+        register(::updateActive)
     }
 
-    private fun update(info: CustomerInfo) {
-        val active = info.entitlements.active.keys
+    private fun update(info: CustomerInfo) = updateActive(info.entitlements.active.keys)
+
+    private fun updateActive(active: Set<String>) {
         _owned.value = active.any { it != BOOK_ENTITLEMENT }
         _bookOwned.value = BOOK_ENTITLEMENT in active
     }
