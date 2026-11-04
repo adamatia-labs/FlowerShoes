@@ -27,7 +27,7 @@ import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from '
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
-import { AnswerSide, answerDecision, blockedPush, isSecondWithin24h, requestPush } from './device-change';
+import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
 import { deliverUnlinkNotification, forgetUnlinkMember, unlink, UnlinkForbidden, UnlinkNotFound, UnlinkStore, UnlinkHistory } from './unlink';
 export { onMailCreated } from './mail-function';
@@ -276,31 +276,51 @@ async function nicknameOf(uid: string): Promise<string> {
   return ((await db.doc(`users/${uid}`).get()).get('nickname') as string | undefined) || '연인';
 }
 
+function newerDeviceRequests(others: QueryDocumentSnapshot[], requestId: string, createdAt: Timestamp): QueryDocumentSnapshot[] {
+  const order = { id: requestId, seconds: createdAt.seconds, nanoseconds: createdAt.nanoseconds };
+  return others.filter((doc) => {
+    const t = doc.get('createdAt');
+    return t instanceof Timestamp && compareRequestOrder({ id: doc.id, seconds: t.seconds, nanoseconds: t.nanoseconds }, order) > 0;
+  });
+}
+
 /**
  * 새 폰의 요청(규칙이 작성자 · members · 대기 기기 · createdAt = 서버 시각을 막는다).
  * 같은 사람의 24시간 안 두 번째 요청이면 표시하고, 그 사람의 이전 대기 요청은 취소한다(다시 요청).
  */
 export const onDeviceChangeCreated = onDocumentCreated({ document: 'couples/{c}/deviceChanges/{r}', region: REGION }, async (event) => {
   const { c, r } = event.params;
-  const req = event.data?.data();
-  if (!req) return;
-  const couple = await coupleOf(c);
-  const uid = req.uid as string;
-  if (!(uid in couple.members)) return;
-  const createdAtMs = (req.createdAt as Timestamp).toMillis();
-  const others = (await db.collection(`couples/${c}/deviceChanges`).where('uid', '==', uid).get()).docs.filter((d) => d.id !== r);
-  const batch = db.batch();
-  batch.update(event.data!.ref, { second: isSecondWithin24h(uid, createdAtMs, others.map((d) => ({ uid, createdAtMs: (d.get('createdAt') as Timestamp).toMillis() }))) });
-  for (const d of others.filter((o) => o.get('status') === 'pending')) {
-    batch.update(d.ref, { status: 'cancelled', answeredAt: FieldValue.serverTimestamp() });
-    if (d.get('newDeviceId') !== req.newDeviceId) batch.delete(db.doc(`couples/${c}/devices/${d.get('newDeviceId')}`));
-  }
-  await batch.commit();
-  const partner = Object.keys(couple.members).find((u) => u !== uid);
+  if (!event.data) return;
+  const ref = event.data.ref;
+  const outcome = await db.runTransaction(async (tx) => {
+    const req = (await tx.get(ref)).data();
+    if (!req || req.status !== 'pending' || typeof req.uid !== 'string' || typeof req.newDeviceId !== 'string' || !(req.createdAt instanceof Timestamp)) return undefined;
+    const couple = (await tx.get(db.doc(`couples/${c}`))).data() as { members: Record<string, string> } | undefined;
+    if (!couple || !(req.uid in couple.members)) return undefined;
+    const others = (await tx.get(db.collection(`couples/${c}/deviceChanges`).where('uid', '==', req.uid))).docs.filter((d) => d.id !== r);
+    // 같은 서버 시각의 요청도 ID로 순서를 정해 어느 이벤트가 먼저 와도 같은 결과를 만든다.
+    const newer = newerDeviceRequests(others, r, req.createdAt);
+    if (newer.length) {
+      tx.update(ref, { status: 'cancelled', answeredAt: FieldValue.serverTimestamp() });
+      if (!newer.some((d) => d.get('newDeviceId') === req.newDeviceId)) tx.delete(db.doc(`couples/${c}/devices/${req.newDeviceId}`));
+      return undefined;
+    }
+    const createdAtMs = req.createdAt.toMillis();
+    const earlier = others.filter((d) => d.get('createdAt') instanceof Timestamp);
+    const sameTimePredecessor = earlier.some((d) => (d.get('createdAt') as Timestamp).isEqual(req.createdAt) && d.id < r);
+    tx.update(ref, { second: sameTimePredecessor || isSecondWithin24h(req.uid, createdAtMs, earlier.map((d) => ({ uid: req.uid as string, createdAtMs: (d.get('createdAt') as Timestamp).toMillis() }))) });
+    for (const d of earlier.filter((o) => o.get('status') === 'pending')) {
+      tx.update(d.ref, { status: 'cancelled', answeredAt: FieldValue.serverTimestamp() });
+      if (typeof d.get('newDeviceId') === 'string' && d.get('newDeviceId') !== req.newDeviceId) tx.delete(db.doc(`couples/${c}/devices/${d.get('newDeviceId')}`));
+    }
+    return { uid: req.uid as string, partner: Object.keys(couple.members).find((u) => u !== req.uid), newDeviceId: req.newDeviceId as string };
+  });
+  if (!outcome) return;
+  const { uid, partner, newDeviceId } = outcome;
   const text = requestPush(await nicknameOf(uid));
   if (partner) await push(partner, { visible: { title: '꽃신', body: text.partner }, data: { kind: 'device-request', coupleId: c, requestId: r } });
   // 같은 계정(옛 폰). 계정만 털린 경우 알아채고 막을 수 있게.
-  await push(uid, { visible: { title: '꽃신', body: text.owner }, data: { kind: 'device-signed-in', coupleId: c, requestId: r, deviceId: req.newDeviceId } });
+  await push(uid, { visible: { title: '꽃신', body: text.owner }, data: { kind: 'device-signed-in', coupleId: c, requestId: r, deviceId: newDeviceId } });
 });
 
 /**
@@ -328,6 +348,14 @@ export const onDeviceChangeAnswered = onDocumentCreated({ document: 'couples/{c}
     const state = req && { uid: req.uid as string, newDeviceId: req.newDeviceId as string, status: req.status as string, expireAtMs: (req.expireAt as Timestamp).toMillis() };
     const result = answerDecision(state, who as AnswerSide, answer, approver, signatureOk, Date.now());
     if (result === 'ignore' || !req) return { result, req };
+    if (!(req.createdAt instanceof Timestamp) || typeof req.uid !== 'string' || typeof req.newDeviceId !== 'string') return { result: 'ignore' as const, req };
+    const others = (await tx.get(db.collection(`couples/${c}/deviceChanges`).where('uid', '==', req.uid))).docs.filter((d) => d.id !== r);
+    const newer = newerDeviceRequests(others, r, req.createdAt);
+    if (newer.length) {
+      tx.update(ref, { status: 'cancelled', answeredAt: FieldValue.serverTimestamp() });
+      if (!newer.some((d) => d.get('newDeviceId') === req.newDeviceId)) tx.delete(db.doc(`couples/${c}/devices/${req.newDeviceId}`));
+      return { result: 'ignore' as const, req };
+    }
     const now = FieldValue.serverTimestamp();
     if (result === 'approve') {
       const couple = (await tx.get(db.doc(`couples/${c}`))).data() as { members: Record<string, string> };

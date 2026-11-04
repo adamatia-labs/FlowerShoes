@@ -184,8 +184,7 @@ private fun Hero(hero: HomeHero?, onOpenSettings: () -> Unit) {
         hero.phase == HomePhase.SERVING || hero.phase == HomePhase.DISCHARGE_DAY -> KkServiceProgress(
             progress = hero.progress, start = hero.start, end = hero.end, percent = hero.percent,
             modifier = Modifier.padding(top = KkSpacing.sm),
-            style = if (soldier) KkServiceProgressStyle.Months else KkServiceProgressStyle.Path,
-            months = hero.months,
+            style = KkServiceProgressStyle.Path,
         )
         else -> hero.detail?.let { Text(it, style = KkTheme.type.caption, color = c.sub, modifier = Modifier.padding(top = KkSpacing.sm)) }
     }

@@ -135,31 +135,34 @@ sealed class FlagKey<T>(
     companion object {
 
         /** 기능 스위치. */
-        val featureFlags: List<FlagKey<*>> = listOf(
-            NewOnboarding,
-            HomePageSize,
-            NetworkRetryCount,
-            FetchTimeoutMillis,
-            RetryBackoffMillis,
-            HomeBanner,
-            MinVersion,
-            Maintenance,
-        )
+        // 개별 키를 먼저 만들 때 상위 클래스 초기화가 재진입한다. 목록은 클래스 초기화가 끝난 뒤 만든다.
+        val featureFlags: List<FlagKey<*>> by lazy {
+            listOf(
+                NewOnboarding,
+                HomePageSize,
+                NetworkRetryCount,
+                FetchTimeoutMillis,
+                RetryBackoffMillis,
+                HomeBanner,
+                MinVersion,
+                Maintenance,
+            )
+        }
 
         /** AB 테스트. 값이 곧 변형이다. */
-        val experiments: List<FlagKey<*>> = listOf(
-            HomeLayoutAb,
-        )
+        val experiments: List<FlagKey<*>> by lazy {
+            listOf(HomeLayoutAb)
+        }
 
-        val all: List<FlagKey<*>> = featureFlags + experiments
+        val all: List<FlagKey<*>> by lazy { featureFlags + experiments }
 
         /**
          * 시작할 때 한 번 받아 두는 것들.
          * 목록을 손으로 적지 않는 이유는 [stable] 과 어긋나는 순간 그 플래그가 조용히 기본값이 되기 때문이다.
          */
-        val stableFlags: List<FlagKey<*>> = all.filter { it.stable }
+        val stableFlags: List<FlagKey<*>> by lazy { all.filter { it.stable } }
 
         /** 읽을 때마다 새로 가져오는 것들. */
-        val volatileFlags: List<FlagKey<*>> = all.filterNot { it.stable }
+        val volatileFlags: List<FlagKey<*>> by lazy { all.filterNot { it.stable } }
     }
 }

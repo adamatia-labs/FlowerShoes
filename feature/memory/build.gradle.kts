@@ -39,6 +39,7 @@ kotlin {
             implementation(kotlin("test"))
             // 추억 목록 · 한 달 화면을 build/render 에 그려 Figma 와 대조한다.
             implementation(compose.desktop.currentOs)
+            implementation(compose.desktop.uiTestJUnit4)
         }
     }
 }
