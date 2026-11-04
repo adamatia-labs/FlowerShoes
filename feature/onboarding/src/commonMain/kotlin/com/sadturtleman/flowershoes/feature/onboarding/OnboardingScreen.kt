@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -139,6 +140,7 @@ fun OnboardingRoute(
 @Composable
 internal fun AccountDeletedScreen(showAppleInstructions: Boolean, onDone: () -> Unit) {
     val c = KkTheme.colors
+    val uri = LocalUriHandler.current
     Column(Modifier.fillMaxSize().background(c.canvas).statusBarsPadding().navigationBarsPadding().padding(horizontal = KkSpacing.xxl)) {
         Column(
             Modifier.weight(1f).fillMaxWidth(),
@@ -150,6 +152,7 @@ internal fun AccountDeletedScreen(showAppleInstructions: Boolean, onDone: () -> 
             Text("기록을 모두 지웠어요", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
             if (showAppleInstructions) {
                 Text("Apple 계정 연결은 직접 확인해 주세요. iPhone 설정에서 이름 → Apple로 로그인 → 꽃신을 선택해 사용을 중단할 수 있어요.", style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
+                KkSecondaryButton("Apple 계정 연결 해제 방법", { runCatching { uri.openUri("https://support.apple.com/ko-kr/102571") } })
             }
         }
         KkButton("처음 화면으로", onDone, Modifier.fillMaxWidth().padding(vertical = KkSpacing.lg), style = com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle.Secondary)

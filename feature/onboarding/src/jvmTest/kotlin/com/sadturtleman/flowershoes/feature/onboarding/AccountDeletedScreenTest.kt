@@ -21,6 +21,7 @@ class AccountDeletedScreenTest {
         }
         onNodeWithText("기록을 모두 지웠어요").assertExists()
         onNodeWithText("Apple 계정 연결은 직접 확인해 주세요", substring = true).assertExists()
+        onNodeWithText("Apple 계정 연결 해제 방법").assertExists()
         onNodeWithText("처음 화면으로").performClick()
         assertTrue(closed)
     }
