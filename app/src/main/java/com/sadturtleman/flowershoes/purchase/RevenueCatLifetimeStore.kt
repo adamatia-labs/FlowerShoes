@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 class RevenueCatLifetimeStore(app: Application, apiKey: String, private val identity: Identity, debug: Boolean) : LifetimeStore {
 
     private val _owned = MutableStateFlow(false)
+    private val _bookOwned = MutableStateFlow(false)
     override val owned: StateFlow<Boolean> = _owned
 
     /** 결제 시트를 띄울 화면. MainActivity 가 만들어질 때마다 바꿔 끼운다. */
@@ -45,8 +46,6 @@ class RevenueCatLifetimeStore(app: Application, apiKey: String, private val iden
         Purchases.configure(PurchasesConfiguration.Builder(app, apiKey).build())
         Purchases.sharedInstance.updatedCustomerInfoListener = UpdatedCustomerInfoListener { update(it) }
     }
-
-    private val _bookOwned = MutableStateFlow(false)
 
     private fun update(info: CustomerInfo) {
         val active = info.entitlements.active.keys
