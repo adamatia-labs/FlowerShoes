@@ -272,6 +272,14 @@ async function nicknameOf(uid: string): Promise<string> {
   return ((await db.doc(`users/${uid}`).get()).get('nickname') as string | undefined) || '연인';
 }
 
+function newerDeviceRequests(others: QueryDocumentSnapshot[], requestId: string, createdAt: Timestamp): QueryDocumentSnapshot[] {
+  const order = { id: requestId, seconds: createdAt.seconds, nanoseconds: createdAt.nanoseconds };
+  return others.filter((doc) => {
+    const t = doc.get('createdAt');
+    return t instanceof Timestamp && compareRequestOrder({ id: doc.id, seconds: t.seconds, nanoseconds: t.nanoseconds }, order) > 0;
+  });
+}
+
 /**
  * 새 폰의 요청(규칙이 작성자 · members · 대기 기기 · createdAt = 서버 시각을 막는다).
  * 같은 사람의 24시간 안 두 번째 요청이면 표시하고, 그 사람의 이전 대기 요청은 취소한다(다시 요청).
@@ -287,11 +295,7 @@ export const onDeviceChangeCreated = onDocumentCreated({ document: 'couples/{c}/
     if (!couple || !(req.uid in couple.members)) return undefined;
     const others = (await tx.get(db.collection(`couples/${c}/deviceChanges`).where('uid', '==', req.uid))).docs.filter((d) => d.id !== r);
     // 같은 서버 시각의 요청도 ID로 순서를 정해 어느 이벤트가 먼저 와도 같은 결과를 만든다.
-    const order = { id: r, seconds: req.createdAt.seconds as number, nanoseconds: req.createdAt.nanoseconds as number };
-    const newer = others.filter((d) => {
-      const t = d.get('createdAt');
-      return t instanceof Timestamp && compareRequestOrder({ id: d.id, seconds: t.seconds, nanoseconds: t.nanoseconds }, order) > 0;
-    });
+    const newer = newerDeviceRequests(others, r, req.createdAt);
     if (newer.length) {
       tx.update(ref, { status: 'cancelled', answeredAt: FieldValue.serverTimestamp() });
       if (!newer.some((d) => d.get('newDeviceId') === req.newDeviceId)) tx.delete(db.doc(`couples/${c}/devices/${req.newDeviceId}`));
@@ -340,6 +344,14 @@ export const onDeviceChangeAnswered = onDocumentCreated({ document: 'couples/{c}
     const state = req && { uid: req.uid as string, newDeviceId: req.newDeviceId as string, status: req.status as string, expireAtMs: (req.expireAt as Timestamp).toMillis() };
     const result = answerDecision(state, who as AnswerSide, answer, approver, signatureOk, Date.now());
     if (result === 'ignore' || !req) return { result, req };
+    if (!(req.createdAt instanceof Timestamp) || typeof req.uid !== 'string' || typeof req.newDeviceId !== 'string') return { result: 'ignore' as const, req };
+    const others = (await tx.get(db.collection(`couples/${c}/deviceChanges`).where('uid', '==', req.uid))).docs.filter((d) => d.id !== r);
+    const newer = newerDeviceRequests(others, r, req.createdAt);
+    if (newer.length) {
+      tx.update(ref, { status: 'cancelled', answeredAt: FieldValue.serverTimestamp() });
+      if (!newer.some((d) => d.get('newDeviceId') === req.newDeviceId)) tx.delete(db.doc(`couples/${c}/devices/${req.newDeviceId}`));
+      return { result: 'ignore' as const, req };
+    }
     const now = FieldValue.serverTimestamp();
     if (result === 'approve') {
       const couple = (await tx.get(db.doc(`couples/${c}`))).data() as { members: Record<string, string> };
