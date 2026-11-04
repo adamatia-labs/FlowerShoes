@@ -203,28 +203,25 @@ enum class KkSocial(val label: String, internal val logo: KkIcons, private val l
 /**
  * 같은 크기로 세로로 쌓는다(Apple: 다른 로그인 버튼보다 작지 않게, Google: 비슷한 크기 · 무게).
  * 반경 12 는 카카오 가이드 값이고, 반경을 정하지 않은 Apple · Google 도 같이 맞춘다.
- * 로고 + 글자는 가운데 묶음, 로고와 글자 사이 12 · 좌우 최소 16(Google iOS 값, Android 10 · 12 보다 넉넉).
- * 글자는 OS 기본 글꼴(카카오 · Apple 권장) 14 Medium(Google 값, 카카오의 "버튼 높이 1/3 이하"도 만족).
+ * 로고는 왼쪽 20, 글자는 버튼 가운데에 놓는다(Figma 403:212).
  */
 @Composable
 fun KkSocialButton(kind: KkSocial, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val colors = kind.colors(KkTheme.colors.isDark)
     val shape = RoundedCornerShape(KkRadius.lg)
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .heightIn(min = 50.dp)
             .alpha(if (enabled) 1f else 0.4f)
             .clip(shape)
             .background(colors.bg)
             .then(colors.border?.let { Modifier.border(1.dp, it, shape) } ?: Modifier)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 20.dp),
     ) {
-        KkIcon(kind.logo, tint = colors.logoTint, size = 20.dp)
-        Text(kind.label, style = KkTheme.type.label.copy(fontFamily = FontFamily.Default), color = colors.fg, maxLines = 1)
+        KkIcon(kind.logo, tint = colors.logoTint, size = 18.dp, modifier = Modifier.align(Alignment.CenterStart))
+        Text(kind.label, style = KkTheme.type.body.copy(fontFamily = FontFamily.Default), color = colors.fg, maxLines = 1, modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp))
     }
 }
 
