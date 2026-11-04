@@ -8,6 +8,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -85,6 +88,10 @@ class MainActivity : FragmentActivity() {
         getKoin().getOrNull<com.sadturtleman.flowershoes.purchase.RevenueCatLifetimeStore>()?.activity = java.lang.ref.WeakReference(this)
 
         enableEdgeToEdge()
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.navigationBars())
+        }
         setContent {
             // 내가 샀거나 연결된 상대가 산 꽃신 평생(연결된 동안 함께).
             val lifetimeOwned by perks.lifetimeOn.collectAsState(initial = false)
