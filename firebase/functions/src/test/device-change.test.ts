@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { answerDecision, isSecondWithin24h, requestPush, REQUEST_TTL_MS, withSubject } from '../device-change';
+import { answerDecision, compareRequestOrder, isSecondWithin24h, requestPush, REQUEST_TTL_MS, withSubject } from '../device-change';
+
+test('요청 순서는 서버 시각의 나노초와 동일 시각의 ID까지 비교한다', () => {
+  const a = { id: 'a', seconds: 5, nanoseconds: 100 };
+  assert.equal(compareRequestOrder(a, { ...a }), 0);
+  assert.equal(compareRequestOrder(a, { ...a, seconds: 6 }), -1);
+  assert.equal(compareRequestOrder(a, { ...a, nanoseconds: 101 }), -1);
+  assert.equal(compareRequestOrder(a, { ...a, id: 'b' }), -1);
+  assert.equal(compareRequestOrder({ ...a, id: 'b' }, a), 1);
+});
 
 const NOW = Date.parse('2026-10-29T12:00:00Z');
 const request = { uid: 'jisu', newDeviceId: 'jisu-new', status: 'pending', expireAtMs: NOW + REQUEST_TTL_MS };
