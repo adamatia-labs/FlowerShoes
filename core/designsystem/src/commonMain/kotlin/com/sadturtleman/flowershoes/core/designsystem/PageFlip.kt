@@ -86,15 +86,22 @@ fun <T> KkPageFlip(
         val from = s.from as T
         // animating 은 늘 읽는다 — 넘김이 끝났을 때 이 자리가 다시 그려져 넘어간 장을 치운다.
         val flipping = animating || s.pending
-        if (!s.hasFrom || !flipping) {
-            Page(target, Modifier)
-        } else if (s.forward) {
-            // 새 장은 아래에서 그늘이 걷히고, 지금 장이 넘어간다.
-            Page(target, Modifier.shade { 1f - p() })
-            Page(from, Modifier.turning { p() })
-        } else {
-            Page(from, Modifier.shade { p() })
-            Page(target, Modifier.turning { 1f - p() })
+        val pages = when {
+            !s.hasFrom || !flipping -> listOf(target)
+            s.forward -> listOf(target, from)
+            else -> listOf(from, target)
+        }
+        // 모든 화면을 같은 호출 위치에서 key로 구분한다. 상태를 저장하기 전에
+        // 다른 호출 위치에 같은 화면이 다시 만들어지는 상황을 피한다.
+        pages.forEachIndexed { index, page ->
+            val layer = when {
+                pages.size == 1 -> Modifier
+                s.forward && index == 0 -> Modifier.shade { 1f - p() }
+                s.forward -> Modifier.turning { p() }
+                index == 0 -> Modifier.shade { p() }
+                else -> Modifier.turning { 1f - p() }
+            }
+            Page(page, layer)
         }
     }
 }
