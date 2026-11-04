@@ -17,10 +17,14 @@ sealed interface PairingState {
     data object Idle : PairingState
 
     /** 보낸 쪽: 링크를 만들었다. [token] 으로 링크를 만들어 공유하고 상대가 누르길 기다린다(앱은 홈으로 가도 된다). */
-    data class Waiting(val token: String, val expireAtMs: Long) : PairingState
+    data class Waiting(val token: String, val expireAtMs: Long) : PairingState {
+        override fun toString() = "Waiting(token=[REDACTED], expireAtMs=$expireAtMs)"
+    }
 
     /** 받는 쪽: 링크를 열었다(아직 수락 전). 보낸 사람 이름을 보여 주고 "수락하고 연결하기"를 기다린다. */
-    data class Invited(val token: String, val inviterName: String) : PairingState
+    data class Invited(val token: String, val inviterName: String) : PairingState {
+        override fun toString() = "Invited(token=[REDACTED], inviterName=$inviterName)"
+    }
 
     /** 받는 쪽: 수락을 보냈고 서버가 커플을 만들길 기다린다. */
     data class Accepting(val inviterName: String) : PairingState
@@ -31,7 +35,9 @@ sealed interface PairingState {
     data object Expired : PairingState
 
     /** 내가 보낸 링크를 내가 눌렀다("내가 보낸 초대 링크예요" + 다시 공유). */
-    data class OwnLink(val token: String) : PairingState
+    data class OwnLink(val token: String) : PairingState {
+        override fun toString() = "OwnLink(token=[REDACTED])"
+    }
 
     data object AlreadyLinked : PairingState
 
@@ -39,7 +45,9 @@ sealed interface PairingState {
 }
 
 /** 보낸 쪽이 만든 링크. 앱을 껐다 켜도 수락을 이어 받도록 이 기기에 둔다. */
-data class PendingInvite(val token: String, val expireAtMs: Long)
+data class PendingInvite(val token: String, val expireAtMs: Long) {
+    override fun toString() = "PendingInvite(token=[REDACTED], expireAtMs=$expireAtMs)"
+}
 
 interface PendingInviteStore {
     suspend fun load(): PendingInvite?

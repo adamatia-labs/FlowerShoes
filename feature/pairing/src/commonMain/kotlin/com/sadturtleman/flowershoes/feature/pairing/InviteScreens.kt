@@ -60,7 +60,9 @@ import kotlin.time.Instant
 import kotlinx.coroutines.delay
 
 /** 초대 링크 하나를 보내는 데 필요한 것. 카카오 피드 템플릿 인자는 [name] · [token], 폴백(OS 공유 시트)은 [url]. */
-data class InviteShare(val token: String, val url: String, val name: String)
+data class InviteShare(val token: String, val url: String, val name: String) {
+    override fun toString() = "InviteShare(token=[REDACTED], url=[REDACTED], name=$name)"
+}
 
 /**
  * 플랫폼 초대 공유(셸이 넣는다): 카카오톡이 있고 템플릿이 설정돼 있으면 카카오 피드 템플릿, 아니면 OS 공유 시트.
