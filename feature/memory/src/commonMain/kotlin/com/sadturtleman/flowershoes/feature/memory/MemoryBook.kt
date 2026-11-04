@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -79,6 +80,7 @@ import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.drawingui.DrawingView
 import com.sadturtleman.flowershoes.core.model.BookCover
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -88,7 +90,17 @@ interface BookPdf {
 
     /** 화면용 · 인쇄용(재단 여백 3mm) 두 파일: (파일 이름, 바이트). */
     suspend fun finish(): List<Pair<String, ByteArray>>
+
+    /** 실패하거나 화면을 떠나면 임시 리소스를 정리한다. 여러 번 호출해도 안전해야 한다. */
+    fun abort()
 }
+
+private data class BookCapture(
+    val state: MemoryState,
+    val photos: Map<String, ByteArray?>,
+    val pages: List<BookPage>,
+    val writer: BookPdf,
+)
 
 /** 책으로 보기의 플랫폼 기능: 결제([store]) · PDF 작성기 · 파일 공유. 없는 것은 그 버튼이 꺼진다. */
 class MemoryBookActions(
@@ -152,16 +164,23 @@ internal fun BookScreen(
     LaunchedEffect(store) { price = store?.price() }
     var busy by remember { mutableStateOf(false) }
     var capture by remember { mutableStateOf<Int?>(null) }
-    var pdf by remember { mutableStateOf<BookPdf?>(null) }
-    // PDF 에 그릴 표지: 방금 고른 값이 상태에 돌아오기 전에 첫 쪽을 그려도 고른 표지로.
-    var pdfCover by remember { mutableStateOf(state.cover) }
+    var export by remember { mutableStateOf<BookCapture?>(null) }
+    DisposableEffect(export) {
+        val current = export
+        onDispose { current?.writer?.abort() }
+    }
     var picking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun make(cover: BookCover) {
-        val writer = actions?.newPdf?.invoke() ?: run { onNotice("이 기기에서는 아직 PDF 를 만들 수 없어요"); return }
-        pdfCover = cover
-        pdf = writer
+        val writer = try {
+            actions?.newPdf?.invoke()
+        } catch (_: Exception) {
+            onNotice("PDF 를 만들지 못했어요")
+            return
+        } ?: run { onNotice("이 기기에서는 아직 PDF 를 만들 수 없어요"); return }
+        val snapshot = state.copy(cover = cover)
+        export = BookCapture(snapshot, photos.toMap(), snapshot.bookPages(), writer)
         capture = 0
     }
 
@@ -230,7 +249,7 @@ internal fun BookScreen(
                         }
                     }
                     val label = when {
-                        capture != null -> "PDF 만드는 중… ${(capture ?: 0) + 1} / ${pages.size}"
+                        capture != null -> "PDF 만드는 중… ${(capture ?: 0) + 1} / ${export?.pages?.size ?: pages.size}"
                         owned -> "PDF 받기"
                         else -> "${price ?: BOOK_PRICE}에 PDF 받기"
                     }
@@ -253,22 +272,32 @@ internal fun BookScreen(
         }
         // PDF: 쪽마다 화면 밖에서 한 번 그려 비트맵으로 받는다(그리기는 하되 보이지 않게).
         capture?.let { i ->
+            val current = export ?: return@let
             val layer = rememberGraphicsLayer()
             val size = with(LocalDensity.current) { CAPTURE_PX.toDp() }
             Box(
                 Modifier.wrapContentSize(unbounded = true).requiredSize(size)
                     .drawWithContent { layer.record { this@drawWithContent.drawContent() } },
-            ) { BookPageView(pages[i], state.copy(cover = pdfCover), photos, Modifier.fillMaxSize()) }
+            ) { BookPageView(current.pages[i], current.state, current.photos, Modifier.fillMaxSize()) }
             LaunchedEffect(i) {
-                delay(400) // 사진 · 스티커 · 글꼴이 읽히길 기다린다.
-                runCatching { pdf?.add(layer.toImageBitmap()) }.onFailure { println("BookPdf: 쪽 ${i + 1} 실패 — $it") }
-                if (i + 1 < pages.size) {
-                    capture = i + 1
-                } else {
-                    val files = runCatching { pdf?.finish() }.onFailure { println("BookPdf: 마무리 실패 — $it") }.getOrNull().orEmpty()
+                try {
+                    delay(400) // 사진 · 스티커 · 글꼴이 읽히길 기다린다.
+                    current.writer.add(layer.toImageBitmap())
+                    if (i + 1 < current.pages.size) {
+                        capture = i + 1
+                    } else {
+                        val files = current.writer.finish()
+                        check(files.size == 2 && files.all { it.first.isNotBlank() && it.second.isNotEmpty() } && files.map { it.first }.distinct().size == 2)
+                        capture = null
+                        export = null
+                        actions?.shareFiles?.invoke(files)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
                     capture = null
-                    pdf = null
-                    if (files.isEmpty()) onNotice("PDF 를 만들지 못했어요") else actions?.shareFiles?.invoke(files)
+                    export = null
+                    onNotice("PDF 를 만들지 못했어요")
                 }
             }
         }

@@ -137,16 +137,22 @@ internal actual fun rememberFileShare(): (List<Pair<String, ByteArray>>) -> Unit
 internal actual fun newBookPdf(): com.sadturtleman.flowershoes.feature.memory.BookPdf? = object : com.sadturtleman.flowershoes.feature.memory.BookPdf {
     private val screen = android.graphics.pdf.PdfDocument()
     private val print = android.graphics.pdf.PdfDocument()
+    private val lock = Any()
+    private var closed = false
     private var n = 0
 
-    override fun add(page: androidx.compose.ui.graphics.ImageBitmap) {
+    override fun add(page: androidx.compose.ui.graphics.ImageBitmap) = synchronized(lock) {
+        check(!closed)
         // 그래픽 레이어에서 받은 비트맵은 HARDWARE 라 PdfDocument(소프트웨어 캔버스)가 못 그린다 — 복사해서 쓴다.
         val captured = page.asAndroidBitmap()
         val bitmap = if (Build.VERSION.SDK_INT >= 26 && captured.config == Bitmap.Config.HARDWARE) captured.copy(Bitmap.Config.ARGB_8888, false) else captured
-        n++
-        draw(screen, bitmap, PAGE_PT, 0f)
-        draw(print, bitmap, (PAGE_PT + 2 * BLEED_PT).toInt(), BLEED_PT)
-        if (bitmap !== captured) bitmap.recycle()
+        try {
+            n++
+            draw(screen, bitmap, PAGE_PT, 0f)
+            draw(print, bitmap, (PAGE_PT + 2 * BLEED_PT).toInt(), BLEED_PT)
+        } finally {
+            if (bitmap !== captured) bitmap.recycle()
+        }
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -154,13 +160,32 @@ internal actual fun newBookPdf(): com.sadturtleman.flowershoes.feature.memory.Bo
         val p = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(size, size, n).create())
         val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
         // 인쇄용은 재단 여백([bleed])까지 그림을 늘려 깐다(가장자리 색이 이어진다).
-        p.canvas.drawBitmap(bitmap, null, android.graphics.RectF(0f, 0f, size.toFloat(), size.toFloat()), paint)
-        doc.finishPage(p)
+        try {
+            p.canvas.drawBitmap(bitmap, null, android.graphics.RectF(0f, 0f, size.toFloat(), size.toFloat()), paint)
+        } finally {
+            doc.finishPage(p)
+        }
     }
 
     override suspend fun finish(): List<Pair<String, ByteArray>> = withContext(Dispatchers.IO) {
-        fun bytes(doc: android.graphics.pdf.PdfDocument) = ByteArrayOutputStream().use { out -> doc.writeTo(out); doc.close(); out.toByteArray() }
-        listOf("우리의_책_화면용.pdf" to bytes(screen), "우리의_책_인쇄용_8x8_재단3mm.pdf" to bytes(print))
+        synchronized(lock) {
+            check(!closed)
+            try {
+                fun bytes(doc: android.graphics.pdf.PdfDocument) = ByteArrayOutputStream().use { out -> doc.writeTo(out); out.toByteArray() }
+                listOf("우리의_책_화면용.pdf" to bytes(screen), "우리의_책_인쇄용_8x8_재단3mm.pdf" to bytes(print))
+            } finally {
+                closeLocked()
+            }
+        }
+    }
+
+    override fun abort() = synchronized(lock) { closeLocked() }
+
+    private fun closeLocked() {
+        if (closed) return
+        closed = true
+        runCatching { screen.close() }
+        runCatching { print.close() }
     }
 }
 
