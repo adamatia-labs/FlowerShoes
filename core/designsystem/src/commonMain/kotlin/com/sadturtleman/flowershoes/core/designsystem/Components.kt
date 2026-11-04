@@ -50,11 +50,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -209,7 +211,8 @@ enum class KkSocial(val label: String, internal val logo: KkIcons, private val l
 fun KkSocialButton(kind: KkSocial, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val colors = kind.colors(KkTheme.colors.isDark)
     val shape = RoundedCornerShape(KkRadius.lg)
-    Box(
+    val label = if (LocalDensity.current.fontScale >= 1.5f) kind.label.replaceFirst(' ', '\n') else kind.label
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 50.dp)
@@ -218,10 +221,13 @@ fun KkSocialButton(kind: KkSocial, onClick: () -> Unit, modifier: Modifier = Mod
             .background(colors.bg)
             .then(colors.border?.let { Modifier.border(1.dp, it, shape) } ?: Modifier)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        KkIcon(kind.logo, tint = colors.logoTint, size = 18.dp, modifier = Modifier.align(Alignment.CenterStart))
-        Text(kind.label, style = KkTheme.type.body.copy(fontFamily = FontFamily.Default), color = colors.fg, maxLines = 1, modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp))
+        KkIcon(kind.logo, tint = colors.logoTint, size = 18.dp)
+        Text(label, style = KkTheme.type.body.copy(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium), color = colors.fg, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+        Spacer(Modifier.size(18.dp))
     }
 }
 

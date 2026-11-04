@@ -45,7 +45,7 @@ class LoginRenderTest {
 
     @Test
     fun `작은 화면에서 글자를 키운 로그인 화면을 그린다`() {
-        val png = ImageComposeScene(width = 320 * 2, height = 640 * 2, density = Density(2f, 1.5f)) {
+        val png = ImageComposeScene(width = 320 * 2, height = 640 * 2, density = Density(2f, 2f)) {
             KkotsinTheme(theme = AppTheme.GOMSIN, dark = false) {
                 OnboardingScreen(OnboardingState(today = LocalDate(2026, 10, 29)), onIntent = {})
             }

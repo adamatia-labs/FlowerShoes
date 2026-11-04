@@ -47,6 +47,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role as A11y
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -175,7 +176,8 @@ fun OnboardingScreen(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .then(if (state.step == OnboardingStep.LOGIN) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .then(if (state.step == OnboardingStep.LOGIN) Modifier.testTag("login-content") else Modifier)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
                 verticalArrangement = if (state.step == OnboardingStep.LOGIN) {
                     Arrangement.spacedBy(KkSpacing.lg, Alignment.CenterVertically)
@@ -248,12 +250,12 @@ private fun LoginContent() {
     Box(Modifier.widthIn(max = 312.dp).fillMaxWidth().padding(top = 48.dp)) {
         Column(
             Modifier.align(Alignment.Center).widthIn(max = 272.dp).fillMaxWidth().rotate(2f)
-                .kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface)
-                .heightIn(min = 250.dp).padding(start = 28.dp, end = 24.dp, top = 40.dp, bottom = 20.dp),
+                .testTag("login-paper").kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface)
+                .heightIn(min = 250.dp).padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 20.dp),
         ) {
-            Text("꽃신", style = KkTheme.type.ddayM, color = c.ink)
+            Text("꽃신", style = KkTheme.type.ddayM, color = c.ink, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
             Spacer(Modifier.height(6.dp))
-            Text("편지로 이어지는\n우리 둘만의 달력", style = KkTheme.type.handL.copy(lineHeight = 29.sp), color = c.sub)
+            Text("편지로 이어지는\n우리 둘만의 달력", style = KkTheme.type.handL.copy(lineHeight = 29.sp), color = c.sub, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
             Spacer(Modifier.height(8.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
             Spacer(Modifier.height(27.dp))
