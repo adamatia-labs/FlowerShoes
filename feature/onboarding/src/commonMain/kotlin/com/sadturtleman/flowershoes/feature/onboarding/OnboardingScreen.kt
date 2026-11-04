@@ -12,6 +12,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -38,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -169,7 +171,16 @@ fun OnboardingScreen(
         return
     }
     var sheet by remember { mutableStateOf<ServiceSheet?>(null) }
-    Box(Modifier.fillMaxSize().background(c.canvas)) {
+    val loginFooterScroll = rememberScrollState()
+    LaunchedEffect(state.step, state.error) {
+        if (state.step == OnboardingStep.LOGIN && state.error != null) {
+            // 오류가 버튼 아래 화면 밖에 있으면 먼저 보이도록 이동한다.
+            withFrameNanos { }
+            loginFooterScroll.scrollTo(loginFooterScroll.maxValue)
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().background(c.canvas)) {
+        val loginFooterMaxHeight = minOf(380.dp, maxHeight * 0.65f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             // Content: 좌우 20 · 위아래 16, 사이 16. 로그인만 가운데 정렬.
             Column(
@@ -206,7 +217,8 @@ fun OnboardingScreen(
             }
             // Footer: 위 24 · 좌우 20 · 아래 34(홈 인디케이터는 navigationBarsPadding 이 더한다).
             Column(
-                Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp),
+                Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp)
+                    .then(if (state.step == OnboardingStep.LOGIN) Modifier.heightIn(max = loginFooterMaxHeight).testTag("login-footer").verticalScroll(loginFooterScroll) else Modifier),
                 verticalArrangement = Arrangement.spacedBy(if (state.step == OnboardingStep.LOGIN) KkSpacing.md else KkSpacing.sm),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
