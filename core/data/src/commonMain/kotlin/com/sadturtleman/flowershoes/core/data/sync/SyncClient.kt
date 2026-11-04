@@ -234,8 +234,11 @@ class SyncClient(
 
     private suspend fun receive(couple: CoupleEntity, item: MailItem): Boolean {
         val sender = db.deviceDao().get(item.from) ?: return false
+        if (couple.partnerUserId.isBlank() || sender.userId != couple.partnerUserId) return false
         val header = OpHeader.fromBytes(item.header)
-        if (header.opId != item.opId) return false
+        if (header.opId != item.opId || header.seq < 1) return false
+        val stream = StreamId.parse(header.stream)
+        if (stream.deviceId != item.from) return false
         val key = vault.coupleKey(header.keyEpoch) ?: return false
         val plain = try {
             Plain.decode(OpEnvelope.open(OpEnvelope(header, item.ciphertext, item.signature), sender.signPub) { if (it == key.epoch) key else null })
@@ -243,7 +246,7 @@ class SyncClient(
             return false
         }
         downloadBlobs(couple, plain.payload)
-        inbox.apply(ReceivedOp(StreamId.parse(header.stream), header.seq, header.opId, plain.lamport, plain.payload))
+        inbox.apply(ReceivedOp(stream, header.seq, header.opId, plain.lamport, plain.payload))
         return true
     }
 

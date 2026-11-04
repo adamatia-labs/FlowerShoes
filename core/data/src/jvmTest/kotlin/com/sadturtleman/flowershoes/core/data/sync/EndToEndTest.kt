@@ -14,6 +14,7 @@ import com.sadturtleman.flowershoes.core.data.OpPayload
 import com.sadturtleman.flowershoes.core.data.PhotoRef
 import com.sadturtleman.flowershoes.core.data.SyncWriter
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import com.sadturtleman.flowershoes.core.database.RevokedDeviceEntity
 import com.sadturtleman.flowershoes.core.database.buildKkotsin
 import com.sadturtleman.flowershoes.core.database.inMemoryDatabaseBuilder
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
@@ -90,6 +91,42 @@ class EndToEndTest {
         jisu.sync.syncOnce()
         minjun.sync.syncOnce()
         jisu.sync.syncOnce()
+    }
+
+    @Test
+    fun `서명한 기기와 다른 스트림으로 폐기 검사를 우회하지 못한다`() = runTest {
+        link()
+        minjun.db.syncDao().addRevoked(RevokedDeviceEntity("dev-a", 0, """{"dev-a:app":0}"""))
+        val letter = jisu.letters.newLetter(listOf(LetterBlock.Text("차단해야 하는 편지")))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "other-device:app", 1, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(header, Plain(1, OpCodec.encode(OpPayload.LetterPut(letter))).encode(), jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!)
+        val item = MailItem(id, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature)
+        assertEquals(0, minjun.sync.receiveQueued(listOf(item)))
+        assertNull(minjun.db.letterDao().get(letter.id))
+        assertNull(minjun.db.syncDao().cursor("other-device:app"))
+    }
+
+    @Test
+    fun `상대가 아닌 내 기기의 메시지는 상대 메시지로 반영하지 않는다`() = runTest {
+        link()
+        val letter = minjun.letters.newLetter(listOf(LetterBlock.Text("내 기기")))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "dev-b:app", 1, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(header, Plain(1, OpCodec.encode(OpPayload.LetterPut(letter))).encode(), minjun.vault.currentCoupleKey()!!, minjun.vault.deviceKeys()!!)
+        assertEquals(0, minjun.sync.receiveQueued(listOf(MailItem(id, "letter", "dev-b", header.toBytes(), env.ciphertext, env.signature))))
+        assertNull(minjun.db.letterDao().get(letter.id))
+    }
+
+    @Test
+    fun `번호가 0인 메시지는 반영하지 않는다`() = runTest {
+        link()
+        val letter = jisu.letters.newLetter(listOf(LetterBlock.Text("잘못된 번호")))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "dev-a:app", 0, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(header, Plain(1, OpCodec.encode(OpPayload.LetterPut(letter))).encode(), jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!)
+        assertEquals(0, minjun.sync.receiveQueued(listOf(MailItem(id, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature))))
+        assertNull(minjun.db.letterDao().get(letter.id))
     }
 
     @Test
