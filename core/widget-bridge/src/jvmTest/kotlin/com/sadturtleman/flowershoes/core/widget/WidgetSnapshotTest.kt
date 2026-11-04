@@ -17,6 +17,8 @@ import kotlin.time.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import okio.Path.Companion.toPath
+import okio.FileSystem
+import kotlin.uuid.Uuid
 
 /** 위젯 v2(Figma 9 · 위젯 383:5321)가 그리는 글자. 예시 데이터는 design.md: 지수(곰신) · 민준(군인), 오늘 2026-10-28. */
 class WidgetSnapshotTest {
@@ -133,6 +135,50 @@ class WidgetSnapshotTest {
         assertEquals("민준이 그려준 나", s.drawingCaption)
         assertEquals("민준 · 어제", s.drawingMeta)
         assertEquals("/att/png".toPath().toString(), s.drawingPngPath)
+    }
+
+    @Test
+    fun `받은 그림의 안전하지 않은 식별자는 위젯 파일 경로가 되지 않는다`() {
+        val drawing = DrawingEntity(
+            "../drawing", "c", "l1", 0, "u-minjun", "SQUARE", "../doc", "../png", "", null, true, 1000, true,
+            sentAtMs = now.toEpochMilliseconds(), receivedAtMs = null, deletedAtMs = null,
+        )
+        val snapshot = snap(gomsin.copy(drawing = drawing))
+        assertNull(snapshot.drawingDocPath)
+        assertNull(snapshot.drawingPngPath)
+        assertNull(snapshot.drawingId)
+        val unsafeIdentity = snap(gomsin.copy(drawing = drawing.copy(docAttachmentId = "doc", pngAttachmentId = "png")))
+        assertNull(unsafeIdentity.drawingPngPath, "잘못된 그림 ID는 안전한 PNG 이름과 결합해도 표시하지 않는다")
+    }
+
+    @Test
+    fun `위젯 그림 파일명은 긴 식별자에도 고정 길이이며 경로가 될 수 없다`() {
+        val name = widgetDrawingFileName("가".repeat(80), "image")
+        assertEquals(76, name.length)
+        assertEquals(name, widgetDrawingFileName("가".repeat(80), "image"))
+        kotlin.test.assertFailsWith<IllegalArgumentException> { widgetDrawingFileName("../outside", "image") }
+    }
+
+    @Test
+    fun `같은 그림이 새 첨부를 쓰면 위젯 파일도 새 이미지로 바뀐다`() {
+        val fs = FileSystem.SYSTEM
+        val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kk-widget-copy-${Uuid.random()}"
+        val source = root / "source"
+        val replacement = root / "replacement"
+        val directory = root / "widget"
+        try {
+            fs.createDirectories(root)
+            fs.write(source) { writeUtf8("first") }
+            val first = copyWidgetDrawing(fs, source, directory, "same-id")
+            assertEquals("first", fs.read(first) { readUtf8() })
+            fs.write(replacement) { writeUtf8("second") }
+            val second = copyWidgetDrawing(fs, replacement, directory, "same-id")
+            kotlin.test.assertNotEquals(first, second)
+            assertEquals("second", fs.read(second) { readUtf8() })
+            assertEquals(setOf(first, second), fs.list(directory).toSet())
+        } finally {
+            if (fs.exists(root)) fs.deleteRecursively(root)
+        }
     }
 
     @Test

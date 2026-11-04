@@ -18,6 +18,11 @@ import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.core.model.Letter
 import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.Role
+import com.sadturtleman.flowershoes.core.drawing.CanvasSpec
+import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
+import com.sadturtleman.flowershoes.core.drawing.PhotoBackground
+import com.sadturtleman.flowershoes.core.drawing.Rect
+import com.sadturtleman.flowershoes.core.drawing.WidgetShape
 import kotlinx.datetime.LocalDate
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
@@ -72,6 +77,32 @@ class InboxLargeScreenTest {
         onAllNodesWithText("민준이 보낸 편지").assertCountEquals(1)
         // 2단 읽기 칸에는 뒤로 가기 대신 위 오른쪽 답장 쓰기(Figma).
         onAllNodesWithText("답장 쓰기").assertCountEquals(1)
+    }
+
+    @Test
+    fun `받지 못한 첨부 사진은 불러오지 못했다고 표시한다`() = runComposeUiTest {
+        val photo = open.copy(letter = open.letter.copy(blocks = listOf(LetterBlock.Text("사진"), LetterBlock.Photo("../invalid"))), photos = emptyMap())
+        setContent { Panes(360, 760, state.copy(open = photo)) }
+        waitForIdle()
+        onAllNodesWithText("사진을 불러오지 못했어요").assertCountEquals(1)
+    }
+
+    @Test
+    fun `받지 못한 그림 문서와 배경 사진을 각각 안내한다`() = runComposeUiTest {
+        val drawingLetter = open.letter.copy(blocks = listOf(LetterBlock.DrawingRef("drawing")))
+        val doc = DrawingDocument(canvas = CanvasSpec(WidgetShape.SQUARE), elements = listOf(PhotoBackground("background", 0, "../photo", 0f, Rect(0, 0, 1000, 1000))), totalDurationMs = 0)
+        val withBackground = open.copy(letter = drawingLetter, drawingOnly = true, drawings = mapOf("drawing" to doc))
+        setContent { KkotsinTheme(theme = AppTheme.GOMSIN, dark = false) { DrawingLetterScreen(withBackground, {}, {}) } }
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithText("그림의 배경 사진을 불러오지 못했어요").fetchSemanticsNodes().isNotEmpty() }
+        onAllNodesWithText("그림의 배경 사진을 불러오지 못했어요").assertCountEquals(1)
+    }
+
+    @Test
+    fun `받지 못한 그림 문서는 오류를 표시한다`() = runComposeUiTest {
+        val missing = open.copy(letter = open.letter.copy(blocks = listOf(LetterBlock.DrawingRef("drawing"))), drawingOnly = true, drawings = emptyMap())
+        setContent { KkotsinTheme(theme = AppTheme.GOMSIN, dark = false) { DrawingLetterScreen(missing, {}, {}) } }
+        waitForIdle()
+        onAllNodesWithText("그림을 불러오지 못했어요").assertCountEquals(1)
     }
 
     @Test
