@@ -239,7 +239,7 @@ private fun LoginContent() {
     val c = KkTheme.colors
     KkLogoMark()
     Text("꽃신", style = KkTheme.type.title, color = c.accent)
-    Text("곰신과 군인, 둘만의 전역 달력", style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
+    Text("편지로 이어지는 우리 둘만의 달력", style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
 }
 
 // ── 온보딩 0-1 · 약관 동의 ──

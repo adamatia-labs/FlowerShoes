@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.feature.pairing
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -112,6 +114,9 @@ private fun SendScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit, o
                 val shape = RoundedCornerShape(KkRadius.lg)
                 Row(
                     Modifier.fillMaxWidth().clip(shape).background(c.surface).border(1.dp, c.line, shape)
+                        .clickable(enabled = url != null, onClickLabel = "링크 복사", role = Role.Button) {
+                            url?.let { clipboard.setText(AnnotatedString(it)); copied++ }
+                        }
                         .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
                     horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
@@ -147,26 +152,12 @@ private fun SendScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Unit, o
                     enabled = waiting != null,
                     loading = ui.busy,
                 )
-                KkButton(
-                    "링크 복사",
-                    onClick = {
-                        url?.let {
-                            clipboard.setText(AnnotatedString(it))
-                            copied++
-                        }
-                    },
-                    Modifier.fillMaxWidth(),
-                    style = KkButtonStyle.Secondary,
-                    enabled = url != null,
-                )
             }
         }
         if (copied > 0) {
-            // 복사도 보낸 것으로 본다: 토스트를 잠깐 보여 준 뒤 홈으로.
             LaunchedEffect(copied) {
                 delay(1_500)
                 copied = 0
-                onSent()
             }
             Box(Modifier.fillMaxSize().navigationBarsPadding().padding(start = KkSpacing.xxl, end = KkSpacing.xxl, bottom = 150.dp), contentAlignment = Alignment.BottomCenter) {
                 KkToast("링크를 복사했어요", type = KkToastType.Success)

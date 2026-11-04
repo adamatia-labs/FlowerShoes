@@ -1,0 +1,4 @@
+{
+  "firestore": { "rules": ".device-firestore.rules" },
+  "emulators": { "firestore": { "port": 8188 }, "ui": { "enabled": false }, "singleProjectMode": true }
+}
