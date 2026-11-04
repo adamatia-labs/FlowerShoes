@@ -155,24 +155,39 @@ internal actual fun rememberFileShare(): (List<Pair<String, ByteArray>>) -> Unit
  */
 internal actual fun newBookPdf(): com.sadturtleman.flowershoes.feature.memory.BookPdf? = object : com.sadturtleman.flowershoes.feature.memory.BookPdf {
     private val pages = mutableListOf<ByteArray>()
+    private var closed = false
 
     override fun add(page: androidx.compose.ui.graphics.ImageBitmap) {
-        val jpeg = org.jetbrains.skia.Image.makeFromBitmap(page.asSkiaBitmap()).encodeToData(org.jetbrains.skia.EncodedImageFormat.JPEG, 92)?.bytes ?: return
+        check(!closed)
+        val jpeg = org.jetbrains.skia.Image.makeFromBitmap(page.asSkiaBitmap()).encodeToData(org.jetbrains.skia.EncodedImageFormat.JPEG, 92)?.bytes
+            ?: error("PDF 페이지를 인코딩하지 못했다")
         pages += jpeg
     }
 
     private fun render(size: Double): ByteArray {
         val data = platform.Foundation.NSMutableData()
         platform.UIKit.UIGraphicsBeginPDFContextToData(data, CGRectMake(0.0, 0.0, size, size), null)
-        pages.forEach { bytes ->
-            platform.UIKit.UIGraphicsBeginPDFPage()
-            val image = UIImage(data = bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) })
-            image.drawInRect(CGRectMake(0.0, 0.0, size, size))
+        try {
+            pages.forEach { bytes ->
+                platform.UIKit.UIGraphicsBeginPDFPage()
+                val data = bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }
+                val image = UIImage.imageWithData(data) ?: error("PDF 페이지 이미지를 읽지 못했다")
+                image.drawInRect(CGRectMake(0.0, 0.0, size, size))
+            }
+        } finally {
+            platform.UIKit.UIGraphicsEndPDFContext()
         }
-        platform.UIKit.UIGraphicsEndPDFContext()
         return data.toByteArray()
     }
 
-    override suspend fun finish(): List<Pair<String, ByteArray>> =
-        listOf("우리의_책_화면용.pdf" to render(576.0), "우리의_책_인쇄용_8x8_재단3mm.pdf" to render(593.0))
+    override suspend fun finish(): List<Pair<String, ByteArray>> {
+        check(!closed)
+        return try {
+            listOf("우리의_책_화면용.pdf" to render(576.0), "우리의_책_인쇄용_8x8_재단3mm.pdf" to render(593.0))
+        } finally {
+            abort()
+        }
+    }
+
+    override fun abort() { closed = true; pages.clear() }
 }
