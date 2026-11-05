@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -467,6 +468,7 @@ fun KkChoice(
     description: String? = null,
     /** 왼쪽 라디오 원(Figma Radio Card — 연결 해제의 보관 · 지우기). 있으면 제목은 기본 글자색. */
     radio: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.lg)
@@ -477,7 +479,8 @@ fun KkChoice(
             .clip(shape)
             .background(if (selected) c.bar else c.surface)
             .then(if (selected) Modifier.border(1.5.dp, c.accent, shape) else Modifier)
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .semantics { this.selected = selected }
             .padding(KkSpacing.lg),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
         verticalAlignment = Alignment.CenterVertically,
