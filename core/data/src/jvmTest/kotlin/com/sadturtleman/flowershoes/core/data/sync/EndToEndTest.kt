@@ -24,6 +24,11 @@ import com.sadturtleman.flowershoes.core.model.ReceiptEntity
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.Service
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import okio.FileSystem
@@ -38,6 +43,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 /**
  * 두 폰 + 메모리 서버로 첫 연결부터 편지 · 그림 · 읽음 · 커서 · 바꿔치기 거부까지 끝까지 돌린다.
@@ -91,6 +97,59 @@ class EndToEndTest {
         jisu.sync.syncOnce()
         minjun.sync.syncOnce()
         jisu.sync.syncOnce()
+    }
+
+    @Test
+    fun `첨부 수신 취소는 우편함을 지우지 않고 호출자에게 전달한다`() = runTest {
+        link()
+        val couple = jisu.db.coupleDao().get()!!
+        val letter = jisu.letters.newLetter(listOf(LetterBlock.Photo("first"), LetterBlock.Photo("photo")))
+        val key = ByteArray(32)
+        val payload = OpPayload.LetterPut(letter, photos = listOf(
+            PhotoRef("first", "first-blob", key.toByteString().base64()),
+            PhotoRef("photo", "blob", key.toByteString().base64()),
+        ))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "dev-a:app", 1, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(
+            header, Plain(1, OpCodec.encode(payload)).encode(),
+            jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!,
+        )
+        val item = MailItem(id, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature)
+        cloud.put(couple.id, minjun.deviceId, item)
+        val firstPhoto = "먼저 받은 사진".encodeToByteArray()
+        cloud.put(couple.id, "first-blob", com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, firstPhoto))
+        val cancelledBlobs = object : BlobStore by cloud {
+            override suspend fun get(coupleId: String, blobId: String): ByteArray? =
+                if (blobId == "blob") throw CancellationException("test cancellation") else cloud.get(coupleId, blobId)
+        }
+        val receiver = SyncClient(minjun.db, minjun.identity, minjun.vault, cloud, cancelledBlobs, minjun.attachments, InboxApplier(minjun.db), minjun.writer)
+
+        assertFailsWith<CancellationException> { receiver.syncOnce() }
+        assertEquals(1, cloud.inboxSize(couple.id, minjun.deviceId))
+        assertNull(minjun.db.letterDao().get(letter.id))
+        assertContentEquals(firstPhoto, minjun.attachments.read("first"))
+        assertFailsWith<CancellationException> { receiver.receiveQueued(item) }
+        assertEquals(1, cloud.inboxSize(couple.id, minjun.deviceId))
+        val entered = CompletableDeferred<Unit>()
+        val slowBlobs = object : BlobStore by cloud {
+            override suspend fun get(coupleId: String, blobId: String): ByteArray? {
+                entered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        val slowReceiver = SyncClient(minjun.db, minjun.identity, minjun.vault, cloud, slowBlobs, minjun.attachments, InboxApplier(minjun.db), minjun.writer)
+        val job = async { slowReceiver.syncOnce() }
+        entered.await()
+        job.cancelAndJoin()
+        assertEquals(1, cloud.inboxSize(couple.id, minjun.deviceId))
+        val photo = "다시 받은 사진".encodeToByteArray()
+        cloud.put(couple.id, "blob", com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, photo))
+        minjun.sync.syncOnce()
+        assertNotNull(minjun.db.letterDao().get(letter.id))
+        assertContentEquals(firstPhoto, minjun.attachments.read("first"))
+        assertContentEquals(photo, minjun.attachments.read("photo"))
+        assertEquals(0, cloud.inboxSize(couple.id, minjun.deviceId))
     }
 
     @Test
