@@ -25,6 +25,8 @@ import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
@@ -59,6 +62,16 @@ data class SettingsState(
     /** 서울 기준 오늘(계급 · D-day 계산). ViewModel 시계에서 온다. */
     val today: LocalDate? = null,
 )
+
+/** 화면이 다시 만들어져도 진행 중인 선택과 완료 결과를 유지한다. */
+sealed interface UnlinkOperation {
+    val after: AfterUnlink
+    val withoutDeviceLock: Boolean
+
+    class Running(override val after: AfterUnlink, override val withoutDeviceLock: Boolean) : UnlinkOperation
+    class Completed(override val after: AfterUnlink, override val withoutDeviceLock: Boolean) : UnlinkOperation
+    class Failed(override val after: AfterUnlink, override val withoutDeviceLock: Boolean) : UnlinkOperation
+}
 
 /**
  * 설정(Figma 7 · 설정). 화면마다 쪼갠 상태 대신 하나로 — 설정 값은 모두 작고, 하위 화면이 같은 값을 나눠 쓴다.
@@ -184,8 +197,52 @@ class SettingsViewModel(
         _notices.tryEmit(Notice(message, error))
     }
 
-    /** 되돌릴 수 없다. 화면이 확인 문구 입력(+ 기기 인증)을 받은 뒤에만 부른다. */
-    fun unlink(after: AfterUnlink) = viewModelScope.launch { unlink.unlink(after) }
+    private val unlinkMutex = Mutex()
+    private val _unlinkOperation = MutableStateFlow<UnlinkOperation?>(null)
+    val unlinkOperation: StateFlow<UnlinkOperation?> = _unlinkOperation.asStateFlow()
+    private val _unlinkSelection = MutableStateFlow(AfterUnlink.KEEP_AS_MEMORIES)
+    val unlinkSelection: StateFlow<AfterUnlink> = _unlinkSelection.asStateFlow()
+
+    fun selectUnlinkAfter(after: AfterUnlink) {
+        if (!unlinkMutex.tryLock()) return
+        try {
+            if (_unlinkOperation.value == null || _unlinkOperation.value is UnlinkOperation.Failed) _unlinkSelection.value = after
+        } finally {
+            unlinkMutex.unlock()
+        }
+    }
+
+    /** 확인 후 서버와 로컬 정리가 끝났을 때만 완료 상태를 기록한다. */
+    fun unlink(after: AfterUnlink, withoutDeviceLock: Boolean = false): kotlinx.coroutines.Job {
+        if (!unlinkMutex.tryLock()) return viewModelScope.launch { }
+        if (_unlinkOperation.value != null && _unlinkOperation.value !is UnlinkOperation.Failed) {
+            unlinkMutex.unlock()
+            return viewModelScope.launch { }
+        }
+        val running = UnlinkOperation.Running(after, withoutDeviceLock)
+        _unlinkSelection.value = after
+        _unlinkOperation.value = running
+        val job = viewModelScope.launch {
+            try {
+                unlink.unlink(after)
+                _unlinkOperation.compareAndSet(running, UnlinkOperation.Completed(after, withoutDeviceLock))
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                _unlinkOperation.compareAndSet(running, null)
+                throw cancelled
+            } catch (_: Exception) {
+                _unlinkOperation.compareAndSet(running, UnlinkOperation.Failed(after, withoutDeviceLock))
+            }
+        }
+        job.invokeOnCompletion { unlinkMutex.unlock() }
+        return job
+    }
+
+    /** 사용자가 실패 안내를 확인하고 뒤로 갈 때 상태를 정리한다. */
+    fun dismissUnlinkFailure(failed: UnlinkOperation.Failed): Boolean = _unlinkOperation.compareAndSet(failed, null)
+
+    /** 완료 상태를 현재 화면이 한 번만 소비하도록 한다. */
+    fun consumeUnlinkCompletion(completed: UnlinkOperation.Completed): Boolean =
+        _unlinkOperation.compareAndSet(completed, null)
 
     /** 상대가 해제한 뒤 이 폰 사본을 어떻게 할지. */
     fun afterPartnerUnlinked(after: AfterUnlink) = viewModelScope.launch { unlink.onPartnerUnlinked(after) }

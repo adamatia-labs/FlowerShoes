@@ -4,6 +4,7 @@ package com.sadturtleman.flowershoes.feature.settings
 
 import com.sadturtleman.flowershoes.core.designsystem.KkPageFlip
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.border
@@ -148,11 +149,20 @@ fun SettingsRoute(
 ) {
     val inquiries = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.InquiryTransport>()
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val stack = remember { mutableStateListOf(startAt) }
+    val unlinkOperation by viewModel.unlinkOperation.collectAsStateWithLifecycle()
+    val stack = remember { mutableStateListOf(if (unlinkOperation != null) SettingsPage.UNLINK else startAt) }
+    LaunchedEffect(unlinkOperation) {
+        if (unlinkOperation != null && stack.last() != SettingsPage.UNLINK) stack.add(SettingsPage.UNLINK)
+    }
     var notice by remember { mutableStateOf<SettingsViewModel.Notice?>(null) }
     LaunchedEffect(viewModel) { viewModel.notices.collect { notice = it } }
     LaunchedEffect(notice) { if (notice != null) { delay(2_500); notice = null } }
-    val back: () -> Unit = { if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack() }
+    val back: () -> Unit = {
+        if (unlinkOperation !is UnlinkOperation.Running && unlinkOperation !is UnlinkOperation.Completed) {
+            (unlinkOperation as? UnlinkOperation.Failed)?.let { viewModel.dismissUnlinkFailure(it) }
+            if (stack.size > 1) stack.removeAt(stack.lastIndex) else onBack()
+        }
+    }
     val open: (SettingsPage) -> Unit = { stack.add(it) }
     BackHandler(onBack = back)
     Box(Modifier.fillMaxSize()) {
@@ -1062,7 +1072,7 @@ private fun DeleteAccountPage(
 
 /** 연결 해제(Figma 7 · 연결 해제): 해제 전 · 기록 받아 두기 → 선택 · 확인. */
 @Composable
-private fun UnlinkPage(
+internal fun UnlinkPage(
     state: SettingsState,
     platform: PlatformActions,
     viewModel: SettingsViewModel,
@@ -1070,51 +1080,77 @@ private fun UnlinkPage(
     onBack: () -> Unit,
     onDone: () -> Unit,
 ) {
-    var prompting by remember { mutableStateOf(true) }
+    val operation by viewModel.unlinkOperation.collectAsStateWithLifecycle()
+    var confirm by remember { mutableStateOf("") }
+    LaunchedEffect(operation) {
+        if (operation is UnlinkOperation.Failed) confirm = ""
+        val completed = operation as? UnlinkOperation.Completed ?: return@LaunchedEffect
+        if (viewModel.consumeUnlinkCompletion(completed)) {
+            if (completed.withoutDeviceLock) viewModel.notice("이 폰에는 화면 잠금이 없어 본인 확인 없이 해제했어요")
+            onDone()
+        }
+    }
+    var prompting by remember { mutableStateOf(operation == null) }
     if (prompting) {
         ExportPromptPage("연결 해제", "해제하기 전에 기록을 받아 두세요", "해제하면 다시 받을 수 없어요", shareFiles, viewModel, onBack) { prompting = false }
         return
     }
     val c = KkTheme.colors
     val scope = rememberCoroutineScope()
-    var keep by remember { mutableStateOf(true) }
-    var confirm by remember { mutableStateOf("") }
+    val selection by viewModel.unlinkSelection.collectAsStateWithLifecycle()
+    var authenticating by remember { mutableStateOf(false) }
+    val busy = operation is UnlinkOperation.Running || operation is UnlinkOperation.Completed || authenticating
+    val selectedAfter = when (val current = operation) {
+        is UnlinkOperation.Running -> current.after
+        is UnlinkOperation.Completed -> current.after
+        else -> selection
+    }
+    val selectedKeep = selectedAfter == AfterUnlink.KEEP_AS_MEMORIES
     val ok = confirm.trim() == "연결 해제"
-    Page("연결 해제", onBack, bottom = {
-        KkButton("연결 해제", {
+    BackHandler(enabled = busy) { }
+    Page("연결 해제", { if (!busy) onBack() }, bottom = {
+        KkButton(if (busy) "연결 해제 중" else "연결 해제", {
+            authenticating = true
             scope.launch {
-                val after = if (keep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE
-                when (platform.authenticate("연결을 해제하려면 본인 확인이 필요해요")) {
-                    DeviceAuth.Failed -> viewModel.notice("본인 확인을 하지 못했어요")
-                    DeviceAuth.NoLockScreen -> {
-                        viewModel.notice("이 폰에는 화면 잠금이 없어 본인 확인 없이 해제했어요")
-                        viewModel.unlink(after)
-                        onDone()
+                try {
+                    val after = if (selectedKeep) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE
+                    when (platform.authenticate("연결을 해제하려면 본인 확인이 필요해요")) {
+                        DeviceAuth.Failed -> viewModel.notice("본인 확인을 하지 못했어요")
+                        DeviceAuth.NoLockScreen -> viewModel.unlink(after, withoutDeviceLock = true)
+                        DeviceAuth.Passed -> viewModel.unlink(after)
                     }
-                    DeviceAuth.Passed -> {
-                        viewModel.unlink(after)
-                        onDone()
-                    }
+                } finally {
+                    authenticating = false
                 }
             }
-        }, Modifier.fillMaxWidth(), danger = true, enabled = ok)
+        }, Modifier.fillMaxWidth(), danger = true, enabled = ok && !busy)
     }) {
+        if (operation is UnlinkOperation.Failed) {
+            Text(
+                "연결 해제 결과를 확인하지 못했어요. 연결 상태를 확인해 주세요",
+                style = KkTheme.type.body,
+                color = c.danger,
+                modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+            )
+        }
         Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
             Text("${state.partnerName.withAnd()}의 연결을 해제할까요?", style = KkTheme.type.title, color = c.ink)
             Text("해제하면 서로 소식을 주고받을 수 없고, 되돌릴 수 없어요.", style = KkTheme.type.body, color = c.sub)
         }
-        KeepChoice(keep) { keep = it }
-        KkInput(confirm, { confirm = it }, label = "확인을 위해 \"연결 해제\"를 입력해 주세요", placeholder = "연결 해제", helper = "다음 단계에서 지문 · 얼굴 또는 기기 암호를 확인해요")
+        KeepChoice(selectedKeep, enabled = !busy) {
+            viewModel.selectUnlinkAfter(if (it) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE)
+        }
+        KkInput(confirm, { confirm = it }, label = "확인을 위해 \"연결 해제\"를 입력해 주세요", placeholder = "연결 해제", helper = "다음 단계에서 지문 · 얼굴 또는 기기 암호를 확인해요", enabled = !busy)
     }
 }
 
 /** 내 폰에 남은 기록: 추억으로 보관 · 모두 지우기. */
 @Composable
-private fun KeepChoice(keep: Boolean, onChange: (Boolean) -> Unit) {
+internal fun KeepChoice(keep: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
         Text("내 폰에 남은 기록", style = KkTheme.type.label, color = KkTheme.colors.sub)
-        KkChoice("추억으로 보관", keep, { onChange(true) }, radio = true)
-        KkChoice("모두 지우기", !keep, { onChange(false) }, radio = true)
+        KkChoice("추억으로 보관", keep, { onChange(true) }, radio = true, enabled = enabled)
+        KkChoice("모두 지우기", !keep, { onChange(false) }, radio = true, enabled = enabled)
     }
 }
 
