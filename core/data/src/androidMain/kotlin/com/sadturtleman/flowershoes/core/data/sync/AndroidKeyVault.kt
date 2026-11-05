@@ -3,15 +3,20 @@ package com.sadturtleman.flowershoes.core.data.sync
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import com.sadturtleman.flowershoes.core.crypto.CoupleKey
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import java.io.File
+import java.io.IOException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -43,14 +48,15 @@ class AndroidKeyVault(context: Context) : KeyVault {
     private val json = Json { ignoreUnknownKeys = true }
 
     private suspend fun load(): Stored = cache ?: withContext(Dispatchers.IO) {
-        if (!file.exists()) Stored() else runCatching { json.decodeFromString(Stored.serializer(), decrypt(file.readBytes()).decodeToString()) }.getOrElse { Stored() }
+        // 파일이 있는 경우 복호화나 파싱 실패를 빈 보관함으로 바꾸면 다음 쓰기가 원본 키를 덮어쓴다.
+        if (!existsOrThrow(file)) Stored() else json.decodeFromString(Stored.serializer(), decrypt(file.readBytes()).decodeToString())
     }.also { cache = it }
 
     private suspend fun save(s: Stored) = withContext(Dispatchers.IO) {
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, "vault.bin.tmp")
         tmp.writeBytes(encrypt(json.encodeToString(Stored.serializer(), s).encodeToByteArray()))
-        tmp.renameTo(file)
+        check(tmp.renameTo(file)) { "키 보관 파일을 교체하지 못했어요" }
         cache = s
     }
 
@@ -91,8 +97,27 @@ class AndroidKeyVault(context: Context) : KeyVault {
     override suspend fun clearCoupleKeys() = lock.withLock { save(load().copy(coupleKeys = emptyMap(), pendingApproval = null)) }
 
     override suspend fun clearAll() = lock.withLock {
-        withContext(Dispatchers.IO) { file.delete() }
-        cache = Stored()
+        // 삭제와 캐시 초기화 사이의 취소로 오래된 키가 다시 저장되지 않도록 한 상태 전이로 처리한다.
+        withContext(NonCancellable + Dispatchers.IO) {
+            deleteIfPresent(File(file.parentFile, "vault.bin.tmp"))
+            deleteIfPresent(file)
+            cache = Stored()
+        }
+    }
+
+    private fun existsOrThrow(path: File): Boolean = try {
+        Os.lstat(path.absolutePath)
+        true
+    } catch (e: ErrnoException) {
+        if (e.errno == OsConstants.ENOENT) false else throw IOException("키 보관 파일 상태를 확인하지 못했어요", e)
+    }
+
+    private fun deleteIfPresent(path: File) {
+        try {
+            Os.remove(path.absolutePath)
+        } catch (e: ErrnoException) {
+            if (e.errno != OsConstants.ENOENT) throw IOException("키 보관 파일을 삭제하지 못했어요", e)
+        }
     }
 
     // ── Keystore ──
