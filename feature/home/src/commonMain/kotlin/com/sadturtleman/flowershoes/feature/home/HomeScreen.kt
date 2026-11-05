@@ -25,13 +25,15 @@ import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.Role as A11y
@@ -49,6 +51,8 @@ import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeRow
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkMissYouFab
+import com.sadturtleman.flowershoes.core.designsystem.KkToast
+import com.sadturtleman.flowershoes.core.designsystem.KkToastType
 import com.sadturtleman.flowershoes.core.designsystem.KkPaperTag
 import com.sadturtleman.flowershoes.core.designsystem.KkPaperTagStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkPostmark
@@ -62,7 +66,6 @@ import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.model.AppTheme
 import com.sadturtleman.flowershoes.core.model.Role
-import kotlinx.coroutines.delay
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -126,7 +129,29 @@ fun HomeScreen(
                 else -> GomsinSolo(state, onOpenPairing, onOpenLetter)
             }
         }
-        if (fab) MissYouFab(onIntent, Modifier.align(Alignment.BottomEnd).padding(end = KkSpacing.xxl, bottom = KkSpacing.lg))
+        if (fab) {
+            KkMissYouFab(
+                sent = state.missYouStatus == MissYouSendStatus.SAVED,
+                sentLabel = "전할게요",
+                onClick = { onIntent(HomeIntent.SendMissYou) },
+                enabled = state.missYouStatus == MissYouSendStatus.IDLE,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = KkSpacing.xxl, bottom = KkSpacing.lg),
+            )
+            val feedback = when (state.missYouStatus) {
+                MissYouSendStatus.SAVED -> "${state.partnerName ?: "연인"}에게 보고싶다고 전할게요" to KkToastType.Success
+                MissYouSendStatus.FAILED -> "보내지 못했어요. 잠시 후 다시 시도해 주세요" to KkToastType.Error
+                else -> null
+            }
+            feedback?.let { (message, type) ->
+                KkToast(
+                    message,
+                    Modifier.align(Alignment.BottomCenter)
+                        .padding(start = KkSpacing.xxl, end = KkSpacing.xxl, bottom = 72.dp)
+                        .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                    type = type,
+                )
+            }
+        }
     }
 }
 
@@ -235,24 +260,6 @@ private fun ColumnScope.Letters(state: HomeState, onWriteLetter: () -> Unit, onO
         }
     }
 }
-
-/** 보고싶어 FAB. 누르면 잠깐 "보냈어요"로 바뀌었다가 돌아온다(Figma 홈 · 보고싶어 보냄). 읽어 주는 말은 버튼 글자 그대로. */
-@Composable
-private fun MissYouFab(onIntent: (HomeIntent) -> Unit, modifier: Modifier) {
-    var sent by remember { mutableStateOf(false) }
-    LaunchedEffect(sent) {
-        if (sent) {
-            delay(SENT_MS)
-            sent = false
-        }
-    }
-    KkMissYouFab(sent, onClick = {
-        if (!sent) onIntent(HomeIntent.SendMissYou)
-        sent = true
-    }, modifier)
-}
-
-private const val SENT_MS = 2_000L
 
 // ── 혼자 모드 · 곰신(350:834): 초대 카드 + 연결되면 보낼 편지 ──
 
