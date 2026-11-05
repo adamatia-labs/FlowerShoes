@@ -23,9 +23,17 @@ kotlin {
     }
 
     sourceSets {
-        commonTest.dependencies { implementation(kotlin("test")) }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
+        }
         // 홈 혼자 모드 · 입대 전 화면을 build/render 에 그려 Figma 와 대조한다.
-        jvmTest.dependencies { implementation(compose.desktop.currentOs) }
+        jvmTest.dependencies {
+            implementation(compose.desktop.currentOs)
+            implementation(compose.desktop.uiTestJUnit4)
+            implementation(project(":core:database"))
+            implementation(project(":core:sync"))
+        }
         commonMain.dependencies {
             // feature 는 core 만 본다. 다른 feature 로의 이동은 :composeApp 이 콜백으로 잇는다.
             implementation(project(":core:designsystem"))
