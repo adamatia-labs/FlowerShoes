@@ -111,7 +111,10 @@ class AndroidKeyVaultFailureTest {
         val deletion = launch { vault.clearAll() }
         runCurrent() // IO 작업이 끝나도 이 테스트 스레드의 재개는 runCurrent 전까지 보류한다.
         val deadline = System.nanoTime() + 5_000_000_000L
-        while (file.exists() && System.nanoTime() < deadline) Thread.sleep(2)
+        while (file.exists() && System.nanoTime() < deadline) {
+            runCurrent()
+            Thread.sleep(2)
+        }
         assertTrue("파일 삭제가 끝나야 취소 경계를 검증할 수 있다", !file.exists())
         deletion.cancel()
         runCurrent()

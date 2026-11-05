@@ -10,6 +10,8 @@ import com.sadturtleman.flowershoes.core.crypto.CoupleKey
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import java.io.File
 import java.io.IOException
+import java.io.RandomAccessFile
+import java.nio.channels.OverlappingFileLockException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -17,6 +19,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -32,7 +35,6 @@ import kotlinx.serialization.json.Json
 class AndroidKeyVault(context: Context) : KeyVault {
 
     private val file = File(context.filesDir, "crypto/vault.bin")
-    private val lock = Mutex()
     private var cache: Stored? = null
 
     @Serializable
@@ -47,6 +49,31 @@ class AndroidKeyVault(context: Context) : KeyVault {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /** 같은 파일을 다루는 인스턴스와 프로세스가 하나의 저장 경계를 공유한다. */
+    private suspend fun <T> withVault(block: suspend () -> T): T {
+        val path = withContext(Dispatchers.IO) { file.canonicalPath }
+        val processLock = synchronized(PROCESS_LOCKS) { PROCESS_LOCKS.getOrPut(path) { Mutex() } }
+        return processLock.withLock {
+            withContext(Dispatchers.IO) {
+                val directory = checkNotNull(file.parentFile)
+                check(directory.isDirectory || directory.mkdirs() || directory.isDirectory) { "키 보관 폴더를 열 수 없어요" }
+                RandomAccessFile(File(directory, "vault.lock"), "rw").use { lockFile ->
+                    lockFile.channel.use { channel ->
+                        var acquired = try { channel.tryLock() } catch (_: OverlappingFileLockException) { null }
+                        while (acquired == null) {
+                            delay(25)
+                            acquired = try { channel.tryLock() } catch (_: OverlappingFileLockException) { null }
+                        }
+                        acquired.use {
+                            cache = null
+                            block()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun load(): Stored = cache ?: withContext(Dispatchers.IO) {
         // 파일이 있는 경우 복호화나 파싱 실패를 빈 보관함으로 바꾸면 다음 쓰기가 원본 키를 덮어쓴다.
         if (!existsOrThrow(file)) Stored() else json.decodeFromString(Stored.serializer(), decrypt(file.readBytes()).decodeToString())
@@ -60,43 +87,43 @@ class AndroidKeyVault(context: Context) : KeyVault {
         cache = s
     }
 
-    override suspend fun deviceKeys(): DeviceKeys? = lock.withLock {
+    override suspend fun deviceKeys(): DeviceKeys? = withVault {
         val s = load()
         if (s.signPub == null || s.boxPub == null || s.deviceSecret == null) null
         else DeviceKeys.import(s.signPub.unb64(), s.boxPub.unb64(), s.deviceSecret.unb64())
     }
 
-    override suspend fun putDeviceKeys(keys: DeviceKeys) = lock.withLock {
+    override suspend fun putDeviceKeys(keys: DeviceKeys) = withVault {
         save(load().copy(signPub = keys.signPub.b64(), boxPub = keys.boxPub.b64(), deviceSecret = keys.exportSecret().b64()))
     }
 
-    override suspend fun coupleKey(epoch: Int): CoupleKey? = lock.withLock {
+    override suspend fun coupleKey(epoch: Int): CoupleKey? = withVault {
         load().coupleKeys[epoch]?.let { CoupleKey(epoch, it.unb64()) }
     }
 
-    override suspend fun currentCoupleKey(): CoupleKey? = lock.withLock {
+    override suspend fun currentCoupleKey(): CoupleKey? = withVault {
         load().coupleKeys.maxByOrNull { it.key }?.let { CoupleKey(it.key, it.value.unb64()) }
     }
 
-    override suspend fun putCoupleKey(key: CoupleKey) = lock.withLock {
+    override suspend fun putCoupleKey(key: CoupleKey) = withVault {
         val s = load()
         save(s.copy(coupleKeys = s.coupleKeys + (key.epoch to key.export().b64())))
     }
 
-    override suspend fun dropEpochsBefore(epoch: Int) = lock.withLock {
+    override suspend fun dropEpochsBefore(epoch: Int) = withVault {
         val s = load()
         save(s.copy(coupleKeys = s.coupleKeys.filterKeys { it >= epoch }))
     }
 
-    override suspend fun pendingApproval(): PendingApproval? = lock.withLock { load().pendingApproval?.toModel() }
+    override suspend fun pendingApproval(): PendingApproval? = withVault { load().pendingApproval?.toModel() }
 
-    override suspend fun putPendingApproval(approval: PendingApproval?) = lock.withLock {
+    override suspend fun putPendingApproval(approval: PendingApproval?) = withVault {
         save(load().copy(pendingApproval = approval?.let(StoredApproval::of)))
     }
 
-    override suspend fun clearCoupleKeys() = lock.withLock { save(load().copy(coupleKeys = emptyMap(), pendingApproval = null)) }
+    override suspend fun clearCoupleKeys() = withVault { save(load().copy(coupleKeys = emptyMap(), pendingApproval = null)) }
 
-    override suspend fun clearAll() = lock.withLock {
+    override suspend fun clearAll() = withVault {
         // 삭제와 캐시 초기화 사이의 취소로 오래된 키가 다시 저장되지 않도록 한 상태 전이로 처리한다.
         withContext(NonCancellable + Dispatchers.IO) {
             deleteIfPresent(File(file.parentFile, "vault.bin.tmp"))
@@ -150,6 +177,7 @@ class AndroidKeyVault(context: Context) : KeyVault {
     }
 
     private companion object {
+        val PROCESS_LOCKS = mutableMapOf<String, Mutex>()
         const val ALIAS = "kkotsin_vault"
         const val TRANSFORM = "AES/GCM/NoPadding"
     }
