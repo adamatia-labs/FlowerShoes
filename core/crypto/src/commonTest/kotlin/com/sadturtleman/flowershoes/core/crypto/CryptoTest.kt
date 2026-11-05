@@ -18,6 +18,18 @@ class CryptoTest {
     private fun DeviceKeys.publicKeys() = Pairing.PublicKeys(signPub, boxPub)
 
     @Test
+    fun `Op 머리의 너무 큰 길이는 정해진 암호 오류로 거부한다`() {
+        val tooLong = byteArrayOf(0x7f, -1, -1, -1)
+        assertFailsWith<CryptoException> { OpHeader.fromBytes(tooLong) }
+        assertFailsWith<CryptoException> { OpHeader.fromBytes(byteArrayOf(0, 0, 0, 0) + tooLong) }
+        val valid = OpHeader("op-1", "dev-a:app", 7, 2)
+        assertFailsWith<CryptoException> { OpHeader.fromBytes(byteArrayOf(-1, -1, -1, -1)) }
+        assertFailsWith<CryptoException> { OpHeader.fromBytes(byteArrayOf(0, 0, 0, 2, 65)) }
+        assertFailsWith<CryptoException> { OpHeader.fromBytes(valid.toBytes().dropLast(1).toByteArray()) }
+        assertEquals(valid, OpHeader.fromBytes(valid.toBytes()))
+    }
+
+    @Test
     fun `Op 봉투는 서명을 확인하고 epoch 로 키를 찾아 푼다`() {
         val sender = DeviceKeys.generate()
         val key = CoupleKey.generate(epoch = 2)
