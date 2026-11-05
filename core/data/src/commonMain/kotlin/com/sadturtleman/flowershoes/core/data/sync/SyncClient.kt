@@ -31,6 +31,7 @@ import com.sadturtleman.flowershoes.core.sync.StreamId
 import com.sadturtleman.flowershoes.core.sync.SyncOp
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -216,7 +217,7 @@ class SyncClient(
         var applied = 0
         var rejected = 0
         for (item in mailbox.fetch(couple.id, identity.deviceId)) {
-            val ok = runCatching { receive(couple, item) }.getOrElse { false }
+            val ok = receiveOrReject(couple, item)
             if (ok) applied++ else rejected++
             // 풀 수 없는 것(서명 불일치 · 키 없음)도 지운다. 남겨 두면 매번 다시 실패한다. 빠진 번호는 재요청으로 메운다.
             mailbox.delete(couple.id, identity.deviceId, item.opId)
@@ -227,10 +228,18 @@ class SyncClient(
     /** iOS: NSE 가 App Group 에 받아 둔 Op 을 반영한다(우편함과 같은 확인 · 중복 제거를 거친다). */
     suspend fun receiveQueued(items: List<MailItem>): Int {
         val couple = db.coupleDao().get() ?: return 0
-        return items.count { runCatching { receive(couple, it) }.getOrDefault(false) }
+        return items.count { receiveOrReject(couple, it) }
     }
 
     suspend fun receiveQueued(item: MailItem): Boolean = receiveQueued(listOf(item)) == 1
+
+    private suspend fun receiveOrReject(couple: CoupleEntity, item: MailItem): Boolean = try {
+        receive(couple, item)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
 
     private suspend fun receive(couple: CoupleEntity, item: MailItem): Boolean {
         val sender = db.deviceDao().get(item.from) ?: return false
