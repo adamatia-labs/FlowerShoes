@@ -22,8 +22,8 @@ test('늦게 처리된 이전 요청이 더 최근 기기 요청을 취소하지
   await db.doc(`couples/${couple}`).set({ members: { owner: 'old-device', partner: 'partner-device' } });
   await db.doc(`couples/${couple}/devices/older-device`).set({ uid: 'owner' });
   await db.doc(`couples/${couple}/devices/newer-device`).set({ uid: 'owner' });
-  await older.set({ uid: 'owner', newDeviceId: 'older-device', status: 'pending', createdAt: Timestamp.fromMillis(1000) });
-  await newer.set({ uid: 'owner', newDeviceId: 'newer-device', status: 'pending', createdAt: Timestamp.fromMillis(2000) });
+  await older.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'older-device', status: 'pending', createdAt: Timestamp.fromMillis(1000) });
+  await newer.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'newer-device', status: 'pending', createdAt: Timestamp.fromMillis(2000) });
   await functions.onDeviceChangeCreated.run({ data: await older.get(), params: { c: couple, r: older.id } } as never);
   await functions.onDeviceChangeCreated.run({ data: await newer.get(), params: { c: couple, r: newer.id } } as never);
   assert.equal((await older.get()).get('status'), 'cancelled');
@@ -42,8 +42,8 @@ test('동일 시각 요청은 이벤트 재전송에도 고정된 순서로 처�
   await db.doc(`couples/${couple}`).set({ members: { owner: 'old-device', partner: 'partner-device' } });
   await db.doc(`couples/${couple}/devices/a-device`).set({ uid: 'owner' });
   await db.doc(`couples/${couple}/devices/b-device`).set({ uid: 'owner' });
-  await earlier.set({ uid: 'owner', newDeviceId: 'a-device', status: 'pending', createdAt: timestamp });
-  await latest.set({ uid: 'owner', newDeviceId: 'b-device', status: 'pending', createdAt: timestamp });
+  await earlier.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'a-device', status: 'pending', createdAt: timestamp });
+  await latest.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'b-device', status: 'pending', createdAt: timestamp });
   const event = { data: await latest.get(), params: { c: couple, r: latest.id } } as never;
   await functions.onDeviceChangeCreated.run(event);
   await functions.onDeviceChangeCreated.run(event);
@@ -63,8 +63,8 @@ test('두 생성 이벤트가 동시에 실행되어도 최근 요청만 유지�
   await db.doc(`couples/${couple}`).set({ members: { owner: 'old-device', partner: 'partner-device' } });
   await db.doc(`couples/${couple}/devices/older-device`).set({ uid: 'owner' });
   await db.doc(`couples/${couple}/devices/newer-device`).set({ uid: 'owner' });
-  await older.set({ uid: 'owner', newDeviceId: 'older-device', status: 'pending', createdAt: Timestamp.fromMillis(1000) });
-  await newer.set({ uid: 'owner', newDeviceId: 'newer-device', status: 'pending', createdAt: Timestamp.fromMillis(2000) });
+  await older.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'older-device', status: 'pending', createdAt: Timestamp.fromMillis(1000) });
+  await newer.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'newer-device', status: 'pending', createdAt: Timestamp.fromMillis(2000) });
   const events = await Promise.all([older.get(), newer.get()]);
   await Promise.all(events.map((data) => functions.onDeviceChangeCreated.run({ data, params: { c: couple, r: data.id } } as never)));
   assert.equal((await older.get()).get('status'), 'cancelled');
@@ -87,8 +87,8 @@ test('새 요청이 이미 생긴 뒤 이전 요청의 승인이 처리되어도
   await db.doc(`couples/${couple}/devices/older-device`).set({ uid: 'owner', active: false, state: 'pending' });
   await db.doc(`couples/${couple}/devices/newer-device`).set({ uid: 'owner', active: false, state: 'pending' });
   const expires = Timestamp.fromMillis(Date.now() + 60000);
-  await older.set({ uid: 'owner', newDeviceId: 'older-device', status: 'pending', createdAt: Timestamp.fromMillis(1000), expireAt: expires });
-  await newer.set({ uid: 'owner', newDeviceId: 'newer-device', status: 'pending', createdAt: Timestamp.fromMillis(2000), expireAt: expires });
+  await older.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'older-device', status: 'pending', createdAt: Timestamp.fromMillis(1000), expireAt: expires });
+  await newer.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'newer-device', status: 'pending', createdAt: Timestamp.fromMillis(2000), expireAt: expires });
   const sig = sign(null, approvalMessage(couple, older.id, 'older-device', {}), keys.privateKey).toString('base64');
   const answer = older.collection('answer').doc('partner');
   await answer.set({ result: 'approve', approverDeviceId: 'partner-device', cutoff: {}, sig });
@@ -115,12 +115,75 @@ test('이전 요청 취소와 새 요청이 같은 대기 기기를 가리키면
   const device = db.doc(`couples/${couple}/devices/shared-device`);
   await device.set({ uid: 'owner', active: false, state: 'pending' });
   const expires = Timestamp.fromMillis(Date.now() + 60000);
-  await older.set({ uid: 'owner', newDeviceId: 'shared-device', status: 'pending', createdAt: Timestamp.fromMillis(1000), expireAt: expires });
-  await newer.set({ uid: 'owner', newDeviceId: 'shared-device', status: 'pending', createdAt: Timestamp.fromMillis(2000), expireAt: expires });
+  await older.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'shared-device', status: 'pending', createdAt: Timestamp.fromMillis(1000), expireAt: expires });
+  await newer.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'shared-device', status: 'pending', createdAt: Timestamp.fromMillis(2000), expireAt: expires });
   const answer = older.collection('answer').doc('owner');
   await answer.set({ result: 'cancel' });
   await functions.onDeviceChangeAnswered.run({ data: await answer.get(), params: { c: couple, r: older.id, who: 'owner' } } as never);
   assert.equal((await older.get()).get('status'), 'cancelled');
   assert.equal((await newer.get()).get('status'), 'pending');
   assert.equal((await device.get()).exists, true);
+});
+
+test('승인 처리 전에 상대의 이전 기기가 바뀌면 새 기기를 활성화하지 않는다', async () => {
+  const db = getFirestore();
+  const couple = 'stale-owner-device';
+  const key = generateKeyPairSync('ed25519');
+  const pub = key.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
+  await db.doc(`couples/${couple}`).set({ members: { owner: 'current-device', partner: 'partner-device' } });
+  await db.doc(`couples/${couple}/devices/current-device`).set({ uid: 'owner', active: true });
+  await db.doc(`couples/${couple}/devices/partner-device`).set({ uid: 'partner', active: true, signPub: pub });
+  await db.doc(`couples/${couple}/devices/new-device`).set({ uid: 'owner', active: false, state: 'pending' });
+  const req = db.doc(`couples/${couple}/deviceChanges/request`);
+  await req.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'new-device', status: 'pending', createdAt: Timestamp.now(), expireAt: Timestamp.fromMillis(Date.now() + 60000) });
+  const answer = req.collection('answer').doc('partner');
+  await answer.set({ result: 'approve', approverDeviceId: 'partner-device', cutoff: {}, sig: sign(null, approvalMessage(couple, req.id, 'new-device', {}), key.privateKey).toString('base64') });
+  await functions.onDeviceChangeAnswered.run({ data: await answer.get(), params: { c: couple, r: req.id, who: 'partner' } } as never);
+  assert.equal((await db.doc(`couples/${couple}`).get()).get('members.owner'), 'current-device');
+  assert.equal((await db.doc(`couples/${couple}/devices/current-device`).get()).get('active'), true);
+  assert.equal((await db.doc(`couples/${couple}/devices/new-device`).get()).get('active'), false);
+  assert.equal((await req.get()).get('status'), 'cancelled');
+  await functions.onDeviceChangeAnswered.run({ data: await answer.get(), params: { c: couple, r: req.id, who: 'partner' } } as never);
+  assert.equal((await db.doc(`couples/${couple}`).get()).get('members.owner'), 'current-device');
+});
+
+test('서명한 상대 기기가 더 이상 현재 기기가 아니면 교체를 승인하지 않는다', async () => {
+  const db = getFirestore();
+  const couple = 'stale-approver-device';
+  const key = generateKeyPairSync('ed25519');
+  const pub = key.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
+  await db.doc(`couples/${couple}`).set({ members: { owner: 'old-device', partner: 'new-partner-device' } });
+  await db.doc(`couples/${couple}/devices/old-device`).set({ uid: 'owner', active: true });
+  await db.doc(`couples/${couple}/devices/old-partner-device`).set({ uid: 'partner', active: true, signPub: pub });
+  await db.doc(`couples/${couple}/devices/new-device`).set({ uid: 'owner', active: false, state: 'pending' });
+  const req = db.doc(`couples/${couple}/deviceChanges/request`);
+  await req.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'new-device', status: 'pending', createdAt: Timestamp.now(), expireAt: Timestamp.fromMillis(Date.now() + 60000) });
+  const answer = req.collection('answer').doc('partner');
+  await answer.set({ result: 'approve', approverDeviceId: 'old-partner-device', cutoff: {}, sig: sign(null, approvalMessage(couple, req.id, 'new-device', {}), key.privateKey).toString('base64') });
+  await functions.onDeviceChangeAnswered.run({ data: await answer.get(), params: { c: couple, r: req.id, who: 'partner' } } as never);
+  assert.equal((await db.doc(`couples/${couple}`).get()).get('members.owner'), 'old-device');
+  assert.equal((await db.doc(`couples/${couple}/devices/new-device`).get()).get('active'), false);
+  assert.equal((await req.get()).get('status'), 'cancelled');
+});
+
+test('대기 기기가 바뀌거나 다른 사람 소유가 되면 승인하지 않는다', async () => {
+  const db = getFirestore();
+  const key = generateKeyPairSync('ed25519');
+  const pub = key.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
+  for (const [suffix, pending] of Object.entries({ wrongOwner: { uid: 'other', state: 'pending', active: false }, alreadyActive: { uid: 'owner', state: 'active', active: true } })) {
+    const couple = `pending-${suffix}`;
+    await db.doc(`couples/${couple}`).set({ members: { owner: 'old-device', partner: 'partner-device' } });
+    await db.doc(`couples/${couple}/devices/old-device`).set({ uid: 'owner', active: true });
+    await db.doc(`couples/${couple}/devices/partner-device`).set({ uid: 'partner', active: true, signPub: pub });
+    const target = db.doc(`couples/${couple}/devices/new-device`);
+    await target.set(pending);
+    const req = db.doc(`couples/${couple}/deviceChanges/request`);
+    await req.set({ uid: 'owner', oldDeviceId: 'old-device', newDeviceId: 'new-device', status: 'pending', createdAt: Timestamp.now(), expireAt: Timestamp.fromMillis(Date.now() + 60000) });
+    const answer = req.collection('answer').doc('partner');
+    await answer.set({ result: 'approve', approverDeviceId: 'partner-device', cutoff: {}, sig: sign(null, approvalMessage(couple, req.id, 'new-device', {}), key.privateKey).toString('base64') });
+    await functions.onDeviceChangeAnswered.run({ data: await answer.get(), params: { c: couple, r: req.id, who: 'partner' } } as never);
+    assert.equal((await db.doc(`couples/${couple}`).get()).get('members.owner'), 'old-device');
+    assert.deepEqual((await target.get()).data(), pending);
+    assert.equal((await req.get()).get('status'), 'cancelled');
+  }
 });
