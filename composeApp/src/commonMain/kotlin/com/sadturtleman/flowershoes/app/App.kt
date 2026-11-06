@@ -574,15 +574,10 @@ private fun MainShell() {
                 }
         }
         // 추억 책 권유(전역 D-30 · 전역일, 각자 폰 한 번씩): 홈 위 가운데 팝업. 홈 화면은 그대로 둔다.
-        // 연결 모달 · 보내는 중 화면이 떠 있으면 권유 팝업은 띄우지 않는다(연결이 이긴다 — 두 덮개가 겹치지 않게).
+        // 연결 안내가 떠 있으면 책 권유 팝업은 띄우지 않는다.
         val linkWatch = koinViewModel<com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel>()
-        val linking = linkWatch.ui.collectAsState().value?.phase.let {
-            it == com.sadturtleman.flowershoes.feature.pairing.AfterLinkUi.Phase.MODAL || it == com.sadturtleman.flowershoes.feature.pairing.AfterLinkUi.Phase.SENDING
-        }
-        // 겹치는 덮개 순서: 연결 모달 · 보내는 중 > 편지 도착 창 > 책 권유.
-        val arrivals = koinViewModel<com.sadturtleman.flowershoes.feature.pairing.SoloArrivalViewModel>()
-        val arriving = arrivals.arrived.collectAsState().value != null
-        if (tab == Tab.HOME && !linking && !arriving) bookPromo?.let { promo ->
+        val linking = linkWatch.ui.collectAsState().value != null
+        if (tab == Tab.HOME && !linking) bookPromo?.let { promo ->
             val day by promo.day.collectAsState(initial = null)
             day?.let { d ->
                 val memoryState by memory.state.collectAsState()
@@ -599,10 +594,8 @@ private fun MainShell() {
                 )
             }
         }
-        // 보낸 초대가 수락됐다 → 연결 모달 · 편지 보내는 중 · 다 보냄 토스트.
+        // 보낸 초대가 수락되면 연결 안내를 보여 준다.
 com.sadturtleman.flowershoes.feature.pairing.LinkWatcher(linkWatch)
-        // 처음 연결 뒤 상대가 혼자 쓴 편지가 들어왔다 → "훈련소 동안 쓴 편지 N통 도착". 연결 모달 · 보내는 중 화면 뒤에.
-        if (!linking) com.sadturtleman.flowershoes.feature.pairing.SoloArrivals(onOpenLetters = { tab = Tab.LETTER }, viewModel = arrivals)
         }
         }
     }
