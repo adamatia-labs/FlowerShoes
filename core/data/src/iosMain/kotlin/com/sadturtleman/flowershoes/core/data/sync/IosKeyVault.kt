@@ -6,38 +6,10 @@ import com.sadturtleman.flowershoes.core.crypto.CoupleKey
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.usePinned
-import kotlinx.cinterop.value
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import platform.CoreFoundation.CFDictionaryAddValue
-import platform.CoreFoundation.CFDictionaryCreateMutable
-import platform.CoreFoundation.CFTypeRefVar
-import platform.CoreFoundation.kCFBooleanTrue
-import platform.Foundation.CFBridgingRelease
-import platform.Foundation.CFBridgingRetain
-import platform.Foundation.NSData
-import platform.Foundation.NSString
-import platform.Foundation.create
-import platform.Security.SecItemAdd
-import platform.Security.SecItemCopyMatching
-import platform.Security.SecItemDelete
-import platform.Security.errSecSuccess
-import platform.Security.kSecAttrAccessGroup
-import platform.Security.kSecAttrAccessible
-import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-import platform.Security.kSecAttrAccount
-import platform.Security.kSecClass
-import platform.Security.kSecClassGenericPassword
-import platform.Security.kSecReturnData
-import platform.Security.kSecValueData
-import platform.posix.memcpy
 
 /**
  * iOS 키 보관함. Keychain 항목 하나(JSON)에 비밀 값들을 둔다.
@@ -124,43 +96,17 @@ class IosKeyVault(
     /** NSE 가 상대 서명을 확인할 때 쓴다. 연결 · 기기 교체 때 앱이 부른다. */
     fun putPartnerSignPub(pub: ByteArray) = write("partner.signPub", pub)
 
-    // ── Keychain ──
+    private val keychain = IosKeychainStore(accessGroup)
 
-    private fun query(account: String, extra: Map<Any?, Any?> = emptyMap()) =
-        CFDictionaryCreateMutable(null, 0, null, null).also { d ->
-            val pairs = mapOf<Any?, Any?>(
-                kSecClass to kSecClassGenericPassword,
-                kSecAttrAccount to CFBridgingRetain(account as NSString),
-            ) + (accessGroup?.let { mapOf(kSecAttrAccessGroup to CFBridgingRetain(it as NSString)) } ?: emptyMap()) + extra
-            pairs.forEach { (k, v) -> CFDictionaryAddValue(d, k as platform.CoreFoundation.CFTypeRef?, v as platform.CoreFoundation.CFTypeRef?) }
-        }
+    private fun write(account: String, bytes: ByteArray) = keychain.write(account, bytes)
 
-    private fun write(account: String, bytes: ByteArray) {
-        SecItemDelete(query(account))
-        val data = bytes.toNSData()
-        val status = SecItemAdd(query(account, mapOf(kSecValueData to CFBridgingRetain(data), kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)), null)
-        check(status == errSecSuccess) { "Keychain 저장 실패: $status" }
-    }
+    private fun read(account: String): ByteArray? = keychain.read(account)
 
-    private fun read(account: String): ByteArray? = memScoped {
-        val out = alloc<CFTypeRefVar>()
-        if (SecItemCopyMatching(query(account, mapOf(kSecReturnData to kCFBooleanTrue)), out.ptr) != errSecSuccess) return null
-        (CFBridgingRelease(out.value) as? NSData)?.toByteArray()
-    }
-
-    private fun delete(account: String) {
-        SecItemDelete(query(account))
-    }
+    private fun delete(account: String) = keychain.delete(account)
 
     companion object {
         /** SharedStore.swift 의 keychainGroup 앞에 팀 접두사가 붙은 값. 빌드 설정에서 맞춘다. */
         const val ACCESS_GROUP = "com.sadturtleman.kkotsin.shared"
         private const val ACCOUNT = "kkotsin.vault"
     }
-}
-
-private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
-
-private fun NSData.toByteArray(): ByteArray = ByteArray(length.toInt()).also { out ->
-    if (out.isNotEmpty()) out.usePinned { memcpy(it.addressOf(0), bytes, length) }
 }
