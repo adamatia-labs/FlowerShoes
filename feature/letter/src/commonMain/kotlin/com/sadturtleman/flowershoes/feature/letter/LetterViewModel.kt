@@ -429,7 +429,7 @@ class LetterViewModel(
             }
             is LetterIntent.Open -> open(intent.letterId)
             is LetterIntent.DrawingSeen -> viewModelScope.launch {
-                if (ui.value.open?.mine == false) letters.markRead(ReceiptEntity.DRAWING, intent.drawingId)
+                if (ui.value.open?.mine == false) recordView(ReceiptEntity.DRAWING, intent.drawingId, "그림 확인 기록을 저장하지 못했어요")
             }
             LetterIntent.Close -> ui.update { it.copy(open = null) }
             is LetterIntent.SendDrawing -> viewModelScope.launch {
@@ -591,7 +591,17 @@ class LetterViewModel(
                     ),
                 )
             }
-            if (!mine) letters.markRead(ReceiptEntity.LETTER, letterId)
+            if (!mine) recordView(ReceiptEntity.LETTER, letterId, "읽음 표시를 저장하지 못했어요")
+        }
+    }
+
+    private suspend fun recordView(entity: ReceiptEntity, id: String, failureMessage: String) {
+        try {
+            letters.markRead(entity, id)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            toast(failureMessage, kind = LetterToast.Kind.ERROR)
         }
     }
 

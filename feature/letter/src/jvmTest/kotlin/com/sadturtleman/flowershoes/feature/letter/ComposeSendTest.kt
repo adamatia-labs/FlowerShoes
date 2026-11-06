@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.feature.letter
 
 import com.sadturtleman.flowershoes.core.data.AttachmentStore
+import com.sadturtleman.flowershoes.core.data.DrawingMeta
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.LetterDraftStore
 import com.sadturtleman.flowershoes.core.data.LetterRepository
@@ -13,7 +14,14 @@ import com.sadturtleman.flowershoes.core.database.inMemoryDatabaseBuilder
 import com.sadturtleman.flowershoes.core.logging.BizEvent
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.core.model.LetterBlock
+import com.sadturtleman.flowershoes.core.model.ReceiptEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +92,7 @@ class ComposeSendTest {
 
     @AfterTest
     fun tearDown() {
+        runBlocking { vm.viewModelScope.coroutineContext[Job]?.cancelAndJoin() }
         db.close()
         Dispatchers.resetMain()
     }
@@ -132,11 +141,54 @@ class ComposeSendTest {
         minjun.letters.send(letter, emptyList())
         vm.onIntent(LetterIntent.Open(letter.id))
         until { it.open?.letter?.id == letter.id }
+        jisu.letters.observeReadLetterIds().first { letter.id in it }
         jisu.broken = true
         vm.onIntent(LetterIntent.Thanks)
         val toast = vm.toasts.first { it.kind == LetterToast.Kind.ERROR }
         assertEquals("고마워를 보내지 못했어요", toast.message)
         assertFalse(until { it.open?.thanked == false }.open!!.thanked)
         assertFalse(jisu.letters.thanked(letter.id))
+    }
+
+    @Test
+    fun `읽음 저장이 실패해도 편지를 열어 두고 안내한다`() = withScreen {
+        val letter = minjun.letters.newLetter(listOf(LetterBlock.Text("안녕")))
+        minjun.letters.send(letter, emptyList())
+        jisu.broken = true
+        coroutineScope {
+            val warning = async(start = CoroutineStart.UNDISPATCHED) { vm.toasts.first { it.kind == LetterToast.Kind.ERROR } }
+            vm.onIntent(LetterIntent.Open(letter.id))
+            assertEquals("읽음 표시를 저장하지 못했어요", warning.await().message)
+        }
+        assertEquals(letter.id, until { it.open?.letter?.id == letter.id }.open?.letter?.id)
+        assertNull(db.receiptDao().get(ReceiptEntity.LETTER.name, letter.id, "jisu"))
+        assertTrue(db.syncDao().log("dev-jisu:app").isEmpty())
+        jisu.broken = false
+        vm.onIntent(LetterIntent.Open(letter.id))
+        jisu.letters.observeReadLetterIds().first { letter.id in it }
+        assertEquals(1, db.syncDao().log("dev-jisu:app").size)
+    }
+
+    @Test
+    fun `그림 확인 기록이 실패해도 편지를 유지하고 안내한다`() = withScreen {
+        val drawing = DrawingMeta("drawing", 0, "SQUARE", null, "png", null, true, 0)
+        val letter = minjun.letters.newLetter(listOf(LetterBlock.Text("안녕"), LetterBlock.DrawingRef(drawing.id)))
+        minjun.letters.send(letter, listOf(drawing))
+        vm.onIntent(LetterIntent.Open(letter.id))
+        until { it.open?.letter?.id == letter.id }
+        jisu.letters.observeReadLetterIds().first { letter.id in it }
+        jisu.broken = true
+        coroutineScope {
+            val warning = async(start = CoroutineStart.UNDISPATCHED) { vm.toasts.first { it.kind == LetterToast.Kind.ERROR } }
+            vm.onIntent(LetterIntent.DrawingSeen("drawing"))
+            assertEquals("그림 확인 기록을 저장하지 못했어요", warning.await().message)
+        }
+        assertEquals(letter.id, vm.state.value.open?.letter?.id)
+        assertNull(db.receiptDao().get(ReceiptEntity.DRAWING.name, drawing.id, "jisu"))
+        assertEquals(1, db.syncDao().log("dev-jisu:app").size)
+        jisu.broken = false
+        vm.onIntent(LetterIntent.DrawingSeen(drawing.id))
+        withTimeout(5_000) { while (jisu.letters.isFirstView(drawing.id)) kotlinx.coroutines.yield() }
+        assertEquals(2, db.syncDao().log("dev-jisu:app").size)
     }
 }
