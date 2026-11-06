@@ -4,12 +4,17 @@ package com.sadturtleman.flowershoes.core.data.sync
 
 import com.sadturtleman.flowershoes.core.crypto.CoupleKey
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
+import com.sadturtleman.flowershoes.core.crypto.Signatures
+import com.sadturtleman.flowershoes.core.crypto.Sodium
+import com.sadturtleman.flowershoes.core.crypto.sealTo
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import libsodium.sodium_init
 
 /**
  * iOS 키 보관함. Keychain 항목 하나(JSON)에 비밀 값들을 둔다.
@@ -26,6 +31,10 @@ class IosKeyVault(
         ?.takeIf { it.endsWith(".$ACCESS_GROUP") },
 ) : KeyVault {
 
+    internal constructor(accessGroup: String?, keychain: IosKeychainStore) : this(accessGroup) {
+        this.keychain = keychain
+    }
+
     @Serializable
     private data class Stored(
         val signPub: String? = null,
@@ -40,11 +49,60 @@ class IosKeyVault(
     private val json = Json { ignoreUnknownKeys = true }
     private var cache: Stored? = null
 
-    private fun load(): Stored = cache ?: (read(ACCOUNT)?.let { runCatching { json.decodeFromString(Stored.serializer(), it.decodeToString()) }.getOrNull() } ?: Stored()).also { cache = it }
+    private suspend fun load(): Stored = cache ?: (read(ACCOUNT)?.let { data ->
+        try {
+            val stored = json.decodeFromString(Stored.serializer(), data.decodeToString())
+            validate(stored)
+            stored
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // 직렬화 예외에는 원본 키 데이터가 포함될 수 있으므로 원인을 로그에 전파하지 않는다.
+            throw IllegalStateException("키 보관 정보를 읽지 못했어요")
+        }
+    } ?: Stored()).also { cache = it }
 
-    private fun save(s: Stored) {
+    private suspend fun save(s: Stored) {
+        try {
+            validate(s)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            throw IllegalStateException("키 보관 정보를 저장하지 못했어요")
+        }
         write(ACCOUNT, json.encodeToString(Stored.serializer(), s).encodeToByteArray())
         cache = s
+    }
+
+    private suspend fun validate(s: Stored) {
+        val present = listOf(s.signPub, s.boxPub, s.deviceSecret).count { it != null }
+        check(present == 0 || present == 3)
+        if (present == 0) check(s.coupleKeys.isEmpty() && s.pendingApproval == null)
+        if (present == 3) {
+            // 래퍼가 먼저 플래그를 설정할 수 있어, 네이티브 초기화를 다시 호출해 완료를 확인한다.
+            try {
+                Sodium.awaitInit()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: IllegalStateException) {
+                // 다른 네이티브 사용자가 먼저 초기화한 경우에만 복구한다.
+                check(sodium_init() == 1)
+            }
+            check(sodium_init() >= 0)
+            val sign = checkNotNull(s.signPub).unb64()
+            val box = checkNotNull(s.boxPub).unb64()
+            val secret = checkNotNull(s.deviceSecret).unb64()
+            check(sign.size == 32 && box.size == 32 && secret.size == 96)
+            val keys = DeviceKeys.import(sign, box, secret)
+            val challenge = "kkotsin-key-validation-v1".encodeToByteArray()
+            check(Signatures.verify(challenge, keys.sign(challenge), sign))
+            check(keys.openSealed(sealTo(box, challenge)).contentEquals(challenge))
+        }
+        s.coupleKeys.forEach { (epoch, key) -> check(epoch > 0 && key.unb64().size == 32) }
+        s.pendingApproval?.let { pending ->
+            check(pending.requestId.isNotBlank() && pending.epoch > 0 && pending.key.unb64().size == 32)
+            check(pending.cutoff.all { (stream, seq) -> stream.isNotBlank() && seq >= 0 })
+        }
     }
 
     override suspend fun deviceKeys(): DeviceKeys? = lock.withLock {
@@ -96,7 +154,7 @@ class IosKeyVault(
     /** NSE 가 상대 서명을 확인할 때 쓴다. 연결 · 기기 교체 때 앱이 부른다. */
     fun putPartnerSignPub(pub: ByteArray) = write("partner.signPub", pub)
 
-    private val keychain = IosKeychainStore(accessGroup)
+    private var keychain = IosKeychainStore(accessGroup)
 
     private fun write(account: String, bytes: ByteArray) = keychain.write(account, bytes)
 

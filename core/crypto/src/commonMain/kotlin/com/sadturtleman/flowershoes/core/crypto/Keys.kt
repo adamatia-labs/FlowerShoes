@@ -15,6 +15,9 @@ object Sodium {
         if (!LibsodiumInitializer.isInitialized()) LibsodiumInitializer.initializeWithCallback {}
     }
 
+    /** 초기화 완료를 기다린 뒤 암호 연산을 시작한다. */
+    suspend fun awaitInit() = LibsodiumInitializer.initialize()
+
     fun random(size: Int): ByteArray = LibsodiumRandom.buf(size).toByteArray()
 }
 
