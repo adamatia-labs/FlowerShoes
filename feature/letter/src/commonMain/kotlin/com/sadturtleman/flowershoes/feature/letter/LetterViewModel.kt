@@ -164,6 +164,7 @@ data class OpenLetter(
     val envelopeLine: String = "",
     val envelopeMeta: String = "",
     val stamp: String = "",
+    val viewSessionId: String = kotlin.uuid.Uuid.random().toString(),
 )
 
 data class LetterState(
@@ -247,7 +248,7 @@ sealed interface LetterIntent {
     /** 아직 못 여는 편지 › 열리면 알려 주세요: 공개 시각 알림은 이미 잡혀 있다(NotificationPlanner) — 닫고 알린다. */
     data object NotifyWhenOpen : LetterIntent
     data class Open(val letterId: String) : LetterIntent
-    data class DrawingSeen(val drawingId: String) : LetterIntent
+    data class DrawingSeen(val letterId: String, val drawingId: String, val viewSessionId: String) : LetterIntent
     data object Close : LetterIntent
     data class Delete(val letterId: String) : LetterIntent
 
@@ -429,7 +430,11 @@ class LetterViewModel(
             }
             is LetterIntent.Open -> open(intent.letterId)
             is LetterIntent.DrawingSeen -> viewModelScope.launch {
-                if (ui.value.open?.mine == false) recordView(ReceiptEntity.DRAWING, intent.drawingId, "그림 확인 기록을 저장하지 못했어요")
+                val open = ui.value.open
+                if (open != null && !open.mine && !open.locked && open.letter.id == intent.letterId && open.viewSessionId == intent.viewSessionId &&
+                    open.letter.blocks.any { it is LetterBlock.DrawingRef && it.drawingId == intent.drawingId }) {
+                    recordView(ReceiptEntity.DRAWING, intent.drawingId, "그림 확인 기록을 저장하지 못했어요")
+                }
             }
             LetterIntent.Close -> ui.update { it.copy(open = null) }
             is LetterIntent.SendDrawing -> viewModelScope.launch {
