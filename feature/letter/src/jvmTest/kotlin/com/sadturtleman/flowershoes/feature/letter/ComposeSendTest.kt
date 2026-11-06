@@ -31,6 +31,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okio.FileSystem
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -175,20 +176,66 @@ class ComposeSendTest {
         val letter = minjun.letters.newLetter(listOf(LetterBlock.Text("안녕"), LetterBlock.DrawingRef(drawing.id)))
         minjun.letters.send(letter, listOf(drawing))
         vm.onIntent(LetterIntent.Open(letter.id))
-        until { it.open?.letter?.id == letter.id }
+        val opened = until { it.open?.letter?.id == letter.id }.open!!
         jisu.letters.observeReadLetterIds().first { letter.id in it }
         jisu.broken = true
         coroutineScope {
             val warning = async(start = CoroutineStart.UNDISPATCHED) { vm.toasts.first { it.kind == LetterToast.Kind.ERROR } }
-            vm.onIntent(LetterIntent.DrawingSeen("drawing"))
+            vm.onIntent(LetterIntent.DrawingSeen(letter.id, "drawing", opened.viewSessionId))
             assertEquals("그림 확인 기록을 저장하지 못했어요", warning.await().message)
         }
         assertEquals(letter.id, vm.state.value.open?.letter?.id)
         assertNull(db.receiptDao().get(ReceiptEntity.DRAWING.name, drawing.id, "jisu"))
         assertEquals(1, db.syncDao().log("dev-jisu:app").size)
         jisu.broken = false
-        vm.onIntent(LetterIntent.DrawingSeen(drawing.id))
+        vm.onIntent(LetterIntent.DrawingSeen(letter.id, drawing.id, opened.viewSessionId))
         withTimeout(5_000) { while (jisu.letters.isFirstView(drawing.id)) kotlinx.coroutines.yield() }
         assertEquals(2, db.syncDao().log("dev-jisu:app").size)
+    }
+
+    @Test
+    fun `다른 편지를 연 뒤 늦게 도착한 그림 재생 완료는 확인 처리하지 않는다`() = withScreen {
+        val firstDrawing = DrawingMeta("first-drawing", 0, "SQUARE", null, "png-a", null, true, 0)
+        val secondDrawing = DrawingMeta("second-drawing", 0, "SQUARE", null, "png-b", null, true, 0)
+        val first = minjun.letters.newLetter(listOf(LetterBlock.DrawingRef(firstDrawing.id)))
+        val second = minjun.letters.newLetter(listOf(LetterBlock.DrawingRef(secondDrawing.id)))
+        minjun.letters.send(first, listOf(firstDrawing))
+        minjun.letters.send(second, listOf(secondDrawing))
+        vm.onIntent(LetterIntent.Open(first.id))
+        val firstSession = until { it.open?.letter?.id == first.id }.open!!.viewSessionId
+        vm.onIntent(LetterIntent.Open(second.id))
+        val secondSession = until { it.open?.letter?.id == second.id }.open!!.viewSessionId
+
+        vm.onIntent(LetterIntent.DrawingSeen(first.id, firstDrawing.id, firstSession))
+        vm.onIntent(LetterIntent.DrawingSeen(second.id, firstDrawing.id, secondSession))
+        val recorded = withTimeoutOrNull(500) {
+            while (db.receiptDao().get(ReceiptEntity.DRAWING.name, firstDrawing.id, "jisu") == null) kotlinx.coroutines.yield()
+            true
+        }
+        assertNull(recorded)
+        vm.onIntent(LetterIntent.DrawingSeen(second.id, secondDrawing.id, secondSession))
+        withTimeout(5_000) { while (jisu.letters.isFirstView(secondDrawing.id)) kotlinx.coroutines.yield() }
+        assertTrue(jisu.letters.isFirstView(firstDrawing.id))
+    }
+
+    @Test
+    fun `같은 편지를 다시 열어도 이전 화면의 재생 완료는 무시한다`() = withScreen {
+        val drawing = DrawingMeta("drawing", 0, "SQUARE", null, "png", null, true, 0)
+        val letter = minjun.letters.newLetter(listOf(LetterBlock.DrawingRef(drawing.id)))
+        minjun.letters.send(letter, listOf(drawing))
+        vm.onIntent(LetterIntent.Open(letter.id))
+        val firstSession = until { it.open?.letter?.id == letter.id }.open!!.viewSessionId
+        vm.onIntent(LetterIntent.Close)
+        until { it.open == null }
+        vm.onIntent(LetterIntent.Open(letter.id))
+        val secondSession = until { it.open?.letter?.id == letter.id && it.open?.viewSessionId != firstSession }.open!!.viewSessionId
+        vm.onIntent(LetterIntent.DrawingSeen(letter.id, drawing.id, firstSession))
+        val recorded = withTimeoutOrNull(500) {
+            while (jisu.letters.isFirstView(drawing.id)) kotlinx.coroutines.yield()
+            true
+        }
+        assertNull(recorded)
+        vm.onIntent(LetterIntent.DrawingSeen(letter.id, drawing.id, secondSession))
+        withTimeout(5_000) { while (jisu.letters.isFirstView(drawing.id)) kotlinx.coroutines.yield() }
     }
 }

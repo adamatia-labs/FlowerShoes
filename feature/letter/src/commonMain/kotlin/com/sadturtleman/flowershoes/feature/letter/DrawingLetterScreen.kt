@@ -77,7 +77,7 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
             } else {
                 val shape = RoundedCornerShape(KkRadius.md)
                 Box(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(Color.White)) {
-                    ReplayCanvas(doc, replay, onFinished = { onIntent(LetterIntent.DrawingSeen(ref.drawingId)) })
+                    ReplayCanvas(doc, replay, onFinished = { onIntent(LetterIntent.DrawingSeen(open.letter.id, ref.drawingId, open.viewSessionId)) })
                 }
             }
         }

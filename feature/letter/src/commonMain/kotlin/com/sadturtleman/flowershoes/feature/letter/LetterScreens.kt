@@ -192,8 +192,8 @@ fun LetterInboxPanes(
         // 편지를 열면 편지함 장이 넘어가고, 닫으면 다시 덮인다.
         KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "inbox" }, isForward = { _, to -> to != null }) { open ->
             when {
-                open != null && open.drawingOnly -> DrawingLetterScreen(open, onIntent, onReplyDrawing)
-                open != null -> LetterReadScreen(open, onIntent, onReply, onReplyDrawing)
+                open != null && open.drawingOnly -> androidx.compose.runtime.key(open.viewSessionId) { DrawingLetterScreen(open, onIntent, onReplyDrawing) }
+                open != null -> androidx.compose.runtime.key(open.viewSessionId) { LetterReadScreen(open, onIntent, onReply, onReplyDrawing) }
                 else -> LetterInboxScreen(state, onIntent, onWriteLetter, onDraw, onOpenDrafts, onConnect)
             }
         }
@@ -210,8 +210,8 @@ fun LetterInboxPanes(
             KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "none" }, isForward = { _, to -> to != null }) { open ->
                 when {
                     open == null -> Box(Modifier.fillMaxSize().background(c.canvas))
-                    open.drawingOnly -> DrawingLetterScreen(open, onIntent, onReplyDrawing)
-                    else -> LetterReadScreen(open, onIntent, onReply, onReplyDrawing, pane = true)
+                    open.drawingOnly -> androidx.compose.runtime.key(open.viewSessionId) { DrawingLetterScreen(open, onIntent, onReplyDrawing) }
+                    else -> androidx.compose.runtime.key(open.viewSessionId) { LetterReadScreen(open, onIntent, onReply, onReplyDrawing, pane = true) }
                 }
             }
         }
@@ -462,7 +462,7 @@ private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
                                     onReplay = if (replay.playing) null else replay::restart,
                                 ) {
                                     // 그림 바탕은 그림 문서가 칠한다(콘텐츠).
-                                    ReplayCanvas(doc, replay, Modifier.fillMaxSize(), onFinished = { onIntent(LetterIntent.DrawingSeen(block.drawingId)) })
+                                    ReplayCanvas(doc, replay, Modifier.fillMaxSize(), onFinished = { onIntent(LetterIntent.DrawingSeen(open.letter.id, block.drawingId, open.viewSessionId)) })
                                 }
                             }
                         }
