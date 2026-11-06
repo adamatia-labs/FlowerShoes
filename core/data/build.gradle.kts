@@ -24,6 +24,9 @@ kotlin {
     }
 
     sourceSets {
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         commonMain.dependencies {
             implementation(project(":core:drawing-engine"))
             api(project(":core:model"))
