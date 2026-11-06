@@ -29,6 +29,7 @@ import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
 import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
+import { deliverUnlinkNotification, forgetUnlinkMember, unlink, UnlinkForbidden, UnlinkNotFound, UnlinkStore, UnlinkHistory } from './unlink';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -72,7 +73,7 @@ async function tokensOf(uid: string): Promise<string[]> {
  * FCM 발송. 화면 알림은 iOS NSE 가 인라인 암호문을 풀어 문구를 바꿀 수 있게 mutable-content 를 켠다.
  * data 만 보낼 때 Android 는 normal priority — 알림 없는 high-priority 는 Android 가 점점 낮춘다.
  */
-async function push(uid: string, payload: { visible?: { title: string; body: string }; data: Record<string, string> }) {
+async function push(uid: string, payload: { visible?: { title: string; body: string }; data: Record<string, string> }, retryTransient = false) {
   const tokens = await tokensOf(uid);
   if (tokens.length === 0) return;
   const res = await getMessaging().sendEachForMulticast({
@@ -89,6 +90,9 @@ async function push(uid: string, payload: { visible?: { title: string; body: str
     .map((r, i) => (!r.success && r.error?.code === 'messaging/registration-token-not-registered' ? tokens[i] : null))
     .filter((t): t is string => t !== null);
   if (dead.length) await db.doc(`users/${uid}`).update({ fcmTokens: FieldValue.arrayRemove(...dead) });
+  if (retryTransient && res.responses.some((r) => !r.success && r.error?.code !== 'messaging/registration-token-not-registered' && r.error?.code !== 'messaging/invalid-registration-token')) {
+    throw new Error('UNLINK_NOTIFICATION_RETRY');
+  }
 }
 
 async function prefsOf(uid: string): Promise<NotifyPrefs> {
@@ -472,25 +476,110 @@ export const kakaoSignIn = onCall({ region: REGION }, async (req) => {
 
 // ── 연결 해제 · 탈퇴 ──────────────────────────────────────────────────────
 
-async function deleteCouple(coupleId: string, members: Record<string, string>) {
-  await db.recursiveDelete(db.doc(`couples/${coupleId}`));
-  await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/` }).catch(() => undefined);
-  await Promise.all(Object.keys(members).map(async (u) => {
-    await db.doc(`notifyState/${u}`).delete();
-    await db.doc(`users/${u}`).set({ coupleId: FieldValue.delete(), deviceId: FieldValue.delete() }, { merge: true });
-  }));
-}
+const unlinkStore: UnlinkStore = {
+  async begin(coupleId, uid) {
+    const operationRef = db.doc(`unlinkOperations/${coupleId}`);
+    const coupleRef = db.doc(`couples/${coupleId}`);
+    return db.runTransaction(async (tx) => {
+      const operation = await tx.get(operationRef);
+      if (operation.exists) {
+        const members = operation.get('members') as string[];
+        if (!members.includes(uid)) throw new UnlinkForbidden();
+        return { members, completed: operation.get('completed') === true };
+      }
+      const couple = await tx.get(coupleRef);
+      if (!couple.exists) throw new UnlinkNotFound();
+      const members = Object.keys((couple.get('members') as Record<string, string>) ?? {});
+      if (!members.includes(uid)) throw new UnlinkForbidden();
+      tx.create(operationRef, { members, initiatedBy: uid, completed: false, createdAt: FieldValue.serverTimestamp() });
+      return { members, completed: false };
+    });
+  },
+  async deleteCouple(coupleId) {
+    await db.recursiveDelete(db.doc(`couples/${coupleId}`));
+  },
+  async deleteFiles(coupleId) {
+    // 오류를 삼키면 삭제가 끝나지 않아도 완료로 기록되므로 호출자에게 알린다.
+    await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/` });
+  },
+  async clearMember(coupleId, uid) {
+    const userRef = db.doc(`users/${uid}`);
+    await db.runTransaction(async (tx) => {
+      const user = await tx.get(userRef);
+      // 처리 중 다른 커플과 연결됐다면 새 연결 및 알림 설정을 보존한다.
+      if (user.exists && user.get('coupleId') === coupleId) {
+        tx.delete(db.doc(`notifyState/${uid}`));
+        tx.update(userRef, { coupleId: FieldValue.delete(), deviceId: FieldValue.delete() });
+      }
+    });
+  },
+  async complete(coupleId) {
+    const ref = db.doc(`unlinkOperations/${coupleId}`);
+    return db.runTransaction(async (tx) => {
+      const operation = await tx.get(ref);
+      if (operation.get('completed') === true) return;
+      const members = operation.get('members') as string[];
+      const initiator = operation.get('initiatedBy') as string;
+      const recipient = members.find((member) => member !== initiator);
+      if (recipient) tx.create(db.doc(`unlinkNotifications/${coupleId}`), { recipient, coupleId });
+      tx.update(ref, { completed: true, completedAt: FieldValue.serverTimestamp() });
+    });
+  },
+};
+
+const unlinkHistory: UnlinkHistory = {
+  async operationsFor(uid) {
+    const operations = await db.collection('unlinkOperations').where('members', 'array-contains', uid).get();
+    return operations.docs.map((operation) => operation.id);
+  },
+  async forgetMember(coupleId, uid) {
+    const ref = db.doc(`unlinkOperations/${coupleId}`);
+    const operation = await ref.get();
+    const update: Record<string, unknown> = { members: FieldValue.arrayRemove(uid) };
+    if (operation.get('initiatedBy') === uid) update.initiatedBy = FieldValue.delete();
+    await ref.update(update);
+  },
+  async forgetNotifications(uid) {
+    const notifications = await db.collection('unlinkNotifications').where('recipient', '==', uid).get();
+    for (const notification of notifications.docs) await notification.ref.delete();
+  },
+};
+
+/** 서버 재시도로 알림 누락을 줄인다. FCM 수락 직후 중단되면 같은 알림이 다시 올 수 있다. */
+export const onUnlinkNotificationCreated = onDocumentCreated({
+  document: 'unlinkNotifications/{coupleId}', region: REGION, retry: true,
+}, async (event) => {
+  if (!event.data) return;
+  const ref = event.data.ref;
+  await deliverUnlinkNotification({
+    async read() {
+      const snapshot = await ref.get();
+      return snapshot.exists ? { recipient: snapshot.get('recipient') as string, coupleId: snapshot.get('coupleId') as string } : null;
+    },
+    async currentCouple(uid) {
+      const user = await db.doc(`users/${uid}`).get();
+      return (user.get('coupleId') as string | undefined) ?? null;
+    },
+    async send(uid, coupleId) {
+      await push(uid, { visible: { title: '꽃신', body: '이전 연결이 해제됐어요' }, data: { kind: 'unlinked', coupleId } }, true);
+    },
+    async remove() { await ref.delete(); },
+  });
+});
 
 /** 둘 중 누구나 혼자 해제할 수 있다. 서버 데이터는 즉시 지우고 상대에게 한 번 알린다. */
 export const unlinkCouple = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
-  const coupleId = (req.data as { coupleId: string }).coupleId;
-  const couple = await coupleOf(coupleId);
-  if (!(uid in couple.members)) throw new HttpsError('permission-denied', '멤버가 아니다');
-  await deleteCouple(coupleId, couple.members);
-  const partner = Object.keys(couple.members).find((u) => u !== uid);
-  if (partner) await push(partner, { visible: { title: '꽃신', body: '연결이 해제됐어요' }, data: { kind: 'unlinked', coupleId } });
+  const coupleId = (req.data as { coupleId?: unknown })?.coupleId;
+  if (typeof coupleId !== 'string' || !coupleId || coupleId.includes('/')) throw new HttpsError('invalid-argument', '커플 id가 올바르지 않다');
+  try {
+    await unlink(unlinkStore, coupleId, uid);
+  } catch (error) {
+    if (error instanceof UnlinkNotFound) throw new HttpsError('not-found', '커플이 없다');
+    if (error instanceof UnlinkForbidden) throw new HttpsError('permission-denied', '멤버가 아니다');
+    throw error;
+  }
   return { ok: true };
 });
 
@@ -504,9 +593,14 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
   const user = await db.doc(`users/${uid}`).get();
   const coupleId = user.get('coupleId') as string | undefined;
   if (coupleId) {
-    const couple = await coupleOf(coupleId).catch(() => null);
-    if (couple) await deleteCouple(coupleId, couple.members);
+    try {
+      await unlink(unlinkStore, coupleId, uid);
+    } catch (error) {
+      // 이전 서버에서 이미 커플 문서만 지운 경우: 종전처럼 탈퇴는 계속한다.
+      if (!(error instanceof UnlinkNotFound)) throw error;
+    }
   }
+  await forgetUnlinkMember(unlinkStore, unlinkHistory, uid);
   if (uid.startsWith('kakao:') && KAKAO_ADMIN_KEY.value()) {
     await fetch('https://kapi.kakao.com/v1/user/unlink', {
       method: 'POST',
