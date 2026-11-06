@@ -42,6 +42,7 @@ internal class IosKeychainStore(
     private val accessGroup: String?,
     private val updateItem: (platform.CoreFoundation.CFDictionaryRef?, platform.CoreFoundation.CFDictionaryRef?) -> Int = { query, attributes -> SecItemUpdate(query, attributes) },
     private val addItem: (platform.CoreFoundation.CFDictionaryRef?) -> Int = { query -> SecItemAdd(query, null) },
+    private val readItem: (platform.CoreFoundation.CFDictionaryRef?, kotlinx.cinterop.CPointer<platform.CoreFoundation.CFTypeRefVar>?) -> Int = { query, out -> SecItemCopyMatching(query, out) },
 ) {
     // ── Keychain ──
 
@@ -102,8 +103,13 @@ internal class IosKeychainStore(
 
     fun read(account: String): ByteArray? = memScoped {
         val out = alloc<CFTypeRefVar>()
-        if (withQuery(account, mapOf(kSecReturnData to kCFBooleanTrue)) { query -> SecItemCopyMatching(query, out.ptr) } != errSecSuccess) return null
-        (CFBridgingRelease(out.value) as? NSData)?.toByteArray()
+        val status = withQuery(account, mapOf(kSecReturnData to kCFBooleanTrue)) { query -> readItem(query, out.ptr) }
+        when (status) {
+            errSecItemNotFound -> null
+            errSecSuccess -> (CFBridgingRelease(out.value) as? NSData)?.toByteArray()
+                ?: error("Keychain 항목 형식이 올바르지 않아요")
+            else -> error("Keychain 조회 실패: $status")
+        }
     }
 
     fun delete(account: String) {
