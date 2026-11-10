@@ -55,7 +55,7 @@ export async function exchangeCode(c: AppleConfig, code: string, f: Fetch = fetc
   return request('https://appleid.apple.com/auth/token', form({
     client_id: c.clientId, client_secret: appleClientSecret(c), code, grant_type: 'authorization_code',
   }), f, options.timeoutMs ?? 5_000, async res => {
-    if (!res.ok) { await res.body?.cancel(); return null; }
+    if (!res.ok) { await res.body?.cancel().catch(() => undefined); return null; }
     const json = (await res.json()) as { refresh_token?: string };
     return json.refresh_token ?? null;
   });
@@ -71,7 +71,8 @@ export async function revoke(c: AppleConfig, refreshToken: string, f: Fetch = fe
     let pause = 250 * (attempt + 1);
     try {
       const res = await request('https://appleid.apple.com/auth/revoke', init, f, options.timeoutMs ?? 5_000, async res => {
-        await res.body?.cancel();
+        // HTTP 결과는 이미 확정됐다. 본문 정리 오류로 성공/재시도 금지를 바꾸지 않는다.
+        await res.body?.cancel().catch(() => undefined);
         return res;
       });
       if (res.ok) return true;

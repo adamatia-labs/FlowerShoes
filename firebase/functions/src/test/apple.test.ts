@@ -118,3 +118,16 @@ test('일회용 code는 서버 오류에 재사용하지 않고 본문 지연도
   }))) as typeof fetch;
   await assert.rejects(exchangeCode(config, 'code', stalledBody, { timeoutMs: 5 }), { name: 'AbortError' });
 });
+
+test('본문 정리 오류가 이미 받은 HTTP 성공과 재시도 금지를 덮어쓰지 않는다', async () => {
+  for (const status of [200, 400, 401, 429]) {
+    let calls = 0;
+    const request = (async () => {
+      calls++;
+      return new Response(new ReadableStream({ start(controller) { controller.error(new Error('connection reset')); } }),
+        { status, headers: { 'Retry-After': '60' } });
+    }) as typeof fetch;
+    assert.equal(await revoke(config, 'refresh', request, { wait: async () => {} }), status === 200);
+    assert.equal(calls, 1);
+  }
+});
