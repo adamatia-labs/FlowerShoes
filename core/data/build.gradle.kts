@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
@@ -16,7 +18,12 @@ kotlin {
     // jvm 은 테스트용.
     jvm()
     iosArm64()
-    iosSimulatorArm64()
+    iosSimulatorArm64 {
+        // simctl's standalone process has no Keychain service. The booted simulator also needs a test identity.
+        testRuns.configureEach {
+            executionSource.binary.linkerOpts("-sectcreate", "__TEXT", "__entitlements", file("src/iosTest/resources/KeychainTests.entitlements").absolutePath)
+        }
+    }
 
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
@@ -49,5 +56,10 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
         }
     }
+}
+
+tasks.withType<KotlinNativeSimulatorTest>().configureEach {
+    standalone.set(false)
+    device.set("booted")
 }
 

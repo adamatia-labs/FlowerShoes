@@ -25,3 +25,5 @@ Swift 위젯과 NSE는 원본을 한 번 읽어 같은 시점의 서명 키·관
 - Swift: 사본이 오래돼도 원본 하나로 키를 고르고, 삭제·손상된 원본에서는 사본으로 돌아가지 않는지 검사한다.
 
 물리 iPhone이나 여러 확장 프로세스의 실제 실행을 검증한 결과로 확대하지 않는다. #131의 서버 해제부터 로컬 정리까지의 전체 저널, #157의 기기 승인 요청 세대 관리는 별도 작업이다.
+
+네이티브 테스트는 먼저 iOS 시뮬레이터를 부팅한 뒤 standalone 모드를 끄고 실행한다. 테스트 실행 파일에 전용 Keychain 식별자만 넣으며 앱의 공유 그룹은 사용하지 않는다. Kotlin 기본 standalone 실행은 시스템 Keychain 서비스가 없어 `errSecNotAvailable`로 실패한다. 설정은 [Kotlin 테스트 실행기](https://github.com/JetBrains/kotlin/blob/master/libraries/tools/kotlin-gradle-plugin/src/common/kotlin/org/jetbrains/kotlin/gradle/targets/native/tasks/KotlinNativeTest.kt)와 [multiplatform-settings의 Keychain 테스트 구성](https://github.com/russhwolf/multiplatform-settings/pull/181/files)을 참고했다.
