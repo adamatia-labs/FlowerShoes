@@ -32,6 +32,7 @@ import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondW
 import { kakaoNickname } from './kakao';
 import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, completedDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
 import { deliverUnlinkNotification, forgetUnlinkMember, unlink, UnlinkForbidden, UnlinkNotFound, UnlinkStore, UnlinkHistory } from './unlink';
+import { deleteStoragePrefix } from './storage-cleanup';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -537,7 +538,7 @@ const unlinkStore: UnlinkStore = {
   },
   async deleteFiles(coupleId) {
     // 오류를 삼키면 삭제가 끝나지 않아도 완료로 기록되므로 호출자에게 알린다.
-    await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/` });
+    await deleteStoragePrefix(getStorage().bucket(), `couples/${coupleId}/`);
   },
   async clearMember(coupleId, uid) {
     const userRef = db.doc(`users/${uid}`);
