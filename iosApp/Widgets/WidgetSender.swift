@@ -8,8 +8,8 @@ enum WidgetSender {
 
     static func sendMissYou() async throws {
         guard let config = linkConfig(),
-              let coupleKey = SharedStore.secret("coupleKey.\(config.epoch)"),
-              let signSecret = SharedStore.secret("device.signSecret") else { throw Failure.notLinked }
+              let coupleKey = SharedStore.secret("coupleKey.\(config.epoch)", scope: config.keyScope),
+              let signSecret = SharedStore.secret("device.signSecret", scope: config.keyScope) else { throw Failure.notLinked }
 
         _ = try WidgetSendJournal(root: SharedStore.container).enqueue { seq in
             guard linkConfig() == config else { throw Failure.notLinked }
@@ -52,6 +52,7 @@ enum WidgetSender {
         let partnerDeviceId: String
         let epoch: Int32
         let sendEndpoint: String?
+        var keyScope: String? = nil
     }
 
     /// 앱이 연결 · 키 교체 때 App Group 에 써 둔다.

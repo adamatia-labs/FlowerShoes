@@ -16,7 +16,7 @@ class SyncSchedulerTest {
     private val db = inMemoryDatabaseBuilder().buildKkotsin()
     private val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "scheduler-${Uuid.random()}"
     private val cloud = InMemoryCloud()
-    private val vault = InMemoryKeyVault()
+    private val vault by lazy { InMemoryKeyVault().forDatabase(db, identity) }
     private val identity = object : Identity {
         override val userId = "me"
         override val deviceId = "device"

@@ -170,7 +170,7 @@ suspend fun AppDatabase.transferCounts(): TransferCounts {
 class DeviceChangeSession(
     private val db: AppDatabase,
     private val identity: Identity,
-    private val vault: KeyVault,
+    vault: KeyVault,
     private val transport: DeviceChangeTransport,
     private val clock: Clock = Clock.System,
     /** 새 폰 이름 · 로그인 제공자 — 상대 · 옛 폰 카드에 보인다. */
@@ -178,6 +178,7 @@ class DeviceChangeSession(
     /** finalizeDevice 가 준 커스텀 토큰으로 다시 로그인. */
     private val signIn: suspend (String) -> Unit = {},
 ) {
+    private val vault = vault.forDatabase(db, identity)
     var state: DeviceChangeState = DeviceChangeState.Idle
         private set
 
@@ -251,15 +252,16 @@ class DeviceChangeSession(
         val partner = transport.partnerDevice(c, identity.userId) ?: return@withLock null
         val keys = myKeys()
         val key = CoupleKey.unwrap(keys, wrapped)
-        vault.putCoupleKey(key)
         val now = clock.now().toEpochMilliseconds()
         db.useWriterConnection { tx -> tx.immediateTransaction {
+            check(db.coupleDao().get() == current) { "연결이 바뀌었어요" }
             RelationshipArchive(db).prepare()
+            val complete = vault.sealRelationship(CoupleEntity(c, identity.userId, partner.uid, key.epoch, now), key)
             db.coupleDao().clear()
-            db.coupleDao().upsert(CoupleEntity(c, identity.userId, partner.uid, key.epoch, now))
+            db.coupleDao().upsert(complete)
+            db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
+            db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         } }
-        db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
-        db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         // 옛 세션(같은 계정의 옛 폰)을 끊고 이 기기로 다시 로그인한다. 실패해도 연결은 끝났다(옛 세션이 토큰 만료까지 남을 뿐이다).
         runCatching { signIn(transport.finalize(c, r.id, keys.sign(DeviceChangeMessages.finalize(c, r.id, identity.userId)))) }
         return@withLock DeviceChangeState.Linked(c, r.counts ?: TransferCounts(), key.epoch, fresh = true)
@@ -314,13 +316,14 @@ sealed interface DeviceChangePrompt {
 class DeviceChangeApprover(
     private val db: AppDatabase,
     private val identity: Identity,
-    private val vault: KeyVault,
+    vault: KeyVault,
     private val transport: DeviceChangeTransport,
     private val sync: SyncClient?,
     private val clock: Clock = Clock.System,
     /** 승인 뒤 함수의 활성화를 다시 확인하기 전 기다림. */
     private val confirmDelay: suspend () -> Unit = { kotlinx.coroutines.delay(1_000) },
 ) {
+    private val vault = vault.forDatabase(db, identity)
     suspend fun prompts(): List<DeviceChangePrompt> {
         val couple = db.coupleDao().get()?.takeIf { it.partnerUserId.isNotBlank() } ?: return emptyList()
         val now = clock.now().toEpochMilliseconds()
@@ -395,6 +398,7 @@ class DeviceChangeApprover(
         val couple = checkNotNull(db.coupleDao().get())
         val newKeys = checkNotNull(transport.deviceKeys(couple.id, r.newDeviceId)) { "새 기기 공개키가 없다" }
         db.relationshipMutex.withLock {
+            db.useWriterConnection { tx -> tx.immediateTransaction {
             check(db.coupleDao().get()?.id == couple.id) { "연결이 바뀌었어요" }
             vault.putCoupleKey(p.key)
             val now = clock.now().toEpochMilliseconds()
@@ -403,7 +407,8 @@ class DeviceChangeApprover(
                 db.deviceDao().get(id)?.let { db.deviceDao().upsert(it.copy(state = DeviceState.REVOKED.name, revokedAtMs = now)) }
             }
             db.deviceDao().upsert(DeviceEntity(r.newDeviceId, r.uid, r.uid, newKeys.signPub, newKeys.boxPub, DeviceState.ACTIVE.name, now, null))
-            db.coupleDao().upsert(couple.copy(keyEpoch = p.key.epoch))
+            db.coupleDao().upsert(checkNotNull(db.coupleDao().get()).copy(keyEpoch = p.key.epoch))
+            } }
             vault.putPendingApproval(null)
         }
         // 공유 데이터 전체를 새 기기로. 다음 push 가 새 키로 새 기기 우편함에 올린다.

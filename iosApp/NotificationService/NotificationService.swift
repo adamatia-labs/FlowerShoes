@@ -20,13 +20,16 @@ final class NotificationService: UNNotificationServiceExtension {
         }
 
         // 모르는 kind 는 서버 문구 그대로. missyou · status 만 인라인을 해석한다.
+        guard let linkData = try? Data(contentsOf: SharedStore.container.appendingPathComponent("link.json")),
+              let link = (try? JSONSerialization.jsonObject(with: linkData)) as? [String: Any] else { return }
+        let scope = link["keyScope"] as? String
         guard kind == "missyou" || kind == "status",
               let ctB64 = info["ct"] as? String, let ct = Data(base64Encoded: ctB64),
               let sigB64 = info["sig"] as? String, let sig = Data(base64Encoded: sigB64),
               let headerB64 = info["header"] as? String, let header = Data(base64Encoded: headerB64),
               let parsed = OpEnvelope.Header.parse([UInt8](header)),
-              let senderPub = SharedStore.secret("partner.signPub"),
-              let coupleKey = SharedStore.secret("coupleKey.\(parsed.keyEpoch)"),
+              let senderPub = SharedStore.secret("partner.signPub", scope: scope),
+              let coupleKey = SharedStore.secret("coupleKey.\(parsed.keyEpoch)", scope: scope),
               let plain = OpEnvelope.open(header: [UInt8](header), ciphertext: [UInt8](ct), signature: [UInt8](sig), signPub: senderPub, coupleKey: coupleKey),
               let split = OpPlain.split(plain)
         else { return }

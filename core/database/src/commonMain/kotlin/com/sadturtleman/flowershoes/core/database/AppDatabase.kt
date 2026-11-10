@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.core.database
 
 import androidx.room.ConstructedBy
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
@@ -28,7 +29,7 @@ import kotlinx.coroutines.sync.Mutex
     exportSchema = true,
     // 1: 출시 기준. 출시 전 변경(옛 2~10)은 이 버전 하나로 합쳤다.
     // 이제부터 스키마를 바꾸면 버전을 올리고 autoMigrations 에 AutoMigration 을 넣거나 MIGRATIONS 에 Migration 을 넣는다(MigrationTest 가 확인한다).
-    autoMigrations = [],
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -53,7 +54,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookCoverDao(): BookCoverDao
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
         const val FILE_NAME = "kkotsin.db"
 
         /** 표를 고치는 수동 이전. 자동으로 못 하는 변경(이름 바꾸기 · 값 옮기기)만 여기 둔다. */
