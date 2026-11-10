@@ -3,6 +3,10 @@ package com.sadturtleman.flowershoes.core.data
 import com.sadturtleman.flowershoes.core.database.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.test.*
+import com.sadturtleman.flowershoes.core.model.Status
 import kotlin.test.*
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -43,5 +47,17 @@ class CurrentStatusTest {
         assertEquals("", latest.label)
         assertEquals(clock.time, latest.expiresAtMs)
         assertEquals(2, db.statusDao().all().size)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `DB 변경 없이 시간이 지나도 구독 중인 상태가 만료된다`() = runTest {
+        db.statusDao().upsert(StatusEntity("current", "me", "당직 중", 0, 1_000, 5_000, 1))
+        val changes = Channel<Status?>(Channel.UNLIMITED)
+        backgroundScope.launch { statuses.observeLatest("me").collect { changes.send(it) } }
+        runCurrent()
+        assertEquals("당직 중", withContext(Dispatchers.IO) { withTimeout(5_000) { changes.receive() } }?.label)
+        clock.time = 6_000
+        advanceTimeBy(30_000); runCurrent()
+        assertNull(withContext(Dispatchers.IO) { withTimeout(5_000) { changes.receive() } })
     }
 }

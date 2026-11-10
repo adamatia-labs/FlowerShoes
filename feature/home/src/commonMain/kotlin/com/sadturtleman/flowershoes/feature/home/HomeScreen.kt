@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.designsystem.KkBanner
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
 import com.sadturtleman.flowershoes.core.designsystem.KkButtonSize
+import com.sadturtleman.flowershoes.core.designsystem.KkButtonStyle
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeMark
 import com.sadturtleman.flowershoes.core.designsystem.KkEnvelopeRow
@@ -85,7 +86,11 @@ fun HomeRoute(
     viewModel: HomeViewModel = koinViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenSettings, onWriteLetter, onOpenLetter, onOpenDayLine)
+    val currentStatus by viewModel.currentStatus.collectAsStateWithLifecycle()
+    val editState by viewModel.statusEditor.state.collectAsStateWithLifecycle()
+    HomeScreen(state, viewModel::onIntent, onOpenPairing, onOpenSettings, onWriteLetter, onOpenLetter, onOpenDayLine,
+        currentStatusLabel = currentStatus?.label, onOpenStatus = viewModel.statusEditor::open)
+    editState?.let { CurrentStatusSheet(it, viewModel.statusEditor) }
 }
 
 @Composable
@@ -97,6 +102,8 @@ fun HomeScreen(
     onWriteLetter: () -> Unit = {},
     onOpenLetter: (String) -> Unit = {},
     onOpenDayLine: (String) -> Unit = {},
+    currentStatusLabel: String? = null,
+    onOpenStatus: () -> Unit = {},
 ) {
     val c = KkTheme.colors
     val fab = state.linked && !state.loading
@@ -109,6 +116,11 @@ fun HomeScreen(
             if (state.loading) {
                 Loading()
                 return@Column
+            }
+            if (state.linked) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                KkButton("내 상태", onOpenStatus, style = KkButtonStyle.Text, size = KkButtonSize.M)
+                Text(currentStatusLabel ?: "아직 설정하지 않았어요", style = KkTheme.type.caption, color = c.sub,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
             // 초대를 이미 보냈으면 띠의 "초대"는 빼고 아래 상태 줄의 "링크 다시 보내기"만 남긴다.
             if (state.enlistNudge) KkBanner(
