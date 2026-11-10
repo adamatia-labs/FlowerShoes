@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sadturtleman.flowershoes.core.data.ArchivedRecordException
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.Identity
@@ -138,7 +139,7 @@ class SettingsViewModel(
 
     fun setDisplayMode(mode: String) = viewModelScope.launch { settings.setDisplayMode(mode) }
 
-    fun setAnniversary(date: LocalDate?) = viewModelScope.launch { profile.setAnniversary(date) }
+    fun setAnniversary(date: LocalDate?) = editRecord { profile.setAnniversary(date) }
 
     /**
      * 군 정보 › 수정 › 저장: 군종 · 입대일 · 전역일을 한 번에(공유 데이터, LWW — 연인 폰에도 같이 바뀐다).
@@ -148,7 +149,7 @@ class SettingsViewModel(
     fun saveMilitary(branch: Branch, enlist: LocalDate, discharge: LocalDate?) {
         val s = state.value.service
         val override = dischargeOverrideFor(branch, enlist, discharge)
-        viewModelScope.launch {
+        editRecord {
             val base = s ?: run {
                 val owner = if (state.value.role == Role.SOLDIER) identity.userId
                 else profile.observePartnerId().first()?.takeIf { it.isNotBlank() } ?: PENDING_SOLDIER
@@ -161,7 +162,7 @@ class SettingsViewModel(
     /** 기념일 › 직접 추가한 날: 새로 넣거나([id] null) 고친다. 기념일 일정 하나(캘린더에도 보인다). */
     fun saveAnniversary(id: String?, title: String, date: LocalDate, repeats: Boolean) {
         val name = title.trim().ifBlank { return }
-        viewModelScope.launch {
+        editRecord {
             val old = id?.let { events.get(it) }
             val base = old ?: Event(
                 id = events.newId(), type = EventType.ANNIVERSARY, title = name, start = date.atTime(0, 0), end = date.atTime(23, 59),
@@ -195,6 +196,10 @@ class SettingsViewModel(
 
     fun notice(message: String, error: Boolean = false) {
         _notices.tryEmit(Notice(message, error))
+    }
+
+    private fun editRecord(block: suspend () -> Unit) = viewModelScope.launch {
+        try { block() } catch (error: ArchivedRecordException) { notice(error.message.orEmpty(), error = true) }
     }
 
     private val unlinkMutex = Mutex()
@@ -245,7 +250,9 @@ class SettingsViewModel(
         _unlinkOperation.compareAndSet(completed, null)
 
     /** 상대가 해제한 뒤 이 폰 사본을 어떻게 할지. */
-    fun afterPartnerUnlinked(after: AfterUnlink) = viewModelScope.launch { unlink.onPartnerUnlinked(after) }
+    fun afterPartnerUnlinked(after: AfterUnlink, expectedCoupleId: String? = null) = viewModelScope.launch {
+        unlink.onPartnerUnlinked(after, expectedCoupleId)
+    }
 
     /** 탈퇴. 끝나면 설정이 비워져 셸이 처음 화면(로그인)으로 돌아간다. */
     fun deleteAccount() = viewModelScope.launch {

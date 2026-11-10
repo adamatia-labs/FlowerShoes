@@ -3,7 +3,9 @@ package com.sadturtleman.flowershoes.core.data.sync
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.data.RelationshipArchive
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.first
 
 /** 연결 해제 · 탈퇴의 서버 쪽(callable unlinkCouple · deleteAccount). */
@@ -47,20 +49,23 @@ class UnlinkService(
     /** "모두 지우기"일 때 첨부 파일(그림 문서 · 사진)도 디스크에서 지운다. */
     private val wipeAttachmentFiles: suspend () -> Unit = {},
 ) {
-    suspend fun unlink(after: AfterUnlink) {
-        val couple = db.coupleDao().get() ?: return
+    suspend fun unlink(after: AfterUnlink): Unit = db.relationshipMutex.withLock {
+        val couple = db.coupleDao().get() ?: return@withLock
         val server = checkNotNull(transport) { "연결 해제 서버에 연결할 수 없어요" }
         server.unlinkCouple(couple.id)
         cleanUp(after)
     }
 
-    suspend fun onPartnerUnlinked(after: AfterUnlink) = cleanUp(after)
+    suspend fun onPartnerUnlinked(after: AfterUnlink, expectedCoupleId: String? = null): Unit = db.relationshipMutex.withLock {
+        if (expectedCoupleId != null && db.coupleDao().get()?.id != expectedCoupleId) return@withLock
+        cleanUp(after)
+    }
 
     /**
      * 회원 탈퇴(7-5) = 연결 해제 + 이 폰 데이터 모두 지우기 + 서버의 users/{uid} · 계정 삭제(함수 deleteAccount,
      * 카카오 연결 끊기 · Apple 토큰 폐기 포함) + 기기 키 삭제.
      */
-    suspend fun deleteAccount() {
+    suspend fun deleteAccount(): Unit = db.relationshipMutex.withLock {
         // 서버 성공 뒤 로컬 정리가 중단돼도 삭제된 계정으로 서버를 다시 호출하지 않는다.
         val showAppleInstructions = settings.pendingAccountCleanup.first() ?: run {
             val result = checkNotNull(transport) { "탈퇴 서버에 연결할 수 없어요" }.deleteAccountWithOutcome()
@@ -75,21 +80,25 @@ class UnlinkService(
         settings.reset(showAppleInstructions)
     }
 
+    /** 모든 진입점은 서버 요청부터 이 정리까지 relationshipMutex를 보유한다. */
     private suspend fun cleanUp(after: AfterUnlink) {
         vault.clearCoupleKeys()
         db.useWriterConnection { tx ->
             tx.immediateTransaction {
+                val couple = db.coupleDao().get()
+                if (after == AfterUnlink.KEEP_AS_MEMORIES && couple != null) RelationshipArchive(db).archive(couple)
                 // 동기화 상태는 어느 쪽이든 비운다 — 다시 연결하면 새 커플(새 id · 새 키)이다.
                 SYNC_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
                 // 올려 보낸 위치도 지운다 — 다시 연결하면 seq 가 1부터라, 남겨 두면 새 Op 을 "이미 보냄"으로 보고 보내지 않는다.
                 usePrepared("DELETE FROM meta WHERE `key` LIKE 'uploaded:%'") { it.step() }
                 if (after == AfterUnlink.WIPE) SHARED_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
+                // 보관 경계와 커플 상태를 함께 커밋한다. 중간 종료 후에도 이관을 반복하지 않는다.
+                if (after == AfterUnlink.WIPE) db.coupleDao().clear()
+                else couple?.let { db.coupleDao().upsert(it.copy(partnerUserId = "", keyEpoch = 0)) }
             }
         }
         // 커플 행은 남긴다(보관본의 "누구와의 추억"). 상대 id 를 비워 혼자 모드로 돌아간다.
-        db.coupleDao().get()?.let { db.coupleDao().upsert(it.copy(partnerUserId = "", keyEpoch = 0)) }
         if (after == AfterUnlink.WIPE) {
-            db.coupleDao().clear()
             wipeAttachmentFiles()
         }
         settings.setKeyEpoch(0)

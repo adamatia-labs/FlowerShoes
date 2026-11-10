@@ -68,12 +68,15 @@ class SyncScheduler(
     val failure: kotlinx.coroutines.flow.StateFlow<SyncFailure?> = _failure
 
     private val _partnerUnlinked = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val _partnerUnlinkedCoupleId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     /** 상대가 연결을 해제했다. 화면이 "연결을 해제했어요"(보관 · 지우기 고르기)를 띄우고 [partnerUnlinkHandled] 를 부른다. */
     val partnerUnlinked: kotlinx.coroutines.flow.StateFlow<Boolean> = _partnerUnlinked
+    val partnerUnlinkedCoupleId: kotlinx.coroutines.flow.StateFlow<String?> = _partnerUnlinkedCoupleId
 
     fun partnerUnlinkHandled() {
         _partnerUnlinked.value = false
+        _partnerUnlinkedCoupleId.value = null
     }
 
     private val _deviceChanges = kotlinx.coroutines.flow.MutableStateFlow<List<DeviceChangePrompt>>(emptyList())
@@ -165,7 +168,11 @@ class SyncScheduler(
             _failure.value = null
         }
         approver?.let { a -> attempt { a.prompts() }?.let { p -> _deviceChanges.value = p.filterNot { it.request.id in dismissed } } }
-        if (!_partnerUnlinked.value && attempt { partnerGone() } == true) _partnerUnlinked.value = true
+        val checkedCoupleId = db.coupleDao().get()?.id
+        if (!_partnerUnlinked.value && checkedCoupleId != null && attempt { partnerGone() } == true && db.coupleDao().get()?.id == checkedCoupleId) {
+            _partnerUnlinkedCoupleId.value = checkedCoupleId
+            _partnerUnlinked.value = true
+        }
         return report
     }
 }

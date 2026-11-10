@@ -1,9 +1,12 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import com.sadturtleman.flowershoes.core.crypto.InviteToken
 import com.sadturtleman.flowershoes.core.crypto.Pairing
 import com.sadturtleman.flowershoes.core.data.Identity
+import com.sadturtleman.flowershoes.core.data.RelationshipArchive
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.CoupleEntity
 import com.sadturtleman.flowershoes.core.database.DeviceEntity
@@ -11,6 +14,7 @@ import com.sadturtleman.flowershoes.core.model.DeviceState
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
+import kotlinx.coroutines.sync.withLock
 
 /** 연결 화면이 그리는 상태(#15 결정 6). */
 sealed interface PairingState {
@@ -176,18 +180,23 @@ class PairingSession(
         transport.linkedCoupleId(inviteToken, identity.userId)?.let { finish(it, inviteToken) }
 
     /** 서버가 만든 커플에서 상대 기기 공개키를 읽어 커플 키(epoch 1)를 도출하고 커플 · 기기 행을 만든다. */
-    private suspend fun finish(coupleId: String, inviteToken: String): PairingState? {
-        val partner = transport.partnerDevice(coupleId, identity.userId) ?: return null
+    private suspend fun finish(coupleId: String, inviteToken: String): PairingState? = db.relationshipMutex.withLock {
+        val current = db.coupleDao().get()
+        if (current?.partnerUserId?.isNotBlank() == true && current.id != coupleId) return@withLock null
+        val partner = transport.partnerDevice(coupleId, identity.userId) ?: return@withLock null
         val keys = myKeys()
         vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, inviteToken))
         val now = clock.now().toEpochMilliseconds()
-        db.coupleDao().clear()
-        db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, partner.uid, keyEpoch = 1, linkedAtMs = now))
+        db.useWriterConnection { tx -> tx.immediateTransaction {
+            RelationshipArchive(db).prepare()
+            db.coupleDao().clear()
+            db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, partner.uid, keyEpoch = 1, linkedAtMs = now))
+        } }
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
         db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         // 연결됐으면 내가 보낸 링크도 끝났다(서버가 두 사람의 초대를 지운다).
         pending.save(null)
-        return PairingState.Linked(coupleId)
+        return@withLock PairingState.Linked(coupleId)
     }
 
     private fun set(next: PairingState): PairingState = next.also { state = it }

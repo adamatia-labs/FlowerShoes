@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.feature.calendar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sadturtleman.flowershoes.core.data.ArchivedRecordException
 import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.LeaveRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
@@ -14,6 +15,8 @@ import kotlin.time.Clock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -154,6 +157,8 @@ class CalendarViewModel(
     profile: ProfileRepository? = null,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
+    private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    val notices = _notices.asSharedFlow()
 
     private val partner: Flow<String?> = profile?.let { p ->
         combine(p.observeCouple(), p.observeUsers()) { couple, users ->
@@ -216,18 +221,22 @@ class CalendarViewModel(
         if (!d.valid) return
         ui.update { it.copy(draft = null) }
         viewModelScope.launch {
-            // 고칠 때는 기존 행(매년 반복 · 만남 사진 · LWW 값)을 그대로 두고 칸만 바꾼다.
-            val old = d.id?.let { events.get(it) }
-            val base = old ?: Event(
-                id = events.newId(), type = d.type, title = "", start = d.startAt, end = d.endAt, alarm = d.alarm,
-                updatedAt = clock.now(), lamport = 0, lastWriterDevice = "",
-            )
-            events.save(
-                base.copy(
-                    type = d.type, title = d.title.trim(), start = d.startAt, end = d.endAt, alarm = d.alarm,
-                    memo = d.memo.trim(), repeatYearly = d.repeatYearly, updatedAt = clock.now(),
-                ),
-            )
+            try {
+                // 고칠 때는 기존 행(매년 반복 · 만남 사진 · LWW 값)을 그대로 두고 칸만 바꾼다.
+                val old = d.id?.let { events.get(it) }
+                val base = old ?: Event(
+                    id = events.newId(), type = d.type, title = "", start = d.startAt, end = d.endAt, alarm = d.alarm,
+                    updatedAt = clock.now(), lamport = 0, lastWriterDevice = "",
+                )
+                events.save(
+                    base.copy(
+                        type = d.type, title = d.title.trim(), start = d.startAt, end = d.endAt, alarm = d.alarm,
+                        memo = d.memo.trim(), repeatYearly = d.repeatYearly, updatedAt = clock.now(),
+                    ),
+                )
+            } catch (error: ArchivedRecordException) {
+                _notices.emit(error.message.orEmpty())
+            }
         }
     }
 }

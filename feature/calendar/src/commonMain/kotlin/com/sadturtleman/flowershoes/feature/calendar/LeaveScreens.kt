@@ -76,28 +76,30 @@ fun LeaveRoute(onBack: () -> Unit, onOpenEvent: (Event) -> Unit = {}, viewModel:
     val push = { p: LeavePage -> stack = stack + p }
     val pop = { if (stack.size > 1) stack = stack.dropLast(1) else onBack() }
     BackHandler(onBack = pop)
-    when (val page = stack.last()) {
-        LeavePage.List -> LeaveListScreen(
-            state, onBack = onBack,
-            onUse = { push(LeavePage.Use) },
-            onAdd = { push(LeavePage.Edit(viewModel.newDraft())) },
-            onOpen = { t -> if (t is LeaveTarget.Use) onOpenEvent(t.event) else push(LeavePage.Detail(t)) },
-        )
-        LeavePage.Use -> LeaveUseScreen(state, viewModel.defaultRange(), onClose = pop) { from, to, notify ->
-            viewModel.use(from, to, notify)
-            pop()
+    CalendarNoticeHost(viewModel.notices) {
+        when (val page = stack.last()) {
+            LeavePage.List -> LeaveListScreen(
+                state, onBack = onBack,
+                onUse = { push(LeavePage.Use) },
+                onAdd = { push(LeavePage.Edit(viewModel.newDraft())) },
+                onOpen = { t -> if (t is LeaveTarget.Use) onOpenEvent(t.event) else push(LeavePage.Detail(t)) },
+            )
+            LeavePage.Use -> LeaveUseScreen(state, viewModel.defaultRange(), onClose = pop) { from, to, notify ->
+                viewModel.use(from, to, notify)
+                pop()
+            }
+            is LeavePage.Detail -> {
+                // 받은 휴가를 고치거나 지운 뒤에는 최신 값으로(지웠으면 목록으로).
+                val target = (page.target as? LeaveTarget.Grant)?.let { g -> state.grant(g.grant.id)?.let { LeaveTarget.Grant(it) } } ?: page.target
+                LeaveDetailScreen(state, target, onBack = pop, onEdit = { g -> push(LeavePage.Edit(viewModel.editDraft(g))) })
+            }
+            is LeavePage.Edit -> LeaveEditScreen(
+                page.draft,
+                onClose = pop,
+                onSave = { viewModel.save(it); pop() },
+                onDelete = page.draft.id?.let { id -> { viewModel.delete(id); stack = listOf(LeavePage.List) } },
+            )
         }
-        is LeavePage.Detail -> {
-            // 받은 휴가를 고치거나 지운 뒤에는 최신 값으로(지웠으면 목록으로).
-            val target = (page.target as? LeaveTarget.Grant)?.let { g -> state.grant(g.grant.id)?.let { LeaveTarget.Grant(it) } } ?: page.target
-            LeaveDetailScreen(state, target, onBack = pop, onEdit = { g -> push(LeavePage.Edit(viewModel.editDraft(g))) })
-        }
-        is LeavePage.Edit -> LeaveEditScreen(
-            page.draft,
-            onClose = pop,
-            onSave = { viewModel.save(it); pop() },
-            onDelete = page.draft.id?.let { id -> { viewModel.delete(id); stack = listOf(LeavePage.List) } },
-        )
     }
 }
 

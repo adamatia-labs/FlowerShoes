@@ -6,7 +6,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.use
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
-import com.sadturtleman.flowershoes.core.data.sync.Outbox
 import com.sadturtleman.flowershoes.core.data.sync.PairingState
 import com.sadturtleman.flowershoes.core.designsystem.KkotsinTheme
 import com.sadturtleman.flowershoes.core.logging.BizEvent
@@ -45,8 +44,7 @@ class InviteRenderTest {
         render("invite_send") { ConnectScreen(waiting, vm, {}, {}) }
         render("invite_received") { ConnectScreen(PairingUi(available = true, state = PairingState.Invited("t", "지수")), vm, {}, {}) }
         render("invite_expired") { ConnectScreen(PairingUi(available = true, state = PairingState.Expired), vm, {}, {}) }
-        render("invite_linked_modal") { LinkedDialog("민준", Outbox(23, 4, 40)) {} }
-        render("invite_sending") { SendingProgress(Outbox(23, 4, 40), Outbox(0, 3, 4), System.currentTimeMillis() - 30_000) }
+        render("invite_linked_modal") { LinkedDialog("민준") {} }
     }
 
     private fun render(name: String, content: @Composable () -> Unit) {
