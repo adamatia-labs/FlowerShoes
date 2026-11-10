@@ -173,10 +173,17 @@ class EventRepository(
     fun observeNext(): Flow<Event?> =
         db.eventDao().observeNext("${clock.today()}T00:00").map { it?.toModel() }
 
-    suspend fun save(event: Event) {
+    /** 편집 화면이 읽은 [expectedOriginal]은 쓰기 트랜잭션 안에서 확인해 이동·삭제·재사용된 행을 덮지 않는다. */
+    suspend fun save(event: Event, expectedOriginal: Event? = null) {
         writer.write(
             OpKind.EVENT, "event", event.id,
-            localWrite = { lamport -> db.eventDao().upsert(stamp(event, lamport).toEntity()) },
+            localWrite = { lamport ->
+                if (expectedOriginal != null) {
+                    val current = db.eventDao().get(event.id)?.toModel()
+                    if (current == null || current.deletedAt != null || current != expectedOriginal) throw StaleRecordException()
+                }
+                db.eventDao().upsert(stamp(event, lamport).toEntity())
+            },
             payload = { lamport -> OpPayload.EventPut(stamp(event, lamport)) },
         )
     }
