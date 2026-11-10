@@ -308,7 +308,7 @@ internal fun SettingsMainScreen(
     onBack: () -> Unit,
     onOpenPairing: () -> Unit,
     onNickname: (String) -> Unit,
-    onAnniversary: (LocalDate) -> Unit,
+    onAnniversary: (LocalDate, com.sadturtleman.flowershoes.core.model.Event?) -> Unit,
 ) {
     val c = KkTheme.colors
     var sheet by remember { mutableStateOf<String?>(null) }
@@ -379,11 +379,12 @@ internal fun SettingsMainScreen(
         }
         "together" -> {
             // 함께한 날의 1일째 = 커플 기념일 일정(anniversary-couple). 기념일 화면과 같은 값이다.
+            val original = remember { state.anniversaryRecord }
             var pick by remember { mutableStateOf(state.anniversary ?: state.linkedSince ?: Clock.System.now().toLocalDateTime(SEOUL).date) }
             KkModalSheet({ sheet = null }) {
                 KkSheetHeader("함께한 날")
                 KkDatePicker(pick, { pick = it })
-                KkPrimaryButton("선택 완료", { onAnniversary(pick); sheet = null }, Modifier.fillMaxWidth())
+                KkPrimaryButton("선택 완료", { onAnniversary(pick, original); sheet = null }, Modifier.fillMaxWidth())
             }
         }
     }
@@ -554,8 +555,8 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
     // 아직 없으면 수정 중으로 보인다(곰신이 온보딩에서 "나중에 넣을게요"를 고른 경우).
     var editing by remember { mutableStateOf(false) }
     if (editing || s == null || t == null) {
-        MilitaryEdit(s, onBack = { if (s != null) editing = false else onBack() }) { branch, enlist, discharge ->
-            viewModel.saveMilitary(branch, enlist, discharge)
+        MilitaryEdit(s, onBack = { if (s != null) editing = false else onBack() }) { branch, enlist, discharge, original ->
+            viewModel.saveMilitary(branch, enlist, discharge, original)
             editing = false
         }
         return
@@ -600,8 +601,9 @@ private fun MilitaryPage(state: SettingsState, viewModel: SettingsViewModel, onB
 private fun MilitaryEdit(
     service: com.sadturtleman.flowershoes.core.model.Service?,
     onBack: () -> Unit,
-    onSave: (Branch, LocalDate, LocalDate?) -> Unit,
+    onSave: (Branch, LocalDate, LocalDate?, com.sadturtleman.flowershoes.core.model.Service?) -> Unit,
 ) {
+    val original = remember { service }
     var branch by remember { mutableStateOf(service?.branch ?: Branch.ARMY) }
     var enlist by remember { mutableStateOf(service?.enlistDate) }
     // null 이면 계산한 날을 따른다(군종 · 입대일을 바꾸면 같이 바뀐다).
@@ -609,7 +611,7 @@ private fun MilitaryEdit(
     var sheet by remember { mutableStateOf<String?>(null) }
     val shown = discharge ?: enlist?.let { computedDischarge(branch, it) }
     val months = ServiceRulesTable.BUNDLED.ruleFor(branch, enlist ?: Clock.System.now().toLocalDateTime(SEOUL).date).serviceMonths
-    val save = { enlist?.let { onSave(branch, it, discharge) }; Unit }
+    val save = { enlist?.let { onSave(branch, it, discharge, original) }; Unit }
     Page(
         "군 정보", onBack, trailingText = "저장", onTrailing = save, trailingEnabled = enlist != null,
         bottom = { KkPrimaryButton("저장하기", save, Modifier.fillMaxWidth(), enabled = enlist != null) },
@@ -655,7 +657,7 @@ private fun MilitaryEdit(
 // ── 기념일 ───────────────────────────────────────────────────────────────
 
 /** 기념일 · 추가 시트에서 고치는 것. [id] 가 null 이면 새로 추가. */
-private data class AnniversaryDraft(val id: String?, val title: String, val date: LocalDate?, val repeats: Boolean)
+private data class AnniversaryDraft(val id: String?, val title: String, val date: LocalDate?, val repeats: Boolean, val original: com.sadturtleman.flowershoes.core.model.Event? = null)
 
 /**
  * 기념일(Figma 8 · 기념일 `379:5058`): 사귄 날 종이 태그(누르면 고르기) · 자동으로 챙겨요(100일 · 주년) · 직접 추가한 날 + "추가" 시트.
@@ -690,7 +692,7 @@ private fun AnniversaryPage(state: SettingsState, viewModel: SettingsViewModel, 
                 Text("직접 추가한 날", style = KkTheme.type.labelBold, color = c.ink)
                 state.customAnniversaries.forEach { e ->
                     KkListRow(e.title.ifBlank { "기념일" }, value = customAnniversaryLabel(e.start.date, e.repeats), onClick = {
-                        draft = AnniversaryDraft(e.id, e.title, e.start.date, e.repeatYearly)
+                        draft = AnniversaryDraft(e.id, e.title, e.start.date, e.repeatYearly, e)
                     })
                     Divider()
                 }
@@ -698,15 +700,16 @@ private fun AnniversaryPage(state: SettingsState, viewModel: SettingsViewModel, 
         }
     }
     if (picking) {
+        val original = remember { state.anniversaryRecord }
         var pick by remember { mutableStateOf(state.anniversary ?: state.linkedSince ?: today) }
         KkModalSheet({ picking = false }) {
             KkSheetHeader("사귄 날")
             KkDatePicker(pick, { pick = it })
-            KkPrimaryButton("선택 완료", { viewModel.setAnniversary(pick); picking = false }, Modifier.fillMaxWidth())
+            KkPrimaryButton("선택 완료", { viewModel.setAnniversary(pick, original); picking = false }, Modifier.fillMaxWidth())
         }
     }
     draft?.let { d -> AnniversarySheet(d, today, onDismiss = { draft = null }, onDelete = d.id?.let { id -> { viewModel.deleteAnniversary(id); draft = null } }) { saved ->
-        viewModel.saveAnniversary(saved.id, saved.title, saved.date ?: return@AnniversarySheet, saved.repeats)
+        viewModel.saveAnniversary(saved.id, saved.title, saved.date ?: return@AnniversarySheet, saved.repeats, saved.original)
         draft = null
     } }
 }
