@@ -4,18 +4,19 @@ const { delimiter, join, resolve, dirname } = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const suite = process.argv[2];
-if (!['account', 'unlink'].includes(suite)) throw new Error('Choose account or unlink tests');
+if (!['account', 'unlink', 'invite'].includes(suite)) throw new Error('Choose account, unlink or invite tests');
 const account = suite === 'account';
+const invite = suite === 'invite';
 const temporary = mkdtempSync(join(tmpdir(), 'kkotsin-account-test-'));
 try {
   copyFileSync('../firestore.rules', join(temporary, 'firestore.rules'));
   copyFileSync('../storage.rules', join(temporary, 'storage.rules'));
   writeFileSync(join(temporary, 'firebase.json'), JSON.stringify({
     firestore: { rules: 'firestore.rules' }, storage: { rules: 'storage.rules' },
-    emulators: { firestore: { port: account ? 8187 : 8186 }, ...(account ? { auth: { port: 9098 } } : {}), storage: { port: account ? 9298 : 9299 }, ui: { enabled: false }, singleProjectMode: true },
+    emulators: { firestore: { port: invite ? 8185 : account ? 8187 : 8186 }, ...(account ? { auth: { port: 9098 } } : {}), ...(!invite ? { storage: { port: account ? 9298 : 9299 } } : {}), ui: { enabled: false }, singleProjectMode: true },
   }));
-  const command = `node --test lib/test/${account ? 'account-deletion' : 'unlink'}.emulator.js`;
-  const args = ['emulators:exec', '--project', `demo-kkotsin-${suite}`, '--only', account ? 'firestore,auth,storage' : 'firestore,storage', '--config', join(temporary, 'firebase.json'), command];
+  const command = `node --test lib/test/${invite ? 'invite-order' : account ? 'account-deletion' : 'unlink'}.emulator.js`;
+  const args = ['emulators:exec', '--project', `demo-kkotsin-${suite}`, '--only', invite ? 'firestore' : account ? 'firestore,auth,storage' : 'firestore,storage', '--config', join(temporary, 'firebase.json'), command];
   // Windows npm shims are .cmd files; invoke their JS entry point without shell string interpolation.
   const entry = process.platform === 'win32' ? (process.env.PATH ?? '').split(delimiter)
     .map((directory) => join(directory, 'node_modules/firebase-tools/lib/bin/firebase.js')).find(existsSync) : undefined;

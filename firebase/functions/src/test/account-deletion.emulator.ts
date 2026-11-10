@@ -94,7 +94,7 @@ test('Auth 삭제 중 재가입과 중복 탈퇴를 막고, 발급된 옛 토큰
     assert.equal((await auth.getUser(fresh.localId)).uid, fresh.localId);
     assert.equal((await getFirestore().doc(`users/${fresh.localId}`).get()).exists, true);
     assert.equal(paused.mock.callCount(), 1);
-    for (const path of [`accountDeletions/${old.localId}`, 'kakaoAccounts/1001']) {
+    for (const path of [`accountDeletions/${old.localId}`, 'kakaoAccounts/1001', `inviteHeads/${fresh.localId}`]) {
       assert.equal((await firestoreRequest(path, fresh.idToken)).status, 403);
       assert.equal((await firestoreRequest(path, fresh.idToken, true)).status, 403);
     }
@@ -190,6 +190,7 @@ test('탈퇴한 초대 발신자나 수락자의 지연 이벤트는 사용자�
     const token = deletingSide === 'inviter' ? 'AAAAAAAAAAAAAAAAAAAAAA' : 'BBBBBBBBBBBBBBBBBBBBBB';
     const uid = `late-${deletingSide}`;
     await getAuth().createUser({ uid });
+    await db.doc(`inviteHeads/${uid}`).set({ token, createdAt: Timestamp.now() });
     const inviter = deletingSide === 'inviter' ? uid : 'live-inviter';
     const joiner = deletingSide === 'joiner' ? uid : 'live-joiner';
     const pubKey = Buffer.alloc(64, 1).toString('base64');
@@ -198,6 +199,7 @@ test('탈퇴한 초대 발신자나 수락자의 지연 이벤트는 사용자�
     await acceptRef.set({ uid: joiner, deviceId: 'b', pubKey });
     const data = await acceptRef.get() as QueryDocumentSnapshot;
     await remove(uid);
+    assert.equal((await db.doc(`inviteHeads/${uid}`).get()).exists, false);
     await functions.onInviteAccepted.run({ data, params: { token, name: 'accept' } } as never);
     assert.equal((await db.doc(`users/${uid}`).get()).exists, false);
     assert.equal((await db.doc(`users/${deletingSide === 'inviter' ? joiner : inviter}`).get()).get('coupleId'), undefined);

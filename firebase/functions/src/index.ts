@@ -27,6 +27,7 @@ import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from '
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
+import { inviteHeadRef, readInviteOrder } from './invite-order';
 import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
 import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
@@ -210,15 +211,15 @@ async function dropInvitesOf(uid: string, drop: (d: QueryDocumentSnapshot) => bo
 
 export const onInviteCreated = onDocumentCreated({ document: 'pairings/{token}', region: REGION }, async (event) => {
   const uid = event.data?.get('uid') as string | undefined;
-  const expireAt = event.data?.get('expireAt') as Timestamp | undefined;
-  if (!uid || !expireAt) return;
-  if ((await deletionRef(uid).get()).exists) {
-    await db.recursiveDelete(event.data!.ref);
-    return;
-  }
-  // 새 링크가 이전 링크를 무효화한다(#15 결정 3). 거의 동시에 두 개를 만들어도 둘 다 지우지 않도록,
-  // 이 초대보다 먼저 만든(만료가 이른) 것만 지운다.
-  await dropInvitesOf(uid, (d) => d.id !== event.params.token && (d.get('expireAt') as Timestamp).toMillis() <= expireAt.toMillis());
+  if (!uid || !event.data?.createTime) return;
+  const obsolete = await db.runTransaction(async (tx) => {
+    if ((await tx.get(deletionRef(uid))).exists) return [event.data!.ref];
+    const order = await readInviteOrder(tx, uid, event.data);
+    if (order.latest) tx.set(inviteHeadRef(uid), order.latest);
+    return order.obsolete.map((doc) => doc.ref);
+  });
+  // 순서는 서버 createTime으로 정하고, 같은 시각은 토큰으로 결정한다. 재시도도 최신 링크를 지우지 않는다.
+  await Promise.all(obsolete.map((ref) => db.recursiveDelete(ref)));
 });
 
 /**
@@ -232,10 +233,12 @@ export const onInviteAccepted = onDocumentCreated({ document: 'pairings/{token}/
   const base = db.doc(`pairings/${token}`);
   const coupleRef = db.collection('couples').doc();
   const result = await db.runTransaction(async (tx) => {
-    const invite = inviteOf(await tx.get(base));
+    const inviteSnapshot = await tx.get(base);
+    const invite = inviteOf(inviteSnapshot);
     if (!invite) return undefined;
     const [inviterDeletion, joinerDeletion] = await Promise.all([tx.get(deletionRef(invite.uid)), tx.get(deletionRef(accept.uid))]);
     if (inviterDeletion.exists || joinerDeletion.exists) return undefined;
+    const order = await readInviteOrder(tx, invite.uid);
     const [inviterUser, joinerUser] = invite
       ? await Promise.all([tx.get(db.doc(`users/${invite.uid}`)), tx.get(db.doc(`users/${accept.uid}`))])
       : [undefined, undefined];
@@ -243,6 +246,8 @@ export const onInviteAccepted = onDocumentCreated({ document: 'pairings/{token}/
       inviterLinked: !!inviterUser?.get('coupleId'),
       joinerLinked: !!joinerUser?.get('coupleId'),
     });
+    if (order.latest) tx.set(inviteHeadRef(invite.uid), order.latest);
+    if (!order.isLatest(inviteSnapshot)) return undefined;
     if (decision === 'reject' || !invite) return undefined;
     tx.set(coupleRef, { members: { [invite.uid]: invite.deviceId, [accept.uid]: accept.deviceId }, linkedAt: FieldValue.serverTimestamp() });
     for (const [uid, deviceId, pubKey] of [[invite.uid, invite.deviceId, invite.pubKey], [accept.uid, accept.deviceId, accept.pubKey]]) {
@@ -645,6 +650,7 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
     }
     await forgetUnlinkMember(unlinkStore, unlinkHistory, uid);
     await dropInvitesOf(uid);
+    await inviteHeadRef(uid).delete();
     const providerId = kakaoProviderId(uid);
     if (providerId && KAKAO_ADMIN_KEY.value()) {
       await deletionPhase(uid, claim.attempt, 'kakao-unlink');
