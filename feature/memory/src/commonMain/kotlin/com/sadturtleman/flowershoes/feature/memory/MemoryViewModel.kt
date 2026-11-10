@@ -360,7 +360,7 @@ class MemoryViewModel(
 
     private suspend fun firstDrawing(letterId: String): FirstDrawing? {
         val row = letters.drawingsOf(letterId).minByOrNull { it.orderInLetter } ?: return null
-        val doc = row.docAttachmentId?.let { attachments.read(it) }
+        val doc = row.docAttachmentId?.let { attachments.read(it, DrawingCodec.MAX_DOCUMENT_BYTES) }
             ?.let { bytes -> (runCatching { DrawingCodec.decode(bytes) }.getOrNull() as? DrawingCodec.Result.Ok)?.document }
         return FirstDrawing(doc, row.pngAttachmentId.takeIf { it.isNotBlank() }, row.caption?.takeIf { it.isNotBlank() })
     }

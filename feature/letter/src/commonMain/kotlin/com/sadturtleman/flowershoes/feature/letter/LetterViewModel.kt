@@ -506,7 +506,7 @@ class LetterViewModel(
     }
 
     private suspend fun decode(attachmentId: String): DrawingDocument? {
-        val bytes = attachments.read(attachmentId) ?: return null
+        val bytes = attachments.read(attachmentId, DrawingCodec.MAX_DOCUMENT_BYTES) ?: return null
         return (DrawingCodec.decode(bytes) as? DrawingCodec.Result.Ok)?.document
     }
 

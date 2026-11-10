@@ -4,8 +4,8 @@ package com.sadturtleman.flowershoes.core.compression
 interface Compressor {
     fun compress(bytes: ByteArray, level: Int): ByteArray
 
-    /** zstd 프레임 하나를 푼다. 프레임 헤더에 원래 크기가 있다(compress 가 적는다). */
-    fun decompress(frame: ByteArray): ByteArray
+    /** 크기를 확인한 뒤 제한 안에서만 할당한다. 잘못된/잘린/크기 미상 프레임은 null이다. */
+    fun decompress(frame: ByteArray, maxOutputBytes: Int = Zstd.MAX_DECOMPRESSED_BYTES): ByteArray?
 }
 
 /**
@@ -18,6 +18,7 @@ interface Compressor {
 object Zstd {
     val MAGIC = byteArrayOf(0x28, 0xB5.toByte(), 0x2F, 0xFD.toByte())
     const val LEVEL = 3
+    const val MAX_DECOMPRESSED_BYTES = 16 * 1024 * 1024
 
     /** 플랫폼 구현. iOS 는 앱이 시작할 때 Swift 구현을 넣는다. */
     var codec: Compressor? = platformZstd()
@@ -32,8 +33,12 @@ object Zstd {
     }
 
     /** 프레임이면 풀고, 아니면 그대로. */
-    fun unpack(bytes: ByteArray): ByteArray =
-        if (isFrame(bytes)) checkNotNull(codec) { "zstd 구현이 없다" }.decompress(bytes) else bytes
+    fun unpack(bytes: ByteArray, maxOutputBytes: Int = MAX_DECOMPRESSED_BYTES): ByteArray {
+        require(maxOutputBytes in 0..MAX_DECOMPRESSED_BYTES && bytes.size <= MAX_DECOMPRESSED_BYTES) { "압축 입력이 허용 크기를 넘는다" }
+        val result = if (isFrame(bytes)) checkNotNull(codec) { "zstd 구현이 없다" }.decompress(bytes, maxOutputBytes) else bytes
+        require(result != null && result.size <= maxOutputBytes) { "압축 문서를 안전하게 풀 수 없다" }
+        return result
+    }
 
     fun packFlagged(bytes: ByteArray): ByteArray {
         val packed = pack(bytes)
@@ -41,11 +46,11 @@ object Zstd {
     }
 
     fun unpackFlagged(bytes: ByteArray): ByteArray {
-        require(bytes.isNotEmpty()) { "빈 조각" }
+        require(bytes.isNotEmpty() && bytes.size <= MAX_DECOMPRESSED_BYTES + 1) { "조각 크기가 올바르지 않다" }
         val body = bytes.copyOfRange(1, bytes.size)
         return when (bytes[0]) {
-            RAW -> body
-            ZSTD -> checkNotNull(codec) { "zstd 구현이 없다" }.decompress(body)
+            RAW -> body.also { require(it.size <= MAX_DECOMPRESSED_BYTES) { "조각이 허용 크기를 넘는다" } }
+            ZSTD -> checkNotNull(checkNotNull(codec) { "zstd 구현이 없다" }.decompress(body)) { "압축 조각을 안전하게 풀 수 없다" }
             else -> error("모르는 압축 표시: ${bytes[0]}")
         }
     }
