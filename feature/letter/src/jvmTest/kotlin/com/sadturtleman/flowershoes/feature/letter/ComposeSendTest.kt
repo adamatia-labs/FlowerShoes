@@ -50,17 +50,6 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class ComposeSendTest {
 
-    private class MemoryDrafts : LetterDraftStore {
-        val rows = MutableStateFlow<List<StoredDraft>>(emptyList())
-        override fun observe(): Flow<List<StoredDraft>> = rows
-        override suspend fun save(id: String, json: String, atMs: Long) {
-            rows.value = rows.value.filterNot { it.id == id } + StoredDraft(id, json, atMs)
-        }
-        override suspend fun delete(id: String) {
-            rows.value = rows.value.filterNot { it.id == id }
-        }
-    }
-
     private class Phone(val db: AppDatabase, user: String) {
         var broken = false
         val identity = object : Identity {
@@ -82,6 +71,7 @@ class ComposeSendTest {
         override fun destroy() = Unit
     }
     private lateinit var vm: LetterViewModel
+    private val drafts = TestDraftStore("jisu")
     private var delayedId: String? = null
     private val loadStarted = CompletableDeferred<Unit>()
     private val releaseLoad = CompletableDeferred<Unit>()
@@ -99,7 +89,7 @@ class ComposeSendTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         vm = LetterViewModel(
             jisu.letters, AttachmentStore(db, FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kk-letter-test"), ProfileRepository(db, jisu.writer, jisu.identity),
-            MemoryDrafts(), bizLogger = logger,
+            drafts, bizLogger = logger,
             loadLetter = { id ->
                 if (id == delayedId) { loadStarted.complete(Unit); releaseLoad.await() }
                 if (id == delayedId && failDelayedLoad) error("read failed")
@@ -135,6 +125,20 @@ class ComposeSendTest {
     }
 
     private suspend fun until(cond: (LetterState) -> Boolean) = vm.state.first { cond(it) }
+
+    @Test fun `열린 편집 화면은 계정 전환에서 비워지고 이전 사진 응답을 받지 않는다`() = withScreen {
+        until { !it.loading && it.draftReady }
+        vm.onIntent(LetterIntent.EditText("이전 계정의 사적인 글"))
+        val old = until { it.draft.plainText.isNotEmpty() }.draftId
+        drafts.switchAccount("other-account")
+        val changed = until { it.draftId != old && it.draftReady }
+        assertTrue(changed.draft.isEmpty)
+        assertTrue(changed.draftPhotos.isEmpty()); assertTrue(changed.draftThumbs.isEmpty()); assertTrue(changed.drafts.isEmpty())
+        vm.onIntent(LetterIntent.AddPhoto(byteArrayOf(1, 2), old))
+        vm.onIntent(LetterIntent.EditText("새 계정 글"))
+        assertTrue(until { it.draft.plainText == "새 계정 글" }.draft.photos.isEmpty())
+        assertTrue(drafts.owned("jisu").single().json.contains("이전 계정의 사적인 글"))
+    }
 
     @Test
     fun `보내면 보냄 화면 혼자 모드면 대기 우표와 보낼 편지 수`() = withScreen {
@@ -448,3 +452,4 @@ class ComposeSendTest {
         assertEquals(letter.id, jisu.letters.find(letter.id)?.id)
     }
 }
+

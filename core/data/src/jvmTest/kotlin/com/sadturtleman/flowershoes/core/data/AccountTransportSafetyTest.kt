@@ -76,8 +76,8 @@ class AccountTransportSafetyTest {
             val device = settings.ensureIdentity().deviceId
             settings.bindAccount("owner")
             db.userDao().upsert(UserEntity("owner", "GOMSIN", "나", 1))
-            val drafts = RoomLetterDraftStore(db)
-            drafts.save("draft", "{}", atMs = 100)
+            val drafts = RoomLetterDraftStore(db, settings)
+            drafts.save(checkNotNull(drafts.open(checkNotNull(settings.draftSessions.first()), "draft")), "{}", atMs = 100)
             val vault = object : KeyVault by InMemoryKeyVault() {
                 var cleared = false
                 override suspend fun clearAll() { cleared = true }
@@ -88,7 +88,7 @@ class AccountTransportSafetyTest {
 
             assertFailsWith<IllegalStateException> { service.deleteAccount() }
             assertNotNull(db.userDao().get("owner"))
-            assertEquals(listOf("draft"), drafts.observe().first().map { it.id })
+            assertEquals(listOf("draft"), drafts.observe().first { it.loaded }.drafts.map { it.id })
             assertFalse(vault.cleared)
             assertEquals("owner", settings.state.first().userId)
             assertEquals(device, settings.state.first().deviceId)
@@ -111,8 +111,8 @@ class AccountTransportSafetyTest {
             settings.ensureIdentity()
             settings.bindAccount("owner")
             db.coupleDao().upsert(CoupleEntity("couple", "owner", "partner", 1, 100))
-            val drafts = RoomLetterDraftStore(db)
-            drafts.save("draft", "{}", atMs = 100)
+            val drafts = RoomLetterDraftStore(db, settings)
+            drafts.save(checkNotNull(drafts.open(checkNotNull(settings.draftSessions.first()), "draft")), "{}", atMs = 100)
             val vault = object : KeyVault by InMemoryKeyVault() {
                 var cleared = false
                 override suspend fun clearAll() { cleared = true }
@@ -124,7 +124,7 @@ class AccountTransportSafetyTest {
             assertFailsWith<IllegalStateException> { service.unlink(AfterUnlink.WIPE) }
             assertEquals("couple", db.coupleDao().get()?.id)
             assertEquals("partner", db.coupleDao().get()?.partnerUserId)
-            assertEquals(listOf("draft"), drafts.observe().first().map { it.id })
+            assertEquals(listOf("draft"), drafts.observe().first { it.loaded }.drafts.map { it.id })
             assertFalse(vault.cleared)
             assertFalse(wiped)
         } finally {
@@ -144,8 +144,8 @@ class AccountTransportSafetyTest {
             settings.bindAccount("owner")
             db.userDao().upsert(UserEntity("owner", "GOMSIN", "나", 1))
             db.coupleDao().upsert(CoupleEntity("couple", "owner", "partner", 1, 100))
-            val drafts = RoomLetterDraftStore(db)
-            drafts.save("draft", "{}", atMs = 100)
+            val drafts = RoomLetterDraftStore(db, settings)
+            drafts.save(checkNotNull(drafts.open(checkNotNull(settings.draftSessions.first()), "draft")), "{}", atMs = 100)
             val vault = object : KeyVault by InMemoryKeyVault() {
                 var cleared = false
                 override suspend fun clearAll() { cleared = true }
@@ -161,7 +161,7 @@ class AccountTransportSafetyTest {
             assertFailsWith<IllegalStateException> { service.deleteAccount() }
             assertEquals("partner", db.coupleDao().get()?.partnerUserId)
             assertNotNull(db.userDao().get("owner"))
-            assertEquals(listOf("draft"), drafts.observe().first().map { it.id })
+            assertEquals(listOf("draft"), drafts.observe().first { it.loaded }.drafts.map { it.id })
             assertFalse(vault.cleared)
             assertFalse(wiped)
             assertEquals("owner", settings.state.first().userId)
@@ -173,3 +173,4 @@ class AccountTransportSafetyTest {
     }
 
 }
+

@@ -384,6 +384,33 @@ interface LetterDraftDao {
     @Query("SELECT * FROM letter_draft ORDER BY updatedAtMs DESC")
     fun observeAll(): Flow<List<LetterDraftEntity>>
 
+    @Query("SELECT * FROM letter_draft WHERE ownerUid = :owner AND draftJson != '' ORDER BY updatedAtMs DESC")
+    fun observeOwned(owner: String): Flow<List<LetterDraftEntity>>
+
+    @Query("SELECT * FROM letter_draft WHERE id = :id")
+    suspend fun get(id: String): LetterDraftEntity?
+
+    @Query("SELECT COUNT(*) FROM letter_draft WHERE ownerUid IS NULL")
+    fun observeUnclaimedCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM letter_draft")
+    suspend fun count(): Int
+
+    @Query("UPDATE letter_draft SET draftJson = :json, updatedAtMs = :atMs WHERE id = :id AND ownerUid = :owner AND editorToken = :token")
+    suspend fun saveEdited(id: String, owner: String, token: String, json: String, atMs: Long): Int
+
+    @Query("DELETE FROM letter_draft WHERE id = :id AND ownerUid = :owner AND editorToken = :token")
+    suspend fun retire(id: String, owner: String, token: String): Int
+
+    @Query("DELETE FROM letter_draft WHERE id = :id AND ownerUid = :owner")
+    suspend fun deleteOwned(id: String, owner: String): Int
+
+    @Query("DELETE FROM letter_draft WHERE ownerUid = :owner")
+    suspend fun clearOwned(owner: String)
+
+    @Query("UPDATE letter_draft SET ownerUid = :owner, editorToken = NULL WHERE ownerUid IS NULL")
+    suspend fun claimUnowned(owner: String): Int
+
     @Upsert
     suspend fun upsert(draft: LetterDraftEntity)
 

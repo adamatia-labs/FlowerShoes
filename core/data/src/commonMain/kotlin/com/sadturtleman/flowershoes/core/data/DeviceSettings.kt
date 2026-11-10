@@ -24,6 +24,7 @@ data class DeviceState(
     val theme: AppTheme,
     val onboarded: Boolean,
     val keyEpoch: Int,
+    val accountSession: String = "",
 )
 
 /**
@@ -41,6 +42,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
             theme = AppTheme.from(p[THEME], p[ROLE]?.let(Role::valueOf)),
             onboarded = p[ONBOARDED] == 1,
             keyEpoch = p[KEY_EPOCH] ?: 0,
+            accountSession = p[ACCOUNT_SESSION].orEmpty(),
         )
     }
 
@@ -49,6 +51,8 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         store.edit { p ->
             if (p[USER_ID] == null) p[USER_ID] = "local:${Uuid.random()}"
             if (p[DEVICE_ID] == null) p[DEVICE_ID] = Uuid.random().toString()
+            if (p[ACCOUNT_SESSION] == null) p[ACCOUNT_SESSION] = Uuid.random().toString()
+            p[DRAFT_GENERATIONS] = prefsJson.encodeToString<Map<String, String>>(p.draftGenerations() + (checkNotNull(p[USER_ID]) to checkNotNull(p[ACCOUNT_SESSION])))
             if (p[FIRST_RUN] == null) p[FIRST_RUN] = kotlin.time.Clock.System.now().toEpochMilliseconds()
         }
         return state.first()
@@ -56,11 +60,43 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     /** [provider] 는 로그인 방법(KAKAO · APPLE · GOOGLE) — 복원 · 설정 › 로그인 계정 화면에 보인다. */
     suspend fun bindAccount(uid: String, provider: String? = null) = store.edit {
+        if (it[USER_ID] != uid || it[ACCOUNT_SESSION] == null) it[ACCOUNT_SESSION] = Uuid.random().toString()
         it[USER_ID] = uid
+        it[DRAFT_GENERATIONS] = prefsJson.encodeToString<Map<String, String>>(it.draftGenerations() + (uid to checkNotNull(it[ACCOUNT_SESSION])))
         if (provider != null) it[PROVIDER] = provider
     }
 
     val accountProvider: Flow<String?> = store.data.map { it[PROVIDER] }
+
+    val draftSessions: Flow<DraftSession?> = store.data.map { it.draftSession() }
+
+    private fun Preferences.draftGenerations(): Map<String, String> =
+        prefsJson.decodeFromString<Map<String, String>>(this[DRAFT_GENERATIONS] ?: "{}")
+
+    internal suspend fun draftSessionForCleanup(): DraftSession? = store.data.first().draftSession(includeCleaning = true)
+
+    private fun Preferences.draftSession(includeCleaning: Boolean = false): DraftSession? {
+        if (!includeCleaning && this[ACCOUNT_CLEANUP] != null) return null
+        val uid = this[USER_ID]?.takeIf { it.isNotBlank() } ?: return null
+        val device = this[DEVICE_ID]?.takeIf { it.isNotBlank() } ?: return null
+        val generation = this[ACCOUNT_SESSION]?.takeIf { it.isNotBlank() } ?: return null
+        return DraftSession(uid, device, generation)
+    }
+
+    /** 신원 캐시 대신 bind/reset과 같은 저장 경계에서 확인한다. block은 설정에 다시 접근하지 않는다. */
+    internal suspend fun withDraftSession(expected: DraftSession, finishCapturedEdit: Boolean = false, invalidate: Boolean = false, includeCleaning: Boolean = false, block: suspend () -> Unit): Boolean {
+        var applied = false
+        store.edit { p ->
+            val current = p.draftSession(includeCleaning)
+            val inactiveOwner = finishCapturedEdit && current != null && current.deviceId == expected.deviceId && current.ownerUid != expected.ownerUid &&
+                p.draftGenerations()[expected.ownerUid] == expected.generation
+            if (current == expected || inactiveOwner) {
+                block(); applied = true
+                if (invalidate) p[ACCOUNT_SESSION] = Uuid.random().toString()
+            }
+        }
+        return applied
+    }
 
     suspend fun setRole(role: Role) = store.edit {
         it[ROLE] = role.name
@@ -273,6 +309,8 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         val FAREWELL = intPreferencesKey("farewell_pending")
         val FAREWELL_APPLE = intPreferencesKey("farewell_apple_manual")
         val USER_ID = stringPreferencesKey("user_id")
+        val ACCOUNT_SESSION = stringPreferencesKey("account_session")
+        val DRAFT_GENERATIONS = stringPreferencesKey("draft_account_sessions")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val ROLE = stringPreferencesKey("role")
         val THEME = stringPreferencesKey("theme_accent")

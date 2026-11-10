@@ -19,28 +19,51 @@ import kotlinx.datetime.LocalDateTime
 
 class DraftKeeperTest {
 
-    private class FakeStore : LetterDraftStore {
-        val rows = MutableStateFlow<List<StoredDraft>>(emptyList())
-        override fun observe(): Flow<List<StoredDraft>> = rows
-        override suspend fun save(id: String, json: String, atMs: Long) {
-            rows.value = (rows.value.filterNot { it.id == id } + StoredDraft(id, json, atMs)).sortedByDescending { it.updatedAtMs }
-        }
-        override suspend fun delete(id: String) {
-            rows.value = rows.value.filterNot { it.id == id }
-        }
-    }
-
-    private val store = FakeStore()
+    private val store = TestDraftStore()
 
     private fun TestScope.keeper(): DraftKeeper {
         var n = 0
         val clock = object : Clock {
             override fun now() = Instant.fromEpochMilliseconds(testScheduler.currentTime)
         }
-        return DraftKeeper(store, backgroundScope, clock, newId = { "d${++n}" })
+        return DraftKeeper(store, backgroundScope, clock, newId = { "d${++n}" }).also { runCurrent() }
     }
 
     private fun meta(id: String) = DrawingMeta(id, 0, "SQUARE", null, "png-$id", null, true, 0)
+
+    @Test fun `계정 전환은 입력 중인 초안을 원래 계정에 저장하고 새 편집을 비운다`() = runTest {
+        val k = keeper()
+        val oldId = k.currentId
+        k.edited(ComposeDraft(text = "A의 마지막 입력"))
+        store.switchAccount("b")
+        runCurrent()
+        assertTrue(k.currentId != oldId)
+        assertTrue(k.state.value.ready)
+        assertTrue(k.drafts.first().isEmpty())
+        assertTrue(store.owned("a").single().json.contains("A의 마지막 입력"))
+        testScheduler.advanceTimeBy(3_000); runCurrent()
+        assertTrue(store.owned("b").isEmpty())
+        k.flush(ComposeDraft(text = "B의 편지")); runCurrent()
+        assertTrue(store.owned("b").single().json.contains("B의 편지"))
+    }
+
+    @Test fun `저장 실패 뒤 같은 내용을 다시 저장할 수 있다`() = runTest {
+        val k = keeper()
+        val draft = ComposeDraft(text = "잃으면 안 되는 글")
+        store.failNextSave = true
+        k.flush(draft); runCurrent()
+        assertTrue(store.rows.value.isEmpty())
+        k.flush(draft); runCurrent()
+        assertEquals(1, store.rows.value.size)
+    }
+
+    @Test fun `삭제 뒤 예약된 자동 저장이 초안을 다시 만들지 않는다`() = runTest {
+        val k = keeper()
+        k.edited(ComposeDraft(text = "취소할 글"))
+        k.delete(k.currentId)
+        testScheduler.advanceTimeBy(3_000); runCurrent()
+        assertTrue(store.rows.value.isEmpty())
+    }
 
     @Test
     fun `글을 멈추고 2초가 지나면 저장한다`() = runTest {
@@ -90,6 +113,7 @@ class DraftKeeperTest {
         val id = k.currentId
         k.flush(d.copy(sending = true))
         k.startNew()
+        runCurrent()
         k.sent(id)
         runCurrent()
         assertEquals(emptyList(), store.rows.value)
@@ -102,6 +126,7 @@ class DraftKeeperTest {
         runCurrent()
         testScheduler.advanceTimeBy(1_000)
         k.startNew()
+        runCurrent()
         k.flush(ComposeDraft(text = "두 번째"))
         runCurrent()
         assertEquals(listOf("두 번째", "첫 번째"), k.drafts.first().map { it.firstLine })
@@ -124,6 +149,7 @@ class DraftKeeperTest {
         runCurrent()
         val id = store.rows.value.single().id
         k.startNew()
+        runCurrent()
 
         val back = k.resume(id)
         assertEquals(d, back)
@@ -144,9 +170,11 @@ class DraftKeeperTest {
         k.flush(ComposeDraft(title = "제목", text = "본문"))
         runCurrent()
         k.startNew()
+        runCurrent()
         k.flush(ComposeDraft(text = "\n\n오늘은 유난히\n네 생각이"))
         runCurrent()
         k.startNew()
+        runCurrent()
         k.flush(ComposeDraft(text = "$OBJ", drawings = listOf(meta("g")), objects = listOf("d:g")))
         runCurrent()
         assertEquals(setOf("제목", "오늘은 유난히", "그림 1장"), k.drafts.first().map { it.firstLine }.toSet())
@@ -162,3 +190,4 @@ class DraftKeeperTest {
         assertTrue(draftWhen(LocalDateTime(2026, 10, 28, 0, 30), now).startsWith("오늘 오전 12:30"))
     }
 }
+

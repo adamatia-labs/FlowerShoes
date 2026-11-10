@@ -240,4 +240,7 @@ data class LetterDraftEntity(
     @PrimaryKey val id: String,
     val draftJson: String,
     val updatedAtMs: Long,
+    /** null은 소유자를 확인하지 못한 구버전 초안. 로그인만으로 귀속시키지 않는다. */
+    val ownerUid: String? = null,
+    val editorToken: String? = null,
 )
