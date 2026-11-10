@@ -501,6 +501,9 @@ export const unlinkCouple = onCall({ region: REGION }, async (req) => {
 export const deleteAccount = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
+  const firebaseClaims = req.auth?.token.firebase;
+  const appleAccount = firebaseClaims?.sign_in_provider === 'apple.com' || !!firebaseClaims?.identities?.['apple.com'];
+  let appleRevocation: 'not_required' | 'revoked' | 'manual' = appleAccount ? 'manual' : 'not_required';
   const user = await db.doc(`users/${uid}`).get();
   const coupleId = user.get('coupleId') as string | undefined;
   if (coupleId) {
@@ -517,11 +520,14 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
   // Apple: 로그인 때 보관한 refresh token 을 폐기한다(App Store 심사 기준 5.1.1(v)).
   const apple = await db.doc(`appleTokens/${uid}`).get();
   const refreshToken = apple.get('refreshToken') as string | undefined;
-  if (refreshToken && appleConfigured(appleConfig())) await revokeApple(appleConfig(), refreshToken).catch(() => false);
+  if (refreshToken) {
+    appleRevocation = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false)
+      ? 'revoked' : 'manual';
+  }
   await apple.ref.delete();
   await db.recursiveDelete(db.doc(`users/${uid}`));
   await getAuth().deleteUser(uid);
-  return { ok: true };
+  return { ok: true, appleRevocation };
 });
 
 /**

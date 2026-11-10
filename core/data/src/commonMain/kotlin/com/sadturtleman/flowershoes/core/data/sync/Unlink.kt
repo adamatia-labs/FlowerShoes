@@ -6,6 +6,7 @@ import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.RelationshipArchive
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.first
 
 /** 연결 해제 · 탈퇴의 서버 쪽(callable unlinkCouple · deleteAccount). */
 interface AccountTransport {
@@ -13,9 +14,16 @@ interface AccountTransport {
 
     suspend fun deleteAccount()
 
+    suspend fun deleteAccountWithOutcome(): AppleRevocation {
+        deleteAccount()
+        return AppleRevocation.UNKNOWN
+    }
+
     /** 기기 교체를 마친 뒤 finalizeDevice 가 준 토큰으로 다시 로그인한다(새 기기 클레임). */
     suspend fun signInWithCustomToken(token: String) = Unit
 }
+
+enum class AppleRevocation { NOT_REQUIRED, REVOKED, MANUAL, UNKNOWN }
 
 /** 해제할 때 내 폰 사본을 어떻게 할지(7-5). 상대 폰 사본은 상대가 고른다 — 내가 지울 수 없다. */
 enum class AfterUnlink {
@@ -58,12 +66,18 @@ class UnlinkService(
      * 카카오 연결 끊기 · Apple 토큰 폐기 포함) + 기기 키 삭제.
      */
     suspend fun deleteAccount(): Unit = db.relationshipMutex.withLock {
-        val server = checkNotNull(transport) { "탈퇴 서버에 연결할 수 없어요" }
-        server.deleteAccount()
+        // 서버 성공 뒤 로컬 정리가 중단돼도 삭제된 계정으로 서버를 다시 호출하지 않는다.
+        val showAppleInstructions = settings.pendingAccountCleanup.first() ?: run {
+            val result = checkNotNull(transport) { "탈퇴 서버에 연결할 수 없어요" }.deleteAccountWithOutcome()
+            val manual = result == AppleRevocation.MANUAL ||
+                (result in setOf(AppleRevocation.UNKNOWN, AppleRevocation.NOT_REQUIRED) && settings.accountProvider.first() == "APPLE")
+            settings.setPendingAccountCleanup(manual)
+            manual
+        }
         cleanUp(AfterUnlink.WIPE)
         db.useWriterConnection { tx -> tx.immediateTransaction { PROFILE_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } } } }
         vault.clearAll()
-        settings.reset()
+        settings.reset(showAppleInstructions)
     }
 
     /** 모든 진입점은 서버 요청부터 이 정리까지 relationshipMutex를 보유한다. */

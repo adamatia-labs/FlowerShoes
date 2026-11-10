@@ -187,18 +187,30 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
      * 탈퇴: 이 기기 설정을 모두 지운다. 다음 실행은 처음 화면(로그인)부터. 기기 id 는 새로 만든다.
      * 같은 쓰기에서 [farewellPending] 을 세운다 — 처음 화면이 탈퇴 완료 화면을 먼저 한 번 보인다(앱이 꺼져도 남는다).
      */
-    suspend fun reset() = store.edit {
+    suspend fun reset(showAppleInstructions: Boolean = false) = store.edit {
         it.clear()
         it[FAREWELL] = 1
+        if (showAppleInstructions) it[FAREWELL_APPLE] = 1
+    }
+
+    /** null: 서버 삭제 미확인, 그 외: 서버 삭제 완료 후 남은 로컬 정리와 Apple 안내 여부. */
+    val pendingAccountCleanup: Flow<Boolean?> = store.data.map { it[ACCOUNT_CLEANUP]?.let { value -> value == 1 } }
+
+    suspend fun setPendingAccountCleanup(showAppleInstructions: Boolean) = store.edit {
+        it[ACCOUNT_CLEANUP] = if (showAppleInstructions) 1 else 0
     }
 
     /** 탈퇴 완료 화면("그동안 고마웠어요")을 아직 보이지 않았다. */
     val farewellPending: Flow<Boolean> = store.data.map { it[FAREWELL] == 1 }
 
-    suspend fun setFarewellPending(on: Boolean) = store.edit { if (on) it[FAREWELL] = 1 else it.remove(FAREWELL) }
+    val farewellAppleInstructions: Flow<Boolean> = store.data.map { it[FAREWELL_APPLE] == 1 }
+
+    suspend fun setFarewellPending(on: Boolean) = store.edit { if (on) it[FAREWELL] = 1 else { it.remove(FAREWELL); it.remove(FAREWELL_APPLE) } }
 
     private companion object {
+        val ACCOUNT_CLEANUP = intPreferencesKey("pending_account_cleanup")
         val FAREWELL = intPreferencesKey("farewell_pending")
+        val FAREWELL_APPLE = intPreferencesKey("farewell_apple_manual")
         val USER_ID = stringPreferencesKey("user_id")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val ROLE = stringPreferencesKey("role")
