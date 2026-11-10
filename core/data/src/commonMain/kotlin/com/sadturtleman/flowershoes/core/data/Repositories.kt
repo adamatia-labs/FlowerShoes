@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.delay
 import kotlin.time.Duration
@@ -467,8 +468,13 @@ class StatusRepository(
     private val identity: Identity,
     private val clock: Clock = Clock.System,
 ) {
-    fun observeLatest(authorId: String): Flow<Status?> =
-        db.statusDao().observeLatest(authorId, clock.now().toEpochMilliseconds()).map { it?.toModel() }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun observeLatest(authorId: String): Flow<Status?> = clock.ticker().flatMapLatest { now ->
+        db.statusDao().observeLatest(authorId, now.toEpochMilliseconds()).map { it?.toModel() }
+    }.distinctUntilChanged()
+
+    /** 만료된 최신 변경을 동기화해 양쪽에서 과거 상태까지 숨긴다. */
+    suspend fun clear() = set("", 0, expiresAt = clock.now())
 
     suspend fun set(label: String, color: Long, expiresAt: kotlin.time.Instant? = null) {
         val s = Status(Uuid.random().toString(), identity.userId, label, color, clock.now(), expiresAt)

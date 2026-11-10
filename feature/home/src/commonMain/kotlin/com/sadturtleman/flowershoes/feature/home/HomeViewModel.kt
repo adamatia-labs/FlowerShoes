@@ -81,6 +81,7 @@ class HomeViewModel(
     events: EventRepository,
     private val missYou: MissYouRepository,
     letters: LetterRepository,
+    statusStore: com.sadturtleman.flowershoes.core.data.StatusEditorStore,
     /** 보낸 초대 링크(DeviceSettings.pendingInvite). */
     pendingInvite: Flow<com.sadturtleman.flowershoes.core.data.sync.PendingInvite?> = flowOf(null),
     private val dayLineCards: DayLineCards? = null,
@@ -88,6 +89,8 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val me = profile.myUserId()
+    val statusEditor = CurrentStatusEditor(viewModelScope, statusStore, me, clock)
+    val currentStatus = statusStore.observe(me).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val missYouSender = MissYouSender(viewModelScope, missYou::send)
 
     private data class People(val linked: Boolean, val partnerId: String?, val myRole: Role, val myName: String, val partnerName: String, val anniversary: LocalDate?, val linkedAt: Long?)

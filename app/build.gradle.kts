@@ -171,6 +171,7 @@ dependencies {
     androidTestImplementation(project(":feature:letter"))
     androidTestImplementation(project(":feature:onboarding"))
     androidTestImplementation(project(":core:auth"))
+    androidTestImplementation(project(":feature:home"))
     androidTestImplementation(project(":core:compression"))
     androidTestImplementation("com.google.firebase:firebase-firestore")
     androidTestImplementation("com.google.firebase:firebase-storage")

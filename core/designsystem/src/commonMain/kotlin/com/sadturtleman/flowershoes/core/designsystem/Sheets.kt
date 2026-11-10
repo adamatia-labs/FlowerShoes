@@ -33,9 +33,14 @@ import kotlinx.datetime.LocalTime
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun KkModalSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+fun KkModalSheet(onDismiss: () -> Unit, dismissEnabled: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+    val canDismiss = androidx.compose.runtime.rememberUpdatedState(dismissEnabled)
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+        confirmValueChange = { canDismiss.value || it == androidx.compose.material3.SheetValue.Expanded },
+    )
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (canDismiss.value) onDismiss() },
+        sheetState = sheetState,
         containerColor = KkTheme.colors.surface,
         dragHandle = null,
         shape = RoundedCornerShape(topStart = KkRadius.xl, topEnd = KkRadius.xl),
