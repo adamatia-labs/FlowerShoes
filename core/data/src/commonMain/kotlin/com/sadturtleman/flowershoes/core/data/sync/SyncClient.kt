@@ -9,6 +9,8 @@ import com.sadturtleman.flowershoes.core.crypto.OpHeader
 import com.sadturtleman.flowershoes.core.crypto.Signatures
 import com.sadturtleman.flowershoes.core.crypto.Sodium
 import com.sadturtleman.flowershoes.core.data.AttachmentStore
+import com.sadturtleman.flowershoes.core.data.AttachmentConflictException
+import okio.ByteString.Companion.toByteString
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.InboxApplier
 import com.sadturtleman.flowershoes.core.data.OpCodec
@@ -265,8 +267,8 @@ class SyncClient(
         } catch (_: CryptoException) {
             return false
         }
-        downloadBlobs(couple, plain.payload)
-        inbox.apply(ReceivedOp(stream, header.seq, header.opId, plain.lamport, plain.payload))
+        val payload = downloadBlobs(couple, plain.payload)
+        inbox.apply(ReceivedOp(stream, header.seq, header.opId, plain.lamport, payload))
         return true
     }
 
@@ -290,23 +292,32 @@ class SyncClient(
         // 잘못된 첨부 참조는 그 항목만 건너뛰어 나머지 기록과 스트림은 계속 처리한다.
         if (!AttachmentStore.isSafeId(blobId) || !AttachmentStore.isSafeId(attachmentId)) return
         if (archive.contains("attachment", attachmentId)) return
+        // blob이 만료된 뒤 재전송돼도 이미 확인한 충돌을 잊고 기존 사진에 연결하지 않는다.
+        val conflict = "attachment-conflict:" + listOf(couple.id, blobId, attachmentId).joinToString("\u0000").encodeToByteArray().toByteString().sha256().hex()
+        if (db.syncDao().meta(conflict) != null) throw AttachmentConflictException()
         val sealed = blobs.get(couple.id, blobId) ?: return
-        attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
+        try {
+            attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
+        } catch (collision: AttachmentConflictException) {
+            db.syncDao().setMeta(MetaEntity(conflict, 1))
+            throw collision
+        }
         blobs.delete(couple.id, blobId)
     }
 
     /** 편지 안 그림 문서를 받아 보낸 쪽과 같은 첨부 id 로 둔다. 다 받은 뒤에 편지를 반영한다(반쯤 받은 편지를 보여 주지 않게). */
-    private suspend fun downloadBlobs(couple: CoupleEntity, payload: ByteArray) {
-        OpCodec.decode(payload)?.let { fetchBlobs(couple, it) }
-    }
+    private suspend fun downloadBlobs(couple: CoupleEntity, payload: ByteArray): ByteArray =
+        OpCodec.decode(payload)?.let { OpCodec.encode(fetchBlobs(couple, it)) } ?: payload
 
-    private suspend fun fetchBlobs(couple: CoupleEntity, p: OpPayload) {
-        if (archive.shared(p) == null) return
+    private suspend fun fetchBlobs(couple: CoupleEntity, p: OpPayload): OpPayload {
+        if (archive.shared(p) == null) return p
         when (p) {
-            is OpPayload.Snapshot -> p.items.forEach { fetchBlobs(couple, it) }
-            // 이미 받은 사진은 다시 받지 않는다(일정을 고칠 때마다 사진이 함께 다시 온다).
-            is OpPayload.EventPut -> p.photos.filter { attachments.read(it.attachmentId) == null }
-                .forEach { ph -> download(couple, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
+            // 충돌한 참조를 다른 원본 사진으로 표시하지 않는다. 같은 스냅샷의 정상 기록은 계속 반영한다.
+            is OpPayload.Snapshot -> return p.copy(items = p.items.mapNotNull {
+                try { fetchBlobs(couple, it) } catch (_: AttachmentConflictException) { null }
+            })
+            // 파일이 있어도 새 blob의 내용을 비교해야 다른 사진을 기존 ID로 연결하지 않는다.
+            is OpPayload.EventPut -> p.photos.forEach { ph -> download(couple, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
             is OpPayload.LetterPut -> {
                 p.drawings.forEach { d ->
                     download(couple, d.docBlobId, d.docBlobKey, d.docAttachmentId, AttachmentKind.DRAWING_DOC)
@@ -317,6 +328,7 @@ class SyncClient(
             }
             else -> Unit
         }
+        return p
     }
 
     // ── 커서 · 재전송 ─────────────────────────────────────────────────────

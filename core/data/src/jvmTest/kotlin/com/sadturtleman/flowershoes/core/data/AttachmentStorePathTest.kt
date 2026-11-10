@@ -5,6 +5,8 @@ import com.sadturtleman.flowershoes.core.database.buildKkotsin
 import com.sadturtleman.flowershoes.core.database.inMemoryDatabaseBuilder
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
 import okio.FileSystem
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -23,6 +25,51 @@ class AttachmentStorePathTest {
 
     @AfterTest
     fun close() { db.close(); if (fs.exists(area)) fs.deleteRecursively(area) }
+
+    @Test
+    fun `같은 첨부 식별자의 다른 내용은 기존 파일과 메타데이터를 보존한다`() = runTest {
+        val original = "original photo".encodeToByteArray()
+        store.putWithId("same-id", AttachmentKind.PHOTO, original)
+        val before = db.attachmentDao().get("same-id")
+        assertFailsWith<IllegalStateException> { store.putWithId("same-id", AttachmentKind.PHOTO, "replacement".encodeToByteArray()) }
+        assertContentEquals(original, store.read("same-id"))
+        assertEquals(before, db.attachmentDao().get("same-id"))
+    }
+
+    @Test
+    fun `같은 내용의 재수신은 허용하지만 첨부 종류 변경은 거절한다`() = runTest {
+        val bytes = "photo".encodeToByteArray()
+        store.putWithId("same-id", AttachmentKind.PHOTO, bytes)
+        val before = db.attachmentDao().get("same-id")
+        assertEquals("same-id", store.putWithId("same-id", AttachmentKind.PHOTO, bytes))
+        assertFailsWith<IllegalStateException> { store.putWithId("same-id", AttachmentKind.DRAWING_DOC, bytes) }
+        assertEquals(before, db.attachmentDao().get("same-id"))
+        assertContentEquals(bytes, store.read("same-id"))
+    }
+
+    @Test
+    fun `파일만 남은 저장 실패 뒤에도 다른 내용으로 덮어쓰지 않는다`() = runTest {
+        fs.createDirectories(root)
+        val bytes = "uncommitted original".encodeToByteArray()
+        fs.write(root / "orphan") { write(bytes) }
+        assertFailsWith<IllegalStateException> { store.putWithId("orphan", AttachmentKind.PHOTO, "other".encodeToByteArray()) }
+        assertContentEquals(bytes, fs.read(root / "orphan") { readByteArray() })
+        assertNull(db.attachmentDao().get("orphan"))
+        store.putWithId("orphan", AttachmentKind.PHOTO, bytes)
+        assertContentEquals(bytes, store.read("orphan"))
+    }
+
+    @Test
+    fun `저장소 두 개가 같은 식별자에 동시에 쓰면 한 원본만 확정한다`() = runTest {
+        val other = AttachmentStore(db, root, fs)
+        val first = async(Dispatchers.IO) { runCatching { store.putWithId("race", AttachmentKind.PHOTO, byteArrayOf(1)) } }
+        val second = async(Dispatchers.IO) { runCatching { other.putWithId("race", AttachmentKind.PHOTO, byteArrayOf(2)) } }
+        val outcomes = listOf(first.await(), second.await())
+        assertEquals(1, outcomes.count { it.isSuccess })
+        assertEquals(1, outcomes.count { it.exceptionOrNull() is AttachmentConflictException })
+        val winner = if (outcomes.first().isSuccess) byteArrayOf(1) else byteArrayOf(2)
+        assertContentEquals(winner, store.read("race"))
+    }
 
     @Test
     fun `상대가 보낸 상위 경로는 첨부 폴더 밖에 쓰지 않는다`() = runTest {
