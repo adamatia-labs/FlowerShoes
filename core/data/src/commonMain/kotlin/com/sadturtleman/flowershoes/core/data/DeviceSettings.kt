@@ -60,6 +60,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     /** [provider] 는 로그인 방법(KAKAO · APPLE · GOOGLE) — 복원 · 설정 › 로그인 계정 화면에 보인다. */
     suspend fun bindAccount(uid: String, provider: String? = null) = store.edit {
+        check(it[CLEANUP_TOKEN] == null || it[USER_ID] == uid) { "진행 중인 연결 정리를 먼저 마쳐 주세요" }
         if (it[USER_ID] != uid || it[ACCOUNT_SESSION] == null) it[ACCOUNT_SESSION] = Uuid.random().toString()
         it[USER_ID] = uid
         it[DRAFT_GENERATIONS] = prefsJson.encodeToString<Map<String, String>>(it.draftGenerations() + (uid to checkNotNull(it[ACCOUNT_SESSION])))
@@ -76,7 +77,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     internal suspend fun draftSessionForCleanup(): DraftSession? = store.data.first().draftSession(includeCleaning = true)
 
     private fun Preferences.draftSession(includeCleaning: Boolean = false): DraftSession? {
-        if (!includeCleaning && this[ACCOUNT_CLEANUP] != null) return null
+        if (!includeCleaning && (this[ACCOUNT_CLEANUP] != null || this[CLEANUP_TOKEN] != null)) return null
         val uid = this[USER_ID]?.takeIf { it.isNotBlank() } ?: return null
         val device = this[DEVICE_ID]?.takeIf { it.isNotBlank() } ?: return null
         val generation = this[ACCOUNT_SESSION]?.takeIf { it.isNotBlank() } ?: return null
@@ -118,6 +119,94 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     val marketingConsent: kotlinx.coroutines.flow.Flow<Boolean> = store.data.map { (it[MARKETING] ?: 0) == 1 }
 
     suspend fun setKeyEpoch(epoch: Int) = store.edit { it[KEY_EPOCH] = epoch }
+
+    internal val cleanupRequests = store.data.map { p -> p[CLEANUP_REQUEST]?.let {
+        prefsJson.decodeFromString(com.sadturtleman.flowershoes.core.database.CleanupEntity.serializer(), it)
+    } }
+
+    internal suspend fun cleanupRequest() = cleanupRequests.first()
+
+    /** 아직 서버 요청/Room 기록이 없고 대상이 교체된 예약만 취소한다. */
+    internal suspend fun cancelCleanupReservation(token: String, canRelease: suspend () -> Boolean) {
+        store.edit { p ->
+            if (p[CLEANUP_TOKEN] == token && p[CLEANUP_FINISHED] == null && canRelease()) {
+                p.remove(CLEANUP_REQUEST)
+                p.remove(CLEANUP_TOKEN)
+            }
+        }
+    }
+
+    /** Room 기록 전에 요청 전체와 잠금을 먼저 커밋한다. 중간 종료 시 같은 요청을 Room에 복구한다. */
+    internal suspend fun reserveCleanup(cleanup: com.sadturtleman.flowershoes.core.database.CleanupEntity) {
+        store.edit { p ->
+            check(p[CLEANUP_TOKEN] == null && p[USER_ID].orEmpty() == cleanup.ownerUid && p[DEVICE_ID].orEmpty() == cleanup.deviceId &&
+                p[ACCOUNT_SESSION].orEmpty() == cleanup.accountSession) { "로그인 또는 진행 중인 정리가 바뀌었어요" }
+            check(cleanup.source == "ACCOUNT" || p.acceptances().none { it.ownerUid == cleanup.ownerUid && it.deviceId == cleanup.deviceId }) { "진행 중인 연결을 먼저 확인해 주세요" }
+            p[CLEANUP_REQUEST] = prefsJson.encodeToString(com.sadturtleman.flowershoes.core.database.CleanupEntity.serializer(), cleanup)
+            p[CLEANUP_TOKEN] = cleanup.token
+        }
+    }
+
+    /** Room 쓰기보다 먼저 설정 잠금을 잡는다. block은 설정에 재진입하지 않는다. */
+    internal suspend fun withCleanupIdentity(cleanup: com.sadturtleman.flowershoes.core.database.CleanupEntity, block: suspend () -> Unit) {
+        store.edit { p ->
+            check(p[USER_ID].orEmpty() == cleanup.ownerUid && p[DEVICE_ID].orEmpty() == cleanup.deviceId &&
+                p[ACCOUNT_SESSION].orEmpty() == cleanup.accountSession &&
+                p[CLEANUP_TOKEN] == cleanup.token) { "로그인한 계정이 바뀌었어요" }
+            block()
+            p[CLEANUP_TOKEN] = cleanup.token
+        }
+    }
+
+    internal suspend fun cleanupSettingsFinished(token: String): Boolean = store.data.first()[CLEANUP_FINISHED] == token
+
+    /** 완료 표식은 Room 작업을 지울 때까지 남긴다. 설정 저장 실패도 같은 단계로 재시도한다. */
+    internal suspend fun finishCleanupSettings(cleanup: com.sadturtleman.flowershoes.core.database.CleanupEntity, checkCurrent: suspend () -> Unit) {
+        store.edit { p ->
+            if (p[CLEANUP_FINISHED] == cleanup.token) return@edit
+            check(p[USER_ID].orEmpty() == cleanup.ownerUid && p[DEVICE_ID].orEmpty() == cleanup.deviceId &&
+                p[ACCOUNT_SESSION].orEmpty() == cleanup.accountSession && p[CLEANUP_TOKEN] == cleanup.token) { "로그인한 계정이 바뀌었어요" }
+            checkCurrent()
+            if (cleanup.source == "ACCOUNT") {
+                p.clear()
+                p[FAREWELL] = 1
+                if (cleanup.appleInstructions) p[FAREWELL_APPLE] = 1
+            } else {
+                p[KEY_EPOCH] = 0
+                val generation = Uuid.random().toString()
+                p[ACCOUNT_SESSION] = generation
+                p[DRAFT_GENERATIONS] = prefsJson.encodeToString<Map<String, String>>(p.draftGenerations() + (cleanup.ownerUid to generation))
+                p.remove(PENDING_INVITE)
+                p.remove(PENDING_ACCEPTANCES)
+            }
+            // Room 삭제 뒤 마지막 설정 저장이 실패해도 복구 안내/원래 선택을 남긴다.
+            p[CLEANUP_REQUEST] = prefsJson.encodeToString(com.sadturtleman.flowershoes.core.database.CleanupEntity.serializer(), cleanup)
+            p[CLEANUP_TOKEN] = cleanup.token
+            p[CLEANUP_FINISHED] = cleanup.token
+        }
+    }
+
+    internal suspend fun releaseCleanup(token: String, clearJournal: suspend () -> Unit) {
+        store.edit { p ->
+            check(p[CLEANUP_TOKEN] == token && p[CLEANUP_FINISHED] == token)
+            clearJournal()
+            p.remove(CLEANUP_TOKEN)
+            p.remove(CLEANUP_FINISHED)
+            p.remove(CLEANUP_REQUEST)
+        }
+    }
+
+    /** Room 삭제 후 설정 저장만 실패한 경우도 다음 실행에서 마지막 표식을 지운다. */
+    internal suspend fun releaseFinishedCleanupIf(noJournal: suspend () -> Boolean) {
+        store.edit { p ->
+            val token = p[CLEANUP_TOKEN]
+            if (token != null && p[CLEANUP_FINISHED] == token && noJournal()) {
+                p.remove(CLEANUP_TOKEN)
+                p.remove(CLEANUP_FINISHED)
+                p.remove(CLEANUP_REQUEST)
+            }
+        }
+    }
 
     private val prefsJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
@@ -189,6 +278,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         override suspend fun save(invite: PendingInvite?) {
             store.edit { p ->
                 if (invite == null) p.remove(PENDING_INVITE) else {
+                    check(p[CLEANUP_TOKEN] == null) { "진행 중인 연결 정리를 먼저 마쳐 주세요" }
                     check(invite.ownerUid == p[USER_ID] && invite.deviceId == p[DEVICE_ID]) { "로그인한 계정이 바뀌었어요" }
                     p[PENDING_INVITE] = prefsJson.encodeToString(PendingInvite.serializer(), invite)
                 }
@@ -196,13 +286,13 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         }
 
         override suspend fun isCurrentIdentity(uid: String, deviceId: String): Boolean =
-            store.data.first().let { it[USER_ID] == uid && it[DEVICE_ID] == deviceId }
+            store.data.first().let { it[USER_ID] == uid && it[DEVICE_ID] == deviceId && it[CLEANUP_TOKEN] == null }
 
         override suspend fun withCurrentIdentity(uid: String, deviceId: String, block: suspend () -> Unit): Boolean {
             var applied = false
             // bindAccount/reset과 같은 DataStore 갱신 경계에서 검사한다. block은 설정을 다시 쓰지 않는다.
             store.edit { p ->
-                if (p[USER_ID] == uid && p[DEVICE_ID] == deviceId) {
+                if (p[USER_ID] == uid && p[DEVICE_ID] == deviceId && p[CLEANUP_TOKEN] == null) {
                     block()
                     applied = true
                 }
@@ -217,6 +307,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
         override suspend fun saveAcceptance(acceptance: PendingAcceptance) {
             store.edit { p ->
+                check(p[CLEANUP_TOKEN] == null) { "진행 중인 연결 정리를 먼저 마쳐 주세요" }
                 check(p[USER_ID] == acceptance.ownerUid && p[DEVICE_ID] == acceptance.deviceId) { "로그인한 계정이 바뀌었어요" }
                 val saved = p.acceptances()
                 val old = saved.firstOrNull { it.ownerUid == acceptance.ownerUid && it.deviceId == acceptance.deviceId }
@@ -308,6 +399,9 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     suspend fun setFarewellPending(on: Boolean) = store.edit { if (on) it[FAREWELL] = 1 else { it.remove(FAREWELL); it.remove(FAREWELL_APPLE) } }
 
     private companion object {
+        val CLEANUP_TOKEN = stringPreferencesKey("relationship_cleanup_token")
+        val CLEANUP_REQUEST = stringPreferencesKey("relationship_cleanup_request")
+        val CLEANUP_FINISHED = stringPreferencesKey("relationship_cleanup_finished")
         val PENDING_ACCEPTANCES = stringPreferencesKey("pending_received_invites")
         val ACCOUNT_CLEANUP = intPreferencesKey("pending_account_cleanup")
         val FAREWELL = intPreferencesKey("farewell_pending")

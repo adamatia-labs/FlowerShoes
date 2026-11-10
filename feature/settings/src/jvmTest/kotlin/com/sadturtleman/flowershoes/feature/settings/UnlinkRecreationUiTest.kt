@@ -124,17 +124,17 @@ class UnlinkRecreationUiTest {
                 if (fail) {
                     waitUntil(timeoutMillis = 10_000) { vm.unlinkOperation.value is UnlinkOperation.Failed }
                     onNodeWithText("연결 해제 결과를 확인하지 못했어요. 연결 상태를 확인해 주세요").assertExists()
-                    onNodeWithText("모두 지우기").assertIsSelected().assertIsEnabled()
-                    onNodeWithText("추억으로 보관").assertIsNotSelected().assertIsEnabled().performClick()
-                    onNodeWithText("추억으로 보관").assertIsSelected()
-                    onNodeWithText("모두 지우기").assertIsNotSelected()
+                    waitUntil(timeoutMillis = 10_000) { vm.lockedUnlinkChoice.value == AfterUnlink.WIPE }
+                    onNodeWithText("모두 지우기").assertIsSelected().assertIsNotEnabled()
+                    onNodeWithText("추억으로 보관").assertIsNotSelected().assertIsNotEnabled()
+                    onNodeWithText("처음 선택한 방식으로 정리를 이어가요").assertExists()
                     onNode(hasSetTextAction()).performTextInput("연결 해제")
                     onNode(hasText("연결 해제") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
                     waitUntil(timeoutMillis = 10_000) { completed == 1 }
                     runOnIdle { assertEquals(2, serverCalls) }
                     runBlocking {
-                        assertEquals("", db.coupleDao().get()?.partnerUserId)
-                        assertEquals("시험 편지", db.letterDao().get("letter")?.title)
+                        assertEquals(null, db.coupleDao().get())
+                        assertEquals(null, db.letterDao().get("letter"))
                     }
                 } else {
                     waitUntil(timeoutMillis = 10_000) { completed == 1 }

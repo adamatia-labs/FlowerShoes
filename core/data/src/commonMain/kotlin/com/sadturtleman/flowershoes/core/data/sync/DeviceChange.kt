@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import com.sadturtleman.flowershoes.core.data.requireNoCleanup
+
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.CoupleKey
@@ -254,6 +256,7 @@ class DeviceChangeSession(
         val key = CoupleKey.unwrap(keys, wrapped)
         val now = clock.now().toEpochMilliseconds()
         db.useWriterConnection { tx -> tx.immediateTransaction {
+            db.requireNoCleanup()
             check(db.coupleDao().get() == current) { "연결이 바뀌었어요" }
             RelationshipArchive(db).prepare()
             val complete = vault.sealRelationship(CoupleEntity(c, identity.userId, partner.uid, key.epoch, now), key)
@@ -399,6 +402,7 @@ class DeviceChangeApprover(
         val newKeys = checkNotNull(transport.deviceKeys(couple.id, r.newDeviceId)) { "새 기기 공개키가 없다" }
         db.relationshipMutex.withLock {
             db.useWriterConnection { tx -> tx.immediateTransaction {
+            db.requireNoCleanup()
             check(db.coupleDao().get()?.id == couple.id) { "연결이 바뀌었어요" }
             vault.putCoupleKey(p.key)
             val now = clock.now().toEpochMilliseconds()
