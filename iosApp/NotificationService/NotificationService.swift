@@ -28,12 +28,14 @@ final class NotificationService: UNNotificationServiceExtension {
               let sigB64 = info["sig"] as? String, let sig = Data(base64Encoded: sigB64),
               let headerB64 = info["header"] as? String, let header = Data(base64Encoded: headerB64),
               let parsed = OpEnvelope.Header.parse([UInt8](header)),
-              let senderPub = SharedStore.secret("partner.signPub", scope: scope),
-              let coupleKey = SharedStore.secret("coupleKey.\(parsed.keyEpoch)", scope: scope),
+              let secrets = SharedStore.readSecrets(scope: scope),
+              let senderPub = secrets.secret("partner.signPub"),
+              let coupleKey = secrets.secret("coupleKey.\(parsed.keyEpoch)"),
               let plain = OpEnvelope.open(header: [UInt8](header), ciphertext: [UInt8](ct), signature: [UInt8](sig), signPub: senderPub, coupleKey: coupleKey),
               let split = OpPlain.split(plain)
         else { return }
         let payload = split.payload
+        guard (try? Data(contentsOf: SharedStore.container.appendingPathComponent("link.json"))) == linkData else { return }
 
         // 앱이 다음에 열릴 때 DB 에 합칠 수 있게 대기열에 둔다(중복은 (stream, seq) 로 앱이 거른다).
         let queued: [String: Any] = ["opId": parsed.opId, "stream": parsed.stream, "seq": parsed.seq, "header": headerB64, "ct": ctB64, "sig": sigB64, "kind": kind]

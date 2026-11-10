@@ -43,7 +43,10 @@ jobs:
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
 
       - name: Kotlin iOS 테스트
-        run: ./gradlew iosSimulatorArm64Test --continue --stacktrace
+        run: |
+          xcrun simctl boot 'iPhone 16' || true
+          xcrun simctl bootstatus 'iPhone 16' -b
+          ./gradlew iosSimulatorArm64Test --continue --stacktrace
 
       - name: ComposeApp 프레임워크 링크
         run: ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64 --stacktrace

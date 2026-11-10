@@ -1,0 +1,29 @@
+# iOS 키 보관함의 저장 경계와 중단 복구
+
+## 저장 경계
+
+#156의 원인은 인스턴스별 캐시와 잠금이었다. 다른 인스턴스가 저장한 키를 읽지 않고 전체 JSON을 덮어썼다. `IosKeyVault`는 이제 캐시 없이 `SerializedKeyVault`의 저장 연산을 사용한다. 각 연산은 App Group의 같은 `vault.lock` 파일에 배타적 `flock`을 얻은 뒤 최신 Keychain 값을 읽고 수정한다. 잠금 파일 자체는 교체하거나 삭제하지 않는다. 앱 그룹이 없는 unsigned 빌드에서는 앱의 Application Support를 사용한다.
+
+잠금은 협력하는 프로세스의 파일 디스크립터를 통해 공유되고, 기다리는 코루틴을 취소하면 디스크립터를 닫는다. `LOCK_NB` 재시도로 메인 스레드를 막지 않는다. Apple의 [flock 설명](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/flock.2.html)에 맞춘 구현이다. Swift 확장은 원본을 수정하지 않고 단일 Keychain 항목을 읽는다.
+
+## 원본과 사본
+
+`kkotsin.vault`의 formatVersion 2가 원본이다. 기기 키, 기존 epoch 키, 승인 대기 키, 상대 공개키와 확장용 관계 키 묶음을 함께 저장한다. 쓰기는 먼저 `repairMirrors`와 정리할 계정 이름을 원본에 기록하고, 구버전 호환 사본을 쓰거나 지운 뒤 복구 완료를 표시한다. 사본 쓰기·삭제·마지막 완료 표시 중 어느 단계가 실패해도 다음 연산이 남은 작업을 반복할 수 있다. Keychain 삭제 오류를 성공으로 무시하지 않는다.
+
+모두 지우기는 원본을 빈 tombstone으로 먼저 바꾼다. 사본 삭제가 중단돼도 원본에서 키를 읽을 수 없고, 이후 인스턴스가 남은 사본을 정리한다. 새 기기 키로 교체하면 이전 관계와 확장 키도 함께 비운다. 이전 기기 키를 넘긴 늦은 확장 게시 요청은 거부한다.
+
+Swift 위젯과 NSE는 원본을 한 번 읽어 같은 시점의 서명 키·관계 키·상대 공개키를 고른다. formatVersion 2에서는 사본으로 폴백하지 않는다. 원본이 없거나 손상됐거나 삭제됐으면 남은 사본을 활성화하지 않는다. v1 업그레이드 전 사본을 읽을 때에는 원본이 읽는 도중 바뀌지 않았는지 다시 확인한다. 관계 scope 검사는 #168의 규칙을 그대로 사용한다.
+
+## 구버전 데이터
+
+정상 v1의 상대 공개키와 확장 묶음은 첫 쓰기 때 같은 잠금 안에서 이전한다. 원본에서 소속을 잃은 epoch 사본은 일반 쓰기에서 활성화하거나 지우지 않는다. 과거 캐시 버그로 남은 유일한 사본일 수도 있기 때문이다. 명시적인 관계 키 삭제, 모두 지우기, 기기 키 교체에서는 소유한 사본 이름을 열거해 정리한다. [kSecMatchLimitAll](https://developer.apple.com/documentation/security/ksecmatchlimitall) 조회는 속성만 반환한다. Kotlin과 Swift의 모든 조회·쓰기·삭제는 기존 무서비스 항목의 빈 `kSecAttrService`로 범위를 한정한다. 계정 이름이 같아도 다른 서비스의 Keychain 항목은 읽거나 변경하지 않는다.
+
+## 검증 범위
+
+- 공통 저장 엔진: 공유 저장소 인스턴스·동시 epoch 쓰기, 원본 쓰기 실패, 사본 실패, 삭제 실패, 완료 표시 실패, 실패한 이전 쓰기를 지우기로 대체, 기기 변경, 구버전 이전.
+- iOS 네이티브: 실제 시뮬레이터 Keychain을 사용하는 인스턴스 간 저장·삭제, 다른 service 보존, service 속성이 없던 구버전 항목 호환, 독립 파일 디스크립터의 잠금·대기 취소. 임시 계정 prefix와 디렉터리만 정리한다.
+- Swift: 사본이 오래돼도 원본 하나로 키를 고르고, 삭제·손상된 원본에서는 사본으로 돌아가지 않는지 검사한다.
+
+물리 iPhone이나 여러 확장 프로세스의 실제 실행을 검증한 결과로 확대하지 않는다. #131의 서버 해제부터 로컬 정리까지의 전체 저널, #157의 기기 승인 요청 세대 관리는 별도 작업이다.
+
+네이티브 테스트는 먼저 iOS 시뮬레이터를 부팅한 뒤 standalone 모드를 끄고 실행한다. 테스트 실행 파일에 전용 Keychain 식별자만 넣으며 앱의 공유 그룹은 사용하지 않는다. Kotlin 기본 standalone 실행은 시스템 Keychain 서비스가 없어 `errSecNotAvailable`로 실패한다. 설정은 [Kotlin 테스트 실행기](https://github.com/JetBrains/kotlin/blob/master/libraries/tools/kotlin-gradle-plugin/src/common/kotlin/org/jetbrains/kotlin/gradle/targets/native/tasks/KotlinNativeTest.kt)와 [multiplatform-settings의 Keychain 테스트 구성](https://github.com/russhwolf/multiplatform-settings/pull/181/files)을 참고했다.

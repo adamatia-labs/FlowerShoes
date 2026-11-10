@@ -137,18 +137,57 @@ enum SharedStore {
         }
     }
 
-    /// 같은 관계·기기·epoch의 묶음만 사용한다. 누락돼도 이전 개별 키로 돌아가지 않는다.
-    static func secret(_ account: String, scope: String?) -> [UInt8]? {
-        guard let scope else { return secret(account) }
-        guard let bytes = secret("relationship.keys"),
-              let keys = RelationshipKeys.decode(Data(bytes), expectedScope: scope) else { return nil }
-        return keys.secret(account)
+    private struct VaultState: Decodable {
+        let formatVersion: Int?
+        let deviceSecret: String?
+        let coupleKeys: [String: String]?
+        let partnerSignPub: String?
+        let sharedRelationship: RelationshipKeys?
     }
 
-    static func secret(_ account: String) -> [UInt8]? {
+    /// 한 번 읽은 원본으로 서명 키와 관계 키를 함께 고른다. 미러 복구가 중단돼도 이전 키를 섞지 않는다.
+    static func readSecrets(scope: String?) -> RelationshipKeys? {
+        readSecrets(scope: scope, read: { secret($0) })
+    }
+
+    static func readSecrets(scope: String?, read: (String) -> [UInt8]?) -> RelationshipKeys? {
+        guard let bytes = read("kkotsin.vault"),
+              let state = try? JSONDecoder().decode(VaultState.self, from: Data(bytes)),
+              let encodedDevice = state.deviceSecret,
+              let device = Data(base64Encoded: encodedDevice), device.count == 96 else { return nil }
+        let version = state.formatVersion ?? 1
+        guard version == 1 || version == 2 else { return nil }
+        if let scope {
+            let shared: RelationshipKeys?
+            if version == 2 {
+                shared = state.sharedRelationship
+            } else {
+                shared = read("relationship.keys").flatMap { RelationshipKeys.decode(Data($0), expectedScope: scope) }
+                guard read("kkotsin.vault") == bytes else { return nil }
+            }
+            guard let shared, shared.scope == scope,
+                  shared.secret("device.signSecret") == Array(device.prefix(64)) else { return nil }
+            return shared
+        }
+        let partner: String?
+        if version == 2 {
+            partner = state.partnerSignPub
+        } else {
+            partner = read("partner.signPub").map { Data($0).base64EncodedString() }
+            guard read("kkotsin.vault") == bytes else { return nil }
+        }
+        guard let partner, Data(base64Encoded: partner)?.count == 32 else { return nil }
+        var values = Dictionary(uniqueKeysWithValues: (state.coupleKeys ?? [:]).map { ("coupleKey.\($0.key)", $0.value) })
+        values["device.signSecret"] = Data(device.prefix(64)).base64EncodedString()
+        values["partner.signPub"] = partner
+        return RelationshipKeys(scope: "legacy", values: values)
+    }
+
+    private static func secret(_ account: String) -> [UInt8]? {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
+            kSecAttrService as String: "",
             kSecReturnData as String: true,
         ]
         if let keychainGroup { query[kSecAttrAccessGroup as String] = keychainGroup }
@@ -162,6 +201,7 @@ enum SharedStore {
         var base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
+            kSecAttrService as String: "",
         ]
         if let keychainGroup { base[kSecAttrAccessGroup as String] = keychainGroup }
         SecItemDelete(base as CFDictionary)

@@ -29,6 +29,15 @@ import platform.Security.errSecNotAvailable
 import platform.Security.errSecSuccess
 
 class IosKeychainStoreTest {
+    @Test fun `삭제 오류는 성공으로 처리하지 않는다`() {
+        val store = IosKeychainStore(null, deleteItem = { errSecNotAvailable })
+        assertFailsWith<IllegalStateException> { store.delete("test-item") }
+    }
+
+    @Test fun `없는 항목 삭제는 멱등하게 성공한다`() {
+        val store = IosKeychainStore(null, deleteItem = { errSecItemNotFound })
+        store.delete("test-item")
+    }
     private val syntheticKeys = """{"signPub":"0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc=","boxPub":"D6poTtKIZ7l/Smot7l34zpdOdrcBjj8iocTPJnhXDyA=","deviceSecret":"ERERERERERERERERERERERERERERERERERERERERERHQSrIydCu0qzoTaL1GFeTm0CJKtxoBa6+FIKMyyXeHNyIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIi"}"""
     @Test
     fun `새 프로세스에서 기존 키를 처음 읽을 때 초기화 완료를 기다린다`() = runBlocking {
