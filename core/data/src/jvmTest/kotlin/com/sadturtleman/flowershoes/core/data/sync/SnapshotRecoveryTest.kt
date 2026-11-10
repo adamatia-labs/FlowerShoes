@@ -1,6 +1,8 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
 import com.sadturtleman.flowershoes.core.crypto.Sodium
+import com.sadturtleman.flowershoes.core.crypto.OpHeader
+import com.sadturtleman.flowershoes.core.crypto.OpEnvelope
 import com.sadturtleman.flowershoes.core.data.*
 import com.sadturtleman.flowershoes.core.database.*
 import com.sadturtleman.flowershoes.core.model.LetterBlock
@@ -55,6 +57,13 @@ class SnapshotRecoveryTest {
         val token = assertIs<PairingState.Waiting>(a.pairing.createLink()).token
         assertIs<PairingState.Linked>(b.pairing.accept(token))
         assertIs<PairingState.Linked>(a.pairing.poll())
+    }
+
+    private suspend fun decoded(a: Phone, mail: MailItem): OpPayload {
+        val header = OpHeader.fromBytes(mail.header)
+        val key = a.vault.currentCoupleKey()!!
+        val envelope = OpEnvelope(header, mail.ciphertext, mail.signature)
+        return OpCodec.decode(Plain.decode(OpEnvelope.open(envelope, a.vault.deviceKeys()!!.signPub) { key }).payload)!!
     }
 
     @Test fun `snapshot before original preserves miss you status receipt and deletion`() = runTest {
@@ -145,6 +154,61 @@ class SnapshotRecoveryTest {
         acknowledge(parts.first().seq)
         assertEquals(rows.map { it.opId }, a.db.syncDao().log(a.stream).map { it.opId })
         acknowledge(parts.last().seq)
+        assertTrue(a.db.syncDao().log(a.stream).isEmpty())
+    }
+
+    @Test fun `legacy receiver understands snapshot deletion before original delete arrives`() = runTest {
+        val a = Phone("a"); val b = Phone("b"); link(a, b)
+        val letter = a.letters.newLetter(listOf(LetterBlock.Text("delete me")))
+        a.letters.send(letter, emptyList())
+        a.sync.syncOnce(); b.sync.syncOnce(); a.sync.syncOnce()
+        a.letters.delete(letter.id)
+        a.sync.writeFullSnapshot(); a.sync.syncOnce()
+        // Pre-batch receiver: LetterPut is insert-only, Delete updates an existing row.
+        suspend fun legacyApply(p: OpPayload) {
+            when (p) {
+                is OpPayload.Snapshot -> p.items.forEach { legacyApply(it) }
+                is OpPayload.LetterPut -> if (b.db.letterDao().get(p.letter.id) == null) b.db.letterDao().upsert(p.letter.toEntity(0))
+                is OpPayload.Delete -> if (p.entity == DeletableEntity.LETTER) {
+                    b.db.letterDao().get(p.id)?.let { b.db.letterDao().upsert(it.copy(deletedAtMs = p.atMs)) }
+                }
+                else -> Unit
+            }
+        }
+        val couple = a.db.coupleDao().get()!!.id
+        val mail = cloud.fetch(couple, "device-b").filter { it.kind == "snapshot" }
+        mail.forEach { item ->
+            legacyApply(decoded(a, item))
+            b.db.syncDao().setCursor(RecvCursorEntity(a.stream, OpHeader.fromBytes(item.header).seq))
+            cloud.delete(couple, "device-b", item.opId)
+        }
+        b.sync.syncOnce(); a.sync.syncOnce()
+        assertNull(b.letters.find(letter.id))
+        assertTrue(a.db.syncDao().log(a.stream).isEmpty())
+    }
+
+    @Test fun `queued snapshot with expired blob waits for verified attachment retransmission`() = runTest {
+        val a = Phone("a"); val b = Phone("b"); link(a, b)
+        val bytes = "snapshot photo".encodeToByteArray()
+        val photo = a.attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, bytes)
+        val letter = a.letters.newLetter(listOf(LetterBlock.Photo(photo)))
+        a.letters.send(letter, emptyList()); a.sync.writeFullSnapshot(); a.sync.syncOnce()
+        val couple = a.db.coupleDao().get()!!.id
+        val queued = cloud.fetch(couple, "device-b").single { it.kind == "snapshot" }
+        val snapshot = decoded(a, queued) as OpPayload.Snapshot
+        val ref = snapshot.items.filterIsInstance<OpPayload.LetterPut>().single().photos.single()
+        cloud.delete(couple, ref.blobId!!)
+        assertFalse(b.sync.receiveQueued(queued), "unverified absent blob must not complete the chunk")
+        assertNull(b.db.letterDao().get(letter.id))
+        assertEquals(0L, b.db.syncDao().cursor(a.stream) ?: 0L)
+        // Transport TTL also removes original mail; only sender's durable log can restore it.
+        cloud.fetch(couple, "device-b").forEach { cloud.delete(couple, "device-b", it.opId) }
+        b.sync.syncOnce()
+        now += 33.days
+        deliver = { it.kind == "snapshot" }
+        a.client().syncOnce(); b.client().syncOnce(); a.client().syncOnce()
+        assertContentEquals(bytes, b.attachments.read(photo))
+        assertNotNull(b.letters.find(letter.id))
         assertTrue(a.db.syncDao().log(a.stream).isEmpty())
     }
 }

@@ -147,10 +147,6 @@ class InboxApplier(
                         MemoryEntity("letter-${p.letter.id}", "LETTER", p.letter.id, p.letter.visibleAt.toString().take(10)),
                     )
                 }
-                // 이미 가진 편지도 삭제 표식을 병합한다. 삭제된 편지는 늦은 원본으로 부활하지 않는다.
-                p.letter.deletedAt?.let { at ->
-                    delete(OpPayload.Delete(DeletableEntity.LETTER, p.letter.id, 0, at.ms(), ""))
-                }
             }
             is OpPayload.ReceiptPut -> db.receiptDao().insertFirst(p.receipt.toEntity())
             is OpPayload.ServicePut -> applyService(p)

@@ -110,7 +110,7 @@ class DeviceChangeTest {
         assertEquals(setOf(letter.id, mine.id), b.letters.observeInbox().first().map { it.id }.toSet())
         assertEquals(2, b.db.coupleDao().get()?.keyEpoch)
         assertEquals(2, b.db.missYouDao().all().size)
-        assertEquals("휴가", b.status.observeLatest("minjun").first()?.label)
+        assertNull(b.status.observeLatest("minjun").first(), "기기 교체는 현재 상태를 복구하지 않는다(기획 §5)")
 
         // 새 폰이 쓴 것은 상대에게, 상대가 쓴 것은 새 폰에 간다(옛 폰이 아니라).
         val fromNew = b.letters.newLetter(listOf(LetterBlock.Text("새 폰이야"))).also { b.letters.send(it, emptyList()) }

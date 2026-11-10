@@ -302,7 +302,10 @@ class SyncClient(
         val sealed = blobs.get(couple.id, blobId)
         if (sealed == null) {
             // 실제로 내용이 같았던 수신만 기존 파일에 연결한다. 확인되지 않은 누락은 재전송으로 복구한다.
-            check(db.attachmentDao().get(attachmentId) == null || db.syncDao().meta(binding) != null) { "첨부 연결을 아직 확인할 수 없어요" }
+            val local = db.attachmentDao().get(attachmentId)
+            val bytes = if (db.syncDao().meta(binding) != null) attachments.read(attachmentId) else null
+            check(local != null && bytes != null && bytes.size.toLong() == local.sizeBytes &&
+                bytes.toByteString().sha256().hex() == local.sha256) { "첨부 연결을 아직 확인할 수 없어요" }
             return
         }
         attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
@@ -434,12 +437,14 @@ class SyncClient(
         )
     }
 
-    /** 누락 복구와 기기 교체 모두 현재 관계의 공유 상태 전체를 같은 DB 시점에서 전송한다. */
-    suspend fun writeSnapshot(coversThrough: Long) = writeSnapshotTransaction("snapshot", coversThrough)
+    private enum class SnapshotPurpose(val entityId: String) { REPAIR("snapshot"), DEVICE_CHANGE("full") }
 
-    suspend fun writeFullSnapshot() = writeSnapshotTransaction("full", null)
+    /** 현재 관계의 공유 기록을 같은 DB 시점에서 전송한다. 기기 교체는 현재 상태를 제외한다(기획 §5). */
+    suspend fun writeSnapshot(coversThrough: Long) = writeSnapshotTransaction(SnapshotPurpose.REPAIR, coversThrough)
 
-    private suspend fun writeSnapshotTransaction(entityId: String, coversThrough: Long?) {
+    suspend fun writeFullSnapshot() = writeSnapshotTransaction(SnapshotPurpose.DEVICE_CHANGE, null)
+
+    private suspend fun writeSnapshotTransaction(purpose: SnapshotPurpose, coversThrough: Long?) {
         db.useWriterConnection { tx -> tx.immediateTransaction {
             archive.prepare()
             val firstSeq = db.syncDao().nextSeq(myStream.wire) ?: 1L
@@ -452,20 +457,26 @@ class SyncClient(
                 db.leaveDao().all().forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
                 db.bookCoverDao().get()?.let { add(it.toPayload()) }
                 db.letterDao().all().forEach { l ->
-                    // 삭제된 편지는 첨부 없이 표식만 복구한다.
-                    val letter = l.toModel()
-                    add(OpPayload.LetterPut(
-                        if (l.deletedAtMs == null) letter else letter.copy(blocks = emptyList()),
-                        if (l.deletedAtMs == null) drawingMetas(l.id) else emptyList(),
-                    ))
+                    val deletedAt = l.deletedAtMs
+                    if (deletedAt == null) {
+                        add(OpPayload.LetterPut(l.toModel(), drawingMetas(l.id)))
+                    } else {
+                        // 구버전도 아는 Delete를 함께 보낸다. 두 항목을 한 조각으로 묶어
+                        // 삭제가 insert보다 먼저 도착해 무시되거나 첨부를 다시 받지 않게 한다.
+                        add(OpPayload.Snapshot(0, listOf(
+                            OpPayload.LetterPut(l.toModel().copy(blocks = emptyList())),
+                            OpPayload.Delete(com.sadturtleman.flowershoes.core.data.DeletableEntity.LETTER,
+                                l.id, l.lamport, deletedAt, identity.deviceId),
+                        )))
+                    }
                 }
                 db.missYouDao().all().forEach { add(OpPayload.MissYouPut(com.sadturtleman.flowershoes.core.model.MissYou(it.id, it.authorId, kotlin.time.Instant.fromEpochMilliseconds(it.sentAtMs)))) }
-                db.statusDao().all().forEach { add(OpPayload.StatusPut(it.toModel())) }
+                if (purpose == SnapshotPurpose.REPAIR) db.statusDao().all().forEach { add(OpPayload.StatusPut(it.toModel())) }
                 db.receiptDao().all().forEach {
                     add(OpPayload.ReceiptPut(com.sadturtleman.flowershoes.core.model.Receipt(com.sadturtleman.flowershoes.core.model.ReceiptEntity.valueOf(it.entity), it.entityId, it.readerId, kotlin.time.Instant.fromEpochMilliseconds(it.atMs))))
                 }
             }
-            writeSnapshotOps(entityId, covers, firstSeq, items)
+            writeSnapshotOps(purpose.entityId, covers, firstSeq, items)
         } }
     }
 

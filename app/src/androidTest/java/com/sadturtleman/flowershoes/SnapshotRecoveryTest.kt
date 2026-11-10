@@ -41,7 +41,7 @@ class SnapshotRecoveryTest {
             val transport = NoNetwork()
             val client = SyncClient(sender, identity, InMemoryKeyVault(), transport, transport,
                 AttachmentStore(sender, root.toOkioPath() / "attachments"), InboxApplier(sender), writer)
-            client.writeFullSnapshot()
+            client.writeSnapshot(sender.syncDao().nextSeq("device-a:app")!! - 1)
             val stream = StreamId.parse("device-a:app")
             val parts = sender.syncDao().log(stream.wire).filter { it.kind == "snapshot" }
             assertTrue(parts.size > 1)
