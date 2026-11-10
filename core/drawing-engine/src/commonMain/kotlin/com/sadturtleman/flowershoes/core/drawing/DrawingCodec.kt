@@ -66,7 +66,10 @@ object DrawingCodec {
         doc.elements.forEach { element ->
             val points = when (element) { is Stroke -> element.points; is EraserStroke -> element.points; else -> null }
             points?.let { repeat(3) { _ -> budget.reserve(it.size) } }
-            (element as? Stroke)?.replaySegments?.let { budget.reserve(it.size) }
+            if (element is Stroke) {
+                element.replaySegments?.let { budget.reserve(it.size) }
+                validateSegments(element.replaySegments, element.points.size)
+            }
         }
         val w = ByteWriter()
         w.bytes(MAGIC)
@@ -218,7 +221,10 @@ object DrawingCodec {
             }
         }
         return when (type) {
-            T_STROKE -> Stroke(id, start, tool, color, brush, points, segments)
+            T_STROKE -> {
+                validateSegments(segments, points.size)
+                Stroke(id, start, tool, color, brush, points, segments)
+            }
             T_ERASER -> EraserStroke(id, start, brush, points)
             T_STICKER -> StickerElement(id, start, text, transform)
             T_PHOTO -> PhotoBackground(id, start, text, dim, crop)
@@ -298,6 +304,16 @@ object DrawingCodec {
     }
 
     private const val MAX_POINTS = 100_000
+
+    private fun validateSegments(segments: IntArray?, pointCount: Int) {
+        if (segments == null) return
+        if (segments.size % 2 != 0) throw DrawingFormatException("재생 구간의 시작과 끝이 맞지 않는다")
+        for (i in segments.indices step 2) {
+            val start = segments[i]
+            val end = segments[i + 1]
+            if (start < 0 || end < start || end >= pointCount) throw DrawingFormatException("재생 구간이 점 범위를 벗어난다")
+        }
+    }
 
     private class DecodeBudget {
         private var left = MAX_TOTAL_INT_VALUES

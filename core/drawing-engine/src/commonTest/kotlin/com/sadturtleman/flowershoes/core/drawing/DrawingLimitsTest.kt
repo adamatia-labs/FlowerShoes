@@ -9,6 +9,39 @@ class DrawingLimitsTest {
     private fun document(elements: List<Element>) = DrawingDocument(canvas = CanvasSpec(WidgetShape.SQUARE), elements = elements, totalDurationMs = 0)
 
     @Test
+    fun `손상된 재생 구간은 화면에 도달하기 전에 거부한다`() {
+        for (segments in listOf(intArrayOf(0), intArrayOf(-1, 1), intArrayOf(1, 0), intArrayOf(0, 2))) {
+            val raw = ByteWriter().apply {
+                bytes(DrawingCodec.encode(document(emptyList())))
+                field(1) {
+                    field(6) {
+                        for (tag in 1..3) field(tag) { varint(2); zigzag(0); zigzag(1) }
+                    }
+                    field(7) {
+                        varint(segments.size.toLong())
+                        var previous = 0
+                        segments.forEach { zigzag((it - previous).toLong()); previous = it }
+                    }
+                }
+            }.toByteArray()
+            assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(raw), segments.contentToString())
+        }
+    }
+
+    @Test
+    fun `잘못된 재생 구간을 새 문서로 저장하지 않는다`() {
+        val points = PointBuffer(intArrayOf(0, 1), intArrayOf(0, 1), intArrayOf(0, 1))
+        for (segments in listOf(intArrayOf(0), intArrayOf(-1, 1), intArrayOf(1, 0), intArrayOf(0, 2))) {
+            val line = Stroke("line", 0, Tool.PEN, 0xff000000, BrushSize.M, points, segments)
+            assertFailsWith<DrawingFormatException> { DrawingCodec.encodeForStorage(document(listOf(line))) }
+        }
+        for (segments in listOf(intArrayOf(0, 1), intArrayOf(1, 1), intArrayOf())) {
+            val doc = document(listOf(Stroke("line", 0, Tool.PEN, 0xff000000, BrushSize.M, points, segments)))
+            assertEquals(doc, assertIs<DrawingCodec.Result.Ok>(DrawingCodec.decode(DrawingCodec.encodeForStorage(doc))).document)
+        }
+    }
+
+    @Test
     fun `요소 수 경계에서 저장한 문서는 읽히고 초과 문서는 저장하지 않는다`() {
         val element = TemplateGuide("t", 0, "heart")
         val doc = document(List(DrawingCodec.MAX_ELEMENTS) { element })
