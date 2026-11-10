@@ -89,6 +89,9 @@ interface ServiceDao {
 
 @Dao
 interface StatusDao {
+    @Query("SELECT * FROM status")
+    suspend fun all(): List<StatusEntity>
+
     /** 작성자의 최신 상태 하나. 만료된 것은 뺀다. */
     @Query(
         """
@@ -193,6 +196,10 @@ interface LeaveDao {
 
 @Dao
 interface LetterDao {
+    /** 복구 스냅샷은 삭제 표식도 전달한다. */
+    @Query("SELECT * FROM letter")
+    suspend fun all(): List<LetterEntity>
+
     /** 편지함. 공개 시각이 지난 것만 — 예약 편지는 공개 전에 어디에도 보이지 않는다. */
     @Query("SELECT * FROM letter WHERE deletedAtMs IS NULL AND visibleAtMs <= :nowMs ORDER BY visibleAtMs DESC")
     fun observeVisible(nowMs: Long): Flow<List<LetterEntity>>
@@ -367,6 +374,9 @@ interface SyncDao {
 
     @Upsert
     suspend fun setMeta(meta: MetaEntity)
+
+    @Query("DELETE FROM meta WHERE substr(`key`, 1, length(:prefix)) = :prefix")
+    suspend fun deleteMetaPrefix(prefix: String)
 }
 
 @Dao

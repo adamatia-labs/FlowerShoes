@@ -42,6 +42,8 @@ class DeviceChangeTest {
         }
         val writer = SyncWriter(db, identity)
         val letters = LetterRepository(db, writer, identity)
+        val missYou = com.sadturtleman.flowershoes.core.data.MissYouRepository(db, writer, identity)
+        val status = com.sadturtleman.flowershoes.core.data.StatusRepository(db, writer, identity)
         val pairing = PairingSession(db, identity, vault, cloud)
         val sync = SyncClient(db, identity, vault, cloud, cloud, AttachmentStore(db, root / deviceId), InboxApplier(db), writer)
         val tokens = mutableListOf<String>()
@@ -77,6 +79,8 @@ class DeviceChangeTest {
     fun `새 폰 요청을 상대가 승인하면 새 폰이 연결되고 기록이 온다`() = runTest {
         val letter = minjun.letters.newLetter(listOf(LetterBlock.Text("보고 싶어"))).also { minjun.letters.send(it, emptyList()) }
         val mine = jisu.letters.newLetter(listOf(LetterBlock.Text("나도"))).also { jisu.letters.send(it, emptyList()) }
+        jisu.missYou.send(); minjun.missYou.send()
+        minjun.status.set("휴가", 1)
         settle()
 
         val b = newPhone()
@@ -105,6 +109,8 @@ class DeviceChangeTest {
         b.sync.syncOnce()
         assertEquals(setOf(letter.id, mine.id), b.letters.observeInbox().first().map { it.id }.toSet())
         assertEquals(2, b.db.coupleDao().get()?.keyEpoch)
+        assertEquals(2, b.db.missYouDao().all().size)
+        assertNull(b.status.observeLatest("minjun").first(), "기기 교체는 현재 상태를 복구하지 않는다(기획 §5)")
 
         // 새 폰이 쓴 것은 상대에게, 상대가 쓴 것은 새 폰에 간다(옛 폰이 아니라).
         val fromNew = b.letters.newLetter(listOf(LetterBlock.Text("새 폰이야"))).also { b.letters.send(it, emptyList()) }

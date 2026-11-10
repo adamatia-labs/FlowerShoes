@@ -64,11 +64,31 @@ class InboxApplier(
             var next = state.receive(op.seq)
             if (payload != null) {
                 applyPayload(payload)
-                if (payload is OpPayload.Snapshot) next = next.applySnapshot(payload.coversThrough)
+                if (payload is OpPayload.Snapshot && snapshotComplete(op, payload)) {
+                    next = next.applySnapshot(payload.coversThrough)
+                }
             }
             save(op.stream.wire, op.opId, state, next)
             if (payload == null) ApplyResult.UNKNOWN_SKIPPED else ApplyResult.APPLIED
         }
+    }
+
+    /** 항목 적용과 조각 수신 표식은 같은 트랜잭션. 재시작/중복/역순 수신에도 한 번만 센다. */
+    private suspend fun snapshotComplete(op: ReceivedOp, snapshot: OpPayload.Snapshot): Boolean {
+        val batch = snapshot.batch ?: return false
+        if (!batch.validFor(op.seq, snapshot.coversThrough)) return false
+        val couple = db.coupleDao().get()?.id.orEmpty()
+        val stream = op.stream.wire
+        val prefix = "snapshot:${couple.length}:$couple:${stream.length}:$stream:${batch.firstSeq}:${batch.partCount}:${snapshot.coversThrough}:"
+        val sync = db.syncDao()
+        val partKey = "${prefix}part:${batch.partIndex}"
+        if (sync.meta(partKey) == null) {
+            sync.setMeta(MetaEntity(partKey, 1))
+            sync.setMeta(MetaEntity("${prefix}count", (sync.meta("${prefix}count") ?: 0) + 1))
+        }
+        if (sync.meta("${prefix}count") != batch.partCount.toLong()) return false
+        sync.deleteMetaPrefix(prefix)
+        return true
     }
 
     private suspend fun revoked(): List<RevokedDevice> = db.syncDao().revoked().map { r ->
