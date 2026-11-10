@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.AttachmentEntity
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
@@ -8,6 +10,13 @@ import okio.ByteString.Companion.toByteString
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
+import okio.HashingSource
+import okio.blackholeSink
+import okio.buffer
+import okio.use
+
+/** 이미 쓰인 식별자는 내용과 종류가 바뀔 수 없다. 호출자는 충돌한 기록을 수신하지 않는다. */
+class AttachmentConflictException : IllegalStateException("기존 첨부와 내용이 달라 받을 수 없어요")
 
 /**
  * 첨부 파일(그림 문서 · PNG · 사진)을 앱 전용 폴더에 둔다. 행(attachment)에는 경로와 sha256 만 적는다.
@@ -23,19 +32,41 @@ class AttachmentStore(
     suspend fun put(kind: AttachmentKind, bytes: ByteArray): String = putWithId(Uuid.random().toString(), kind, bytes)
 
     /** 받은 첨부를 보낸 쪽과 같은 id 로 둔다(편지 블록이 그 id 를 가리킨다). */
-    suspend fun putWithId(id: String, kind: AttachmentKind, bytes: ByteArray): String {
-        require(isSafeId(id)) { "첨부 식별자가 올바르지 않습니다" }
-        RelationshipArchive(db).prepare()
-        if (RelationshipArchive(db).contains("attachment", id)) throw ArchivedRecordException()
-        fs.createDirectories(root)
-        val path = root / id
-        val metadata = fs.metadataOrNull(path)
-        require(metadata?.symlinkTarget == null && (metadata == null || safeExistingPath(root, path.toString(), fs) != null)) { "첨부 경로가 올바르지 않습니다" }
-        fs.write(path) { write(bytes) }
-        db.attachmentDao().upsert(
-            AttachmentEntity(id, kind.name, path.toString(), bytes.toByteString().sha256().hex(), bytes.size.toLong()),
-        )
-        return id
+    suspend fun putWithId(id: String, kind: AttachmentKind, bytes: ByteArray): String = db.useWriterConnection { connection ->
+        connection.immediateTransaction {
+            require(isSafeId(id)) { "첨부 식별자가 올바르지 않습니다" }
+            RelationshipArchive(db).prepare()
+            if (RelationshipArchive(db).contains("attachment", id)) throw ArchivedRecordException()
+            fs.createDirectories(root)
+            val path = root / id
+            val metadata = fs.metadataOrNull(path)
+            require(metadata?.symlinkTarget == null && (metadata == null || safeExistingPath(root, path.toString(), fs) != null)) { "첨부 경로가 올바르지 않습니다" }
+            val digest = bytes.toByteString().sha256().hex()
+            val existing = db.attachmentDao().get(id)
+            if (existing != null && (existing.kind != kind.name || existing.sha256 != digest || existing.sizeBytes != bytes.size.toLong())) {
+                throw AttachmentConflictException()
+            }
+            if (metadata != null) {
+                val storedDigest = HashingSource.sha256(fs.source(path)).use { hashing ->
+                    hashing.buffer().use { it.readAll(blackholeSink()) }
+                    hashing.hash.hex()
+                }
+                if (storedDigest != digest) throw AttachmentConflictException()
+            } else {
+                // SQLite 쓰기 경계에서 기존 파일 확인과 설치를 직렬화한다. 부분 쓰기는 최종 이름에 노출하지 않는다.
+                val temporary = root / ".incoming-${Uuid.random()}"
+                try {
+                    fs.write(temporary) { write(bytes) }
+                    fs.atomicMove(temporary, path)
+                } finally {
+                    runCatching { fs.delete(temporary, mustExist = false) }
+                }
+            }
+            if (existing == null) db.attachmentDao().upsert(
+                AttachmentEntity(id, kind.name, path.toString(), digest, bytes.size.toLong()),
+            )
+            id
+        }
     }
 
     /** 연결 해제 "모두 지우기" · 탈퇴. */
