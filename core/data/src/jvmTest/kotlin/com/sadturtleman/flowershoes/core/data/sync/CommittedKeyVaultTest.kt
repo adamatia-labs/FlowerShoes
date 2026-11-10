@@ -49,6 +49,7 @@ class CommittedKeyVaultTest {
             val original = vault.sealRelationship(CoupleEntity("ac", "a", "c", 1, 1), CoupleKey.generate(1))
             db.coupleDao().upsert(original)
             assertNull(platform.forDatabase(db, identity("other")).currentCoupleKey())
+            assertNull(vault.forDatabase(db, identity("other")).currentCoupleKey(), "래퍼를 다시 바인딩해도 호출자의 계정을 검사한다")
             assertFailsWith<IllegalStateException> { platform.forDatabase(db, identity(device = "other")).currentCoupleKey() }
             db.coupleDao().clear(); db.coupleDao().upsert(original.copy(id = "ad"))
             assertFailsWith<IllegalStateException> { vault.currentCoupleKey() }

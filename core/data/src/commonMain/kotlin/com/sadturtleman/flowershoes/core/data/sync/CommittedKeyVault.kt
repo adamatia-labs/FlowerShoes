@@ -113,6 +113,6 @@ class CommittedKeyVault internal constructor(
 }
 
 fun KeyVault.forDatabase(db: AppDatabase, identity: Identity): CommittedKeyVault =
-    if (this is CommittedKeyVault) this else CommittedKeyVault(db, identity, this)
+    CommittedKeyVault(db, identity, platformVault)
 
 val KeyVault.platformVault: KeyVault get() = if (this is CommittedKeyVault) platform else this
