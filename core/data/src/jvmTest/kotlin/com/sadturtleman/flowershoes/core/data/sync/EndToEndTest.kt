@@ -31,6 +31,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okio.FileSystem
 import okio.ByteString.Companion.toByteString
 import kotlin.uuid.Uuid
@@ -321,6 +323,73 @@ class EndToEndTest {
             jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!,
         )
         return MailItem(id, "missyou", "dev-a", header.toBytes(), envelope.ciphertext, envelope.signature)
+    }
+
+    private fun widgetBody(couple: String, item: MailItem) = buildJsonObject {
+        put("coupleId", couple); put("fromDeviceId", item.from); put("opId", item.opId); put("kind", item.kind)
+        put("header", item.header.toByteString().base64()); put("ct", item.ciphertext.toByteString().base64())
+        put("sig", item.signature.toByteString().base64())
+    }.toString()
+
+    @Test
+    fun `위젯 journal만 저장하고 종료해도 원본 봉투를 복구해 빈 순번 없이 확인한다`() = runTest {
+        link()
+        val couple = jisu.db.coupleDao().get()!!.id
+        val first = widgetItem(1)
+        val second = widgetItem(2)
+        val directory = root / "group"
+        FileSystem.SYSTEM.createDirectories(directory)
+        val body = widgetBody(couple, first)
+        val journal = buildJsonObject {
+            put("lastSeq", 1)
+            put("pending", buildJsonObject {
+                put("opId", first.opId); put("body", body.encodeToByteArray().toByteString().base64())
+            })
+        }.toString()
+        FileSystem.SYSTEM.write(directory / "widget-send-journal.json") { writeUtf8(journal) }
+        // No outbox directory exists: the extension stopped immediately after journal commit.
+        importWidgetOutbox(jisu.sync, directory)
+        assertTrue(jisu.sync.importWidgetOp(couple, second))
+        roundTrip()
+        assertEquals(2L, minjun.db.syncDao().cursor("dev-a:widget"))
+        assertEquals(2, minjun.db.missYouDao().all().size)
+        assertTrue(jisu.db.syncDao().log("dev-a:widget").isEmpty())
+        // A restarted extension republishes its original copy after the app already imported it.
+        FileSystem.SYSTEM.createDirectories(directory / "widget-outbox")
+        val file = directory / "widget-outbox" / "${first.opId}.json"
+        FileSystem.SYSTEM.write(file) { writeUtf8(body) }
+        val delivered = directory / "widget-outbox" / "${first.opId}.json.delivered"
+        FileSystem.SYSTEM.write(delivered) { writeUtf8("accepted") }
+        importWidgetOutbox(jisu.sync, directory)
+        roundTrip()
+        assertEquals(2, jisu.db.missYouDao().all().size)
+        assertEquals(2, minjun.db.missYouDao().all().size)
+        assertTrue(jisu.db.syncDao().log("dev-a:widget").isEmpty())
+        assertEquals(false, FileSystem.SYSTEM.exists(file))
+        assertEquals(false, FileSystem.SYSTEM.exists(delivered))
+    }
+
+    @Test
+    fun `다른 관계 journal과 손상된 봉투는 원문을 보존하고 가져오지 않는다`() = runTest {
+        link()
+        val item = widgetItem(1)
+        val directory = root / "group"
+        FileSystem.SYSTEM.createDirectories(directory / "widget-outbox")
+        val body = widgetBody("previous-couple", item)
+        val journal = buildJsonObject {
+            put("lastSeq", 1)
+            put("pending", buildJsonObject {
+                put("opId", item.opId); put("body", body.encodeToByteArray().toByteString().base64())
+            })
+        }.toString()
+        FileSystem.SYSTEM.write(directory / "widget-send-journal.json") { writeUtf8(journal) }
+        val badFile = directory / "widget-outbox" / "broken.json"
+        FileSystem.SYSTEM.write(badFile) { writeUtf8("broken") }
+        importWidgetOutbox(jisu.sync, directory)
+        assertTrue(jisu.db.missYouDao().all().isEmpty())
+        assertTrue(jisu.db.syncDao().log("dev-a:widget").isEmpty())
+        assertEquals(journal, FileSystem.SYSTEM.read(directory / "widget-send-journal.json") { readUtf8() })
+        assertEquals("broken", FileSystem.SYSTEM.read(badFile) { readUtf8() })
     }
 
     @Test

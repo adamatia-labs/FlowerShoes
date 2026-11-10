@@ -37,6 +37,7 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
             implementation(compose.desktop.currentOs)
             // 태블릿 그림판(도구 칸)을 화면에 보이는 글로 확인한다.
             implementation(compose.desktop.uiTestJUnit4)

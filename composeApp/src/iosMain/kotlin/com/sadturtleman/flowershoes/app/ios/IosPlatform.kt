@@ -143,22 +143,9 @@ suspend fun writeLinkConfig(db: AppDatabase, identity: Identity, root: Path = ap
     fs.atomicMove(temporary, root / "link.json")
 } }
 
-@Serializable
-private data class WidgetOutgoing(val coupleId: String, val fromDeviceId: String, val opId: String, val kind: String, val header: String, val ct: String, val sig: String)
-
-/** App Intent의 암호문 사본을 동기화 로그로 옮긴 뒤에만 삭제한다. */
-suspend fun mergeWidgetQueue(sync: SyncClient, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) {
-    val dir = root / "widget-outbox"
-    if (!fs.exists(dir)) return
-    val json = Json { ignoreUnknownKeys = true }
-    fs.list(dir).filter { it.name.endsWith(".json") }.forEach { file ->
-        val imported = runCatching {
-            val q = json.decodeFromString(WidgetOutgoing.serializer(), fs.read(file) { readUtf8() })
-            sync.importWidgetOp(q.coupleId, MailItem(q.opId, q.kind, q.fromDeviceId, Base64.decode(q.header), Base64.decode(q.ct), Base64.decode(q.sig)))
-        }.getOrDefault(false)
-        if (imported) fs.delete(file)
-    }
-}
+/** App Intent의 완료된 사본과 중단된 journal을 실제 동기화 로그로 가져온다. */
+suspend fun mergeWidgetQueue(sync: SyncClient, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) =
+    com.sadturtleman.flowershoes.core.data.sync.importWidgetOutbox(sync, root, fs)
 
 /** NSE 가 App Group 에 남긴 받은 Op(NotificationService.swift 의 queued JSON). */
 @Serializable

@@ -57,7 +57,7 @@ targets:
     configFiles:
       Debug: Config.xcconfig
       Release: Config.xcconfig
-    sources: [App, Shared]
+    sources: [App, Shared, Compression]
     scheme:
       testTargets: [KkotsinTests]
     preBuildScripts:
@@ -265,6 +265,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-    sources: [Tests, Shared]
+    sources: [Tests, Shared, Compression]
     dependencies:
       - package: Sodium
+      - package: Zstd
+        product: libzstd

@@ -77,25 +77,12 @@ struct ComposeView: UIViewControllerRepresentable {
 /// :core:compression 의 Compressor 를 libzstd 로 구현한다. 프레임에 원래 크기를 적는다(ZSTD_compress 기본).
 final class SwiftZstd: Compressor {
     func compress(bytes: KotlinByteArray, level: Int32) -> KotlinByteArray {
-        let src = bytes.toData()
-        var out = Data(count: ZSTD_compressBound(src.count))
-        let n = out.withUnsafeMutableBytes { dst in
-            src.withUnsafeBytes { s in ZSTD_compress(dst.baseAddress, dst.count, s.baseAddress, s.count, level) }
-        }
-        precondition(ZSTD_isError(n) == 0, "zstd 압축 실패")
-        return out.prefix(n).toKotlin()
+        return BoundedZstd.compress(bytes.toData(), level: level)?.toKotlin() ?? bytes
     }
 
-    func decompress(frame: KotlinByteArray) -> KotlinByteArray {
-        let src = frame.toData()
-        let size = src.withUnsafeBytes { ZSTD_getFrameContentSize($0.baseAddress, $0.count) }
-        precondition(size != ZSTD_CONTENTSIZE_ERROR && size != ZSTD_CONTENTSIZE_UNKNOWN, "프레임에 원래 크기가 없다")
-        var out = Data(count: Int(size))
-        let n = out.withUnsafeMutableBytes { dst in
-            src.withUnsafeBytes { s in ZSTD_decompress(dst.baseAddress, dst.count, s.baseAddress, s.count) }
-        }
-        precondition(ZSTD_isError(n) == 0, "zstd 풀기 실패")
-        return out.prefix(n).toKotlin()
+    func decompress(frame: KotlinByteArray, maxOutputBytes: Int32) -> KotlinByteArray? {
+        guard Int(frame.size) <= BoundedZstd.maxDecodedBytes else { return nil }
+        return BoundedZstd.decompress(frame.toData(), maxOutputBytes: Int(maxOutputBytes))?.toKotlin()
     }
 }
 

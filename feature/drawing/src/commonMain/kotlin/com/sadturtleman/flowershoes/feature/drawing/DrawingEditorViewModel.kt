@@ -33,6 +33,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -187,6 +188,7 @@ sealed interface DrawingEvent {
 
     /** 사진첩에 저장할 완성 PNG. */
     class Exported(val png: ByteArray) : DrawingEvent
+    data object SaveFailed : DrawingEvent
 }
 
 /**
@@ -380,23 +382,36 @@ class DrawingEditorViewModel(
         if (s.saving || !s.canUndo) return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
-            val doc = StrokeProcessing.prepareForSave(
-                DrawingDocument(canvas = CanvasSpec(s.shape), elements = s.elements, totalDurationMs = nowMs()),
-            )
-            val docId = attachments.put(AttachmentKind.DRAWING_DOC, DrawingCodec.encodeForStorage(doc))
-            val pngId = rasterizer?.let { r -> runCatching { attachments.put(AttachmentKind.DRAWING_PNG, r.png(doc, photosOf(doc))) }.getOrNull() } ?: docId
-            val meta = DrawingMeta(
-                id = newId(),
-                orderInLetter = 0,
-                shape = s.shape.name,
-                docAttachmentId = docId,
-                pngAttachmentId = pngId,
-                caption = s.caption.trim().ifBlank { null },
-                replayEnabled = s.replayEnabled,
-                replayDurationMs = ReplayTimeline.of(doc).durationMs,
-                showOnWidget = s.showOnWidget,
-                photoAttachmentId = s.photo?.attachmentId,
-            )
+            val meta = try {
+                val doc = StrokeProcessing.prepareForSave(
+                    DrawingDocument(canvas = CanvasSpec(s.shape), elements = s.elements, totalDurationMs = nowMs()),
+                )
+                val docId = attachments.put(AttachmentKind.DRAWING_DOC, DrawingCodec.encodeForStorage(doc))
+                val pngId = rasterizer?.let { r ->
+                    try { attachments.put(AttachmentKind.DRAWING_PNG, r.png(doc, photosOf(doc))) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
+                } ?: docId
+                DrawingMeta(
+                    id = newId(),
+                    orderInLetter = 0,
+                    shape = s.shape.name,
+                    docAttachmentId = docId,
+                    pngAttachmentId = pngId,
+                    caption = s.caption.trim().ifBlank { null },
+                    replayEnabled = s.replayEnabled,
+                    replayDurationMs = ReplayTimeline.of(doc).durationMs,
+                    showOnWidget = s.showOnWidget,
+                    photoAttachmentId = s.photo?.attachmentId,
+                )
+            } catch (cancelled: CancellationException) {
+                _state.update { it.copy(saving = false) }
+                throw cancelled
+            } catch (_: Exception) {
+                _state.update { it.copy(saving = false) }
+                _events.send(DrawingEvent.SaveFailed)
+                return@launch
+            }
             _state.value = DrawingEditorState(partnerName = s.partnerName, ddayStickers = s.ddayStickers)
             after(meta)
         }

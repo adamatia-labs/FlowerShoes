@@ -124,6 +124,7 @@ fun DrawingEditorRoute(
                 is DrawingEvent.Saved -> onSaved(it.meta)
                 is DrawingEvent.Send -> onSend(it.meta, it.caption, it.revealAt)
                 is DrawingEvent.Exported -> notice = if (saveImage?.invoke(it.png) == true) "사진첩에 저장했어요" else "저장하지 못했어요"
+                DrawingEvent.SaveFailed -> notice = "그림을 저장하지 못했어요. 그린 내용은 그대로 있어요"
             }
         }
     }

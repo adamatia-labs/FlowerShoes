@@ -7,8 +7,9 @@ internal class ByteWriter(initial: Int = 256) {
         private set
 
     private fun ensure(extra: Int) {
+        if (extra > DrawingCodec.MAX_DOCUMENT_BYTES - size) throw DrawingFormatException("그림 문서가 허용 크기를 넘는다")
         if (size + extra <= buf.size) return
-        buf = buf.copyOf(maxOf(buf.size * 2, size + extra))
+        buf = buf.copyOf(minOf(DrawingCodec.MAX_DOCUMENT_BYTES, maxOf(buf.size * 2, size + extra)))
     }
 
     fun byte(b: Int) {
@@ -48,6 +49,7 @@ internal class ByteWriter(initial: Int = 256) {
 internal class ByteReader(private val buf: ByteArray, private var pos: Int = 0, private val end: Int = buf.size) {
 
     val hasMore: Boolean get() = pos < end
+    val remaining: Int get() = end - pos
 
     fun byte(): Int {
         if (pos >= end) throw DrawingFormatException("문서가 중간에 끝났다")

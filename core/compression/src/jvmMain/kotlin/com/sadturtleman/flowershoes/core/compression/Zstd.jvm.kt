@@ -4,9 +4,12 @@ package com.sadturtleman.flowershoes.core.compression
 internal actual fun platformZstd(): Compressor? = object : Compressor {
     override fun compress(bytes: ByteArray, level: Int): ByteArray = com.github.luben.zstd.Zstd.compress(bytes, level)
 
-    override fun decompress(frame: ByteArray): ByteArray {
-        val size = com.github.luben.zstd.Zstd.getFrameContentSize(frame)
-        require(size in 0..Int.MAX_VALUE) { "프레임에 원래 크기가 없다" }
-        return com.github.luben.zstd.Zstd.decompress(frame, size.toInt())
+    override fun decompress(frame: ByteArray, maxOutputBytes: Int): ByteArray? {
+        if (maxOutputBytes !in 0..Zstd.MAX_DECOMPRESSED_BYTES || frame.size > Zstd.MAX_DECOMPRESSED_BYTES) return null
+        return try {
+            val size = com.github.luben.zstd.Zstd.getFrameContentSize(frame)
+            if (size !in 0..maxOutputBytes.toLong()) return null
+            com.github.luben.zstd.Zstd.decompress(frame, size.toInt()).takeIf { it.size.toLong() == size }
+        } catch (_: com.github.luben.zstd.ZstdException) { null }
     }
 }
