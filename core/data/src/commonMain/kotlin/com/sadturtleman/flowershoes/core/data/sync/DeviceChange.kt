@@ -1,9 +1,12 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.CoupleKey
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import com.sadturtleman.flowershoes.core.crypto.Pairing
 import com.sadturtleman.flowershoes.core.data.Identity
+import com.sadturtleman.flowershoes.core.data.RelationshipArchive
 import com.sadturtleman.flowershoes.core.data.toModel
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.CoupleEntity
@@ -148,8 +151,10 @@ sealed interface DeviceChangeState {
 
 /** 이 폰에 지금 있는 기록 수(받는 중 진행률의 분자, 승인할 때 보낼 수). */
 suspend fun AppDatabase.transferCounts(): TransferCounts {
-    val letters = letterDao().allActive()
-    val events = eventDao().all().filter { it.deletedAtMs == null }
+    val archive = RelationshipArchive(this)
+    archive.prepare()
+    val letters = letterDao().allActive().filterNot { archive.contains("letter", it.id) }
+    val events = eventDao().all().filter { it.deletedAtMs == null && !archive.contains("event", it.id) }
     return TransferCounts(
         letters = letters.size,
         events = events.size,
@@ -239,20 +244,25 @@ class DeviceChangeSession(
     }
 
     /** 승인된 요청: 커플 키를 풀고 커플 · 기기 행을 만든 뒤 세션을 이어 받는다. 아직 활성화 전이면 null. */
-    private suspend fun finish(c: String, r: DeviceChangeRequest): DeviceChangeState? {
-        val wrapped = transport.wrappedKey(c, identity.deviceId) ?: return null
-        val partner = transport.partnerDevice(c, identity.userId) ?: return null
+    private suspend fun finish(c: String, r: DeviceChangeRequest): DeviceChangeState? = db.relationshipMutex.withLock {
+        val current = db.coupleDao().get()
+        if (current?.partnerUserId?.isNotBlank() == true && current.id != c) return@withLock null
+        val wrapped = transport.wrappedKey(c, identity.deviceId) ?: return@withLock null
+        val partner = transport.partnerDevice(c, identity.userId) ?: return@withLock null
         val keys = myKeys()
         val key = CoupleKey.unwrap(keys, wrapped)
         vault.putCoupleKey(key)
         val now = clock.now().toEpochMilliseconds()
-        db.coupleDao().clear()
-        db.coupleDao().upsert(CoupleEntity(c, identity.userId, partner.uid, key.epoch, now))
+        db.useWriterConnection { tx -> tx.immediateTransaction {
+            RelationshipArchive(db).prepare()
+            db.coupleDao().clear()
+            db.coupleDao().upsert(CoupleEntity(c, identity.userId, partner.uid, key.epoch, now))
+        } }
         db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
         db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         // 옛 세션(같은 계정의 옛 폰)을 끊고 이 기기로 다시 로그인한다. 실패해도 연결은 끝났다(옛 세션이 토큰 만료까지 남을 뿐이다).
         runCatching { signIn(transport.finalize(c, r.id, keys.sign(DeviceChangeMessages.finalize(c, r.id, identity.userId)))) }
-        return DeviceChangeState.Linked(c, r.counts ?: TransferCounts(), key.epoch, fresh = true)
+        return@withLock DeviceChangeState.Linked(c, r.counts ?: TransferCounts(), key.epoch, fresh = true)
     }
 
     /** 넘겨받은 내 역할(스냅샷의 내 사용자 행). 새 폰은 온보딩을 건너뛰므로 이 값으로 역할을 정한다. */
@@ -384,15 +394,18 @@ class DeviceChangeApprover(
     private suspend fun apply(p: PendingApproval, r: DeviceChangeRequest): Int {
         val couple = checkNotNull(db.coupleDao().get())
         val newKeys = checkNotNull(transport.deviceKeys(couple.id, r.newDeviceId)) { "새 기기 공개키가 없다" }
-        vault.putCoupleKey(p.key)
-        val now = clock.now().toEpochMilliseconds()
-        p.oldDeviceId?.let { id ->
-            db.syncDao().addRevoked(RevokedDeviceEntity(id, now, cutoffJson(p.cutoff)))
-            db.deviceDao().get(id)?.let { db.deviceDao().upsert(it.copy(state = DeviceState.REVOKED.name, revokedAtMs = now)) }
+        db.relationshipMutex.withLock {
+            check(db.coupleDao().get()?.id == couple.id) { "연결이 바뀌었어요" }
+            vault.putCoupleKey(p.key)
+            val now = clock.now().toEpochMilliseconds()
+            p.oldDeviceId?.let { id ->
+                db.syncDao().addRevoked(RevokedDeviceEntity(id, now, cutoffJson(p.cutoff)))
+                db.deviceDao().get(id)?.let { db.deviceDao().upsert(it.copy(state = DeviceState.REVOKED.name, revokedAtMs = now)) }
+            }
+            db.deviceDao().upsert(DeviceEntity(r.newDeviceId, r.uid, r.uid, newKeys.signPub, newKeys.boxPub, DeviceState.ACTIVE.name, now, null))
+            db.coupleDao().upsert(couple.copy(keyEpoch = p.key.epoch))
+            vault.putPendingApproval(null)
         }
-        db.deviceDao().upsert(DeviceEntity(r.newDeviceId, r.uid, r.uid, newKeys.signPub, newKeys.boxPub, DeviceState.ACTIVE.name, now, null))
-        db.coupleDao().upsert(couple.copy(keyEpoch = p.key.epoch))
-        vault.putPendingApproval(null)
         // 공유 데이터 전체를 새 기기로. 다음 push 가 새 키로 새 기기 우편함에 올린다.
         val s = sync ?: return 0
         s.writeFullSnapshot()

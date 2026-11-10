@@ -50,6 +50,7 @@ class InboxApplier(
 ) {
     suspend fun apply(op: ReceivedOp): ApplyResult = db.useWriterConnection { tx ->
         tx.immediateTransaction {
+            RelationshipArchive(db).prepare()
             val sync = db.syncDao()
             if (!RevocationFilter(revoked()).accepts(op.stream, op.seq)) return@immediateTransaction ApplyResult.REJECTED_REVOKED
 
@@ -84,6 +85,7 @@ class InboxApplier(
     }
 
     private suspend fun applyPayload(p: OpPayload) {
+        if (RelationshipArchive(db).shared(p) == null) return
         when (p) {
             is OpPayload.MissYouPut -> db.missYouDao().insert(p.missYou.toEntity())
             is OpPayload.StatusPut -> db.statusDao().upsert(p.status.toEntity())
