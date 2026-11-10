@@ -32,6 +32,7 @@ import platform.Security.kSecAttrAccessGroup
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 import platform.Security.kSecAttrAccount
+import platform.Security.kSecAttrService
 import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
 import platform.Security.kSecReturnData
@@ -49,6 +50,8 @@ internal class IosKeychainStore(
     private val readItem: (platform.CoreFoundation.CFDictionaryRef?, kotlinx.cinterop.CPointer<platform.CoreFoundation.CFTypeRefVar>?) -> Int = { query, out -> SecItemCopyMatching(query, out) },
     private val deleteItem: (platform.CoreFoundation.CFDictionaryRef?) -> Int = { query -> SecItemDelete(query) },
     private val accountPrefix: String = "",
+    // Older versions omitted service; generic-password items use the empty service in that case.
+    private val service: String = "",
 ) : VaultItems {
     // ── Keychain ──
 
@@ -56,9 +59,11 @@ internal class IosKeychainStore(
         val d = CFDictionaryCreateMutable(null, 0, null, null)
         val accountRef = account?.let { CFBridgingRetain((accountPrefix + it) as NSString) }
         val groupRef = accessGroup?.let { CFBridgingRetain(it as NSString) }
+        val serviceRef = CFBridgingRetain(service as NSString)
         try {
             val pairs = mapOf<Any?, Any?>(
                 kSecClass to kSecClassGenericPassword,
+                kSecAttrService to serviceRef,
             ) + (accountRef?.let { mapOf(kSecAttrAccount to it) } ?: emptyMap()) + (groupRef?.let { mapOf(kSecAttrAccessGroup to it) } ?: emptyMap()) + extra
             pairs.forEach { (k, v) -> CFDictionaryAddValue(d, k as platform.CoreFoundation.CFTypeRef?, v as platform.CoreFoundation.CFTypeRef?) }
             return block(d)
@@ -66,6 +71,7 @@ internal class IosKeychainStore(
             CFRelease(d)
             if (accountRef != null) CFRelease(accountRef)
             if (groupRef != null) CFRelease(groupRef)
+            CFRelease(serviceRef)
         }
     }
 

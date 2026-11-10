@@ -1,19 +1,29 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 
 package com.sadturtleman.flowershoes.core.data.sync
 
 import com.sadturtleman.flowershoes.core.crypto.*
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.*
 import libsodium.sodium_init
 import okio.FileSystem
 import kotlin.test.*
 import kotlin.uuid.Uuid
 import platform.posix.*
+import platform.CoreFoundation.*
+import platform.Foundation.CFBridgingRetain
+import platform.Foundation.NSData
+import platform.Foundation.NSString
+import platform.Foundation.create
+import platform.Security.*
 
 /** Real simulator Keychain and independent file descriptors; no in-memory Keychain replacement. */
 class IosVaultStorageTest {
     private val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "vault-lock-${Uuid.random()}"
-    private val items = IosKeychainStore(null, accountPrefix = "vault-test-${Uuid.random()}:")
+    private val prefix = "vault-test-${Uuid.random()}:"
+    private val items = IosKeychainStore(null, accountPrefix = prefix)
+    private val unrelated = IosKeychainStore(null, accountPrefix = prefix, service = "unrelated")
     private fun vault() = IosKeyVault(items, root.toString())
 
     @BeforeTest fun initialize() = runBlocking {
@@ -23,6 +33,7 @@ class IosVaultStorageTest {
 
     @AfterTest fun clean() {
         items.accounts().forEach(items::delete)
+        unrelated.accounts().forEach(unrelated::delete)
         FileSystem.SYSTEM.deleteRecursively(root, mustExist = false)
     }
 
@@ -44,6 +55,45 @@ class IosVaultStorageTest {
         assertNull(stale.deviceKeys()); assertNull(stale.currentCoupleKey())
         assertFails { stale.putCoupleKey(CoupleKey.generate(2)) }
         assertEquals(setOf(SerializedKeyVault.ACCOUNT), items.accounts())
+    }
+
+    @Test fun `같은 계정 이름을 쓰는 다른 서비스의 항목은 읽거나 수정하거나 지우지 않는다`() = runBlocking {
+        val other = byteArrayOf(9, 9)
+        unrelated.write(SerializedKeyVault.ACCOUNT, other)
+        unrelated.write("coupleKey.99", other)
+        assertNull(items.read(SerializedKeyVault.ACCOUNT))
+        assertTrue(items.accounts().isEmpty())
+        val first = vault()
+        first.putDeviceKeys(DeviceKeys.generate())
+        items.write("coupleKey.99", ByteArray(32))
+        first.clearCoupleKeys()
+        assertNull(items.read("coupleKey.99"))
+        assertContentEquals(other, unrelated.read("coupleKey.99"))
+        assertContentEquals(other, unrelated.read(SerializedKeyVault.ACCOUNT))
+        first.clearAll()
+        assertContentEquals(other, unrelated.read("coupleKey.99"))
+        assertContentEquals(other, unrelated.read(SerializedKeyVault.ACCOUNT))
+    }
+
+    @Test fun `service 없이 저장한 구버전 항목도 빈 service 범위로 읽고 갱신하고 지운다`() {
+        val account = "legacy-value"
+        val old = byteArrayOf(1, 2)
+        val query = CFDictionaryCreateMutable(null, 0, null, null)
+        val accountRef = CFBridgingRetain((prefix + account) as NSString)
+        val dataRef = CFBridgingRetain(old.usePinned { NSData.create(bytes = it.addressOf(0), length = old.size.toULong()) })
+        try {
+            CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
+            CFDictionaryAddValue(query, kSecAttrAccount, accountRef)
+            CFDictionaryAddValue(query, kSecValueData, dataRef)
+            assertEquals(errSecSuccess, SecItemAdd(query, null))
+        } finally { CFRelease(query); CFRelease(accountRef); CFRelease(dataRef) }
+        assertContentEquals(old, items.read(account))
+        assertTrue(account in items.accounts())
+        val updated = byteArrayOf(3, 4)
+        items.write(account, updated)
+        assertContentEquals(updated, items.read(account))
+        items.delete(account)
+        assertNull(items.read(account))
     }
 
     @Test fun `독립 파일 디스크립터가 잠금을 공유하고 기다림을 취소할 수 있다`() = runBlocking {

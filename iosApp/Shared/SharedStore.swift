@@ -187,6 +187,7 @@ enum SharedStore {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
+            kSecAttrService as String: "",
             kSecReturnData as String: true,
         ]
         if let keychainGroup { query[kSecAttrAccessGroup as String] = keychainGroup }
@@ -200,6 +201,7 @@ enum SharedStore {
         var base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account,
+            kSecAttrService as String: "",
         ]
         if let keychainGroup { base[kSecAttrAccessGroup as String] = keychainGroup }
         SecItemDelete(base as CFDictionary)
