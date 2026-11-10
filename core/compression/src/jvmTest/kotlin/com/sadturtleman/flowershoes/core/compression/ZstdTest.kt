@@ -5,9 +5,31 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 class ZstdTest {
     private val text = "보고싶어 ".repeat(500).encodeToByteArray()
+
+    @Test
+    fun `출력 크기 경계와 크기 미상 프레임을 검사한다`() {
+        val frame = Zstd.codec!!.compress(text, 3)
+        assertContentEquals(text, Zstd.codec!!.decompress(frame, text.size))
+        assertNull(Zstd.codec!!.decompress(frame, text.size - 1))
+        assertNull(Zstd.codec!!.decompress(frame.copyOf(frame.size - 1)))
+        assertNull(Zstd.codec!!.decompress(Zstd.MAGIC + byteArrayOf(0, 0, 1, 0, 0)))
+        assertNull(Zstd.codec!!.decompress(frame, -1))
+    }
+
+    @Test
+    fun `잘못된 프레임은 네이티브 오류를 밖으로 내보내지 않는다`() {
+        assertNull(Zstd.codec!!.decompress(Zstd.MAGIC + byteArrayOf(0x7f, 1, 2)))
+    }
+
+    @Test
+    fun `해제 크기가 16MiB를 넘으면 네이티브 버퍼를 만들지 않는다`() {
+        val frame = Zstd.codec!!.compress(ByteArray(16 * 1024 * 1024 + 1), 3)
+        assertNull(Zstd.codec!!.decompress(frame))
+    }
 
     @Test
     fun `반복이 많은 데이터는 작아지고 그대로 돌아온다`() {

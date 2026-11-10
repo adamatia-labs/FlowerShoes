@@ -8,6 +8,7 @@ import com.sadturtleman.flowershoes.core.drawing.DrawingCodec
 import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
 import com.sadturtleman.flowershoes.core.drawing.PhotoBackground
 import java.io.File
+import java.io.DataInputStream
 
 /**
  * 그림 문서를 비트맵으로(위젯 · 알림용). 화면과 같은 Compose 렌더러로 그린다(스티커 · 사진 포함).
@@ -27,13 +28,20 @@ object DrawingBitmap {
     internal fun cacheDir(): File? = context?.cacheDir
 
     fun render(docPath: String, widthPx: Int): Bitmap? {
-        val bytes = runCatching { File(docPath).readBytes() }.getOrNull() ?: return null
+        val file = File(docPath)
+        val size = file.length()
+        if (size > DrawingCodec.MAX_DOCUMENT_BYTES) return null
+        val bytes = runCatching {
+            DataInputStream(file.inputStream()).use { source ->
+                ByteArray(size.toInt()).also { source.readFully(it) }.takeIf { source.read() == -1 }
+            }
+        }.getOrNull() ?: return null
         val doc = (DrawingCodec.decode(bytes) as? DrawingCodec.Result.Ok)?.document ?: return null
         // 위젯: 배경 사진은 문서와 같은 첨부 폴더에 있다.
         val dir = attachmentsDir ?: File(docPath).parentFile
         val photos = doc.elements.filterIsInstance<PhotoBackground>()
             .mapNotNull { p -> runCatching { File(dir, p.attachmentId).readBytes() }.getOrNull()?.let { p.attachmentId to it } }.toMap()
-        return render(doc, widthPx, photos)
+        return runCatching { render(doc, widthPx, photos) }.getOrNull()
     }
 
     fun render(doc: DrawingDocument, widthPx: Int, photos: Map<String, ByteArray> = emptyMap()): Bitmap {

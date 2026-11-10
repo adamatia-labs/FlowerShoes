@@ -27,6 +27,17 @@ class AttachmentStorePathTest {
     fun close() { db.close(); if (fs.exists(area)) fs.deleteRecursively(area) }
 
     @Test
+    fun `읽기 한도를 넘는 원본 파일은 지우거나 바꾸지 않는다`() = runTest {
+        val bytes = byteArrayOf(1, 2, 3, 4)
+        val id = store.put(AttachmentKind.DRAWING_DOC, bytes)
+        val row = db.attachmentDao().get(id)
+        assertNull(store.read(id, maxBytes = 3))
+        assertContentEquals(bytes, store.read(id, maxBytes = 4))
+        assertContentEquals(bytes, fs.read(root / id) { readByteArray() })
+        assertEquals(row, db.attachmentDao().get(id))
+    }
+
+    @Test
     fun `같은 첨부 식별자의 다른 내용은 기존 파일과 메타데이터를 보존한다`() = runTest {
         val original = "original photo".encodeToByteArray()
         store.putWithId("same-id", AttachmentKind.PHOTO, original)

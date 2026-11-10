@@ -3,7 +3,6 @@ package com.sadturtleman.flowershoes.core.drawing
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -62,9 +61,9 @@ class DrawingEngineTest {
 
     @Test
     fun `그림 문서가 아니면 거부한다`() {
-        assertFailsWith<DrawingFormatException> { DrawingCodec.decode(byteArrayOf(1, 2, 3, 4, 5)) }
+        assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(byteArrayOf(1, 2, 3, 4, 5)))
         val truncated = DrawingCodec.encode(sample).let { it.copyOf(it.size - 3) }
-        assertFailsWith<DrawingFormatException> { DrawingCodec.decode(truncated) }
+        assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(truncated))
     }
 
     @Test
