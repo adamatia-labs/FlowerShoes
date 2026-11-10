@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.sadturtleman.flowershoes.core.widget.WidgetSnapshot
 import com.sadturtleman.flowershoes.core.widget.WidgetTag
+import com.sadturtleman.flowershoes.widget.DrawingWidgetReceiver
 import com.sadturtleman.flowershoes.widget.MissYouWidgetReceiver
 import com.sadturtleman.flowershoes.widget.OverviewWidgetReceiver
 import com.sadturtleman.flowershoes.widget.NextMeetingWidgetReceiver
@@ -68,6 +69,52 @@ class WidgetRefreshTest {
             awaitText(view, "11월 8일 면회")
             assertVisible(view, "11월 8일 면회", 110)
         }
+    }
+
+    @Test
+    fun drawingFrameTextKeepsContrastInActualRemoteViews(): Unit = runBlocking {
+        InstrumentationRegistry.getArguments().getString("expectedNightMode")?.let { expected ->
+            val actual = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+            assertEquals(if (expected == "yes") android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO, actual)
+        }
+        val image = java.io.File(context.filesDir, "attachments/widget-contrast.png")
+        image.parentFile!!.mkdirs()
+        val bitmap = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        image.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        val frames = mapOf("NIGHT" to 0xFF1B2235.toInt(), "KRAFT" to 0xFFD9C4A3.toInt(), "BLOSSOM" to 0xFFFFF4F5.toInt(), "POLAROID" to 0xFFFFFFFF.toInt())
+        try {
+            for (size in listOf(110, 300)) {
+                val initial = WidgetSnapshot(theme = "GOMSIN", drawingId = "contrast-drawing", drawingPngPath = image.absolutePath,
+                    drawingLetterId = "contrast-letter", drawingCaption = "그림 제목", drawingMeta = "준비", updatedAtMs = System.currentTimeMillis())
+                withWidget(initial, DrawingWidgetReceiver::class.java, size) { view ->
+                    // Cold Glance startup on the emulator can outlast an active-session update.
+                    awaitText(view, "준비", timeoutMs = 60_000)
+                    instrumentation.runOnMainSync {
+                        val px = (size * context.resources.displayMetrics.density).toInt()
+                        val spec = View.MeasureSpec.makeMeasureSpec(px, View.MeasureSpec.EXACTLY)
+                        view.measure(spec, spec); view.layout(0, 0, px, px)
+                    }
+                    for (theme in listOf("GOMSIN", "SOLDIER")) for ((frame, background) in frames) {
+                        val label = "$theme $frame"
+                        snapshotStore(context).write(initial.copy(theme = theme, widgetFrame = frame, drawingMeta = label))
+                        updateAllWidgets(context)
+                        awaitText(view, label)
+                        instrumentation.runOnMainSync {
+                            val rendered = textViews(view)
+                            val content = rendered.filter { it.text.toString() == label || it.text.toString() == "그림 제목" }
+                            assertTrue("No frame text rendered", content.isNotEmpty())
+                            if (size == 300) assertTrue("Medium drawing title missing", content.any { it.text.toString() == "그림 제목" })
+                            content.forEach { text ->
+                                val contrast = androidx.core.graphics.ColorUtils.calculateContrast(text.currentTextColor, background)
+                                assertTrue("$label / ${text.text}: contrast=$contrast", contrast >= 4.5)
+                            }
+                        }
+                    }
+                }
+            }
+        } finally { image.delete() }
     }
 
     private suspend fun withWidget(initial: WidgetSnapshot, receiver: Class<*>, sizeDp: Int, block: suspend (AppWidgetHostView) -> Unit) {
@@ -133,9 +180,9 @@ class WidgetRefreshTest {
         }
     }
 
-    private suspend fun awaitText(view: AppWidgetHostView, expected: String) {
+    private suspend fun awaitText(view: AppWidgetHostView, expected: String, timeoutMs: Long = 15_000) {
         var last = emptyList<String>()
-        val found = kotlinx.coroutines.withTimeoutOrNull(15_000) {
+        val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
             while (true) {
                 instrumentation.runOnMainSync { last = texts(view) }
                 if (expected in last) return@withTimeoutOrNull true
