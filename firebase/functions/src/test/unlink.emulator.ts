@@ -112,3 +112,25 @@ test('작업의 실제 구성원도 서버 전용 작업과 알림 문서에 직
     await env.cleanup();
   }
 });
+
+test('해제 작업 생성 직후부터 기존 커플 문서가 남아 있어도 구성원의 새 쓰기를 막는다', async () => {
+  const id = 'frozen';
+  await seed(id);
+  await getFirestore().doc(`couples/${id}/devices/device-a`).set({ uid: `${id}-a`, active: true });
+  const paths = [resolve(process.cwd(), '../rules-test')];
+  const rules = require(require.resolve('@firebase/rules-unit-testing', { paths }));
+  const firestore = require(require.resolve('firebase/firestore', { paths }));
+  const [host, port] = process.env.FIRESTORE_EMULATOR_HOST!.split(':');
+  const env = await rules.initializeTestEnvironment({ projectId: 'demo-kkotsin-unlink', firestore: { host, port: Number(port) } });
+  try {
+    const client = env.authenticatedContext(`${id}-a`).firestore();
+    await rules.assertSucceeds(firestore.getDoc(firestore.doc(client, `couples/${id}`)));
+    const payload = { kind: 'letter', from: 'device-a', ct: 'local-test' };
+    await rules.assertSucceeds(firestore.setDoc(firestore.doc(client, `couples/${id}/inbox/device-b/ops/before`), payload));
+    await getFirestore().doc(`unlinkOperations/${id}`).set({ members: [`${id}-a`, `${id}-b`], initiatedBy: `${id}-a`, completed: false });
+    await rules.assertFails(firestore.setDoc(firestore.doc(client, `couples/${id}/inbox/device-b/ops/after`), payload));
+    await rules.assertFails(firestore.getDoc(firestore.doc(client, `couples/${id}`)));
+    await call(id, `${id}-a`);
+    assert.equal((await getFirestore().doc(`couples/${id}/inbox/device-b/ops/before`).get()).exists, false);
+  } finally { await env.cleanup(); }
+});

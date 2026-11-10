@@ -9,7 +9,8 @@ service cloud.firestore {
     // 익명 로그인은 콘솔에서 끄지만, 혹시 켜져도 막는다.
     function signedIn() {
       return request.auth != null
-        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && !exists(/databases/$(database)/documents/accountDeletions/$(request.auth.uid));
     }
 
     function coupleDoc(c) {
@@ -17,7 +18,9 @@ service cloud.firestore {
     }
 
     function isMember(c) {
-      return signedIn() && request.auth.uid in coupleDoc(c).members;
+      return signedIn()
+        && !exists(/databases/$(database)/documents/unlinkOperations/$(c))
+        && request.auth.uid in coupleDoc(c).members;
     }
 
     // members = { uid: 지금 그 사람의 기기 id }
