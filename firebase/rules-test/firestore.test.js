@@ -65,6 +65,24 @@ test('토큰은 128비트(base64url 22자)여야 한다', async () => {
   await assertFails(setDoc(doc(as('jisu'), 'pairings/K7M2Q9XA'), invite('jisu')));
 });
 
+test('서버가 생성 순서를 기록하기 전에는 초대를 지워 이전 링크를 되살릴 수 없다', async () => {
+  const ref = doc(as('jisu'), `pairings/${TOKEN}`);
+  await assertSucceeds(setDoc(ref, invite('jisu')));
+  await assertFails(deleteDoc(ref));
+  await assertFails(setDoc(ref, { orderRecorded: true }, { merge: true }));
+  await assertFails(setDoc(doc(as('jisu'), 'pairings/BBBBBBBBBBBBBBBBBBBBBB'), invite('jisu', { orderRecorded: true })));
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    // The function commits this marker in the same transaction as the durable latest-order record.
+    await setDoc(doc(ctx.firestore(), `pairings/${TOKEN}`), { orderRecorded: true }, { merge: true });
+    await setDoc(doc(ctx.firestore(), 'inviteHeads/jisu'), { token: TOKEN, createdAt: Timestamp.now() });
+  });
+  await assertFails(deleteDoc(doc(as('minjun'), `pairings/${TOKEN}`)));
+  await assertSucceeds(deleteDoc(ref));
+  // Reusing a token starts without the marker; an old head cannot authorize premature deletion.
+  await assertSucceeds(setDoc(ref, invite('jisu')));
+  await assertFails(deleteDoc(ref));
+});
+
 test('초대는 토큰을 아는 사람만 읽고 목록은 아무도 못 본다', async () => {
   await setDoc(doc(as('jisu'), `pairings/${TOKEN}`), invite('jisu'));
   await assertSucceeds(getDoc(doc(as('minjun'), `pairings/${TOKEN}`)));

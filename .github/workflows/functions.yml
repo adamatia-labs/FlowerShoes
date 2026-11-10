@@ -47,6 +47,9 @@ jobs:
       - name: Unlink retry integration tests
         working-directory: firebase/functions
         run: npm run test:unlink:emulator
+      - name: Invite creation order and rules integration tests
+        working-directory: firebase/functions
+        run: npm run test:invite:emulator
       - name: Account generation and deletion integration tests
         working-directory: firebase/functions
         run: npm run test:account:emulator

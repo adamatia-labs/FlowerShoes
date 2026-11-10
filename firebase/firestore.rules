@@ -62,7 +62,9 @@ service cloud.firestore {
       // 토큰을 알아야 읽는다. 만료 여부는 앱이 expireAt 으로 본다(만료 화면을 보여 주려고). 목록 조회는 막는다.
       allow get: if signedIn();
       allow list, update: if false;
-      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      // 생성 트리거 전에 새 링크를 지우면 이전 링크가 최신으로 보인다. 서버가 순서를 보존한 뒤에만 지운다.
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid
+        && resource.data.get('orderRecorded', false) == true;
 
       function pairing() {
         return get(/databases/$(database)/documents/pairings/$(token)).data;
