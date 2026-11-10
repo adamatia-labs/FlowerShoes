@@ -5,7 +5,7 @@ enum class AuthProvider { KAKAO, APPLE, GOOGLE }
 
 sealed interface SignInResult {
     /**
-     * 로그인됨. [uid] 는 Firebase uid(카카오는 "kakao:{회원번호}").
+     * 로그인됨. [uid] 는 서버가 발급한 Firebase uid다. 카카오도 탈퇴 후 재가입하면 새 uid를 받으므로 구조를 해석하지 않는다.
      * [displayName] 은 제공자가 알려 준 이름(카카오 닉네임 · Google 이름 · Apple 첫 로그인 이름) — 없을 수 있다.
      */
     data class Success(val uid: String, val provider: AuthProvider, val displayName: String? = null) : SignInResult

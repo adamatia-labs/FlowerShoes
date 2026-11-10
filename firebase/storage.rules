@@ -5,11 +5,13 @@ service firebase.storage {
   match /b/{bucket}/o {
 
     function signedIn() {
-      return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && !firestore.exists(/databases/(default)/documents/accountDeletions/$(request.auth.uid));
     }
 
     function isMember(c) {
       return signedIn()
+        && !firestore.exists(/databases/(default)/documents/unlinkOperations/$(c))
         && request.auth.uid in firestore.get(/databases/(default)/documents/couples/$(c)).data.members;
     }
 

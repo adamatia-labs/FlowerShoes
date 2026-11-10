@@ -44,6 +44,12 @@ jobs:
       - name: Firestore and local TLS SMTP integration tests
         working-directory: firebase/functions
         run: npm run test:mail:emulator
+      - name: Unlink retry integration tests
+        working-directory: firebase/functions
+        run: npm run test:unlink:emulator
+      - name: Account generation and deletion integration tests
+        working-directory: firebase/functions
+        run: npm run test:account:emulator
       - name: Apple account deletion integration tests
         working-directory: firebase/functions
         run: npm run test:apple:emulator

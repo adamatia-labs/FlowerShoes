@@ -38,3 +38,28 @@ test('Apple 토큰 폐기 성공, 실패와 토큰 부재를 구분하고 계정
     }
   } finally { request.mock.restore(); remove.mock.restore(); }
 });
+
+test('토큰을 지운 뒤 Auth 정리가 실패해도 재시도와 응답 재전달은 같은 Apple 결과를 돌려준다', async () => {
+  for (const revoked of [true, false]) {
+    const uid = revoked ? 'apple-retry-revoked' : 'apple-retry-manual';
+    const expected = revoked ? 'revoked' : 'manual';
+    let fail = true;
+    const remove = mock.method(getAuth(), 'deleteUser', async () => { if (fail) throw new Error('injected-auth-cleanup'); });
+    const request = mock.method(globalThis, 'fetch', (async (input: string | URL | Request) => {
+      if (!String(input).endsWith('/auth/revoke')) throw new Error('unexpected test request');
+      return new Response('', { status: revoked ? 200 : 503 });
+    }) as typeof fetch);
+    const call = () => functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, data: {}, rawRequest: {} } as never);
+    try {
+      await getFirestore().doc(`appleTokens/${uid}`).set({ refreshToken: 'test-token' });
+      await assert.rejects(call(), /injected-auth-cleanup/);
+      assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).exists, false);
+      assert.equal((await getFirestore().doc(`accountDeletions/${uid}`).get()).get('appleRevocation'), expected);
+      fail = false;
+      assert.deepEqual(await call(), { ok: true, appleRevocation: expected });
+      assert.deepEqual(await call(), { ok: true, appleRevocation: expected });
+      assert.equal(request.mock.callCount(), 1);
+      assert.equal(remove.mock.callCount(), 2);
+    } finally { request.mock.restore(); remove.mock.restore(); }
+  }
+});

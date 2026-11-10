@@ -29,6 +29,8 @@ import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
 import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
+import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
+import { deliverUnlinkNotification, forgetUnlinkMember, unlink, UnlinkForbidden, UnlinkNotFound, UnlinkStore, UnlinkHistory } from './unlink';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -64,6 +66,7 @@ function uidOfDevice(members: Record<string, string>, deviceId: string): string 
 }
 
 async function tokensOf(uid: string): Promise<string[]> {
+  if ((await deletionRef(uid).get()).exists) return [];
   const snap = await db.doc(`users/${uid}`).get();
   return (snap.get('fcmTokens') as string[] | undefined) ?? [];
 }
@@ -72,7 +75,7 @@ async function tokensOf(uid: string): Promise<string[]> {
  * FCM 발송. 화면 알림은 iOS NSE 가 인라인 암호문을 풀어 문구를 바꿀 수 있게 mutable-content 를 켠다.
  * data 만 보낼 때 Android 는 normal priority — 알림 없는 high-priority 는 Android 가 점점 낮춘다.
  */
-async function push(uid: string, payload: { visible?: { title: string; body: string }; data: Record<string, string> }) {
+async function push(uid: string, payload: { visible?: { title: string; body: string }; data: Record<string, string> }, retryTransient = false) {
   const tokens = await tokensOf(uid);
   if (tokens.length === 0) return;
   const res = await getMessaging().sendEachForMulticast({
@@ -89,6 +92,9 @@ async function push(uid: string, payload: { visible?: { title: string; body: str
     .map((r, i) => (!r.success && r.error?.code === 'messaging/registration-token-not-registered' ? tokens[i] : null))
     .filter((t): t is string => t !== null);
   if (dead.length) await db.doc(`users/${uid}`).update({ fcmTokens: FieldValue.arrayRemove(...dead) });
+  if (retryTransient && res.responses.some((r) => !r.success && r.error?.code !== 'messaging/registration-token-not-registered' && r.error?.code !== 'messaging/invalid-registration-token')) {
+    throw new Error('UNLINK_NOTIFICATION_RETRY');
+  }
 }
 
 async function prefsOf(uid: string): Promise<NotifyPrefs> {
@@ -115,11 +121,16 @@ export const onInboxCreated = onDocumentCreated(
     const inline = typeof doc.ct === 'string' && doc.ct.length <= INLINE_MAX_BASE64 ? (doc.ct as string) : undefined;
 
     const decision = await db.runTransaction(async (tx) => {
+      const deletion = await tx.get(deletionRef(uid));
+      const currentCouple = await tx.get(db.doc(`couples/${c}`));
+      const unlinking = await tx.get(db.doc(`unlinkOperations/${c}`));
+      if (deletion.exists || !currentCouple.exists || unlinking.exists) return undefined;
       const state = ((await tx.get(stateRef)).data() as NotifyState | undefined) ?? { missYouDay: '', missYouCount: 0 };
       const r = decide({ kind: doc.kind, resend: doc.resend === true, inline }, prefs, state, new Date(), senderName);
       tx.set(stateRef, r.state);
       return r.decision;
     });
+    if (!decision) return;
 
     const data: Record<string, string> = { kind: String(doc.kind), coupleId: c, opId, v: '1' };
     if (decision.type === 'visible') {
@@ -201,6 +212,10 @@ export const onInviteCreated = onDocumentCreated({ document: 'pairings/{token}',
   const uid = event.data?.get('uid') as string | undefined;
   const expireAt = event.data?.get('expireAt') as Timestamp | undefined;
   if (!uid || !expireAt) return;
+  if ((await deletionRef(uid).get()).exists) {
+    await db.recursiveDelete(event.data!.ref);
+    return;
+  }
   // 새 링크가 이전 링크를 무효화한다(#15 결정 3). 거의 동시에 두 개를 만들어도 둘 다 지우지 않도록,
   // 이 초대보다 먼저 만든(만료가 이른) 것만 지운다.
   await dropInvitesOf(uid, (d) => d.id !== event.params.token && (d.get('expireAt') as Timestamp).toMillis() <= expireAt.toMillis());
@@ -218,6 +233,9 @@ export const onInviteAccepted = onDocumentCreated({ document: 'pairings/{token}/
   const coupleRef = db.collection('couples').doc();
   const result = await db.runTransaction(async (tx) => {
     const invite = inviteOf(await tx.get(base));
+    if (!invite) return undefined;
+    const [inviterDeletion, joinerDeletion] = await Promise.all([tx.get(deletionRef(invite.uid)), tx.get(deletionRef(accept.uid))]);
+    if (inviterDeletion.exists || joinerDeletion.exists) return undefined;
     const [inviterUser, joinerUser] = invite
       ? await Promise.all([tx.get(db.doc(`users/${invite.uid}`)), tx.get(db.doc(`users/${accept.uid}`))])
       : [undefined, undefined];
@@ -293,6 +311,8 @@ export const onDeviceChangeCreated = onDocumentCreated({ document: 'couples/{c}/
     if (!req || req.status !== 'pending' || typeof req.uid !== 'string' || typeof req.newDeviceId !== 'string' || !(req.createdAt instanceof Timestamp)) return undefined;
     const couple = (await tx.get(db.doc(`couples/${c}`))).data() as { members: Record<string, string> } | undefined;
     if (!couple || !(req.uid in couple.members)) return undefined;
+    if ((await tx.get(db.doc(`unlinkOperations/${c}`))).exists) return undefined;
+    if ((await tx.get(deletionRef(req.uid))).exists) return undefined;
     const others = (await tx.get(db.collection(`couples/${c}/deviceChanges`).where('uid', '==', req.uid))).docs.filter((d) => d.id !== r);
     // 같은 서버 시각의 요청도 ID로 순서를 정해 어느 이벤트가 먼저 와도 같은 결과를 만든다.
     const newer = newerDeviceRequests(others, r, req.createdAt);
@@ -332,6 +352,8 @@ export const onDeviceChangeAnswered = onDocumentCreated({ document: 'couples/{c}
   const outcome = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const req = snap.data();
+    if ((await tx.get(db.doc(`unlinkOperations/${c}`))).exists) return { result: 'ignore' as const, req };
+    if (req && typeof req.uid === 'string' && (await tx.get(deletionRef(req.uid))).exists) return { result: 'ignore' as const, req };
     let approver: { uid: string; active: boolean } | undefined;
     let signatureOk = false;
     if (req && who === 'partner' && answer.result === 'approve') {
@@ -398,6 +420,7 @@ export const onDeviceChangeAnswered = onDocumentCreated({ document: 'couples/{c}
 export const finalizeDevice = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
+  await requireLiveAccount(uid);
   const { coupleId, requestId, challengeSig } = req.data as { coupleId: string; requestId: string; challengeSig: string };
   const change = (await db.doc(`couples/${coupleId}/deviceChanges/${requestId}`).get()).data();
   if (!change || change.uid !== uid) throw new HttpsError('permission-denied', '내 교체 요청이 아니다');
@@ -408,6 +431,7 @@ export const finalizeDevice = onCall({ region: REGION }, async (req) => {
   }
   const token = await getAuth().createCustomToken(uid);
   await getAuth().revokeRefreshTokens(uid);
+  await requireLiveAccount(uid);
   return { token };
 });
 
@@ -436,6 +460,12 @@ export const sendFromWidget = onRequest({ region: REGION }, async (req, res) => 
   const day = Math.floor(Date.now() / 86400000);
   const rateRef = db.doc(`widgetRate/${fromDeviceId}`);
   const accepted = await db.runTransaction(async (tx) => {
+    const currentDevice = await tx.get(device.ref);
+    const couple = await tx.get(db.doc(`couples/${coupleId}`));
+    const unlinking = await tx.get(db.doc(`unlinkOperations/${coupleId}`));
+    if (!currentDevice.exists || !currentDevice.get('active') || !couple.exists || unlinking.exists) return 'deleted';
+    const uid = currentDevice.get('uid') as string;
+    if ((await tx.get(deletionRef(uid))).exists) return 'deleted';
     const seen = await tx.get(db.doc(`widgetOps/${opId}`));
     if (seen.exists) return 'replay';
     const rate = (await tx.get(rateRef)).data() ?? {};
@@ -450,47 +480,139 @@ export const sendFromWidget = onRequest({ region: REGION }, async (req, res) => 
     });
     return 'ok';
   });
-  res.status(accepted === 'ok' ? 200 : accepted === 'replay' ? 409 : 429).json({ result: accepted });
+  res.status(accepted === 'ok' ? 200 : accepted === 'replay' ? 409 : accepted === 'deleted' ? 403 : 429).json({ result: accepted });
 });
 
 // ── 로그인 ───────────────────────────────────────────────────────────────
 
 /** 카카오 액세스 토큰 → 커스텀 토큰. app_id 를 확인해 다른 카카오 앱에서 받은 토큰을 거부한다. */
 export const kakaoSignIn = onCall({ region: REGION }, async (req) => {
+  // Use the same authoritative clock as deletion.completedAt, including across function instances.
+  const loginStartedAtMs = (await db.doc('_serverClock/kakaoLogin').get()).readTime.toMillis();
   const accessToken = (req.data as { accessToken?: string }).accessToken;
   if (!accessToken) throw new HttpsError('invalid-argument', '토큰이 없다');
   const r = await fetch('https://kapi.kakao.com/v1/user/access_token_info', { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!r.ok) throw new HttpsError('unauthenticated', '카카오 토큰이 유효하지 않다');
   const info = (await r.json()) as { id: number; app_id: number; expires_in: number };
+  if (!Number.isSafeInteger(info.id) || info.id <= 0) throw new HttpsError('unauthenticated', '카카오 계정을 확인할 수 없다');
   if (String(info.app_id) !== KAKAO_APP_ID.value()) throw new HttpsError('permission-denied', '다른 앱에서 발급된 토큰이다');
   if (info.expires_in <= 0) throw new HttpsError('unauthenticated', '만료된 토큰이다');
   // 닉네임은 처음 내 이름으로만 쓴다 — 못 받아도 로그인은 그대로.
   const me = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: `Bearer ${accessToken}` } })
     .then((res) => (res.ok ? res.json() : null)).catch(() => null);
-  return { token: await getAuth().createCustomToken(`kakao:${info.id}`), name: kakaoNickname(me) ?? null };
+  const uid = await kakaoAccountUid(String(info.id), loginStartedAtMs);
+  const token = await getAuth().createCustomToken(uid);
+  await requireLiveAccount(uid);
+  return { token, name: kakaoNickname(me) ?? null };
 });
 
 // ── 연결 해제 · 탈퇴 ──────────────────────────────────────────────────────
 
-async function deleteCouple(coupleId: string, members: Record<string, string>) {
-  await db.recursiveDelete(db.doc(`couples/${coupleId}`));
-  await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/` }).catch(() => undefined);
-  await Promise.all(Object.keys(members).map(async (u) => {
-    await db.doc(`notifyState/${u}`).delete();
-    await db.doc(`users/${u}`).set({ coupleId: FieldValue.delete(), deviceId: FieldValue.delete() }, { merge: true });
-  }));
-}
+const unlinkStore: UnlinkStore = {
+  async begin(coupleId, uid) {
+    const operationRef = db.doc(`unlinkOperations/${coupleId}`);
+    const coupleRef = db.doc(`couples/${coupleId}`);
+    return db.runTransaction(async (tx) => {
+      const operation = await tx.get(operationRef);
+      if (operation.exists) {
+        const members = operation.get('members') as string[];
+        if (!members.includes(uid)) throw new UnlinkForbidden();
+        return { members, completed: operation.get('completed') === true };
+      }
+      const couple = await tx.get(coupleRef);
+      if (!couple.exists) throw new UnlinkNotFound();
+      const members = Object.keys((couple.get('members') as Record<string, string>) ?? {});
+      if (!members.includes(uid)) throw new UnlinkForbidden();
+      tx.create(operationRef, { members, initiatedBy: uid, completed: false, createdAt: FieldValue.serverTimestamp() });
+      return { members, completed: false };
+    });
+  },
+  async deleteCouple(coupleId) {
+    await db.recursiveDelete(db.doc(`couples/${coupleId}`));
+  },
+  async deleteFiles(coupleId) {
+    // 오류를 삼키면 삭제가 끝나지 않아도 완료로 기록되므로 호출자에게 알린다.
+    await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/` });
+  },
+  async clearMember(coupleId, uid) {
+    const userRef = db.doc(`users/${uid}`);
+    await db.runTransaction(async (tx) => {
+      const user = await tx.get(userRef);
+      // 처리 중 다른 커플과 연결됐다면 새 연결 및 알림 설정을 보존한다.
+      if (user.exists && user.get('coupleId') === coupleId) {
+        tx.delete(db.doc(`notifyState/${uid}`));
+        tx.update(userRef, { coupleId: FieldValue.delete(), deviceId: FieldValue.delete() });
+      }
+    });
+  },
+  async complete(coupleId) {
+    const ref = db.doc(`unlinkOperations/${coupleId}`);
+    return db.runTransaction(async (tx) => {
+      const operation = await tx.get(ref);
+      if (operation.get('completed') === true) return;
+      const members = operation.get('members') as string[];
+      const initiator = operation.get('initiatedBy') as string;
+      const recipient = members.find((member) => member !== initiator);
+      if (recipient) tx.create(db.doc(`unlinkNotifications/${coupleId}`), { recipient, coupleId });
+      tx.update(ref, { completed: true, completedAt: FieldValue.serverTimestamp() });
+    });
+  },
+};
+
+const unlinkHistory: UnlinkHistory = {
+  async operationsFor(uid) {
+    const operations = await db.collection('unlinkOperations').where('members', 'array-contains', uid).get();
+    return operations.docs.map((operation) => operation.id);
+  },
+  async forgetMember(coupleId, uid) {
+    const ref = db.doc(`unlinkOperations/${coupleId}`);
+    const operation = await ref.get();
+    const update: Record<string, unknown> = { members: FieldValue.arrayRemove(uid) };
+    if (operation.get('initiatedBy') === uid) update.initiatedBy = FieldValue.delete();
+    await ref.update(update);
+  },
+  async forgetNotifications(uid) {
+    const notifications = await db.collection('unlinkNotifications').where('recipient', '==', uid).get();
+    for (const notification of notifications.docs) await notification.ref.delete();
+  },
+};
+
+/** 서버 재시도로 알림 누락을 줄인다. FCM 수락 직후 중단되면 같은 알림이 다시 올 수 있다. */
+export const onUnlinkNotificationCreated = onDocumentCreated({
+  document: 'unlinkNotifications/{coupleId}', region: REGION, retry: true,
+}, async (event) => {
+  if (!event.data) return;
+  const ref = event.data.ref;
+  await deliverUnlinkNotification({
+    async read() {
+      const snapshot = await ref.get();
+      return snapshot.exists ? { recipient: snapshot.get('recipient') as string, coupleId: snapshot.get('coupleId') as string } : null;
+    },
+    async currentCouple(uid) {
+      const user = await db.doc(`users/${uid}`).get();
+      return (user.get('coupleId') as string | undefined) ?? null;
+    },
+    async send(uid, coupleId) {
+      await push(uid, { visible: { title: '꽃신', body: '이전 연결이 해제됐어요' }, data: { kind: 'unlinked', coupleId } }, true);
+    },
+    async remove() { await ref.delete(); },
+  });
+});
 
 /** 둘 중 누구나 혼자 해제할 수 있다. 서버 데이터는 즉시 지우고 상대에게 한 번 알린다. */
 export const unlinkCouple = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
-  const coupleId = (req.data as { coupleId: string }).coupleId;
-  const couple = await coupleOf(coupleId);
-  if (!(uid in couple.members)) throw new HttpsError('permission-denied', '멤버가 아니다');
-  await deleteCouple(coupleId, couple.members);
-  const partner = Object.keys(couple.members).find((u) => u !== uid);
-  if (partner) await push(partner, { visible: { title: '꽃신', body: '연결이 해제됐어요' }, data: { kind: 'unlinked', coupleId } });
+  await requireLiveAccount(uid);
+  const coupleId = (req.data as { coupleId?: unknown })?.coupleId;
+  if (typeof coupleId !== 'string' || !coupleId || coupleId.includes('/')) throw new HttpsError('invalid-argument', '커플 id가 올바르지 않다');
+  try {
+    await unlink(unlinkStore, coupleId, uid);
+  } catch (error) {
+    if (error instanceof UnlinkNotFound) throw new HttpsError('not-found', '커플이 없다');
+    if (error instanceof UnlinkForbidden) throw new HttpsError('permission-denied', '멤버가 아니다');
+    throw error;
+  }
   return { ok: true };
 });
 
@@ -501,33 +623,69 @@ export const unlinkCouple = onCall({ region: REGION }, async (req) => {
 export const deleteAccount = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
+  const claim = await claimAccountDeletion(uid);
+  if (claim.result) return claim.result;
   const firebaseClaims = req.auth?.token.firebase;
   const appleAccount = firebaseClaims?.sign_in_provider === 'apple.com' || !!firebaseClaims?.identities?.['apple.com'];
-  let appleRevocation: 'not_required' | 'revoked' | 'manual' = appleAccount ? 'manual' : 'not_required';
-  const user = await db.doc(`users/${uid}`).get();
-  const coupleId = user.get('coupleId') as string | undefined;
-  if (coupleId) {
-    const couple = await coupleOf(coupleId).catch(() => null);
-    if (couple) await deleteCouple(coupleId, couple.members);
+  let appleRevocation: AppleRevocationResult = claim.appleRevocation ?? (appleAccount ? 'manual' : 'not_required');
+  let providerUncertain = false;
+  try {
+    const user = await db.doc(`users/${uid}`).get();
+    const coupleId = user.get('coupleId') as string | undefined;
+    if (coupleId) {
+      try {
+        await unlink(unlinkStore, coupleId, uid);
+      } catch (error) {
+        // 이전 서버에서 이미 커플 문서만 지운 경우에도 첨부와 이전 연결을 마저 지운다.
+        if (!(error instanceof UnlinkNotFound)) throw error;
+        await unlinkStore.deleteCouple(coupleId);
+        await unlinkStore.deleteFiles(coupleId);
+        await unlinkStore.clearMember(coupleId, uid);
+      }
+    }
+    await forgetUnlinkMember(unlinkStore, unlinkHistory, uid);
+    await dropInvitesOf(uid);
+    const providerId = kakaoProviderId(uid);
+    if (providerId && KAKAO_ADMIN_KEY.value()) {
+      await deletionPhase(uid, claim.attempt, 'kakao-unlink');
+      providerUncertain = true;
+      const response = await fetch('https://kapi.kakao.com/v1/user/unlink', {
+        method: 'POST',
+        headers: { Authorization: `KakaoAK ${KAKAO_ADMIN_KEY.value()}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `target_id_type=user_id&target_id=${providerId}`,
+      });
+      if (!response.ok) throw new HttpsError('unavailable', '카카오 연결 해제 결과를 확인할 수 없어요. 고객지원에 문의해 주세요.');
+      const unlinked = await response.json() as { id?: unknown };
+      if (String(unlinked.id) !== providerId) throw new HttpsError('unavailable', '카카오 연결 해제 결과를 확인할 수 없어요. 고객지원에 문의해 주세요.');
+      providerUncertain = false;
+    }
+    // Apple: 로그인 때 보관한 refresh token 을 폐기한다(App Store 심사 기준 5.1.1(v)).
+    const apple = await db.doc(`appleTokens/${uid}`).get();
+    const refreshToken = apple.get('refreshToken') as string | undefined;
+    if (claim.appleRevocation === undefined) {
+      if (refreshToken) {
+        appleRevocation = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false)
+          ? 'revoked' : 'manual';
+      }
+      // A code exchange that started before deletion may still produce a token; never promise full revocation then.
+      if ((apple.get('pendingExchanges') as number ?? 0) > 0) appleRevocation = 'manual';
+      await rememberAppleRevocation(uid, claim.attempt, appleRevocation);
+    }
+    await apple.ref.delete();
+    await db.recursiveDelete(db.doc(`users/${uid}`));
+    await db.doc(`notifyState/${uid}`).delete();
+    await db.doc(`entitlements/${uid}`).delete();
+    await deletionPhase(uid, claim.attempt, 'auth-delete');
+    await getAuth().deleteUser(uid).catch((error: { code?: string }) => {
+      if (error.code !== 'auth/user-not-found') throw error;
+    });
+    const result = { ok: true as const, appleRevocation };
+    await completeAccountDeletion(uid, claim.attempt, result);
+    return result;
+  } catch (error) {
+    await failAccountDeletion(uid, claim.attempt, providerUncertain);
+    throw error;
   }
-  if (uid.startsWith('kakao:') && KAKAO_ADMIN_KEY.value()) {
-    await fetch('https://kapi.kakao.com/v1/user/unlink', {
-      method: 'POST',
-      headers: { Authorization: `KakaoAK ${KAKAO_ADMIN_KEY.value()}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `target_id_type=user_id&target_id=${uid.slice('kakao:'.length)}`,
-    }).catch(() => undefined);
-  }
-  // Apple: 로그인 때 보관한 refresh token 을 폐기한다(App Store 심사 기준 5.1.1(v)).
-  const apple = await db.doc(`appleTokens/${uid}`).get();
-  const refreshToken = apple.get('refreshToken') as string | undefined;
-  if (refreshToken) {
-    appleRevocation = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false)
-      ? 'revoked' : 'manual';
-  }
-  await apple.ref.delete();
-  await db.recursiveDelete(db.doc(`users/${uid}`));
-  await getAuth().deleteUser(uid);
-  return { ok: true, appleRevocation };
 });
 
 /**
@@ -553,14 +711,40 @@ export const onInquiryAnswered = onDocumentWritten({ document: 'users/{uid}/inqu
 export const appleStoreToken = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
+  await requireLiveAccount(uid);
   if (req.auth?.token.firebase?.sign_in_provider !== 'apple.com') throw new HttpsError('failed-precondition', 'Apple 로그인이 아니다');
   const code = (req.data as { code?: unknown })?.code;
   if (typeof code !== 'string' || code.length === 0 || code.length > 1024) throw new HttpsError('invalid-argument', 'code 가 없다');
   if (!appleConfigured(appleConfig())) return { stored: false };
-  const refreshToken = await exchangeCode(appleConfig(), code);
-  if (!refreshToken) throw new HttpsError('permission-denied', 'Apple 이 code 를 거절했다');
-  await db.doc(`appleTokens/${uid}`).set({ refreshToken, storedAt: FieldValue.serverTimestamp() });
-  return { stored: true };
+  const tokenRef = db.doc(`appleTokens/${uid}`);
+  await db.runTransaction(async (tx) => {
+    if ((await tx.get(deletionRef(uid))).exists) throw new HttpsError('failed-precondition', '탈퇴한 계정이에요. 다시 로그인해 주세요.');
+    tx.set(tokenRef, { pendingExchanges: FieldValue.increment(1) }, { merge: true });
+  });
+  let issued: string | null = null;
+  let stored = false;
+  try {
+    issued = await exchangeCode(appleConfig(), code);
+    if (!issued) throw new HttpsError('permission-denied', 'Apple 이 code 를 거절했다');
+    stored = await db.runTransaction(async (tx) => {
+      if ((await tx.get(deletionRef(uid))).exists) return false;
+      tx.set(tokenRef, { refreshToken: issued, storedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return true;
+    });
+    // 코드 교환을 기다리는 동안 탈퇴했으면 민감한 토큰을 다시 저장하지 않는다.
+    if (!stored) await revokeApple(appleConfig(), issued).catch(() => false);
+    return { stored };
+  } catch (error) {
+    if (issued) await revokeApple(appleConfig(), issued).catch(() => false);
+    throw error;
+  } finally {
+    // 불확정 교환은 표시를 남겨 이후 탈퇴에서 수동 확인을 안내한다. 삭제된 문서는 다시 만들지 않는다.
+    if (stored) await db.runTransaction(async (tx) => {
+      const deletion = await tx.get(deletionRef(uid));
+      const token = await tx.get(tokenRef);
+      if (!deletion.exists && token.exists) tx.update(tokenRef, { pendingExchanges: FieldValue.increment(-1) });
+    }).catch(() => undefined);
+  }
 });
 
 
@@ -577,7 +761,10 @@ export const revenuecatWebhook = onRequest({ region: REGION, secrets: [REVENUECA
   const key = REVENUECAT_SECRET_KEY.value();
   try {
     await refreshEntitlements(req.body, key, async (uid, ent) => {
-      await db.doc(`entitlements/${uid}`).set({ ...ent, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      await db.runTransaction(async (tx) => {
+        if ((await tx.get(deletionRef(uid))).exists) return;
+        tx.set(db.doc(`entitlements/${uid}`), { ...ent, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      });
     });
   } catch {
     res.status(503).send('entitlement sync unavailable');
