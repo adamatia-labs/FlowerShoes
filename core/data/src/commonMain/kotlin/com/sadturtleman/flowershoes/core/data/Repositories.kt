@@ -1,7 +1,5 @@
 package com.sadturtleman.flowershoes.core.data
 
-import androidx.room.immediateTransaction
-import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.BookCoverEntity
 import com.sadturtleman.flowershoes.core.database.DrawingEntity
@@ -148,28 +146,26 @@ class ProfileRepository(
      * 두 폰이 같은 id 를 쓰니 동시에 고쳐도 일정 LWW 로 하나만 남는다.
      */
     suspend fun setAnniversary(date: LocalDate?, expectedOriginal: Event? = null) {
-        db.useWriterConnection { tx ->
-            tx.immediateTransaction<Unit> {
-                // 고정 ID를 읽기 전에 보관 이관을 마친다. 해제와 읽기/복사 사이에도 다른 쓰기가 끼어들 수 없다.
-                RelationshipArchive(db).prepare()
-                val id = Event.COUPLE_ANNIVERSARY_ID
-                val local = db.eventDao().get(id)?.toModel()
-                if (expectedOriginal != null &&
-                    (expectedOriginal.id != id || local == null || local.deletedAt != null || local != expectedOriginal)
-                ) throw StaleRecordException()
-                val at = clock.now()
-                val next = if (date == null) {
-                    local?.takeIf { it.deletedAt == null }?.copy(deletedAt = at) ?: return@immediateTransaction
-                } else {
-                    (local ?: Event(id, EventType.ANNIVERSARY, "사귄 날", date.atTime(0, 0), date.atTime(23, 59), false, at, 0, identity.deviceId))
-                        .copy(start = date.atTime(0, 0), end = date.atTime(23, 59), deletedAt = null)
-                }
-                writer.write(
-                    OpKind.PROFILE, "event", id,
-                    localWrite = { lamport -> db.eventDao().upsert(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at).toEntity()) },
-                    payload = { lamport -> OpPayload.EventPut(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at)) },
-                )
+        writer.transaction {
+            // 고정 ID를 읽기 전에 보관 이관을 마친다. 해제와 읽기/복사 사이에도 다른 쓰기가 끼어들 수 없다.
+            RelationshipArchive(db).prepare()
+            val id = Event.COUPLE_ANNIVERSARY_ID
+            val local = db.eventDao().get(id)?.toModel()
+            if (expectedOriginal != null &&
+                (expectedOriginal.id != id || local == null || local.deletedAt != null || local != expectedOriginal)
+            ) throw StaleRecordException()
+            val at = clock.now()
+            val next = if (date == null) {
+                local?.takeIf { it.deletedAt == null }?.copy(deletedAt = at) ?: return@transaction
+            } else {
+                (local ?: Event(id, EventType.ANNIVERSARY, "사귄 날", date.atTime(0, 0), date.atTime(23, 59), false, at, 0, identity.deviceId))
+                    .copy(start = date.atTime(0, 0), end = date.atTime(23, 59), deletedAt = null)
             }
+            writer.write(
+                OpKind.PROFILE, "event", id,
+                localWrite = { lamport -> db.eventDao().upsert(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at).toEntity()) },
+                payload = { lamport -> OpPayload.EventPut(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at)) },
+            )
         }
     }
 }
@@ -315,17 +311,19 @@ class LetterRepository(
     /** 초안 본문이 다른 계정의 발신 편지/Op가 되지 않도록 실제 계정과 편집 권한 안에서 생성한다. */
     suspend fun sendDraft(store: LetterDraftStore, editor: DraftEditor, letter: Letter, drawings: List<DrawingMeta>): Boolean =
         store.withCurrentEditor(editor) {
-            val session = editor.session
-            check(identity.userId == session.ownerUid && identity.deviceId == session.deviceId && letter.authorId == session.ownerUid)
-            val cachedEpoch = identity.keyEpoch
-            val couple = db.coupleDao().get()
-            check(couple == null || couple.myUserId == session.ownerUid)
-            val frozen = object : Identity {
-                override val userId = session.ownerUid
-                override val deviceId = session.deviceId
-                override val keyEpoch = couple?.keyEpoch ?: cachedEpoch
+            writer.transaction {
+                val session = editor.session
+                check(identity.userId == session.ownerUid && identity.deviceId == session.deviceId && letter.authorId == session.ownerUid)
+                val cachedEpoch = identity.keyEpoch
+                val couple = db.coupleDao().get()
+                check(couple == null || couple.myUserId == session.ownerUid)
+                val frozen = object : Identity {
+                    override val userId = session.ownerUid
+                    override val deviceId = session.deviceId
+                    override val keyEpoch = couple?.keyEpoch ?: cachedEpoch
+                }
+                LetterRepository(db, SyncWriter(db, frozen, clock), frozen, clock).send(letter, drawings)
             }
-            LetterRepository(db, SyncWriter(db, frozen, clock), frozen, clock).send(letter, drawings)
         }
 
     /**

@@ -126,6 +126,7 @@ fun KkotsinApp() {
             KkWindowSizeProvider {
             Box(Modifier.fillMaxSize()) {
                 RelationshipScreenScope(current?.takeIf { screensReady }, relationship?.couple, loaded = current != null && relationship != null) {
+                ScreenDataScope(current?.takeIf { screensReady }, relationship?.couple) {
                 // 업데이트 필요 · 점검 중은 앱 자체를 그리지 않는다 — 연결 모달 · 편지 도착 창 · 책 권유까지 모두 막힌다.
                 when (val g = gate.state) {
                     is AppGate.UpdateRequired -> {
@@ -141,6 +142,7 @@ fun KkotsinApp() {
                         }
                         if (current != null && !gate.holdSplash) ConnectionStates(onboarded = current.onboarded)
                     }
+                }
                 }
                 }
                 CleanupRecovery()
@@ -313,6 +315,7 @@ private fun OnboardingFlow() {
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun MainShell() {
+    val screenData = koinInject<com.sadturtleman.flowershoes.core.data.ScreenData>()
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     var overlay by rememberSaveable { mutableStateOf<Overlay?>(null) }
     // 초대 링크로 들어왔으면 그 토큰(연결 화면이 받는 쪽으로 열린다).
@@ -346,7 +349,10 @@ private fun MainShell() {
         overlay = Overlay.COMPOSE
     }
     val bookStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookStore>()
-    val bookPromo = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.BookPromo>()
+    val bookPerks = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()
+    val bookPromo = remember(screenData, bookPerks) { bookPerks?.let {
+        com.sadturtleman.flowershoes.core.data.BookPromo(screenData.profile, it.bookOn, screenData.settings.bookPromo)
+    } }
     val promoScope = androidx.compose.runtime.rememberCoroutineScope()
     // 그날의 한 줄 쓰기(다음 날 알림 · 홈 카드 · 일정 상세): 추억 탭 위에 쓰기 화면을 연다.
     val openDayLine = { eventId: String ->
@@ -359,10 +365,10 @@ private fun MainShell() {
     // 이 폰 기종을 내 정보에 싣는다(연인의 설정 › 연결 정보).
     val koin = getKoin()
     // 산 것(꽃신 평생 · 추억 책)을 내 정보에 실어 연결된 상대도 함께 쓰게 한다.
-    LaunchedEffect(Unit) { koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.publish() }
+    LaunchedEffect(Unit) { koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.publish(screenData.profile) }
     LaunchedEffect(Unit) {
         val device = koin.getOrNull<com.sadturtleman.flowershoes.feature.settings.PlatformActions>()?.deviceName.orEmpty()
-        runCatching { koin.get<com.sadturtleman.flowershoes.core.data.ProfileRepository>().publishDevice(device) }
+        runCatching { screenData.profile.publishDevice(device) }
     }
 
     // 알림 · 위젯 · 초대 링크로 들어온 딥링크

@@ -4,6 +4,7 @@ import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.RelationshipArchive
+import com.sadturtleman.flowershoes.core.data.ScreenWriteSession
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.CleanupEntity
 import com.sadturtleman.flowershoes.core.database.CoupleEntity
@@ -42,25 +43,26 @@ class UnlinkService(
     val pendingChoice = pendingCleanup.map { it?.choice?.let(AfterUnlink::valueOf) }
 
     /** 재시도 화면의 선택보다 먼저 저장한 원래 선택이 우선한다. */
-    suspend fun unlink(after: AfterUnlink): AfterUnlink? = db.relationshipMutex.withLock {
-        val cleanup = restoreJournal() ?: begin("UNLINK", after) ?: return@withLock null
+    suspend fun unlink(after: AfterUnlink, screen: ScreenWriteSession? = null): AfterUnlink? = db.relationshipMutex.withLock {
+        val cleanup = restoreJournal()?.also { screen?.requireCleanup(it) } ?: begin("UNLINK", after, screen) ?: return@withLock null
         resume(cleanup)
         AfterUnlink.valueOf(cleanup.choice)
     }
 
-    suspend fun onPartnerUnlinked(after: AfterUnlink, expectedCoupleId: String? = null): Unit = db.relationshipMutex.withLock {
-        val saved = restoreJournal()
+    suspend fun onPartnerUnlinked(after: AfterUnlink, expectedCoupleId: String? = null, screen: ScreenWriteSession? = null): Unit = db.relationshipMutex.withLock {
+        val saved = restoreJournal()?.also { screen?.requireCleanup(it) }
         if (expectedCoupleId != null && (saved?.coupleId ?: db.coupleDao().get()?.id) != expectedCoupleId) return@withLock
-        val cleanup = saved ?: begin("PARTNER", after) ?: return@withLock
+        val cleanup = saved ?: begin("PARTNER", after, screen) ?: return@withLock
         resume(cleanup)
     }
 
-    suspend fun deleteAccount(): Unit = db.relationshipMutex.withLock {
+    suspend fun deleteAccount(screen: ScreenWriteSession? = null): Unit = db.relationshipMutex.withLock {
         restoreJournal()?.let {
+            screen?.requireCleanup(it)
             resume(it)
             if (it.source == "ACCOUNT") return@withLock
         }
-        resume(checkNotNull(begin("ACCOUNT", AfterUnlink.WIPE)))
+        resume(checkNotNull(begin("ACCOUNT", AfterUnlink.WIPE, screen)))
     }
 
     /** 앱/백그라운드 재시작에서는 저장된 작업만 이어간다. 새 삭제는 시작하지 않는다. */
@@ -75,7 +77,7 @@ class UnlinkService(
         }
     }
 
-    private suspend fun begin(source: String, after: AfterUnlink): CleanupEntity? {
+    private suspend fun begin(source: String, after: AfterUnlink, screen: ScreenWriteSession? = null): CleanupEntity? {
         settings.releaseFinishedCleanupIf { db.cleanupDao().get() == null }
         val couple = db.coupleDao().get()
         if (source == "UNLINK" && couple == null) return null
@@ -90,6 +92,7 @@ class UnlinkService(
             keyEpoch = couple?.keyEpoch, linkedAtMs = couple?.linkedAtMs, sealedKeys = couple?.sealedKeys,
             appleInstructions = legacyAccount ?: false,
         )
+        screen?.requireCleanup(candidate)
         settings.reserveCleanup(candidate)
         return installJournal(candidate)
     }

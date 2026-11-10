@@ -30,6 +30,7 @@ class SyncWriter(
     private val db: AppDatabase,
     private val identity: Identity,
     private val clock: Clock = Clock.System,
+    private val screenSession: ScreenWriteSession? = null,
 ) {
     private val stream get() = StreamId(identity.deviceId, StreamId.Channel.APP)
 
@@ -43,35 +44,37 @@ class SyncWriter(
         entityId: String,
         localWrite: suspend (lamport: Long) -> Unit,
         payload: (lamport: Long) -> OpPayload,
-    ): String = db.useWriterConnection { tx ->
-        tx.immediateTransaction {
-            db.requireNoCleanup()
-            val archive = RelationshipArchive(db)
-            archive.prepare()
-            val sync = db.syncDao()
-            val lamport = (sync.meta(LAMPORT) ?: 0L) + 1
-            val content = payload(lamport)
-            val shared = archive.shared(content)
-            // 보관본은 삭제와 로컬 읽음 기록만 허용한다. 편집/재전송으로 새 관계에 섞이지 않는다.
-            if (shared == null && content !is OpPayload.Delete && content !is OpPayload.ReceiptPut) throw ArchivedRecordException()
-            sync.setMeta(MetaEntity(LAMPORT, lamport))
-            localWrite(lamport)
+    ): String = transaction {
+        db.requireNoCleanup()
+        val archive = RelationshipArchive(db)
+        archive.prepare()
+        val sync = db.syncDao()
+        val lamport = (sync.meta(LAMPORT) ?: 0L) + 1
+        val content = payload(lamport)
+        val shared = archive.shared(content)
+        // 보관본은 삭제와 로컬 읽음 기록만 허용한다. 편집/재전송으로 새 관계에 섞이지 않는다.
+        if (shared == null && content !is OpPayload.Delete && content !is OpPayload.ReceiptPut) throw ArchivedRecordException()
+        sync.setMeta(MetaEntity(LAMPORT, lamport))
+        localWrite(lamport)
 
-            val opId = Uuid.random().toString()
-            if (shared == null) return@immediateTransaction opId
+        val opId = Uuid.random().toString()
+        if (shared == null) return@transaction opId
 
-            val seq = sync.nextSeq(stream.wire) ?: 1L
-            sync.setNextSeq(StreamCounterEntity(stream.wire, seq + 1))
-            sync.appendOp(
-                SyncOpEntity(
-                    stream = stream.wire, seq = seq, opId = opId, kind = kind.wire,
-                    entity = entity, entityId = entityId, payload = OpCodec.encode(shared),
-                    lamport = lamport, keyEpoch = identity.keyEpoch, createdAtMs = clock.now().toEpochMilliseconds(),
-                ),
-            )
-            opId
-        }
+        val seq = sync.nextSeq(stream.wire) ?: 1L
+        sync.setNextSeq(StreamCounterEntity(stream.wire, seq + 1))
+        sync.appendOp(
+            SyncOpEntity(
+                stream = stream.wire, seq = seq, opId = opId, kind = kind.wire,
+                entity = entity, entityId = entityId, payload = OpCodec.encode(shared),
+                lamport = lamport, keyEpoch = identity.keyEpoch, createdAtMs = clock.now().toEpochMilliseconds(),
+            ),
+        )
+        opId
     }
+
+    internal suspend fun <T> transaction(block: suspend () -> T): T =
+        if (screenSession != null) screenSession.write(block)
+        else db.useWriterConnection { tx -> tx.immediateTransaction { block() } }
 
     companion object {
         internal const val LAMPORT = "lamport"
