@@ -92,17 +92,21 @@ test('현재 Apple 신원과 다른 토큰이나 신원 미확인 토큰은 폐�
     return new Response('', { status: 200 });
   }) as typeof fetch);
   try {
-    for (const subject of [undefined, 'previous-apple']) {
-      const uid = subject ? 'apple-subject-changed' : 'apple-subject-legacy';
+    for (const [uid, subject, firebase] of [
+      ['apple-subject-legacy', undefined, { sign_in_provider: 'apple.com', identities: { 'apple.com': ['current-apple'] } }],
+      ['apple-subject-changed', 'previous-apple', { sign_in_provider: 'apple.com', identities: { 'apple.com': ['current-apple'] } }],
+      ['google-subject-legacy', undefined, { sign_in_provider: 'google.com' }],
+      ['google-subject-missing', 'previous-apple', { sign_in_provider: 'google.com' }],
+    ] as const) {
       const tokenRef = getFirestore().doc(`appleTokens/${uid}`);
       await tokenRef.set({ refreshToken: 'test-token', ...(subject ? { appleSubject: subject } : {}) });
       const result = await functions.deleteAccount.run({
-        auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['current-apple'] } } } },
+        auth: { uid, token: { firebase } },
         data: {}, rawRequest: {},
       } as never);
       assert.deepEqual(result, { ok: true, appleRevocation: 'manual' });
       assert.equal((await tokenRef.get()).exists, false);
     }
-    assert.equal(request.mock.callCount(), 2);
+    assert.equal(request.mock.callCount(), 4);
   } finally { request.mock.restore(); remove.mock.restore(); }
 });
