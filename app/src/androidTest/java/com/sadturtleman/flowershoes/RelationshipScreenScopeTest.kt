@@ -31,12 +31,15 @@ class RelationshipScreenScopeTest {
 
     @Test fun recreationKeepsCurrentEditorsAndOnboardingSurvivesLogin() {
         val account = mutableStateOf(initial.copy(onboarded = false, userId = "local:owner"))
+        val loaded = mutableStateOf(true)
         var current: PendingEditor? = null
         val screen: @Composable () -> Unit = {
-            RelationshipScreenScope(account.value, relation) {
-                val vm = ViewModelProvider(checkNotNull(LocalViewModelStoreOwner.current))[PendingEditor::class.java]
-                SideEffect { current = vm }
-                Text(vm.title)
+            RelationshipScreenScope(account.value.takeIf { loaded.value }, relation, loaded.value) {
+                if (loaded.value) {
+                    val vm = ViewModelProvider(checkNotNull(LocalViewModelStoreOwner.current))[PendingEditor::class.java]
+                    SideEffect { current = vm }
+                    Text(vm.title)
+                }
             }
         }
         compose.setContent(screen)
@@ -48,8 +51,10 @@ class RelationshipScreenScopeTest {
         compose.runOnIdle { assertNotSame(onboarding, current); assertTrue(onboarding.cleared) }
         val editor = checkNotNull(current)
         compose.runOnIdle { editor.title = "unsaved event"; editor.start() }
+        compose.runOnIdle { loaded.value = false }
         compose.activityRule.scenario.recreate()
         compose.activityRule.scenario.onActivity { it.setContent(content = screen) }
+        compose.runOnIdle { assertFalse(editor.cleared); loaded.value = true }
         compose.waitForIdle()
         compose.runOnIdle { assertSame(editor, current); assertFalse(editor.cleared); assertFalse(editor.cancelled) }
         compose.onNodeWithText("unsaved event").assertExists()

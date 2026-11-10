@@ -125,7 +125,7 @@ fun KkotsinApp() {
             // 큰 화면(Figma 11): 창 폭을 한 번 재서 셸 · 화면들이 Nav Rail · 2단 · 최대 폭을 고른다.
             KkWindowSizeProvider {
             Box(Modifier.fillMaxSize()) {
-                RelationshipScreenScope(current?.takeIf { screensReady }, relationship?.couple) {
+                RelationshipScreenScope(current?.takeIf { screensReady }, relationship?.couple, loaded = current != null && relationship != null) {
                 // 업데이트 필요 · 점검 중은 앱 자체를 그리지 않는다 — 연결 모달 · 편지 도착 창 · 책 권유까지 모두 막힌다.
                 when (val g = gate.state) {
                     is AppGate.UpdateRequired -> {

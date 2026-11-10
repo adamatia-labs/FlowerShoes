@@ -13,7 +13,7 @@ import com.sadturtleman.flowershoes.core.database.CoupleEntity
 
 /** 계정/연결이 바뀌면 이전 화면의 편집 상태와 작업을 함께 정리한다. */
 @Composable
-fun RelationshipScreenScope(account: DeviceState?, couple: CoupleEntity?, content: @Composable () -> Unit) {
+fun RelationshipScreenScope(account: DeviceState?, couple: CoupleEntity?, loaded: Boolean = true, content: @Composable () -> Unit) {
     // 부모 ViewModel은 화면 회전에도 남아 같은 세션의 편집 상태를 유지한다.
     val stores = viewModel { RelationshipViewModels() }
     val session = when {
@@ -22,7 +22,8 @@ fun RelationshipScreenScope(account: DeviceState?, couple: CoupleEntity?, conten
         else -> ScreenSession.Main(account.userId, account.deviceId, account.accountSession,
             couple?.id, couple?.myUserId, couple?.partnerUserId, couple?.linkedAtMs)
     }
-    val owner = stores.select(session)
+    // Activity 재생성 직후 DataStore/Room의 첫 값을 기다리는 동안에는 기존 보관함을 유지한다.
+    val owner = if (loaded) stores.select(session) else null
     key(session) {
         if (owner == null) content()
         else CompositionLocalProvider(LocalViewModelStoreOwner provides owner, content = content)
