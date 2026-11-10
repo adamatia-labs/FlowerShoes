@@ -46,6 +46,37 @@ import kotlin.uuid.Uuid
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ArchivedEditTest {
     @Test
+    fun `해제 전에 연 커플 기념일 초안은 새 일정으로 복제하지 않는다`() = staleAnniversaryDraftTest(replaced = false)
+
+    @Test
+    fun `해제 전에 연 커플 기념일 초안은 새 관계의 같은 id를 덮어쓰지 않는다`() = staleAnniversaryDraftTest(replaced = true)
+
+    private fun staleAnniversaryDraftTest(replaced: Boolean) = archivedEditTest(archiveFirst = false) {
+        val viewModel = CalendarViewModel(events).also { viewModels += it }
+        archive {
+            val original = assertNotNull(events.get(Event.COUPLE_ANNIVERSARY_ID))
+            viewModel.onIntent(CalendarIntent.ChangeDraft(EventDraft(
+                id = original.id, type = original.type, title = "이전 연인과의 메모",
+                start = original.start.date, end = original.end.date, original = original,
+            )))
+        }
+        if (replaced) {
+            db.coupleDao().upsert(CoupleEntity("new-couple", "owner", "new-partner", 1, 200))
+            profile.setAnniversary(LocalDate(2026, 11, 10))
+        }
+        val current = db.eventDao().get(Event.COUPLE_ANNIVERSARY_ID)
+        val log = db.syncDao().log("device:app").map { it.opId to it.payload.decodeToString() }
+        val notice = async(start = CoroutineStart.UNDISPATCHED) { viewModel.notices.first() }
+
+        viewModel.onIntent(CalendarIntent.SaveDraft)
+
+        assertEquals("기록이 바뀌었어요. 다시 열어 주세요", notice.await())
+        assertEquals(current, db.eventDao().get(Event.COUPLE_ANNIVERSARY_ID))
+        assertEquals(log, db.syncDao().log("device:app").map { it.opId to it.payload.decodeToString() })
+        assertNotNull(db.eventDao().get("archived:old-couple:${Event.COUPLE_ANNIVERSARY_ID}"))
+    }
+
+    @Test
     fun `보관한 일정을 고치면 안내하고 원본과 동기화 로그를 유지한다`() = archivedEditTest {
         val before = assertNotNull(db.eventDao().get("old-event"))
         val nextSeq = db.syncDao().nextSeq("device:app")
@@ -81,11 +112,11 @@ class ArchivedEditTest {
         assertEquals(nextSeq, db.syncDao().nextSeq("device:app"))
     }
 
-    private fun archivedEditTest(block: suspend Fixture.() -> Unit) = runTest {
+    private fun archivedEditTest(archiveFirst: Boolean = true, block: suspend Fixture.() -> Unit) = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val fixture = Fixture(this)
         try {
-            fixture.archive()
+            if (archiveFirst) fixture.archive()
             fixture.block()
         } finally {
             fixture.close()
@@ -109,14 +140,16 @@ class ArchivedEditTest {
         private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val settings = DeviceSettings(PreferenceDataStoreFactory.createWithPath(scope = settingsScope) { root / "settings.preferences_pb" })
 
-        suspend fun archive() {
+        suspend fun archive(beforeUnlink: suspend () -> Unit = {}) {
             // 첫 솔로 쓰기로 초기화한 뒤 A–B 관계에서 보관한다. 이관 구현에 직접 표식을 넣지 않는다.
             events.save(Event("old-event", EventType.VISIT, "원래 일정",
                 LocalDateTime(2026, 11, 1, 10, 0), LocalDateTime(2026, 11, 1, 12, 0),
                 false, Clock.System.now(), 0, identity.deviceId))
             leave.save(LeaveGrant("old-leave", LeaveKind.REWARD, "원래 휴가", 2,
                 LocalDate(2026, 11, 1), Clock.System.now(), 0, identity.deviceId))
+            profile.setAnniversary(LocalDate(2025, 11, 1))
             db.coupleDao().upsert(CoupleEntity("old-couple", "owner", "partner", 1, 100))
+            beforeUnlink()
             UnlinkService(db, InMemoryKeyVault(), settings, null).onPartnerUnlinked(AfterUnlink.KEEP_AS_MEMORIES)
         }
 

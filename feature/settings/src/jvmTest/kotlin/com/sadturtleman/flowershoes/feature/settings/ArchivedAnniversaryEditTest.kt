@@ -41,7 +41,12 @@ import kotlin.uuid.Uuid
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ArchivedAnniversaryEditTest {
     @Test
-    fun `보관한 기념일을 고치면 안내하고 원본과 동기화 로그를 유지한다`() = runTest {
+    fun `보관한 기념일을 고치면 안내하고 원본과 동기화 로그를 유지한다`() = anniversaryEditTest(wipe = false)
+
+    @Test
+    fun `해제하며 지운 기념일 초안은 새 일정으로 복제하지 않는다`() = anniversaryEditTest(wipe = true)
+
+    private fun anniversaryEditTest(wipe: Boolean) = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kk-settings-archive-${Uuid.random()}"
         val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -61,17 +66,19 @@ class ArchivedAnniversaryEditTest {
             events.save(Event("custom-anniversary", EventType.ANNIVERSARY, "원래 기념일",
                 date.atTime(0, 0), date.atTime(23, 59), false, Clock.System.now(), 0, identity.deviceId))
             db.coupleDao().upsert(CoupleEntity("old-couple", "owner", "partner", 1, 100))
-            unlink.onPartnerUnlinked(AfterUnlink.KEEP_AS_MEMORIES)
             val before = assertNotNull(db.eventDao().get("custom-anniversary"))
+            val original = assertNotNull(events.get(before.id))
+            unlink.onPartnerUnlinked(if (wipe) AfterUnlink.WIPE else AfterUnlink.KEEP_AS_MEMORIES)
             val nextSeq = db.syncDao().nextSeq("device:app")
             val vm = SettingsViewModel(settings, ProfileRepository(db, writer, identity), unlink, identity, events)
             viewModel = vm
             val notice = async(start = CoroutineStart.UNDISPATCHED) { vm.notices.first() }
 
-            vm.saveAnniversary(before.id, "바꾼 기념일", LocalDate(2026, 11, 2), repeats = false)
+            vm.saveAnniversary(before.id, "바꾼 기념일", LocalDate(2026, 11, 2), repeats = false, original = original)
 
-            assertEquals(SettingsViewModel.Notice("보관한 기록은 읽거나 지울 수 있어요", error = true), notice.await())
-            assertEquals(before, db.eventDao().get(before.id))
+            val message = if (wipe) "기록이 바뀌었어요. 다시 열어 주세요" else "보관한 기록은 읽거나 지울 수 있어요"
+            assertEquals(SettingsViewModel.Notice(message, error = true), notice.await())
+            assertEquals(if (wipe) null else before, db.eventDao().get(before.id))
             assertTrue(db.syncDao().log("device:app").isEmpty())
             assertEquals(nextSeq, db.syncDao().nextSeq("device:app"))
         } finally {

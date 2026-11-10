@@ -6,6 +6,7 @@ import com.sadturtleman.flowershoes.core.data.ArchivedRecordException
 import com.sadturtleman.flowershoes.core.data.EventRepository
 import com.sadturtleman.flowershoes.core.data.LeaveRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
+import com.sadturtleman.flowershoes.core.data.StaleRecordException
 import com.sadturtleman.flowershoes.core.data.ticker
 import com.sadturtleman.flowershoes.core.data.today
 import com.sadturtleman.flowershoes.core.military.LeavePool
@@ -223,8 +224,8 @@ class CalendarViewModel(
         viewModelScope.launch {
             try {
                 // 고칠 때는 기존 행(매년 반복 · 만남 사진 · LWW 값)을 그대로 두고 칸만 바꾼다.
-                val old = d.id?.let { events.get(it) }
-                val base = old ?: Event(
+                val original = if (d.id != null) d.original ?: throw StaleRecordException() else null
+                val base = original ?: Event(
                     id = events.newId(), type = d.type, title = "", start = d.startAt, end = d.endAt, alarm = d.alarm,
                     updatedAt = clock.now(), lamport = 0, lastWriterDevice = "",
                 )
@@ -233,8 +234,11 @@ class CalendarViewModel(
                         type = d.type, title = d.title.trim(), start = d.startAt, end = d.endAt, alarm = d.alarm,
                         memo = d.memo.trim(), repeatYearly = d.repeatYearly, updatedAt = clock.now(),
                     ),
+                    expectedOriginal = original,
                 )
             } catch (error: ArchivedRecordException) {
+                _notices.emit(error.message.orEmpty())
+            } catch (error: StaleRecordException) {
                 _notices.emit(error.message.orEmpty())
             }
         }
