@@ -30,7 +30,7 @@ import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } f
 import { inviteHeadRef, readInviteOrder, recordInviteOrder } from './invite-order';
 import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
-import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
+import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, completedDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
 import { deliverUnlinkNotification, forgetUnlinkMember, unlink, UnlinkForbidden, UnlinkNotFound, UnlinkStore, UnlinkHistory } from './unlink';
 export { onMailCreated } from './mail-function';
 
@@ -628,7 +628,10 @@ export const unlinkCouple = onCall({ region: REGION }, async (req) => {
 export const deleteAccount = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
-  const claim = await claimAccountDeletion(uid);
+  if (req.data?.expectedUid !== undefined && req.data.expectedUid !== uid) throw new HttpsError('permission-denied', '로그인 계정이 바뀌었어요');
+  const receiptToken = req.data?.receiptToken;
+  if (receiptToken !== undefined && typeof receiptToken !== 'string') throw new HttpsError('invalid-argument', '탈퇴 확인 정보가 올바르지 않아요');
+  const claim = await claimAccountDeletion(uid, receiptToken);
   if (claim.result) return claim.result;
   const firebaseClaims = req.auth?.token.firebase;
   const appleAccount = firebaseClaims?.sign_in_provider === 'apple.com' || !!firebaseClaims?.identities?.['apple.com'];
@@ -696,6 +699,14 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
     await failAccountDeletion(uid, claim.attempt, providerUncertain);
     throw error;
   }
+});
+
+/** Auth 삭제로 로그인 토큰을 잃어도, 이전에 등록한 작업 비밀로 완료 결과만 확인한다. */
+export const accountDeletionResult = onCall({ region: REGION }, async (req) => {
+  const { ownerUid, receiptToken } = req.data ?? {};
+  if (typeof ownerUid !== 'string' || typeof receiptToken !== 'string') throw new HttpsError('invalid-argument', '탈퇴 확인 정보가 올바르지 않아요');
+  const result = await completedDeletion(ownerUid, receiptToken);
+  return result ? { completed: true, appleRevocation: result.appleRevocation } : { completed: false };
 });
 
 /**
