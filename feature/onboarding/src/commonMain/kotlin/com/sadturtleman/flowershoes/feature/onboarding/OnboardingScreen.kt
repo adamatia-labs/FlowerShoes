@@ -63,6 +63,8 @@ import com.sadturtleman.flowershoes.core.designsystem.KkSecondaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkChoice
 import com.sadturtleman.flowershoes.core.designsystem.KkCheckbox
 import com.sadturtleman.flowershoes.core.designsystem.KkDdayCard
+import com.sadturtleman.flowershoes.core.designsystem.KkDialog
+import com.sadturtleman.flowershoes.core.designsystem.KkDialogHost
 import com.sadturtleman.flowershoes.core.designsystem.KkElevation
 import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
@@ -251,6 +253,19 @@ fun OnboardingScreen(
             ServiceSheet.BRANCH -> BranchSheet(state, onDismiss = { sheet = null }) { onIntent(OnboardingIntent.SelectBranch(it)); sheet = null }
             ServiceSheet.DATE -> DateSheet(state, onDismiss = { sheet = null }) { onIntent(OnboardingIntent.SetEnlistDate(it)); sheet = null }
             null -> Unit
+        }
+        if (state.appleTokenNotice) {
+            BackHandler { if (!state.signingIn) onIntent(OnboardingIntent.ContinueAppleSignIn) }
+            KkDialogHost(onDismiss = { if (!state.signingIn) onIntent(OnboardingIntent.ContinueAppleSignIn) }) {
+                KkDialog(
+                    "Apple 연결 안내", com.sadturtleman.flowershoes.core.auth.APPLE_TOKEN_NOTICE +
+                        state.error?.let { "\n\n$it" }.orEmpty(),
+                    confirm = "계속하기", onConfirm = { onIntent(OnboardingIntent.ContinueAppleSignIn) },
+                    cancel = if (state.signingIn) "확인 중…" else "다시 확인",
+                    onCancel = { onIntent(OnboardingIntent.RetryAppleToken) }, enabled = !state.signingIn,
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                )
+            }
         }
     }
 }

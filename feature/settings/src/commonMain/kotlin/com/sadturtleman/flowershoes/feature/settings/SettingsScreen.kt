@@ -988,31 +988,40 @@ private fun SignInMethodsPage(state: SettingsState, viewModel: SettingsViewModel
     val auth = org.koin.compose.getKoin().getOrNull<com.sadturtleman.flowershoes.core.auth.AuthGateway>()
     var linked by remember { mutableStateOf<Set<com.sadturtleman.flowershoes.core.auth.AuthProvider>>(emptySet()) }
     var busy by remember { mutableStateOf<com.sadturtleman.flowershoes.core.auth.AuthProvider?>(null) }
-    LaunchedEffect(auth) { linked = runCatching { auth?.linkedProviders() }.getOrNull().orEmpty() }
     val current = com.sadturtleman.flowershoes.core.auth.AuthProvider.entries.firstOrNull { it.name == state.provider }
+    var appleReady by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(auth, state.provider) {
+        linked = try { auth?.linkedProviders().orEmpty() } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { emptySet() }
+        if (current == com.sadturtleman.flowershoes.core.auth.AuthProvider.APPLE || com.sadturtleman.flowershoes.core.auth.AuthProvider.APPLE in linked) {
+            appleReady = auth?.appleTokenReady() ?: false
+        }
+    }
     val providers = listOfNotNull(current) + com.sadturtleman.flowershoes.core.auth.LINKABLE_PROVIDERS.filter { it != current }
     Page("로그인 방법", onBack) {
         Group(null) {
             providers.forEachIndexed { i, p ->
                 if (i > 0) Divider()
                 val done = p == current || p in linked
+                val repair = done && p == com.sadturtleman.flowershoes.core.auth.AuthProvider.APPLE && appleReady == false
                 KkListRow(
                     viewModel.providerLabel(p.name),
-                    value = when { done -> "연결됨"; busy == p -> "연결하는 중…"; else -> "연결하기" },
-                    trailing = if (done) KkRowTrailing.None else KkRowTrailing.Chevron,
-                    onClick = if (done) null else ({
+                    value = when { busy == p -> "확인하는 중…"; repair -> "연결됨 · 확인 필요"; done -> "연결됨"; else -> "연결하기" },
+                    trailing = if (done && !repair) KkRowTrailing.None else KkRowTrailing.Chevron,
+                    onClick = if (done && !repair) null else ({
                         if (busy == null && auth != null) {
                             busy = p
                             scope.launch {
-                                when (val r = auth.link(p)) {
+                                try { when (val r = if (repair) auth.repairAppleToken() else auth.link(p)) {
                                     is com.sadturtleman.flowershoes.core.auth.SignInResult.Success -> {
                                         linked = linked + p
-                                        viewModel.notice("${viewModel.providerLabel(p.name)} 로그인을 연결했어요")
+                                        if (p == com.sadturtleman.flowershoes.core.auth.AuthProvider.APPLE) appleReady = !r.appleTokenNeedsAttention
+                                        viewModel.notice(if (r.appleTokenNeedsAttention) com.sadturtleman.flowershoes.core.auth.APPLE_TOKEN_NOTICE
+                                            else if (repair) "Apple 연결 해제 준비를 확인했어요" else "${viewModel.providerLabel(p.name)} 로그인을 연결했어요")
                                     }
                                     is com.sadturtleman.flowershoes.core.auth.SignInResult.Failed -> viewModel.notice(r.message)
                                     com.sadturtleman.flowershoes.core.auth.SignInResult.Cancelled -> Unit
                                 }
-                                busy = null
+                                } finally { busy = null }
                             }
                         }
                     }),

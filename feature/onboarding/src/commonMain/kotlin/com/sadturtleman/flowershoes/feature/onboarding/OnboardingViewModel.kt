@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -61,6 +62,7 @@ data class OnboardingState(
     /** 소셜 로그인이 알려 준 이름. 온보딩에 이름 단계가 없어(Figma) 내 이름의 처음 값으로 쓴다. */
     val loginName: String? = null,
     val error: String? = null,
+    val appleTokenNotice: Boolean = false,
 ) {
     /** 입대일을 고르면 바로 보여 주는 전역일 미리보기. */
     val preview: ServiceTimeline?
@@ -102,6 +104,8 @@ data class OnboardingState(
 
 sealed interface OnboardingIntent {
     data class SignIn(val provider: AuthProvider) : OnboardingIntent
+    data object ContinueAppleSignIn : OnboardingIntent
+    data object RetryAppleToken : OnboardingIntent
     data class ToggleAgreement(val item: Agreement) : OnboardingIntent
     data object ToggleAll : OnboardingIntent
     data class Read(val doc: TermsDoc?) : OnboardingIntent
@@ -147,10 +151,19 @@ class OnboardingViewModel(
 
     private val _events = Channel<OnboardingEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
+    private var pendingSignIn: SignInResult.Success? = null
 
     fun onIntent(intent: OnboardingIntent) {
         when (intent) {
             is OnboardingIntent.SignIn -> signIn(intent.provider)
+            OnboardingIntent.ContinueAppleSignIn -> {
+                val login = pendingSignIn
+                if (login != null && !_state.value.signingIn) {
+                    _state.update { it.copy(signingIn = true) }
+                    viewModelScope.launch { completeSignIn(login) }
+                }
+            }
+            OnboardingIntent.RetryAppleToken -> retryAppleToken()
             is OnboardingIntent.ToggleAgreement -> _state.update {
                 it.copy(agreed = if (intent.item in it.agreed) it.agreed - intent.item else it.agreed + intent.item)
             }
@@ -185,22 +198,61 @@ class OnboardingViewModel(
     }
 
     private fun signIn(provider: AuthProvider) {
-        if (_state.value.signingIn) return
+        if (_state.value.signingIn || pendingSignIn != null) return
         _state.update { it.copy(signingIn = true, error = null) }
         viewModelScope.launch {
-            when (val r = auth.signIn(provider)) {
+            try { when (val r = auth.signIn(provider)) {
                 is SignInResult.Success -> {
-                    if (r.uid.isNotEmpty()) settings.bindAccount(r.uid, r.provider.name)
-                    if (runCatching { linkedElsewhere() }.getOrDefault(false)) {
-                        _state.update { it.copy(signingIn = false, loginName = r.displayName) }
-                        _events.send(OnboardingEvent.DeviceChange)
-                    } else {
-                        _state.update { it.copy(signingIn = false, step = OnboardingStep.TERMS, loginName = r.displayName) }
-                    }
+                    if (r.appleTokenNeedsAttention) {
+                        pendingSignIn = r
+                        _state.update { it.copy(signingIn = false, appleTokenNotice = true) }
+                    } else completeSignIn(r)
                 }
                 SignInResult.Cancelled -> _state.update { it.copy(signingIn = false) }
                 is SignInResult.Failed -> _state.update { it.copy(signingIn = false, error = r.message) }
+            } } finally { _state.update { it.copy(signingIn = false) } }
+        }
+    }
+
+    private fun retryAppleToken() {
+        val login = pendingSignIn ?: return
+        if (_state.value.signingIn) return
+        _state.update { it.copy(signingIn = true, error = null) }
+        viewModelScope.launch {
+            try { when (val result = auth.repairAppleToken()) {
+                is SignInResult.Success -> when {
+                    result.uid != login.uid -> {
+                        pendingSignIn = null
+                        _state.update { it.copy(signingIn = false, appleTokenNotice = false, error = "로그인 계정이 바뀌었어요. 다시 로그인해 주세요") }
+                    }
+                    result.appleTokenNeedsAttention -> _state.update { it.copy(signingIn = false, error = "아직 확인하지 못했어요. 계속 진행하면 탈퇴할 때 수동 해제를 안내해 드려요") }
+                    else -> completeSignIn(login)
+                }
+                SignInResult.Cancelled -> _state.update { it.copy(signingIn = false) }
+                is SignInResult.Failed -> _state.update { it.copy(signingIn = false, error = result.message) }
+            } } finally { _state.update { it.copy(signingIn = false) } }
+        }
+    }
+
+    private suspend fun completeSignIn(login: SignInResult.Success) {
+        _state.update { it.copy(signingIn = true) }
+        try {
+            if (login.uid.isNotEmpty() && auth.currentUserId != login.uid) {
+                pendingSignIn = null
+                _state.update { it.copy(signingIn = false, appleTokenNotice = false, error = "로그인 계정이 바뀌었어요. 다시 로그인해 주세요") }
+                return
             }
+            if (login.uid.isNotEmpty()) settings.bindAccount(login.uid, login.provider.name)
+            pendingSignIn = null
+            val elsewhere = try { linkedElsewhere() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+            _state.update { it.copy(signingIn = false, appleTokenNotice = false, error = null, loginName = login.displayName,
+                step = if (elsewhere) it.step else OnboardingStep.TERMS) }
+            if (elsewhere) _events.send(OnboardingEvent.DeviceChange)
+        } catch (cancelled: CancellationException) {
+            _state.update { it.copy(signingIn = false) }
+            throw cancelled
+        } catch (_: Exception) {
+            _state.update { it.copy(signingIn = false, error = "로그인 정보를 저장하지 못했어요. 다시 시도해 주세요") }
         }
     }
 

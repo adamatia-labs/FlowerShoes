@@ -49,15 +49,31 @@ function form(fields: Record<string, string>): RequestInit {
   };
 }
 
-/** authorization code → refresh token. 거절되면 null. */
-export async function exchangeCode(c: AppleConfig, code: string, f: Fetch = fetch, options: RequestOptions = {}): Promise<string | null> {
+export interface AppleAuthorization { refreshToken: string; subject: string | null }
+
+/** Apple의 HTTPS 토큰 응답에서만 사용한다. 외부 JWT의 서명 검증기로 쓰지 않는다. */
+function responseSubject(idToken: unknown, clientId: string): string | null {
+  if (typeof idToken !== 'string' || idToken.length > 16_384) return null;
+  const parts = idToken.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString()) as Record<string, unknown>;
+    return claims.iss === 'https://appleid.apple.com' && claims.aud === clientId &&
+      typeof claims.exp === 'number' && claims.exp > Date.now() / 1_000 &&
+      typeof claims.sub === 'string' && claims.sub.length > 0 && claims.sub.length <= 255 ? claims.sub : null;
+  } catch { return null; }
+}
+
+/** authorization code → refresh token과 Apple 사용자. 거절되면 null. */
+export async function exchangeCode(c: AppleConfig, code: string, f: Fetch = fetch, options: RequestOptions = {}): Promise<AppleAuthorization | null> {
   // 일회용 code는 응답을 잃었을 때 이미 소비됐을 수 있으므로 자동 재시도하지 않는다.
   return request('https://appleid.apple.com/auth/token', form({
     client_id: c.clientId, client_secret: appleClientSecret(c), code, grant_type: 'authorization_code',
   }), f, options.timeoutMs ?? 5_000, async res => {
     if (!res.ok) { await res.body?.cancel().catch(() => undefined); return null; }
-    const json = (await res.json()) as { refresh_token?: string };
-    return json.refresh_token ?? null;
+    const json = (await res.json()) as { refresh_token?: unknown; id_token?: unknown };
+    if (typeof json.refresh_token !== 'string' || json.refresh_token.length === 0) return null;
+    return { refreshToken: json.refresh_token, subject: responseSubject(json.id_token, c.clientId) };
   });
 }
 

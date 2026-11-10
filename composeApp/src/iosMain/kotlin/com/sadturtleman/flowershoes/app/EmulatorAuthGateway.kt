@@ -11,6 +11,7 @@ import platform.Foundation.NSUUID
 /** Debug + localhost demo-kkotsin 전용. 실제 소셜 로그인 성공으로 간주하지 않는다. */
 @OptIn(kotlin.experimental.ExperimentalNativeApi::class)
 internal class EmulatorAuthGateway : AuthGateway {
+    override val currentUserId: String? get() = Firebase.auth.currentUser?.uid
     override val providers = AuthProvider.entries
 
     override suspend fun signIn(provider: AuthProvider): SignInResult = try {

@@ -819,6 +819,7 @@ fun KkDialog(
     modifier: Modifier = Modifier,
     cancel: String = "취소",
     destructive: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.xl)
@@ -835,8 +836,8 @@ fun KkDialog(
         Text(title, style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
         if (body.isNotEmpty()) Text(body, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Secondary)
-            KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive)
+            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Secondary, enabled = enabled)
+            KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive, enabled = enabled)
         }
     }
 }

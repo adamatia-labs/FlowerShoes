@@ -65,6 +65,28 @@ class AndroidAuthGateway(
     }
 
     override val providers: List<AuthProvider> = AuthProvider.entries
+    override val currentUserId: String? get() = auth.currentUser?.uid
+
+    private suspend fun appleReady(uid: String): Boolean = com.sadturtleman.flowershoes.core.auth.AppleTokenRegistration(
+        saveCode = { false }, // Firebase OAuth 웹 흐름은 일회용 Apple code를 앱에 반환하지 않는다.
+        readReady = {
+            val user = auth.currentUser
+            if (user?.uid != uid) false else {
+                user.getIdToken(true).await()
+                val result = FirebaseFunctions.getInstance(region).getHttpsCallable("appleTokenState")
+                    .call(mapOf("expectedUid" to uid)).await().getData() as? Map<*, *>
+                result?.get("ready") == true && auth.currentUser?.uid == uid
+            }
+        },
+    ).ready()
+
+    override suspend fun appleTokenReady(): Boolean = auth.currentUser?.uid?.let { appleReady(it) } ?: false
+
+    override suspend fun repairAppleToken(): SignInResult {
+        val uid = auth.currentUser?.uid ?: return SignInResult.Failed("로그인 전이에요")
+        return if (appleReady(uid)) SignInResult.Success(uid, AuthProvider.APPLE)
+        else SignInResult.Failed(com.sadturtleman.flowershoes.core.auth.APPLE_TOKEN_MANUAL_HELP)
+    }
 
     override suspend fun signIn(provider: AuthProvider): SignInResult {
         val activity = CurrentActivity.activity ?: return SignInResult.Failed("화면을 찾지 못했어요")
@@ -76,7 +98,9 @@ class AndroidAuthGateway(
                     ?: return SignInResult.Cancelled
                 AuthProvider.APPLE -> apple(activity)
             }
-            SignInResult.Success(uid, provider, name ?: auth.currentUser?.displayName?.takeIf { it.isNotBlank() })
+            SignInResult.Success(uid, provider, name ?: auth.currentUser?.displayName?.takeIf { it.isNotBlank() },
+                appleTokenNeedsAttention = provider == AuthProvider.APPLE && !appleReady(uid))
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
         } catch (e: NotConfigured) {
             SignInResult.Failed(e.message ?: "로그인 설정 전이에요")
         } catch (e: Exception) {
@@ -143,7 +167,8 @@ class AndroidAuthGateway(
                 }
                 AuthProvider.KAKAO -> return SignInResult.Failed("카카오는 연결할 수 없어요")
             }
-            SignInResult.Success(user.uid, provider)
+            SignInResult.Success(user.uid, provider, appleTokenNeedsAttention = provider == AuthProvider.APPLE && !appleReady(user.uid))
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
         } catch (e: NotConfigured) {
             SignInResult.Failed(e.message ?: "로그인 설정 전이에요")
         } catch (e: Exception) {

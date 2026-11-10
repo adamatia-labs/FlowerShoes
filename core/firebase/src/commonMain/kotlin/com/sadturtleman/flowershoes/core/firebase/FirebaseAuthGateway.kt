@@ -3,6 +3,8 @@ package com.sadturtleman.flowershoes.core.firebase
 import com.sadturtleman.flowershoes.core.auth.AuthGateway
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.auth.SignInResult
+import com.sadturtleman.flowershoes.core.auth.AppleTokenRegistration
+import kotlinx.coroutines.CancellationException
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.app
 import dev.gitlive.firebase.auth.GoogleAuthProvider
@@ -51,12 +53,48 @@ class FirebaseAuthGateway(
 ) : AuthGateway {
 
     override val providers: List<AuthProvider> = AuthProvider.entries
+    override val currentUserId: String? get() = Firebase.auth.currentUser?.uid
 
     @Serializable
     private data class KakaoResult(val token: String, val name: String? = null)
 
+    @Serializable private data class AppleStored(val stored: Boolean = false)
+    @Serializable private data class AppleReady(val ready: Boolean = false)
+
+    private fun appleRegistration(uid: String) = AppleTokenRegistration(
+        saveCode = { code ->
+            val user = Firebase.auth.currentUser
+            if (user?.uid != uid) false else {
+                user.getIdToken(true) // 연결 직후의 identities를 callable에도 전달한다.
+                Firebase.functions(region).httpsCallable("appleStoreToken")
+                    .invoke(mapOf("code" to code, "expectedUid" to uid)).data(AppleStored.serializer()).stored
+            }
+        },
+        readReady = {
+            val user = Firebase.auth.currentUser
+            if (user?.uid != uid) false else {
+                user.getIdToken(true)
+                val ready = Firebase.functions(region).httpsCallable("appleTokenState")
+                    .invoke(mapOf("expectedUid" to uid)).data(AppleReady.serializer()).ready
+                ready && Firebase.auth.currentUser?.uid == uid
+            }
+        },
+    )
+
+    override suspend fun appleTokenReady(): Boolean = Firebase.auth.currentUser?.uid?.let { appleRegistration(it).ready() } ?: false
+
+    override suspend fun repairAppleToken(): SignInResult = try {
+        val user = Firebase.auth.currentUser ?: return SignInResult.Failed("로그인 전이에요")
+        val token = await(ui::apple)
+        val idToken = token.token ?: return SignInResult.Cancelled
+        user.reauthenticate(OAuthProvider.credential("apple.com", idToken = idToken, rawNonce = token.rawNonce))
+        SignInResult.Success(user.uid, AuthProvider.APPLE, appleTokenNeedsAttention = !appleRegistration(user.uid).register(token.authCode))
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { SignInResult.Failed("연결된 Apple 계정으로 다시 확인해 주세요") }
+
     override suspend fun signIn(provider: AuthProvider): SignInResult = try {
         var name: String? = null
+        var appleNeedsAttention = false
         val uid = when (provider) {
             AuthProvider.KAKAO -> {
                 if (!ui.kakaoConfigured) return SignInResult.Failed("카카오 로그인 설정 전이에요")
@@ -70,10 +108,7 @@ class FirebaseAuthGateway(
                 val t = await(ui::apple)
                 val idToken = t.token ?: return SignInResult.Cancelled
                 val uid = Firebase.auth.signInWithCredential(OAuthProvider.credential("apple.com", idToken = idToken, rawNonce = t.rawNonce)).user?.uid
-                // 탈퇴 때 Apple 토큰을 폐기할 수 있게 code 를 맡긴다. 실패해도 로그인은 그대로.
-                t.authCode?.let { code ->
-                    runCatching { Firebase.functions(region).httpsCallable("appleStoreToken").invoke(mapOf("code" to code)) }
-                }
+                appleNeedsAttention = uid == null || !appleRegistration(uid).register(t.authCode)
                 uid
             }
             AuthProvider.GOOGLE -> {
@@ -82,7 +117,8 @@ class FirebaseAuthGateway(
                 Firebase.auth.signInWithCredential(GoogleAuthProvider.credential(idToken, null)).user?.uid
             }
         } ?: return SignInResult.Failed("로그인하지 못했어요")
-        SignInResult.Success(uid, provider, (name ?: Firebase.auth.currentUser?.displayName)?.takeIf { it.isNotBlank() })
+        SignInResult.Success(uid, provider, (name ?: Firebase.auth.currentUser?.displayName)?.takeIf { it.isNotBlank() }, appleNeedsAttention)
+    } catch (cancelled: CancellationException) { throw cancelled
     } catch (e: ProviderFailed) {
         SignInResult.Failed(e.message ?: "로그인하지 못했어요")
     } catch (e: Exception) {
@@ -96,9 +132,11 @@ class FirebaseAuthGateway(
 
     override suspend fun link(provider: AuthProvider): SignInResult = try {
         val user = Firebase.auth.currentUser ?: return SignInResult.Failed("로그인 전이에요")
+        var appleCode: String? = null
         val credential = when (provider) {
             AuthProvider.APPLE -> {
                 val t = await(ui::apple)
+                appleCode = t.authCode
                 OAuthProvider.credential("apple.com", idToken = t.token ?: return SignInResult.Cancelled, rawNonce = t.rawNonce)
             }
             AuthProvider.GOOGLE -> {
@@ -108,7 +146,8 @@ class FirebaseAuthGateway(
             AuthProvider.KAKAO -> return SignInResult.Failed("카카오는 연결할 수 없어요")
         }
         user.linkWithCredential(credential)
-        SignInResult.Success(user.uid, provider)
+        SignInResult.Success(user.uid, provider, appleTokenNeedsAttention = provider == AuthProvider.APPLE && !appleRegistration(user.uid).register(appleCode))
+    } catch (cancelled: CancellationException) { throw cancelled
     } catch (e: ProviderFailed) {
         SignInResult.Failed(e.message ?: "연결하지 못했어요")
     } catch (e: Exception) {
