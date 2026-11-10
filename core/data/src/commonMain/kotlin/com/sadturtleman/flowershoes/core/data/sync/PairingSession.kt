@@ -272,7 +272,8 @@ class PairingSession(
         owner?.let { if (!owns(it)) return resetSession() }
         val invite = if (inviter || shown is PairingState.Accepting) transport.invite(current) else return shown
         owner?.let { if (!owns(it)) return resetSession() }
-        val gone = invite == null || invite.expireAtMs <= clock.now().toEpochMilliseconds()
+        // 수락 요청은 만료 전에 서버가 승인하고 아직 커밋 중일 수 있다. 클라이언트 시계는 최종 거절 근거가 아니다.
+        val gone = invite == null || (accepting == null && invite.expireAtMs <= clock.now().toEpochMilliseconds())
         if (!gone) {
             accepting?.let { saved ->
                 val expected = saved.ownerUid to saved.deviceId

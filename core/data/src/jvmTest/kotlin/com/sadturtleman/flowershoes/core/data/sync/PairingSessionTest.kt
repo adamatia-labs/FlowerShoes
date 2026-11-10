@@ -98,6 +98,23 @@ class PairingSessionTest {
     }
 
     @Test
+    fun `클라이언트 만료 시각이 지나도 처리 중인 수락은 서버 확인까지 보존한다`() = runTest {
+        var now = Clock.System.now()
+        val clientClock = object : Clock { override fun now() = now }
+        val sender = Phone("sender", "sender-device")
+        val receiver = Phone("receiver", "receiver-device", clock = clientClock)
+        val token = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람")).token
+        cloud.holdAccepts = true
+        assertIs<PairingState.Accepting>(receiver.pairing.accept(token))
+        now += 8.days // 서버 처리가 지연되는 동안 기기 시계가 만료를 가리킨다.
+        assertIs<PairingState.Accepting>(receiver.pairing.poll())
+        val restarted = PairingSession(receiver.db, receiver.identity, receiver.vault, cloud, clientClock, receiver.pending)
+        assertIs<PairingState.Accepting>(restarted.poll())
+        cloud.releaseAccepts()
+        assertIs<PairingState.Linked>(restarted.poll())
+    }
+
+    @Test
     fun `수락 응답이 유실돼도 만료로 단정하지 않고 서버 결과를 이어받는다`() = runTest {
         val sender = Phone("sender", "sender-device")
         val uncertain = object : PairingTransport by cloud {
