@@ -56,3 +56,78 @@ test('Apple 이 거절하면 null', async () => {
   const fail = (async () => new Response('{}', { status: 400 })) as unknown as typeof fetch;
   assert.equal(await exchangeCode(config, 'bad', fail), null);
 });
+
+test('일시적인 폐기 오류는 같은 토큰으로 재시도해 성공을 확인한다', async () => {
+  let calls = 0;
+  const request = (async () => new Response('', { status: ++calls === 1 ? 503 : 200 })) as typeof fetch;
+  assert.equal(await revoke(config, 'refresh', request), true);
+  assert.equal(calls, 2);
+});
+
+test('네트워크 단절 뒤에도 토큰 폐기를 다시 시도한다', async () => {
+  let calls = 0;
+  const request = (async () => {
+    if (++calls === 1) throw new TypeError('network unavailable');
+    return new Response('', { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await revoke(config, 'refresh', request), true);
+  assert.equal(calls, 2);
+});
+
+test('폐기 재시도 횟수를 제한하고 영구 오류는 반복하지 않는다', async () => {
+  for (const status of [400, 401, 503]) {
+    let calls = 0;
+    const waits: number[] = [];
+    const request = (async () => { calls++; return new Response('', { status }); }) as typeof fetch;
+    assert.equal(await revoke(config, 'refresh', request, { wait: async ms => { waits.push(ms); } }), false);
+    assert.equal(calls, status === 503 ? 3 : 1);
+    assert.deepEqual(waits, status === 503 ? [250, 500] : []);
+  }
+});
+
+test('Apple의 Retry-After를 지키고 긴 대기는 수동 안내로 넘긴다', async () => {
+  for (const retryAfter of ['1', '60']) {
+    let calls = 0;
+    const waits: number[] = [];
+    const request = (async () => ++calls === 1
+      ? new Response('', { status: 429, headers: { 'Retry-After': retryAfter } })
+      : new Response('', { status: 200 })) as typeof fetch;
+    assert.equal(await revoke(config, 'refresh', request, { wait: async ms => { waits.push(ms); } }), retryAfter === '1');
+    assert.deepEqual(waits, retryAfter === '1' ? [1_000] : []);
+    assert.equal(calls, retryAfter === '1' ? 2 : 1);
+  }
+});
+
+test('응답 없는 폐기는 각 요청을 중단하고 제한된 재시도 뒤 끝낸다', async () => {
+  let aborted = 0;
+  const request = (async (_url, init) => new Promise<Response>((_resolve, reject) => {
+    init!.signal!.addEventListener('abort', () => { aborted++; reject(new DOMException('timeout', 'AbortError')); });
+  })) as typeof fetch;
+  assert.equal(await revoke(config, 'refresh', request, { timeoutMs: 5, wait: async () => {} }), false);
+  assert.equal(aborted, 3);
+});
+
+test('일회용 code는 서버 오류에 재사용하지 않고 본문 지연도 중단한다', async () => {
+  let calls = 0;
+  const unavailable = (async () => { calls++; return new Response('', { status: 503 }); }) as typeof fetch;
+  assert.equal(await exchangeCode(config, 'code', unavailable), null);
+  assert.equal(calls, 1);
+
+  const stalledBody = (async (_url, init) => new Response(new ReadableStream({
+    start(controller) { init!.signal!.addEventListener('abort', () => controller.error(new DOMException('timeout', 'AbortError'))); },
+  }))) as typeof fetch;
+  await assert.rejects(exchangeCode(config, 'code', stalledBody, { timeoutMs: 5 }), { name: 'AbortError' });
+});
+
+test('본문 정리 오류가 이미 받은 HTTP 성공과 재시도 금지를 덮어쓰지 않는다', async () => {
+  for (const status of [200, 400, 401, 429]) {
+    let calls = 0;
+    const request = (async () => {
+      calls++;
+      return new Response(new ReadableStream({ start(controller) { controller.error(new Error('connection reset')); } }),
+        { status, headers: { 'Retry-After': '60' } });
+    }) as typeof fetch;
+    assert.equal(await revoke(config, 'refresh', request, { wait: async () => {} }), status === 200);
+    assert.equal(calls, 1);
+  }
+});

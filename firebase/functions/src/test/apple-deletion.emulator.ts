@@ -58,8 +58,29 @@ test('토큰을 지운 뒤 Auth 정리가 실패해도 재시도와 응답 재�
       fail = false;
       assert.deepEqual(await call(), { ok: true, appleRevocation: expected });
       assert.deepEqual(await call(), { ok: true, appleRevocation: expected });
-      assert.equal(request.mock.callCount(), 1);
+      assert.equal(request.mock.callCount(), revoked ? 1 : 3);
       assert.equal(remove.mock.callCount(), 2);
     } finally { request.mock.restore(); remove.mock.restore(); }
   }
+});
+
+test('일시적인 Apple 오류는 토큰을 보관한 채 재시도하고 확인 뒤 삭제한다', async () => {
+  const uid = 'apple-transient-retry';
+  const tokenRef = getFirestore().doc(`appleTokens/${uid}`);
+  let calls = 0;
+  const remove = mock.method(getAuth(), 'deleteUser', async () => {});
+  const request = mock.method(globalThis, 'fetch', (async (input: string | URL | Request) => {
+    if (!String(input).endsWith('/auth/revoke')) throw new Error('unexpected test request');
+    assert.equal((await tokenRef.get()).get('refreshToken'), 'test-token');
+    return new Response('', { status: ++calls === 1 ? 503 : 200 });
+  }) as typeof fetch);
+  try {
+    await tokenRef.set({ refreshToken: 'test-token' });
+    await getFirestore().doc(`users/${uid}`).set({ nickname: 'local-test' });
+    const result = await functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, data: {}, rawRequest: {} } as never);
+    assert.deepEqual(result, { ok: true, appleRevocation: 'revoked' });
+    assert.equal(calls, 2);
+    assert.equal((await tokenRef.get()).exists, false);
+    assert.equal((await getFirestore().doc(`users/${uid}`).get()).exists, false);
+  } finally { request.mock.restore(); remove.mock.restore(); }
 });
