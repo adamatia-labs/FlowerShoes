@@ -28,6 +28,19 @@ export function appleClientSecret(c: AppleConfig, nowSec: number = Math.floor(Da
 
 type Fetch = typeof fetch;
 
+interface RequestOptions {
+  timeoutMs?: number;
+  wait?: (ms: number) => Promise<void>;
+}
+
+/** 응답 본문까지 제한한다. 헤더만 도착한 교환 요청도 무한히 기다리지 않는다. */
+async function request<T>(url: string, init: RequestInit, f: Fetch, timeoutMs: number, read: (r: Response) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await read(await f(url, { ...init, signal: controller.signal })); }
+  finally { clearTimeout(timer); }
+}
+
 function form(fields: Record<string, string>): RequestInit {
   return {
     method: 'POST',
@@ -37,18 +50,44 @@ function form(fields: Record<string, string>): RequestInit {
 }
 
 /** authorization code → refresh token. 거절되면 null. */
-export async function exchangeCode(c: AppleConfig, code: string, f: Fetch = fetch): Promise<string | null> {
-  const res = await f('https://appleid.apple.com/auth/token', form({
+export async function exchangeCode(c: AppleConfig, code: string, f: Fetch = fetch, options: RequestOptions = {}): Promise<string | null> {
+  // 일회용 code는 응답을 잃었을 때 이미 소비됐을 수 있으므로 자동 재시도하지 않는다.
+  return request('https://appleid.apple.com/auth/token', form({
     client_id: c.clientId, client_secret: appleClientSecret(c), code, grant_type: 'authorization_code',
-  }));
-  if (!res.ok) return null;
-  const json = (await res.json()) as { refresh_token?: string };
-  return json.refresh_token ?? null;
+  }), f, options.timeoutMs ?? 5_000, async res => {
+    if (!res.ok) { await res.body?.cancel(); return null; }
+    const json = (await res.json()) as { refresh_token?: string };
+    return json.refresh_token ?? null;
+  });
 }
 
-export async function revoke(c: AppleConfig, refreshToken: string, f: Fetch = fetch): Promise<boolean> {
-  const res = await f('https://appleid.apple.com/auth/revoke', form({
+/** 폐기는 같은 토큰으로 최대 3회. 실패하면 호출자가 데이터 삭제와 수동 해제 안내를 이어간다. */
+export async function revoke(c: AppleConfig, refreshToken: string, f: Fetch = fetch, options: RequestOptions = {}): Promise<boolean> {
+  const init = form({
     client_id: c.clientId, client_secret: appleClientSecret(c), token: refreshToken, token_type_hint: 'refresh_token',
-  }));
-  return res.ok;
+  });
+  const wait = options.wait ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let pause = 250 * (attempt + 1);
+    try {
+      const res = await request('https://appleid.apple.com/auth/revoke', init, f, options.timeoutMs ?? 5_000, async res => {
+        await res.body?.cancel();
+        return res;
+      });
+      if (res.ok) return true;
+      if (res.status !== 408 && res.status !== 429 && res.status < 500) return false;
+      const retryAfter = res.headers.get('Retry-After');
+      if (retryAfter) {
+        const seconds = Number(retryAfter);
+        const requested = Number.isFinite(seconds) ? seconds * 1_000 : Date.parse(retryAfter) - Date.now();
+        // 긴 대기 요청을 무시하고 재호출하지 않는다. 탈퇴를 진행하고 수동 해제를 안내한다.
+        if (requested > 2_000) return false;
+        if (Number.isFinite(requested)) pause = Math.max(pause, requested);
+      }
+    } catch {
+      // 네트워크 오류·시간 초과만 같은 폐기 요청으로 복구한다. 토큰/응답은 로그에 싣지 않는다.
+    }
+    if (attempt < 2) await wait(pause);
+  }
+  return false;
 }
