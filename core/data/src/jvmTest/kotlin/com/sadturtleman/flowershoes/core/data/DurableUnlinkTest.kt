@@ -290,6 +290,7 @@ class DurableUnlinkTest {
             assertEquals(0, settings.state.first().keyEpoch)
             assertNull(db.cleanupDao().get())
             assertNull(recovered.pendingCleanup.first())
+            if (account) settings.ensureIdentity()
             settings.bindAccount("next-owner")
             assertNotNull(settings.draftSessions.first(), "마지막 정리 표식도 해제되어야 한다")
         } finally {
