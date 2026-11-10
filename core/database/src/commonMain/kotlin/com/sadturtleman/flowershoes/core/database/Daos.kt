@@ -396,8 +396,11 @@ interface LetterDraftDao {
     @Query("SELECT COUNT(*) FROM letter_draft")
     suspend fun count(): Int
 
-    @Query("SELECT COUNT(*) FROM letter_draft WHERE draftJson != ''")
-    suspend fun countSaved(): Int
+    @Query("SELECT COUNT(*) FROM letter_draft WHERE draftJson != '' OR hasAttachments = 1")
+    suspend fun countRetainedContent(): Int
+
+    @Query("UPDATE letter_draft SET hasAttachments = 1 WHERE id = :id AND ownerUid = :owner AND editorToken = :token")
+    suspend fun reserveAttachments(id: String, owner: String, token: String): Int
 
     @Query("UPDATE letter_draft SET draftJson = :json, updatedAtMs = :atMs WHERE id = :id AND ownerUid = :owner AND editorToken = :token")
     suspend fun saveEdited(id: String, owner: String, token: String, json: String, atMs: Long): Int

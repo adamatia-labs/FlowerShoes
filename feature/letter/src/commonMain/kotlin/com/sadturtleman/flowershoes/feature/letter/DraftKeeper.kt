@@ -112,8 +112,9 @@ internal class DraftKeeper(
 
     suspend fun resume(id: String): ComposeDraft? {
         val session = state.value.session ?: return null
-        flushPending()?.join()
         val version = ++request
+        flushPending()?.join()
+        if (version != request || state.value.session != session) return null
         val opened = store.open(session, id) ?: return null
         if (version != request || state.value.session != session) return null
         val draft = opened.initial?.let { decode(it.json) }
@@ -141,7 +142,6 @@ internal class DraftKeeper(
     }
 
     private suspend fun persist(captured: DraftEditor, draft: ComposeDraft): Boolean = lock.withLock {
-        if (draft.sending) return@withLock false
         val body = if (draft.isEmpty) "" else encode(draft)
         if (saved[captured.token] == body) return@withLock true
         try {

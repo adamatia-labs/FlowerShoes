@@ -387,8 +387,10 @@ class LetterViewModel(
                 loadDraftThumb(intent.meta)
             }
             is LetterIntent.AddPhoto -> viewModelScope.launch {
-                val editorToken = intent.editorToken ?: keeper.currentEditor?.token
-                if (!keeper.ready || editorToken != keeper.currentEditor?.token || !ui.value.draft.canAddPhoto) return@launch
+                val captured = keeper.currentEditor ?: return@launch
+                val editorToken = intent.editorToken ?: captured.token
+                if (!keeper.ready || editorToken != captured.token || !ui.value.draft.canAddPhoto) return@launch
+                if (!draftStore.reserveAttachments(captured)) return@launch
                 val id = attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, intent.jpeg)
                 if (editorToken != keeper.currentEditor?.token) return@launch
                 editDraft { it.copy(draft = it.draft.copy(photos = it.draft.photos + id).insertObject(photoKey(id)), draftPhotos = it.draftPhotos + (id to intent.jpeg)) }
@@ -520,6 +522,12 @@ class LetterViewModel(
         draft = ComposeDraft(rev = draft.rev + 1), draftThumbs = emptyMap(), draftPhotos = emptyMap(),
         draftId = keeper.currentId, draftReady = keeper.ready, draftEditorToken = keeper.currentEditor?.token, resumeOffer = false,
     )
+
+    /** 그림판에서 파일을 만들기 전에 이 편집의 첨부 보존 경계를 남긴다. */
+    suspend fun prepareDrawing(): String? {
+        val captured = keeper.currentEditor ?: return null
+        return if (draftStore.reserveAttachments(captured) && keeper.currentEditor?.token == captured.token) captured.token else null
+    }
 
     private fun loadDraftThumb(meta: DrawingMeta) {
         val id = meta.docAttachmentId ?: return

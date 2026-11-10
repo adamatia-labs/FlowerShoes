@@ -19,6 +19,7 @@ interface LetterDraftStore {
     fun observe(): Flow<DraftSnapshot>
     suspend fun open(session: DraftSession, id: String): DraftEditor?
     suspend fun save(editor: DraftEditor, json: String, atMs: Long): Boolean
+    suspend fun reserveAttachments(editor: DraftEditor): Boolean
     suspend fun retire(editor: DraftEditor): Boolean
     suspend fun delete(session: DraftSession, id: String): Boolean
     suspend fun recoverUnclaimed(session: DraftSession, confirmedOwner: Boolean): Boolean
@@ -60,6 +61,14 @@ class RoomLetterDraftStore(private val db: AppDatabase, private val settings: De
             saved = db.letterDraftDao().saveEdited(editor.id, editor.session.ownerUid, editor.token, json, atMs) == 1
         }
         return saved
+    }
+
+    override suspend fun reserveAttachments(editor: DraftEditor): Boolean {
+        var reserved = false
+        settings.withDraftSession(editor.session) {
+            reserved = db.letterDraftDao().reserveAttachments(editor.id, editor.session.ownerUid, editor.token) == 1
+        }
+        return reserved
     }
 
     override suspend fun retire(editor: DraftEditor): Boolean {

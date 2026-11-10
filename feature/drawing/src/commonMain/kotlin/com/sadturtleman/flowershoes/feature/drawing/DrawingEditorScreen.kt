@@ -100,6 +100,18 @@ import com.sadturtleman.flowershoes.core.drawingui.stickerLabel
 import kotlinx.datetime.LocalDateTime
 import org.koin.compose.viewmodel.koinViewModel
 
+@Composable
+private fun drawingEditorViewModel(editorSession: String?): DrawingEditorViewModel {
+    if (editorSession == null) return koinViewModel()
+    val owner = remember(editorSession) {
+        object : androidx.lifecycle.ViewModelStoreOwner {
+            override val viewModelStore = androidx.lifecycle.ViewModelStore()
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
+    return koinViewModel(viewModelStoreOwner = owner)
+}
+
 /**
  * 그림 그리기(Figma 5 · 그림 그리기). [forLetter] 면 편지에 붙일 그림(완료 → 편지에 붙이기 → [onSaved]),
  * 아니면 그림만 보내기(완료 → 그림만 보내기 → [onSend]).
@@ -114,7 +126,9 @@ fun DrawingEditorRoute(
     photoPicker: (@Composable (onPicked: (ByteArray) -> Unit) -> ((fromCamera: Boolean) -> Unit))? = null,
     /** 사진첩에 PNG 저장(플랫폼). 성공하면 true. */
     saveImage: (suspend (ByteArray) -> Boolean)? = null,
-    viewModel: DrawingEditorViewModel = koinViewModel(),
+    /** 편지 편집 권한이 바뀌면 그림 상태·지연 저장·버퍼 이벤트도 함께 폐기한다. */
+    editorSession: String? = null,
+    viewModel: DrawingEditorViewModel = drawingEditorViewModel(editorSession),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var notice by remember { mutableStateOf<String?>(null) }

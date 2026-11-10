@@ -128,6 +128,21 @@ class LetterDraftStoreTest {
         assertNotNull(db.letterDraftDao().get("empty-reservation"))
         Unit
     }
+    @Test fun `자동 저장 전 다른 계정 사진도 WIPE에서 보존한다`() = runBlocking {
+        val a = checkNotNull(store.open(login(), "pending-photo"))
+        assertTrue(store.reserveAttachments(a))
+        val attachments = AttachmentStore(db, root / "attachments")
+        val bytes = byteArrayOf(3, 2, 1)
+        val photo = attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, bytes)
+        assertEquals("", db.letterDraftDao().get(a.id)?.draftJson)
+        settings.bindAccount("account-b")
+        assertFalse(store.reserveAttachments(a))
+        var wiped = false
+        UnlinkService(db, InMemoryKeyVault(), settings, transport) { wiped = true }.onPartnerUnlinked(AfterUnlink.WIPE)
+        assertFalse(wiped)
+        assertTrue(store.save(a, "{photo:$photo}", 200))
+        assertContentEquals(bytes, attachments.read(photo))
+    }
     @Test fun `계정이 바뀐 초안 전송은 편지와 전송 기록을 만들지 않는다`() = runBlocking {
         val a = write("a", "private")
         val identity = object : Identity {

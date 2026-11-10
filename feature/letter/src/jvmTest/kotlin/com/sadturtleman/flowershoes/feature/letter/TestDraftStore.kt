@@ -42,6 +42,7 @@ internal class TestDraftStore(owner: String = "a") : LetterDraftStore {
         if (!valid(editor)) return false
         allRows[editor.id] = StoredDraft(editor.id, json, atMs); publish(); return true
     }
+    override suspend fun reserveAttachments(editor: DraftEditor) = session == editor.session && valid(editor)
     override suspend fun retire(editor: DraftEditor): Boolean {
         if (!valid(editor)) return false
         allRows.remove(editor.id); owners.remove(editor.id); tokens.remove(editor.id); publish(); return true

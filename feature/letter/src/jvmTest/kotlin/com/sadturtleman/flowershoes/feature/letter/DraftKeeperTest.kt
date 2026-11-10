@@ -96,6 +96,23 @@ class DraftKeeperTest {
         assertTrue(store.owned("a").single().json.contains("보존할 원본"))
     }
 
+    @Test fun `저장을 기다리던 옛 이어 쓰기가 새 계정 편집 준비를 막지 않는다`() = runTest {
+        val k = keeper()
+        k.edited(ComposeDraft(text = "대기 입력"))
+        val releaseSave = CompletableDeferred<Unit>()
+        store.beforeSave = { releaseSave.await() }
+        val resume = backgroundScope.async { k.resume(k.currentId) }
+        runCurrent()
+        val releaseOpen = CompletableDeferred<Unit>()
+        store.afterOpen = { if (it.session.ownerUid == "b") releaseOpen.await() }
+        store.switchAccount("b"); runCurrent()
+        releaseSave.complete(Unit); runCurrent()
+        assertNull(resume.await())
+        releaseOpen.complete(Unit); runCurrent()
+        assertTrue(k.ready)
+        assertEquals("b", k.currentEditor?.session?.ownerUid)
+    }
+
     @Test fun `읽을 수 없는 초안 원문을 지우지 않는다`() = runTest {
         val k = keeper()
         val handle = checkNotNull(store.open(store.session, "unknown"))

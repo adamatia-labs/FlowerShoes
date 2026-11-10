@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "64a100a56b46dc6a4915092f91da0d33",
+    "identityHash": "1ec728fae18c83925a33b8cb82bdeb43",
     "entities": [
       {
         "tableName": "couple",
@@ -1048,7 +1048,7 @@
       },
       {
         "tableName": "letter_draft",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `draftJson` TEXT NOT NULL, `updatedAtMs` INTEGER NOT NULL, `ownerUid` TEXT, `editorToken` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `draftJson` TEXT NOT NULL, `updatedAtMs` INTEGER NOT NULL, `ownerUid` TEXT, `editorToken` TEXT, `hasAttachments` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -1077,6 +1077,13 @@
             "fieldPath": "editorToken",
             "columnName": "editorToken",
             "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "hasAttachments",
+            "columnName": "hasAttachments",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
           }
         ],
         "primaryKey": {
@@ -1136,7 +1143,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '64a100a56b46dc6a4915092f91da0d33')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1ec728fae18c83925a33b8cb82bdeb43')"
     ]
   }
 }

@@ -15,6 +15,7 @@ import com.sadturtleman.flowershoes.core.logging.BizEvent
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.ReceiptEntity
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
@@ -147,10 +148,12 @@ class ComposeSendTest {
         vm.onIntent(LetterIntent.EditText("이전 계정 전송 대기 글"))
         vm.onIntent(LetterIntent.Send)
         entered.await()
+        vm.onIntent(LetterIntent.LeaveCompose)
         drafts.switchAccount("other-account")
         until { it.draftSession == drafts.session.generation && it.draftReady }
         release.complete(Unit)
         vm.toasts.first { it.kind == LetterToast.Kind.ERROR }
+        withTimeout(5_000) { while (drafts.owned("jisu").none { it.json.contains("이전 계정 전송 대기 글") }) delay(10) }
         assertTrue(db.letterDao().allActive().isEmpty())
         assertNull(vm.state.value.done)
         assertTrue(vm.state.value.draft.isEmpty)
