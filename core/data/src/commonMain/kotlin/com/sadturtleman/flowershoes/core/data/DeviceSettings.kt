@@ -179,7 +179,8 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
                 p.remove(PENDING_INVITE)
                 p.remove(PENDING_ACCEPTANCES)
             }
-            p.remove(CLEANUP_REQUEST)
+            // Room 삭제 뒤 마지막 설정 저장이 실패해도 복구 안내/원래 선택을 남긴다.
+            p[CLEANUP_REQUEST] = prefsJson.encodeToString(com.sadturtleman.flowershoes.core.database.CleanupEntity.serializer(), cleanup)
             p[CLEANUP_TOKEN] = cleanup.token
             p[CLEANUP_FINISHED] = cleanup.token
         }

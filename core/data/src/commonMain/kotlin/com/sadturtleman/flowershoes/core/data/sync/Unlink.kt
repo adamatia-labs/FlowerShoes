@@ -94,7 +94,10 @@ class UnlinkService(
         return installJournal(candidate)
     }
 
-    private suspend fun restoreJournal(): CleanupEntity? = db.cleanupDao().get() ?: settings.cleanupRequest()?.let { installJournal(it) }
+    private suspend fun restoreJournal(): CleanupEntity? = db.cleanupDao().get() ?: settings.cleanupRequest()?.let {
+        // 마지막 Room 삭제가 끝난 작업은 복원하지 않고 설정 잠금만 해제한다.
+        if (settings.cleanupSettingsFinished(it.token)) it else installJournal(it)
+    }
 
     private suspend fun installJournal(candidate: CleanupEntity): CleanupEntity {
         try {
@@ -156,7 +159,13 @@ class UnlinkService(
             settings.finishCleanupSettings(cleanup) { checkedWrite(cleanup) {} }
         }
         settings.releaseCleanup(cleanup.token) {
-            checkedWrite(cleanup) { db.cleanupDao().delete(cleanup.token) }
+            db.useWriterConnection { tx -> tx.immediateTransaction {
+                val saved = db.cleanupDao().get()
+                if (saved != null) {
+                    check(saved == cleanup && db.coupleDao().get() == cleanup.expectedCouple()) { "진행 중인 연결 처리가 바뀌었어요" }
+                    db.cleanupDao().delete(cleanup.token)
+                }
+            } }
         }
     }
 

@@ -46,8 +46,9 @@ class DurableUnlinkTest {
     }
     private class Server : AccountTransport {
         var unlinks = 0
+        var deletions = 0
         override suspend fun unlinkCouple(coupleId: String) { unlinks++ }
-        override suspend fun deleteAccount() = Unit
+        override suspend fun deleteAccount() { deletions++ }
     }
 
     @Test
@@ -243,20 +244,20 @@ class DurableUnlinkTest {
         } finally { db.close(); scope.coroutineContext[Job]!!.cancelAndJoin(); fs.deleteRecursively(root) }
     }
 
-    private fun settingsFailure(finalRelease: Boolean): Unit = runBlocking {
+    private fun settingsFailure(finalRelease: Boolean, account: Boolean = false): Unit = runBlocking {
         fs.createDirectories(root)
         var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         var db = open()
         try {
             val original = PreferenceDataStoreFactory.createWithPath(scope = scope) { root / "settings.preferences_pb" }
-            var fail = true
+            var failuresRemaining = if (finalRelease) 2 else 1
             val token = stringPreferencesKey("relationship_cleanup_token")
             val finished = stringPreferencesKey("relationship_cleanup_finished")
             val failingStore = object : DataStore<Preferences> by original {
                 override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = original.updateData { before ->
                     val after = transform(before)
                     val matches = if (finalRelease) before[finished] != null && after[token] == null else before[finished] == null && after[finished] != null
-                    if (fail && matches) { fail = false; error("injected settings commit failure") }
+                    if (failuresRemaining > 0 && matches) { failuresRemaining--; error("injected settings commit failure") }
                     after
                 }
             }
@@ -266,18 +267,29 @@ class DurableUnlinkTest {
             val vault = InMemoryKeyVault()
             var wipes = 0
             val first = UnlinkService(db, vault, settings, server) { wipes++ }
-            assertFailsWith<IllegalStateException> { first.unlink(AfterUnlink.WIPE) }
+            assertFailsWith<IllegalStateException> { if (account) first.deleteAccount() else first.unlink(AfterUnlink.WIPE) }
             assertEquals(1, wipes)
+            assertNotNull(first.pendingCleanup.first(), "마지막 설정 잠금도 복구 안내에 남아야 한다")
+            if (finalRelease) {
+                assertNull(db.cleanupDao().get())
+                assertFailsWith<IllegalStateException> { first.resumePending() }
+                assertNotNull(first.pendingCleanup.first(), "잠금 해제가 계속 실패해도 재시도 안내를 유지한다")
+                assertEquals(AfterUnlink.WIPE, first.pendingChoice.first())
+                assertEquals(1, wipes)
+            }
             db.close()
             scope.coroutineContext[Job]!!.cancelAndJoin()
             db = open()
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             settings = settings(scope)
-            UnlinkService(db, vault, settings, null) { wipes++ }.resumePending()
-            assertEquals(1, server.unlinks)
+            val recovered = UnlinkService(db, vault, settings, null) { wipes++ }
+            recovered.resumePending()
+            assertEquals(if (account) 0 else 1, server.unlinks)
+            assertEquals(if (account) 1 else 0, server.deletions)
             assertEquals(1, wipes, "설정 저장만 실패했으면 파일을 다시 지우지 않는다")
             assertEquals(0, settings.state.first().keyEpoch)
             assertNull(db.cleanupDao().get())
+            assertNull(recovered.pendingCleanup.first())
             settings.bindAccount("next-owner")
             assertNotNull(settings.draftSessions.first(), "마지막 정리 표식도 해제되어야 한다")
         } finally {
@@ -287,6 +299,7 @@ class DurableUnlinkTest {
 
     @Test fun `최종 설정 저장 실패는 파일 삭제를 반복하지 않고 재시작 후 복구한다`() = settingsFailure(finalRelease = false)
     @Test fun `DB 작업 제거 후 설정 실패도 재시작 후 잠금을 해제한다`() = settingsFailure(finalRelease = true)
+    @Test fun `탈퇴 후 마지막 설정 잠금 실패도 복구 안내를 유지하고 계정 삭제를 반복하지 않는다`() = settingsFailure(finalRelease = true, account = true)
 
     @Test
     fun `파일 삭제 실패 뒤 DB와 설정을 다시 열어도 원래 WIPE를 끝낸다`() = runBlocking {
