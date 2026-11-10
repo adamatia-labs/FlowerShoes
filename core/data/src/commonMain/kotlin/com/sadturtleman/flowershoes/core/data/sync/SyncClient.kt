@@ -191,7 +191,10 @@ class SyncClient(
         val env = OpEnvelope.seal(header, Plain(op.lamport, withBlobs(couple, payload)).encode(), key, signer)
         if (env.ciphertext.size <= MAX_OP_CIPHERTEXT) return MailItem(op.opId, kind, identity.deviceId, header.toBytes(), env.ciphertext, env.signature, resend)
         skip()
-        val empty = OpEnvelope.seal(header, Plain(op.lamport, OpCodec.encode(OpPayload.Snapshot(0, emptyList()))).encode(), key, signer)
+        // #20 결정 5의 과대 항목 건너뛰기도 이 조각의 완료 표식은 보존한다.
+        val skippedPayload = (OpCodec.decode(payload) as? OpPayload.Snapshot)?.copy(items = emptyList())
+            ?: OpPayload.Snapshot(0, emptyList())
+        val empty = OpEnvelope.seal(header, Plain(op.lamport, OpCodec.encode(skippedPayload)).encode(), key, signer)
         return MailItem(op.opId, OpKind.SNAPSHOT.wire, identity.deviceId, header.toBytes(), empty.ciphertext, empty.signature, resend)
     }
 
@@ -300,7 +303,10 @@ class SyncClient(
         val sealed = blobs.get(couple.id, blobId)
         if (sealed == null) {
             // 실제로 내용이 같았던 수신만 기존 파일에 연결한다. 확인되지 않은 누락은 재전송으로 복구한다.
-            check(db.attachmentDao().get(attachmentId) == null || db.syncDao().meta(binding) != null) { "첨부 연결을 아직 확인할 수 없어요" }
+            val local = db.attachmentDao().get(attachmentId)
+            val bytes = if (db.syncDao().meta(binding) != null) attachments.read(attachmentId) else null
+            check(local != null && bytes != null && bytes.size.toLong() == local.sizeBytes &&
+                bytes.toByteString().sha256().hex() == local.sha256) { "첨부 연결을 아직 확인할 수 없어요" }
             return
         }
         attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
@@ -377,7 +383,15 @@ class SyncClient(
         val stream = myStream.wire
         val peerCursor = control.cursors[stream] ?: 0L
         db.syncDao().setPeerCursor(PeerCursorEntity(stream, peerCursor))
-        db.syncDao().deleteThrough(stream, peerCursor)
+        val beforeAck = db.syncDao().log(stream)
+        // 구버전 수신자는 첫 조각만으로 coversThrough 를 ACK한다. 마지막 조각까지
+        // 연속 수신한 ACK가 오기 전에는 원본과 모든 조각을 함께 보존한다.
+        val incompleteBatch = beforeAck.any { row ->
+            val snapshot = OpCodec.decode(row.payload) as? OpPayload.Snapshot
+            val batch = snapshot?.batch
+            batch != null && batch.validFor(row.seq, snapshot.coversThrough) && peerCursor < batch.lastSeq
+        }
+        if (!incompleteBatch) db.syncDao().deleteThrough(stream, peerCursor)
 
         val uploaded = db.syncDao().meta(uploadedKey(stream)) ?: 0L
         val log = sendLog(stream)
@@ -391,8 +405,24 @@ class SyncClient(
                 plan.ops.size to false
             }
             is ResendPlan.Snapshot -> {
-                writeSnapshot(plan.coversThrough)
-                0 to true
+                // 원본이 이미 floor 아래인 복구에서도 미완료 묶음을 계속 재발행하지 않는다.
+                // 동일 opId/seq로 재전송하므로 TTL·앱 재시작 뒤에도 같은 묶음을 마칠 수 있다.
+                val rows = db.syncDao().log(stream)
+                val pending = rows.firstNotNullOfOrNull { row ->
+                    val snapshot = OpCodec.decode(row.payload) as? OpPayload.Snapshot
+                    snapshot?.batch?.takeIf {
+                        it.validFor(row.seq, snapshot.coversThrough) && it.lastSeq > peerCursor &&
+                            snapshot.coversThrough >= log.floor - 1
+                    }
+                }
+                if (pending != null) {
+                    val parts = rows.filter { it.seq in pending.firstSeq..pending.lastSeq }
+                    parts.forEach { mailbox.put(couple.id, partnerDevice, seal(couple, it, resend = true)) }
+                    parts.size to false
+                } else {
+                    writeSnapshot(plan.coversThrough)
+                    0 to true
+                }
             }
         }
     }
@@ -408,58 +438,51 @@ class SyncClient(
         )
     }
 
-    /**
-     * 스냅샷: 지금 DB 상태로 내가 쓴 것 전부(내 정보 · 복무 · 내가 마지막으로 고친 일정(기념일 포함) · 받은 휴가 · 내가 쓴 편지).
-     * 받는 쪽은 lamport 로 병합하고, 이 스트림을 [coversThrough] 까지 반영한 것으로 처리한다.
-     */
-    suspend fun writeSnapshot(coversThrough: Long) {
-        archive.prepare()
-        val items = buildList<OpPayload> {
-            db.userDao().get(identity.userId)?.let { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
-            db.serviceDao().get(identity.userId)?.let { add(OpPayload.ServicePut(it.toModel())) }
-            db.serviceDao().get(com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER)?.let { add(OpPayload.ServicePut(it.toModel())) }
-            db.eventDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.EventPut(it.toModel())) }
-            db.leaveDao().lastWrittenBy(identity.deviceId).forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
-            db.bookCoverDao().get()?.takeIf { it.lastWriterDevice == identity.deviceId }?.let { add(it.toPayload()) }
-            db.letterDao().byAuthor(identity.userId).forEach { l ->
-                val drawings = db.drawingDao().forLetter(l.id).map {
-                    com.sadturtleman.flowershoes.core.data.DrawingMeta(it.id, it.orderInLetter, it.shape, it.docAttachmentId, it.pngAttachmentId, it.caption, it.replayEnabled, it.replayDurationMs, showOnWidget = it.showOnWidget, photoAttachmentId = photoOf(it.docAttachmentId))
+    private enum class SnapshotPurpose(val entityId: String) { REPAIR("snapshot"), DEVICE_CHANGE("full") }
+
+    /** 현재 관계의 공유 기록을 같은 DB 시점에서 전송한다. 기기 교체는 현재 상태를 제외한다(기획 §5). */
+    suspend fun writeSnapshot(coversThrough: Long) = writeSnapshotTransaction(SnapshotPurpose.REPAIR, coversThrough)
+
+    suspend fun writeFullSnapshot() = writeSnapshotTransaction(SnapshotPurpose.DEVICE_CHANGE, null)
+
+    private suspend fun writeSnapshotTransaction(purpose: SnapshotPurpose, coversThrough: Long?) {
+        db.useWriterConnection { tx -> tx.immediateTransaction {
+            archive.prepare()
+            val firstSeq = db.syncDao().nextSeq(myStream.wire) ?: 1L
+            val covers = coversThrough ?: (firstSeq - 1)
+            require(covers in 0 until firstSeq)
+            val items = buildList<OpPayload> {
+                db.userDao().all().forEach { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
+                db.serviceDao().all().forEach { add(OpPayload.ServicePut(it.toModel())) }
+                db.eventDao().all().forEach { add(OpPayload.EventPut(it.toModel())) }
+                db.leaveDao().all().forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
+                db.bookCoverDao().get()?.let { add(it.toPayload()) }
+                db.letterDao().all().forEach { l ->
+                    val deletedAt = l.deletedAtMs
+                    if (deletedAt == null) {
+                        add(OpPayload.LetterPut(l.toModel(), drawingMetas(l.id)))
+                    } else {
+                        // 구버전도 아는 Delete를 함께 보낸다. 두 항목을 한 조각으로 묶어
+                        // 삭제가 insert보다 먼저 도착해 무시되거나 첨부를 다시 받지 않게 한다.
+                        add(OpPayload.Snapshot(0, listOf(
+                            OpPayload.LetterPut(l.toModel().copy(blocks = emptyList())),
+                            OpPayload.Delete(com.sadturtleman.flowershoes.core.data.DeletableEntity.LETTER,
+                                l.id, l.lamport, deletedAt, identity.deviceId),
+                        )))
+                    }
                 }
-                add(OpPayload.LetterPut(l.toModel(), drawings))
+                db.missYouDao().all().forEach { add(OpPayload.MissYouPut(com.sadturtleman.flowershoes.core.model.MissYou(it.id, it.authorId, kotlin.time.Instant.fromEpochMilliseconds(it.sentAtMs)))) }
+                if (purpose == SnapshotPurpose.REPAIR) db.statusDao().all().forEach { add(OpPayload.StatusPut(it.toModel())) }
+                db.receiptDao().all().forEach {
+                    add(OpPayload.ReceiptPut(com.sadturtleman.flowershoes.core.model.Receipt(com.sadturtleman.flowershoes.core.model.ReceiptEntity.valueOf(it.entity), it.entityId, it.readerId, kotlin.time.Instant.fromEpochMilliseconds(it.atMs))))
+                }
             }
-        }
-        writeSnapshotOps("snapshot", coversThrough, items)
+            writeSnapshotOps(purpose.entityId, covers, firstSeq, items)
+        } }
     }
 
-    /**
-     * 넘겨주기(7-3-B) 스냅샷: 내가 가진 공유 데이터 전체(양쪽이 쓴 편지 · 그림 · 일정 · 읽음 · 보고싶어 · 정보).
-     * 새 기기는 내 스트림 커서가 없으므로 지금까지의 번호를 모두 반영한 것으로 처리하게 한다.
-     */
-    suspend fun writeFullSnapshot() {
-        archive.prepare()
-        val stream = myStream.wire
-        val items = buildList<OpPayload> {
-            db.userDao().all().forEach { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
-            db.serviceDao().all().forEach { add(OpPayload.ServicePut(it.toModel())) }
-            db.eventDao().all().forEach { add(OpPayload.EventPut(it.toModel())) }
-            db.leaveDao().all().forEach { add(OpPayload.LeaveGrantPut(it.toModel())) }
-            db.bookCoverDao().get()?.let { add(it.toPayload()) }
-            db.letterDao().allActive().forEach { l -> add(OpPayload.LetterPut(l.toModel(), drawingMetas(l.id))) }
-            db.missYouDao().all().forEach { add(OpPayload.MissYouPut(com.sadturtleman.flowershoes.core.model.MissYou(it.id, it.authorId, kotlin.time.Instant.fromEpochMilliseconds(it.sentAtMs)))) }
-            db.receiptDao().all().forEach {
-                add(OpPayload.ReceiptPut(com.sadturtleman.flowershoes.core.model.Receipt(com.sadturtleman.flowershoes.core.model.ReceiptEntity.valueOf(it.entity), it.entityId, it.readerId, kotlin.time.Instant.fromEpochMilliseconds(it.atMs))))
-            }
-        }
-        val covers = (db.syncDao().nextSeq(stream) ?: 1L) - 1
-        writeSnapshotOps("full", covers, items)
-    }
-
-    /**
-     * 스냅샷을 우편함 한 칸(규칙: 암호문 64KB)에 들어가는 조각으로 나눠 쓴다. 조각마다 같은 [coversThrough] 를 싣는다 —
-     * 받는 쪽은 어느 조각이 먼저 와도 그 번호까지 반영한 것으로 보고, 조각 자신의 번호(그 뒤)는 보통 Op 처럼 받는다.
-     * 항목 하나가 한도를 넘으면 혼자 한 조각이 되고, 보낼 때 건너뛴다([seal]).
-     */
-    private suspend fun writeSnapshotOps(entityId: String, coversThrough: Long, items: List<OpPayload>) {
+    /** 모든 조각을 한 트랜잭션에서 예약한다. 어느 조각 하나만으로는 coversThrough 를 확인하지 않는다. */
+    private suspend fun writeSnapshotOps(entityId: String, coversThrough: Long, firstSeq: Long, items: List<OpPayload>) {
         val chunks = mutableListOf<MutableList<OpPayload>>()
         var size = 0
         items.mapNotNull { archive.shared(it, currentOnly = true) }.forEach { item ->
@@ -471,9 +494,11 @@ class SyncClient(
             chunks.last() += item
             size += itemSize
         }
-        if (chunks.isEmpty()) chunks += mutableListOf<OpPayload>() // 빈 스냅샷도 커서는 옮긴다.
-        chunks.forEach { chunk ->
-            writer.write(OpKind.SNAPSHOT, "snapshot", entityId, localWrite = {}, payload = { OpPayload.Snapshot(coversThrough, chunk) })
+        if (chunks.isEmpty()) chunks += mutableListOf<OpPayload>()
+        require(chunks.size <= 100_000)
+        chunks.forEachIndexed { index, chunk ->
+            val batch = com.sadturtleman.flowershoes.core.data.SnapshotBatch(firstSeq, chunks.size, index)
+            writer.write(OpKind.SNAPSHOT, "snapshot", entityId, localWrite = {}, payload = { OpPayload.Snapshot(coversThrough, chunk, batch) })
         }
     }
 

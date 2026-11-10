@@ -65,10 +65,22 @@ sealed interface OpPayload {
 
     /**
      * 스냅샷. 상대가 이미 지운 Op 을 달라고 했거나(floor 아래), 기기를 바꾼 상대에게 빠진 부분을 메울 때.
-     * [coversThrough] 까지 반영한 것으로 처리하라는 뜻이다.
+     * [batch] 의 모든 조각을 적용해야 [coversThrough] 까지 반영한 것으로 처리한다.
+     * 조각 수가 없는 구버전 스냅샷은 항목만 병합하고 누락된 원본 범위를 건너뛰지 않는다.
      */
     @Serializable @SerialName("snapshot")
-    data class Snapshot(val coversThrough: Long, val items: List<OpPayload>) : OpPayload
+    data class Snapshot(val coversThrough: Long, val items: List<OpPayload>, val batch: SnapshotBatch? = null) : OpPayload
+}
+
+/** 한 트랜잭션에서 연속된 번호로 발행한 스냅샷. */
+@Serializable
+data class SnapshotBatch(val firstSeq: Long, val partCount: Int, val partIndex: Int) {
+    val lastSeq: Long get() = firstSeq + partCount - 1
+
+    fun validFor(seq: Long, coversThrough: Long): Boolean =
+        firstSeq > 0 && partCount in 1..100_000 && partIndex in 0 until partCount &&
+            firstSeq <= Long.MAX_VALUE - partCount && seq == firstSeq + partIndex &&
+            coversThrough >= 0 && coversThrough < firstSeq
 }
 
 @Serializable

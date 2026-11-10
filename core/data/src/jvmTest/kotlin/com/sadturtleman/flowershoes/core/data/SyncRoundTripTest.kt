@@ -205,10 +205,21 @@ class SyncRoundTripTest {
     fun `스냅샷은 담긴 항목을 반영하고 커서를 한 번에 옮긴다`() = runTest {
         a.events.save(visit("e1", "휴가"))
         val item = OpCodec.decode(a.log().single().payload)!!
-        val snapshot = OpCodec.encode(OpPayload.Snapshot(coversThrough = 40, items = listOf(item)))
+        val snapshot = OpCodec.encode(OpPayload.Snapshot(coversThrough = 40, items = listOf(item), batch = SnapshotBatch(41, 1, 0)))
         b.inbox.apply(ReceivedOp(a.stream, 41, "snap", 5, snapshot))
         assertEquals("휴가", b.db.eventDao().get("e1")?.title)
         assertEquals(41L, b.db.syncDao().cursor(a.stream.wire))
         assertNull(b.db.syncDao().pending(a.stream.wire).firstOrNull())
+    }
+
+    @Test
+    fun `조각 수를 모르는 구버전 스냅샷은 누락 범위를 확인하지 않는다`() = runTest {
+        a.events.save(visit("legacy", "휴가"))
+        val item = OpCodec.decode(a.log().single().payload)!!
+        val snapshot = OpCodec.encode(OpPayload.Snapshot(40, listOf(item)))
+        b.inbox.apply(ReceivedOp(a.stream, 41, "legacy", 5, snapshot))
+        assertEquals("휴가", b.db.eventDao().get("legacy")?.title)
+        assertEquals(0L, b.db.syncDao().cursor(a.stream.wire))
+        assertEquals(listOf(41L), b.db.syncDao().pending(a.stream.wire))
     }
 }

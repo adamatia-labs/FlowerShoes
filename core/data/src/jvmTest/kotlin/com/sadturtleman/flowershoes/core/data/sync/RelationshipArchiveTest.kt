@@ -41,6 +41,8 @@ class RelationshipArchiveTest {
         val leave = LeaveRepository(db, writer, identity)
         val profile = ProfileRepository(db, writer, identity)
         val cover = BookCoverRepository(db, writer, identity)
+        val missYou = MissYouRepository(db, writer, identity)
+        val status = StatusRepository(db, writer, identity)
         val pairing = PairingSession(db, identity, vault, cloud)
         val sync = SyncClient(db, identity, vault, cloud, cloud, attachments, InboxApplier(db), writer)
         val unlink = UnlinkService(db, vault, settings, cloud)
@@ -89,6 +91,8 @@ class RelationshipArchiveTest {
         a.leave.save(LeaveGrant("old-leave", LeaveKind.REWARD, "AB leave", 1, LocalDate(2026, 11, 1), Clock.System.now(), 0, "device-a"))
         a.profile.setAnniversary(LocalDate(2025, 1, 1))
         a.cover.choose(BookCover.entries.first())
+        a.missYou.send(); b.missYou.send()
+        a.status.set("AB private", 1); b.status.set("B private", 2)
         exchange(a, b)
         b.letters.markRead(ReceiptEntity.LETTER, letter.id); exchange(b, a)
         val oldCouple = a.db.coupleDao().get()!!.id
@@ -96,6 +100,7 @@ class RelationshipArchiveTest {
 
         val newLetter = a.letters.newLetter(listOf(LetterBlock.Text("for C")))
         a.letters.send(newLetter, emptyList())
+        a.missYou.send(); a.status.set("for C", 3)
         link(a, c)
         a.profile.setAnniversary(LocalDate(2026, 10, 1))
         a.cover.choose(BookCover.entries.last())
@@ -116,6 +121,8 @@ class RelationshipArchiveTest {
         assertEquals(0, cloud.blobCount())
         assertEquals(LocalDate(2026, 10, 1), c.profile.observeAnniversary().first())
         assertEquals(BookCover.entries.last(), c.cover.observe().first())
+        assertEquals(1, c.db.missYouDao().all().size)
+        assertEquals(listOf("for C"), c.db.statusDao().all().map { it.label })
         assertEquals(TransferCounts(letters = 1, events = 2), a.db.transferCounts())
 
         assertFailsWith<IllegalStateException> { a.letters.send(letter, emptyList()) }
