@@ -41,8 +41,10 @@ function mockKakao(id: number) {
 async function kakao() {
   return functions.kakaoSignIn.run({ data: { accessToken: 'local-test' }, rawRequest: {} } as never);
 }
-async function remove(uid: string) {
-  return functions.deleteAccount.run({ data: {}, auth: { uid, token: { firebase: { sign_in_provider: 'custom' } } }, rawRequest: {} } as never);
+async function remove(uid: string, appleSubject?: string) {
+  return functions.deleteAccount.run({ data: {}, auth: { uid, token: { firebase: {
+    sign_in_provider: 'custom', ...(appleSubject ? { identities: { 'apple.com': [appleSubject] } } : {}),
+  } } }, rawRequest: {} } as never);
 }
 async function signIn(customToken: string) {
   const response = await realFetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=local-test`, {
@@ -251,7 +253,7 @@ test('완료된 Apple 코드 교환은 대기 수를 줄이고 폐기 성공 결
     const stored = await functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['apple-sub'] } } } }, rawRequest: {} } as never);
     assert.deepEqual(stored, { stored: true });
     assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).get('pendingExchanges'), 0);
-    assert.deepEqual(await remove(uid), { ok: true, appleRevocation: 'revoked' });
+    assert.deepEqual(await remove(uid, 'apple-sub'), { ok: true, appleRevocation: 'revoked' });
   } finally { request.mock.restore(); }
 });
 
