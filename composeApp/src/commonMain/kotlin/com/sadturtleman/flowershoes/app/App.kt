@@ -139,6 +139,7 @@ fun KkotsinApp() {
                         if (current != null && !gate.holdSplash) ConnectionStates(onboarded = current.onboarded)
                     }
                 }
+                CleanupRecovery()
             }
             }
         }

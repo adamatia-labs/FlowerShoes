@@ -212,11 +212,12 @@ class SettingsViewModel(
     val unlinkOperation: StateFlow<UnlinkOperation?> = _unlinkOperation.asStateFlow()
     private val _unlinkSelection = MutableStateFlow(AfterUnlink.KEEP_AS_MEMORIES)
     val unlinkSelection: StateFlow<AfterUnlink> = _unlinkSelection.asStateFlow()
+    val lockedUnlinkChoice = unlink.pendingChoice.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     fun selectUnlinkAfter(after: AfterUnlink) {
         if (!unlinkMutex.tryLock()) return
         try {
-            if (_unlinkOperation.value == null || _unlinkOperation.value is UnlinkOperation.Failed) _unlinkSelection.value = after
+            if (lockedUnlinkChoice.value == null && (_unlinkOperation.value == null || _unlinkOperation.value is UnlinkOperation.Failed)) _unlinkSelection.value = after
         } finally {
             unlinkMutex.unlock()
         }
@@ -234,8 +235,9 @@ class SettingsViewModel(
         _unlinkOperation.value = running
         val job = viewModelScope.launch {
             try {
-                unlink.unlink(after)
-                _unlinkOperation.compareAndSet(running, UnlinkOperation.Completed(after, withoutDeviceLock))
+                val completedChoice = unlink.unlink(after) ?: after
+                _unlinkSelection.value = completedChoice
+                _unlinkOperation.compareAndSet(running, UnlinkOperation.Completed(completedChoice, withoutDeviceLock))
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 _unlinkOperation.compareAndSet(running, null)
                 throw cancelled

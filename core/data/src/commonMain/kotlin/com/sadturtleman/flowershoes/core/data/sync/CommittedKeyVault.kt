@@ -3,9 +3,11 @@ package com.sadturtleman.flowershoes.core.data.sync
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.CoupleKey
+import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import com.sadturtleman.flowershoes.core.crypto.Signatures
 import com.sadturtleman.flowershoes.core.crypto.sealTo
 import com.sadturtleman.flowershoes.core.data.Identity
+import com.sadturtleman.flowershoes.core.data.requireNoCleanup
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.CoupleEntity
 import kotlinx.coroutines.CancellationException
@@ -81,6 +83,7 @@ class CommittedKeyVault internal constructor(
     }
 
     override suspend fun putCoupleKey(key: CoupleKey) = db.useWriterConnection { tx -> tx.immediateTransaction {
+        db.requireNoCleanup()
         val couple = db.coupleDao().get()
         if (couple?.sealedKeys == null) platform.putCoupleKey(key)
         else {
@@ -90,6 +93,7 @@ class CommittedKeyVault internal constructor(
     } }
 
     override suspend fun dropEpochsBefore(epoch: Int) = db.useWriterConnection { tx -> tx.immediateTransaction {
+        db.requireNoCleanup()
         val couple = db.coupleDao().get()
         if (couple?.sealedKeys == null) platform.dropEpochsBefore(epoch)
         else {
@@ -101,6 +105,7 @@ class CommittedKeyVault internal constructor(
 
     override suspend fun clearCoupleKeys() {
         db.useWriterConnection { tx -> tx.immediateTransaction {
+            db.requireNoCleanup()
             db.coupleDao().get()?.takeIf { it.sealedKeys != null }?.let { db.coupleDao().upsert(it.copy(sealedKeys = "")) }
         } }
         platform.clearCoupleKeys()
@@ -110,6 +115,16 @@ class CommittedKeyVault internal constructor(
         clearCoupleKeys()
         platform.clearAll()
     }
+
+    override suspend fun putDeviceKeys(keys: DeviceKeys) = db.useWriterConnection { tx -> tx.immediateTransaction {
+        db.requireNoCleanup()
+        platform.putDeviceKeys(keys)
+    } }
+
+    override suspend fun putPendingApproval(approval: PendingApproval?) = db.useWriterConnection { tx -> tx.immediateTransaction {
+        db.requireNoCleanup()
+        platform.putPendingApproval(approval)
+    } }
 }
 
 fun KeyVault.forDatabase(db: AppDatabase, identity: Identity): CommittedKeyVault =

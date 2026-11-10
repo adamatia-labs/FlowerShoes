@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import com.sadturtleman.flowershoes.core.data.requireNoCleanup
+
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.Aead
@@ -103,6 +105,7 @@ class SyncClient(
     }
 
     private suspend fun syncRound(): SyncReport {
+        db.requireNoCleanup()
         Sodium.init()
         archive.prepare()
         val couple = db.coupleDao().get() ?: return SyncReport()
@@ -296,6 +299,7 @@ class SyncClient(
         suspend fun <T> write(block: suspend () -> T): T = db.useWriterConnection { connection ->
             connection.immediateTransaction {
                 val currentSender = db.deviceDao().get(sender.id)
+                db.requireNoCleanup()
                 check(identity.userId == couple.myUserId && identity.deviceId == receiverDevice &&
                     db.coupleDao().get() == couple && currentSender != null &&
                     currentSender.userId == sender.userId && currentSender.uid == sender.uid &&

@@ -1,7 +1,14 @@
 package com.sadturtleman.flowershoes.core.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.room.Room
+import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
+import com.sadturtleman.flowershoes.core.crypto.InviteToken
+import com.sadturtleman.flowershoes.core.crypto.Pairing
+import com.sadturtleman.flowershoes.core.crypto.Sodium
 import com.sadturtleman.flowershoes.core.data.sync.*
 import com.sadturtleman.flowershoes.core.database.*
 import com.sadturtleman.flowershoes.core.model.LetterBlock
@@ -40,6 +47,125 @@ class DurableUnlinkTest {
         override suspend fun unlinkCouple(coupleId: String) { unlinks++ }
         override suspend fun deleteAccount() = Unit
     }
+
+    @Test
+    fun `미완료 정리는 새 쓰기를 막고 백그라운드 동기화가 먼저 재개한다`() = runBlocking {
+        fs.createDirectories(root)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val db = open()
+        try {
+            Sodium.init()
+            val settings = settings(scope)
+            prepare(db, settings)
+            val state = settings.state.first()
+            val identity = object : Identity {
+                override val userId = state.userId
+                override val deviceId = state.deviceId
+                override val keyEpoch = state.keyEpoch
+            }
+            val server = Server()
+            val vault = InMemoryKeyVault()
+            assertFailsWith<IllegalStateException> {
+                UnlinkService(db, vault, settings, server) { error("disk busy") }.unlink(AfterUnlink.WIPE)
+            }
+            val attachments = AttachmentStore(db, root / "attachments")
+            val writer = SyncWriter(db, identity)
+            assertFailsWith<IllegalStateException> { attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, byteArrayOf(1)) }
+            assertFailsWith<IllegalStateException> { MissYouRepository(db, writer, identity).send() }
+            assertFailsWith<IllegalStateException> { vault.forDatabase(db, identity).putDeviceKeys(DeviceKeys.generate()) }
+            assertFailsWith<IllegalStateException> { settings.bindAccount("different-owner") }
+            assertFailsWith<IllegalStateException> {
+                settings.pendingInvites.saveAcceptance(PendingAcceptance("token", 1, state.userId, state.deviceId, "partner", "keys"))
+            }
+            val recovered = UnlinkService(db, vault, settings, null) { fs.deleteRecursively(root / "attachments") }
+            val cloud = InMemoryCloud()
+            val client = SyncClient(db, identity, vault, cloud, cloud, attachments, InboxApplier(db), writer)
+            assertNotNull(SyncScheduler(db, client, resumeCleanup = { recovered.resumePending() }).runOnce())
+            assertNull(db.cleanupDao().get())
+            assertFalse(fs.exists(root / "attachments"))
+            assertEquals(1, server.unlinks)
+            assertNotNull(settings.draftSessions.first())
+            Unit
+        } finally { db.close(); scope.coroutineContext[Job]!!.cancelAndJoin(); fs.deleteRecursively(root) }
+    }
+
+    @Test
+    fun `수락 요청이 서버에서 진행 중이면 이전 연결 정리를 시작하지 않는다`() = runBlocking {
+        fs.createDirectories(root)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val db = open()
+        try {
+            Sodium.init()
+            val settings = settings(scope)
+            prepare(db, settings)
+            db.coupleDao().upsert(db.coupleDao().get()!!.copy(partnerUserId = "", keyEpoch = 0))
+            val state = settings.state.first()
+            val identity = object : Identity {
+                override val userId = state.userId
+                override val deviceId = state.deviceId
+                override val keyEpoch = 0
+            }
+            val cloud = InMemoryCloud().also { it.holdAccepts = true }
+            val token = InviteToken.random()
+            cloud.createInvite(token, Invite("next-partner", "next-device", Pairing.PublicKeys.of(DeviceKeys.generate()), "partner", Long.MAX_VALUE))
+            val vault = InMemoryKeyVault()
+            val pairing = PairingSession(db, identity, vault, cloud, pending = settings.pendingInvites)
+            assertIs<PairingState.Accepting>(pairing.accept(token))
+            val server = Server()
+            assertFailsWith<IllegalStateException> { UnlinkService(db, vault, settings, server).unlink(AfterUnlink.WIPE) }
+            assertNull(db.cleanupDao().get())
+            assertEquals(0, server.unlinks)
+            cloud.releaseAccepts()
+            assertIs<PairingState.Linked>(pairing.poll())
+            assertEquals("next-partner", db.coupleDao().get()?.partnerUserId)
+            assertTrue(fs.exists(root / "attachments" / "photo"))
+        } finally { db.close(); scope.coroutineContext[Job]!!.cancelAndJoin(); fs.deleteRecursively(root) }
+    }
+
+    private fun settingsFailure(finalRelease: Boolean): Unit = runBlocking {
+        fs.createDirectories(root)
+        var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        var db = open()
+        try {
+            val original = PreferenceDataStoreFactory.createWithPath(scope = scope) { root / "settings.preferences_pb" }
+            var fail = true
+            val token = stringPreferencesKey("relationship_cleanup_token")
+            val finished = stringPreferencesKey("relationship_cleanup_finished")
+            val failingStore = object : DataStore<Preferences> by original {
+                override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = original.updateData { before ->
+                    val after = transform(before)
+                    val matches = if (finalRelease) before[finished] != null && after[token] == null else before[finished] == null && after[finished] != null
+                    if (fail && matches) { fail = false; error("injected settings commit failure") }
+                    after
+                }
+            }
+            var settings = DeviceSettings(failingStore)
+            prepare(db, settings)
+            val server = Server()
+            val vault = InMemoryKeyVault()
+            var wipes = 0
+            val first = UnlinkService(db, vault, settings, server) { wipes++ }
+            assertFailsWith<IllegalStateException> { first.unlink(AfterUnlink.WIPE) }
+            assertEquals(1, wipes)
+            db.close()
+            scope.coroutineContext[Job]!!.cancelAndJoin()
+            db = open()
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            settings = settings(scope)
+            UnlinkService(db, vault, settings, null) { wipes++ }.resumePending()
+            assertEquals(1, server.unlinks)
+            assertEquals(1, wipes, "설정 저장만 실패했으면 파일을 다시 지우지 않는다")
+            assertEquals(0, settings.state.first().keyEpoch)
+            assertNull(db.cleanupDao().get())
+            settings.bindAccount("next-owner")
+            assertNotNull(settings.draftSessions.first(), "마지막 정리 표식도 해제되어야 한다")
+        } finally {
+            db.close(); scope.coroutineContext[Job]!!.cancelAndJoin(); fs.deleteRecursively(root)
+        }
+    }
+
+    @Test fun `최종 설정 저장 실패는 파일 삭제를 반복하지 않고 재시작 후 복구한다`() = settingsFailure(finalRelease = false)
+    @Test fun `DB 작업 제거 후 설정 실패도 재시작 후 잠금을 해제한다`() = settingsFailure(finalRelease = true)
 
     @Test
     fun `파일 삭제 실패 뒤 DB와 설정을 다시 열어도 원래 WIPE를 끝낸다`() = runBlocking {
@@ -125,12 +251,20 @@ class DurableUnlinkTest {
                         UnlinkService(db, vault, settings, Server()) { fs.deleteRecursively(root / "attachments") }.unlink(AfterUnlink.WIPE)
                     }
                 }
-                reached.await()
-                other.coupleDao().upsert(CoupleEntity("new-couple", "owner", "new-partner", 9, 200))
-                settings.setKeyEpoch(9)
-                fs.write(root / "attachments" / "new-photo") { writeUtf8("new photo") }
-                resume.complete(Unit)
-                oldCleanup.await()
+                try {
+                    reached.await()
+                    val replacement = async {
+                        other.coupleDao().upsert(CoupleEntity("new-couple", "owner", "new-partner", 9, 200))
+                        fs.createDirectories(root / "attachments")
+                        fs.write(root / "attachments" / "new-photo") { writeUtf8("new photo") }
+                        settings.setKeyEpoch(9)
+                    }
+                    // Old code lets this complete during cleanup. A SQLite boundary may correctly hold it.
+                    withTimeoutOrNull(200) { replacement.await() }
+                    resume.complete(Unit)
+                    oldCleanup.await()
+                    replacement.await()
+                } finally { resume.complete(Unit) }
             }
             assertTrue(fs.exists(root / "attachments" / "new-photo"))
             assertEquals(9, settings.state.first().keyEpoch)

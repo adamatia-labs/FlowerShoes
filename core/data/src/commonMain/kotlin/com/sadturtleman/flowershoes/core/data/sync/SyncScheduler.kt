@@ -57,6 +57,8 @@ class SyncScheduler(
     private val retryBase: Duration = 5.seconds,
     private val syncTimeout: Duration = 30.seconds,
     private val clock: kotlin.time.Clock = kotlin.time.Clock.System,
+    /** 저장된 연결 해제/탈퇴가 있으면 새 동기화보다 먼저 완료한다. */
+    private val resumeCleanup: suspend () -> Unit = {},
 ) {
     private val _failure = kotlinx.coroutines.flow.MutableStateFlow<SyncFailure?>(null)
 
@@ -155,6 +157,7 @@ class SyncScheduler(
 
     private suspend fun syncOnce(): SyncReport? {
         val report = try {
+            resumeCleanup()
             client.syncOnce()
         } catch (cancelled: CancellationException) {
             throw cancelled

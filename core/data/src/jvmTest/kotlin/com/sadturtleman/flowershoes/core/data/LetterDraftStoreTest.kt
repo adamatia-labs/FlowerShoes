@@ -107,14 +107,18 @@ class LetterDraftStoreTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val vault = object : KeyVault by InMemoryKeyVault() {
-            override suspend fun clearCoupleKeys() { entered.complete(Unit); release.await() }
+            override suspend fun clearAll() { entered.complete(Unit); release.await() }
         }
         val deletion = async { UnlinkService(db, vault, settings, transport).deleteAccount() }
         try {
             withTimeout(5_000) { entered.await() }
             assertNull(settings.draftSessions.first())
-            assertNull(store.open(a.session, "late-editor"))
-            assertFalse(store.save(a, "late-input", 200))
+            val opening = async { store.open(a.session, "late-editor") }
+            val saving = async { store.save(a, "late-input", 200) }
+            assertNull(withTimeoutOrNull(100) { opening.await() })
+            release.complete(Unit)
+            assertNull(opening.await())
+            assertFalse(saving.await())
         } finally { release.complete(Unit); deletion.await() }
         assertEquals(0, db.letterDraftDao().count())
     }

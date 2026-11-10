@@ -45,6 +45,7 @@ class SyncWriter(
         payload: (lamport: Long) -> OpPayload,
     ): String = db.useWriterConnection { tx ->
         tx.immediateTransaction {
+            db.requireNoCleanup()
             val archive = RelationshipArchive(db)
             archive.prepare()
             val sync = db.syncDao()
