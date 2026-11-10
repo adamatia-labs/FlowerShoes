@@ -73,6 +73,10 @@ class WidgetRefreshTest {
 
     @Test
     fun drawingFrameTextKeepsContrastInActualRemoteViews(): Unit = runBlocking {
+        InstrumentationRegistry.getArguments().getString("expectedNightMode")?.let { expected ->
+            val actual = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+            assertEquals(if (expected == "yes") android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO, actual)
+        }
         val image = java.io.File(context.filesDir, "attachments/widget-contrast.png")
         image.parentFile!!.mkdirs()
         val bitmap = android.graphics.Bitmap.createBitmap(20, 20, android.graphics.Bitmap.Config.ARGB_8888)
@@ -82,7 +86,7 @@ class WidgetRefreshTest {
         val frames = mapOf("NIGHT" to 0xFF1B2235.toInt(), "KRAFT" to 0xFFD9C4A3.toInt(), "BLOSSOM" to 0xFFFFF4F5.toInt(), "POLAROID" to 0xFFFFFFFF.toInt())
         try {
             for (size in listOf(110, 300)) {
-                val initial = WidgetSnapshot(drawingId = "contrast-drawing", drawingPngPath = image.absolutePath,
+                val initial = WidgetSnapshot(theme = "GOMSIN", drawingId = "contrast-drawing", drawingPngPath = image.absolutePath,
                     drawingLetterId = "contrast-letter", drawingCaption = "그림 제목", drawingMeta = "준비", updatedAtMs = System.currentTimeMillis())
                 withWidget(initial, DrawingWidgetReceiver::class.java, size) { view ->
                     for (theme in listOf("GOMSIN", "SOLDIER")) for ((frame, background) in frames) {
