@@ -42,6 +42,7 @@ import com.sadturtleman.flowershoes.core.logging.BizView
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -104,25 +105,27 @@ class LinkWatchViewModel(
     suspend fun watch() {
         val s = session ?: return
         while (true) {
-            val next = runCatching { s.poll() }.getOrNull()
+            val next = try { s.poll() } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { null }
             when {
                 next is PairingState.Linked -> {
-                    if (s.isInviter && handled != next.coupleId) linked(next.coupleId)
+                    if (handled != next.coupleId) linked(next.coupleId, showDialog = s.isInviter)
                     return
                 }
-                next is PairingState.Waiting -> delay(POLL_MS)
-                next == null && settings.pendingInvites.load() != null -> delay(POLL_MS)
+                next is PairingState.Waiting || next is PairingState.Accepting -> delay(POLL_MS)
+                next == null && (s.state is PairingState.Waiting || s.state is PairingState.Accepting) -> delay(POLL_MS)
                 else -> return
             }
         }
     }
 
-    private fun linked(coupleId: String) {
+    private fun linked(coupleId: String, showDialog: Boolean) {
         handled = coupleId
         bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = false))
         viewModelScope.launch {
             handoff.begin()
-            _ui.value = AfterLinkUi(partnerName())
+            if (showDialog) _ui.value = AfterLinkUi(partnerName())
             handoff.send {}
         }
     }

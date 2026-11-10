@@ -11,7 +11,7 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, AccountTransport {
     private val control = mutableMapOf<String, ControlDoc>()
     private val blobStore = mutableMapOf<String, ByteArray>()
     private val invites = mutableMapOf<String, Invite>()
-    private val accepted = mutableSetOf<String>()
+    private val accepted = mutableMapOf<String, Accept>()
     private val linked = mutableMapOf<String, String>()
     private val coupleDevices = mutableMapOf<String, List<LinkedDevice>>()
     private val members = mutableSetOf<String>()
@@ -73,9 +73,12 @@ class InMemoryCloud : Mailbox, BlobStore, PairingTransport, AccountTransport {
 
     override suspend fun accept(token: String, uid: String, deviceId: String, keys: Pairing.PublicKeys) {
         check(token in invites) { "규칙: 초대 문서가 있어야 수락한다" }
-        check(token !in accepted) { "규칙: 수락은 한 번만" }
-        accepted += token
+        accepted[token]?.let {
+            if (it.uid == uid && it.deviceId == deviceId && it.keys.encode() == keys.encode()) return
+            throw InviteRejectedException()
+        }
         val a = Accept(uid, deviceId, keys)
+        accepted[token] = a
         if (holdAccepts) held += token to a else onInviteAccepted(token, a)
     }
 
