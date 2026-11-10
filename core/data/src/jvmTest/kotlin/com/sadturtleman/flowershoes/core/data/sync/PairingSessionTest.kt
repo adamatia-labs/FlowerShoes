@@ -93,6 +93,20 @@ class PairingSessionTest {
         assertContentEquals(newer.export(), a.vault.currentCoupleKey()!!.export())
     }
 
+    @Test fun `구버전에서 부분 저장된 연결도 같은 초대로 복구한다`() = runTest {
+        val a = Phone("a", "device-a"); val b = Phone("b", "device-b")
+        val token = assertIs<PairingState.Waiting>(a.pairing.createLink()).token
+        val linked = assertIs<PairingState.Linked>(b.pairing.accept(token))
+        // 구버전은 키와 관계만 저장하고 기기 저장 중 실패했다.
+        a.vault.platformVault.putCoupleKey(b.vault.currentCoupleKey()!!)
+        a.db.coupleDao().upsert(com.sadturtleman.flowershoes.core.database.CoupleEntity(linked.coupleId, "a", "b", 1, 1))
+        assertIs<PairingState.Linked>(a.relaunch().poll())
+        assertNotNull(a.db.deviceDao().get("device-a"))
+        assertNotNull(a.db.deviceDao().get("device-b"))
+        assertNotNull(a.db.coupleDao().get()!!.sealedKeys)
+        assertContentEquals(b.vault.currentCoupleKey()!!.export(), a.vault.currentCoupleKey()!!.export())
+    }
+
     @Test
     fun `링크를 누른 사람과 연결되고 양쪽이 같은 커플 키를 얻는다`() = runTest {
         val jisu = Phone("jisu", "dev-a")
