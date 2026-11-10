@@ -116,4 +116,19 @@ final class WidgetSendJournalTests: XCTestCase {
         try await WidgetOutboxDelivery.send(root: root, destination: destination) { delivered.append($0) }
         XCTAssertEqual(delivered, [first.body, second.body])
     }
+
+    func testPostedCopiesRemainForAppButDoNotBlockNewTapAfterServerDedupExpiry() async throws {
+        let journal = WidgetSendJournal(root: root)
+        for _ in 0..<12 { _ = try journal.enqueue { try self.outgoing($0) } }
+        let destination = WidgetOutboxDelivery.Destination(coupleId: "couple", deviceId: "device", partnerDeviceId: "partner")
+        try await WidgetOutboxDelivery.send(root: root, destination: destination) { _ in }
+        // Server dedup entries can expire while the app stays closed; local delivery survives.
+        let newest = try WidgetSendJournal(root: root).enqueue { try self.outgoing($0) }
+        var delivered: [Data] = []
+        try await WidgetOutboxDelivery.send(root: root, destination: destination) { delivered.append($0) }
+        XCTAssertEqual(delivered, [newest.body])
+        let originals = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("widget-outbox"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "json" }
+        XCTAssertEqual(originals.count, 13, "network acceptance is not the app DB import acknowledgement")
+    }
 }

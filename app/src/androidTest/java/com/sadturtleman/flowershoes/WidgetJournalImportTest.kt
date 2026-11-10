@@ -23,7 +23,13 @@ import kotlin.time.Clock
 @RunWith(AndroidJUnit4::class)
 class WidgetJournalImportTest {
     @Test fun committedEnvelopeImportsAfterDatabaseReopenWithoutOutboxFile(): Unit = runBlocking {
-        Sodium.init()
+        try {
+            Sodium.init()
+        } catch (alreadyInitialized: IllegalStateException) {
+            // Instrumentation and the application can initialize the same native library.
+            // The 0.9.5 wrapper rejects sodium_init's documented already-initialized code.
+            check(com.ionspin.kotlin.crypto.LibsodiumInitializer.sodiumJna.sodium_init() == 1)
+        }
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val root = File(context.cacheDir, "widget-journal-${UUID.randomUUID()}").apply { mkdirs() }
         fun open() = Room.databaseBuilder<AppDatabase>(context, File(root, "test.db").absolutePath).buildKkotsin()

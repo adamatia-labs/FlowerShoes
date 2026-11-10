@@ -358,12 +358,15 @@ class EndToEndTest {
         FileSystem.SYSTEM.createDirectories(directory / "widget-outbox")
         val file = directory / "widget-outbox" / "${first.opId}.json"
         FileSystem.SYSTEM.write(file) { writeUtf8(body) }
+        val delivered = directory / "widget-outbox" / "${first.opId}.json.delivered"
+        FileSystem.SYSTEM.write(delivered) { writeUtf8("accepted") }
         importWidgetOutbox(jisu.sync, directory)
         roundTrip()
         assertEquals(2, jisu.db.missYouDao().all().size)
         assertEquals(2, minjun.db.missYouDao().all().size)
         assertTrue(jisu.db.syncDao().log("dev-a:widget").isEmpty())
         assertEquals(false, FileSystem.SYSTEM.exists(file))
+        assertEquals(false, FileSystem.SYSTEM.exists(delivered))
     }
 
     @Test

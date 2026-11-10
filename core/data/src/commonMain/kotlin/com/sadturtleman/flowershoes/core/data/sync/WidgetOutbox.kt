@@ -40,6 +40,9 @@ suspend fun importWidgetOutbox(sync: SyncClient, root: Path, fs: FileSystem = Fi
     val directory = root / "widget-outbox"
     if (!fs.exists(directory)) return
     fs.list(directory).filter { it.name.endsWith(".json") }.forEach { file ->
-        if (safely { import(fs.read(file) { readUtf8() }) }) fs.delete(file)
+        if (safely { import(fs.read(file) { readUtf8() }) }) {
+            fs.delete(file)
+            fs.delete(file.parent!! / "${file.name}.delivered", mustExist = false)
+        }
     }
 }
