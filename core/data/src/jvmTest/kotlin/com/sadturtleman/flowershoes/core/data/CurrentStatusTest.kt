@@ -60,4 +60,16 @@ class CurrentStatusTest {
         advanceTimeBy(30_000); runCurrent()
         assertNull(withContext(Dispatchers.IO) { withTimeout(5_000) { changes.receive() } })
     }
+
+    @Test fun `기기 시각이 뒤로 바뀌어도 나중에 저장하고 지운 상태가 우선한다`() = runBlocking {
+        statuses.set("공부 중", 0)
+        clock.time = 3_000
+        statuses.set("당직 중", 0)
+        assertEquals("당직 중", statuses.observeLatest("me").first()?.label)
+        clock.time = 2_000
+        statuses.clear()
+        assertNull(statuses.observeLatest("me").first())
+        clock.time = 0 // 수신 기기의 시각이 더 느려도 삭제는 즉시 적용한다.
+        assertNull(statuses.observeLatest("me").first())
+    }
 }

@@ -97,8 +97,8 @@ interface StatusDao {
         """
         SELECT * FROM (
             SELECT * FROM status WHERE authorId = :authorId
-            ORDER BY createdAtMs DESC, lamport DESC, id DESC LIMIT 1
-        ) WHERE expiresAtMs IS NULL OR expiresAtMs > :nowMs
+            ORDER BY lamport DESC, createdAtMs DESC, id DESC LIMIT 1
+        ) WHERE label <> '' AND (expiresAtMs IS NULL OR expiresAtMs > :nowMs)
         """,
     )
     fun observeLatest(authorId: String, nowMs: Long): Flow<StatusEntity?>

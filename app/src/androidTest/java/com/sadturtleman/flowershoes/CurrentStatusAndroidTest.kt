@@ -7,6 +7,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
+import androidx.test.espresso.Espresso
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sadturtleman.flowershoes.core.data.*
@@ -51,6 +54,7 @@ class CurrentStatusAndroidTest {
             render(f)
             open(f)
             compose.onNode(hasSetTextAction()).performTextInput("당직 중")
+            Espresso.closeSoftKeyboard()
             compose.onNodeWithText("내일 오전 8시까지").performScrollTo().performClick()
             compose.onNodeWithText("상태 저장").performScrollTo().performClick()
             compose.waitUntil(15_000) { f.editor.state.value == null }
@@ -74,6 +78,7 @@ class CurrentStatusAndroidTest {
         try {
             f.prepare(); render(f); open(f)
             compose.onNode(hasSetTextAction()).performTextInput("이전 계정의 입력")
+            Espresso.closeSoftKeyboard()
             f.settings.bindAccount("another-owner") // Keep the old IdentityHolder deliberately.
             compose.onNodeWithText("상태 저장").performScrollTo().performClick()
             compose.waitUntil(15_000) { f.editor.state.value?.error != null }
@@ -93,6 +98,41 @@ class CurrentStatusAndroidTest {
                 currentStatusLabel = current?.label, onOpenStatus = f.editor::open)
             state?.let { CurrentStatusSheet(it, f.editor) }
         }
+    }
+
+    @Test fun dismissDuringSaveKeepsFailureVisibleAndAllowsReopening(): Unit = runBlocking {
+        val f = Fixture()
+        val release = CompletableDeferred<Unit>()
+        try {
+            f.prepare(); render(f); open(f)
+            compose.onNode(hasSetTextAction()).performTextInput("당직 중")
+            Espresso.closeSoftKeyboard()
+            val entered = CompletableDeferred<Unit>()
+            val blocker = async(Dispatchers.IO) {
+                f.sender.useWriterConnection { tx -> tx.immediateTransaction {
+                    f.sender.coupleDao().clear()
+                    f.sender.coupleDao().upsert(CoupleEntity("new-couple", "sender", "new-partner", 1, 200))
+                    entered.complete(Unit)
+                    release.await()
+                } }
+            }
+            entered.await()
+            compose.onNodeWithText("상태 저장").performScrollTo().performClick()
+            compose.waitUntil(15_000) { f.editor.state.value?.saving == true }
+            Espresso.pressBack()
+            compose.waitForIdle()
+            compose.onNodeWithText("저장 중…").performScrollTo().assertIsDisplayed()
+            Espresso.pressBack() // Expanded → partially expanded → hidden must also be blocked.
+            compose.waitForIdle()
+            compose.onNodeWithText("저장 중…").performScrollTo().assertIsDisplayed()
+            release.complete(Unit); blocker.await()
+            compose.waitUntil(15_000) { f.editor.state.value?.error != null }
+            compose.onNodeWithText("계정 또는 연결이 바뀌었어요. 홈에서 다시 열어 주세요").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("닫기").performScrollTo().performClick()
+            compose.waitUntil(15_000) { f.editor.state.value == null }
+            open(f)
+            assertTrue(f.sender.statusDao().all().isEmpty())
+        } finally { release.complete(Unit); f.close() }
     }
 
     private fun open(f: Fixture) {

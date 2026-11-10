@@ -15,7 +15,7 @@ import kotlinx.datetime.number
 @Composable
 fun CurrentStatusSheet(state: CurrentStatusEditState, editor: CurrentStatusEditor) {
     val c = KkTheme.colors
-    KkModalSheet(editor::close) {
+    KkModalSheet(editor::close, dismissEnabled = !state.saving) {
         CurrentStatusSheetContent(state, editor::label, editor::duration,
             { editor.save(c.eventDuty.toArgb().toLong() and 0xffffffffL) }, editor::clear, editor::close)
     }
