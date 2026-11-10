@@ -28,10 +28,20 @@ export async function readInviteOrder(tx: Transaction, uid: string, observed?: D
   }
   return {
     latest,
+    documents: pending.docs,
     isLatest: (doc: DocumentSnapshot) => {
       const value = creation(doc);
       return !!value && !!latest && compare(value, latest) === 0;
     },
     obsolete: pending.docs.filter((doc: QueryDocumentSnapshot) => latest && compare(creation(doc)!, latest) < 0),
   };
+}
+
+/** Parent deletion is allowed only once its ordering history is durable in this same commit. */
+export function recordInviteOrder(tx: Transaction, uid: string, order: Awaited<ReturnType<typeof readInviteOrder>>) {
+  if (!order.latest) return;
+  tx.set(inviteHeadRef(uid), order.latest);
+  for (const doc of order.documents) {
+    if (doc.get('orderRecorded') !== true) tx.update(doc.ref, { orderRecorded: true });
+  }
 }

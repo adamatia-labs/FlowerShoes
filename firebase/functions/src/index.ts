@@ -27,7 +27,7 @@ import { approvalMessage, finalizeMessage, opSignedBytes, verifyEd25519 } from '
 import { AppleConfig, appleConfigured, exchangeCode, revoke as revokeApple } from './apple';
 import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
-import { inviteHeadRef, readInviteOrder } from './invite-order';
+import { inviteHeadRef, readInviteOrder, recordInviteOrder } from './invite-order';
 import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
 import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
@@ -215,7 +215,7 @@ export const onInviteCreated = onDocumentCreated({ document: 'pairings/{token}',
   const obsolete = await db.runTransaction(async (tx) => {
     if ((await tx.get(deletionRef(uid))).exists) return [event.data!.ref];
     const order = await readInviteOrder(tx, uid, event.data);
-    if (order.latest) tx.set(inviteHeadRef(uid), order.latest);
+    recordInviteOrder(tx, uid, order);
     return order.obsolete.map((doc) => doc.ref);
   });
   // 순서는 서버 createTime으로 정하고, 같은 시각은 토큰으로 결정한다. 재시도도 최신 링크를 지우지 않는다.
@@ -246,7 +246,7 @@ export const onInviteAccepted = onDocumentCreated({ document: 'pairings/{token}/
       inviterLinked: !!inviterUser?.get('coupleId'),
       joinerLinked: !!joinerUser?.get('coupleId'),
     });
-    if (order.latest) tx.set(inviteHeadRef(invite.uid), order.latest);
+    recordInviteOrder(tx, invite.uid, order);
     if (!order.isLatest(inviteSnapshot)) return undefined;
     if (decision === 'reject' || !invite) return undefined;
     tx.set(coupleRef, { members: { [invite.uid]: invite.deviceId, [accept.uid]: accept.deviceId }, linkedAt: FieldValue.serverTimestamp() });

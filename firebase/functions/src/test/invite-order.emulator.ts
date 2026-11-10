@@ -35,6 +35,8 @@ test('동일 만료와 서버 생성 시각에서도 두 생성 실행이 서로
   const recursiveDelete = db.recursiveDelete.bind(db);
   const hold = mock.method(db, 'recursiveDelete', async (ref: DocumentReference) => { pending.push(ref); });
   try { await Promise.all(snapshots.map(created)); } finally { hold.mock.restore(); }
+  assert.equal((await b.get()).get('orderRecorded'), true);
+  assert.equal((await db.doc('inviteHeads/same').get()).get('token'), b.id);
   await Promise.all(pending.map((ref) => recursiveDelete(ref)));
   assert.equal((await a.get()).exists, false);
   assert.equal((await b.get()).exists, true);
@@ -77,6 +79,8 @@ test('정리 실패 후 최신 링크가 사라져도 이전 링크가 되살아
   const event = await next.get();
   const fail = mock.method(db, 'recursiveDelete', async () => { throw new Error('temporary cleanup failure'); });
   try { await assert.rejects(created(event)); } finally { fail.mock.restore(); }
+  assert.equal((await next.get()).get('orderRecorded'), true);
+  assert.equal((await db.doc('inviteHeads/retry').get()).get('token'), next.id);
   await next.delete();
   await accept(old.id, 'retry-joiner');
   assert.equal((await db.doc('users/retry').get()).get('coupleId'), undefined);

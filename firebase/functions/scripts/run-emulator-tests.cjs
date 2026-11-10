@@ -15,7 +15,7 @@ try {
     firestore: { rules: 'firestore.rules' }, storage: { rules: 'storage.rules' },
     emulators: { firestore: { port: invite ? 8185 : account ? 8187 : 8186 }, ...(account ? { auth: { port: 9098 } } : {}), ...(!invite ? { storage: { port: account ? 9298 : 9299 } } : {}), ui: { enabled: false }, singleProjectMode: true },
   }));
-  const command = `node --test lib/test/${invite ? 'invite-order' : account ? 'account-deletion' : 'unlink'}.emulator.js`;
+  const command = `node --test lib/test/${invite ? 'invite-order' : account ? 'account-deletion' : 'unlink'}.emulator.js${invite ? ' && node --test ../rules-test/firestore.test.js' : ''}`;
   const args = ['emulators:exec', '--project', `demo-kkotsin-${suite}`, '--only', invite ? 'firestore' : account ? 'firestore,auth,storage' : 'firestore,storage', '--config', join(temporary, 'firebase.json'), command];
   // Windows npm shims are .cmd files; invoke their JS entry point without shell string interpolation.
   const entry = process.platform === 'win32' ? (process.env.PATH ?? '').split(delimiter)
