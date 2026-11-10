@@ -25,6 +25,8 @@ class AttachmentStore(
     /** 받은 첨부를 보낸 쪽과 같은 id 로 둔다(편지 블록이 그 id 를 가리킨다). */
     suspend fun putWithId(id: String, kind: AttachmentKind, bytes: ByteArray): String {
         require(isSafeId(id)) { "첨부 식별자가 올바르지 않습니다" }
+        RelationshipArchive(db).prepare()
+        if (RelationshipArchive(db).contains("attachment", id)) throw ArchivedRecordException()
         fs.createDirectories(root)
         val path = root / id
         val metadata = fs.metadataOrNull(path)
@@ -66,6 +68,7 @@ class AttachmentStore(
         /** 기존 스냅샷에서 읽는 파일은 심볼릭 링크까지 확인한다. */
         fun safeExistingPath(root: Path, raw: String?, fs: FileSystem = FileSystem.SYSTEM): Path? {
             val path = safePath(root, raw) ?: return null
+            if (fs.metadataOrNull(path)?.symlinkTarget != null) return null
             return runCatching { fs.canonicalize(path).takeIf { it.parent == fs.canonicalize(root) } }.getOrNull()
         }
     }

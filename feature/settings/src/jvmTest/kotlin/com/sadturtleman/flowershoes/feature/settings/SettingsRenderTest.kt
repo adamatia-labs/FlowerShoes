@@ -41,7 +41,7 @@ class SettingsRenderTest {
                 SettingsMainScreen(
                     state.copy(theme = theme), appVersion = "1.0.0", providerLabel = "카카오",
                     lifetime = lifetimeLabel(owned = false, shared = false, price = LIFETIME_PRICE),
-                    open = {}, onBack = {}, onOpenPairing = {}, onNickname = {}, onAnniversary = {},
+                    open = {}, onBack = {}, onOpenPairing = {}, onNickname = {}, onAnniversary = { _, _ -> },
                 )
             }
         }.use { scene ->

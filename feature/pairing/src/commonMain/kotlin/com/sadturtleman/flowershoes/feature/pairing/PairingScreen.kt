@@ -9,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.sync.InviteConfig
-import com.sadturtleman.flowershoes.core.data.sync.Outbox
 import com.sadturtleman.flowershoes.core.data.sync.PairingSession
 import com.sadturtleman.flowershoes.core.data.sync.PairingState
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
@@ -35,10 +34,6 @@ data class PairingUi(
     val busy: Boolean = false,
     /** 연결 뒤 정리(받는 쪽의 혼자 쓴 기록 보내기)가 끝났다. */
     val receiveDone: Boolean = false,
-    /** 받는 쪽: 연결 뒤 혼자 쓴 편지 · 그림이 많아 보내는 중(처음 센 것 · 남은 것). */
-    val sendingTotal: Outbox? = null,
-    val sendingLeft: Outbox? = null,
-    val sendStartedMs: Long = 0,
     /** 받는 쪽: 링크를 보낸 사람(연결 중 화면에 계속 보인다). */
     val inviterName: String = "",
     /** 보내는 쪽: 내 표시 이름(초대장 · 카카오 템플릿 인자). 비어 있을 수 있다. */
@@ -122,15 +117,11 @@ class PairingViewModel(
         handOff()
     }
 
-    /** 처음 연결(받는 쪽): 혼자 모드에서 쌓인 내 기록을 첫 동기화로 보낸다. 많으면 보내는 중 화면. */
+    /** 처음 연결(받는 쪽): 화면 이동과 관계없이 첫 동기화를 시작한다. */
     private suspend fun handOff() {
-        val total = handoff.begin()
-        if (total.showsProgress()) {
-            _ui.update { it.copy(sendingTotal = total, sendingLeft = total, sendStartedMs = kotlin.time.Clock.System.now().toEpochMilliseconds()) }
-            handoff.send { left -> _ui.update { it.copy(sendingLeft = left) } }
-        } else {
-            runCatching { sync?.syncOnce() }
-        }
+        handoff.begin()
+        // 화면을 닫아도 ViewModel 범위에서 동기화를 계속한다.
+        viewModelScope.launch { handoff.send {} }
         _ui.update { it.copy(receiveDone = true) }
     }
 }
@@ -167,7 +158,7 @@ fun PairingRoute(
     LaunchedEffect(invite) {
         if (invite != null) viewModel.preview(invite) else viewModel.open()
     }
-    // 받는 쪽은 혼자 쓴 기록 보내기가 끝날 때까지 기다린 뒤 닫는다.
+    // 연결 준비가 끝나면 홈으로 돌아간다. 기록 동기화는 계속 진행된다.
     LaunchedEffect(ui.state, ui.receiveDone) {
         if (ui.state is PairingState.Linked && ui.receiveDone) done()
     }

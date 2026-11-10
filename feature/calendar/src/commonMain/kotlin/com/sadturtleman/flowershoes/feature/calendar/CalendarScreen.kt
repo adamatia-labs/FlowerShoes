@@ -95,7 +95,9 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun CalendarRoute(onOpenLeave: () -> Unit = {}, onWriteDayLine: (String) -> Unit = {}, viewModel: CalendarViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    CalendarScreen(state, viewModel::onIntent, onOpenLeave, onWriteDayLine)
+    CalendarNoticeHost(viewModel.notices) {
+        CalendarScreen(state, viewModel::onIntent, onOpenLeave, onWriteDayLine)
+    }
 }
 
 /**

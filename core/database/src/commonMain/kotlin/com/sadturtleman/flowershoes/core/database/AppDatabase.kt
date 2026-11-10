@@ -8,6 +8,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * 꽃신 로컬 DB. 각자 폰의 이 DB 가 원본이다(Local-first).
@@ -31,6 +32,9 @@ import kotlinx.coroutines.IO
 )
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
+    /** 동기화 한 바퀴 동안 커플·키·활성 기기를 바꾸지 않는다. 이 DB 인스턴스와 수명을 같이한다. */
+    val relationshipMutex = Mutex()
+
     abstract fun coupleDao(): CoupleDao
     abstract fun userDao(): UserDao
     abstract fun deviceDao(): DeviceDao

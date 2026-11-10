@@ -77,11 +77,7 @@ internal fun ConnectScreen(ui: PairingUi, vm: PairingViewModel, close: () -> Uni
         PairingState.Idle, is PairingState.Waiting -> SendScreen(ui, vm, close, onSent)
         is PairingState.Invited -> InvitedScreen(s.inviterName, accepting = ui.busy, onAccept = { vm.accept(s.token) }, onLater = close)
         is PairingState.Accepting -> InvitedScreen(s.inviterName, accepting = true, onAccept = {}, onLater = close)
-        is PairingState.Linked -> {
-            val total = ui.sendingTotal
-            if (total != null) SendingProgress(total, ui.sendingLeft ?: total, ui.sendStartedMs)
-            else InvitedScreen(ui.inviterName, accepting = true, onAccept = {}, onLater = close)
-        }
+        is PairingState.Linked -> InvitedScreen(ui.inviterName, accepting = true, onAccept = {}, onLater = close)
         PairingState.Expired -> Notice(
             "이 초대 링크는 만료됐어요", close,
             primary = "내가 초대 링크 보내기" to vm::open, secondary = "처음으로" to close, busy = ui.busy,

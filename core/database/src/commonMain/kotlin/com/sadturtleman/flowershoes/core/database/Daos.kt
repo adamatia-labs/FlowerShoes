@@ -26,10 +26,10 @@ interface CoupleDao {
 
 @Dao
 interface BookCoverDao {
-    @Query("SELECT * FROM book_cover LIMIT 1")
+    @Query("SELECT * FROM book_cover WHERE id = 'book'")
     fun observe(): Flow<BookCoverEntity?>
 
-    @Query("SELECT * FROM book_cover LIMIT 1")
+    @Query("SELECT * FROM book_cover WHERE id = 'book'")
     suspend fun get(): BookCoverEntity?
 
     @Upsert

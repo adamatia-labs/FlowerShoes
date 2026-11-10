@@ -14,6 +14,7 @@ import com.sadturtleman.flowershoes.core.data.InboxApplier
 import com.sadturtleman.flowershoes.core.data.OpCodec
 import com.sadturtleman.flowershoes.core.data.OpPayload
 import com.sadturtleman.flowershoes.core.data.ReceivedOp
+import com.sadturtleman.flowershoes.core.data.RelationshipArchive
 import com.sadturtleman.flowershoes.core.data.SyncWriter
 import com.sadturtleman.flowershoes.core.data.toModel
 import com.sadturtleman.flowershoes.core.database.AppDatabase
@@ -32,6 +33,7 @@ import com.sadturtleman.flowershoes.core.sync.SyncOp
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -70,6 +72,7 @@ class SyncClient(
 ) {
     private val myStream get() = StreamId(identity.deviceId, StreamId.Channel.APP)
     private val widgetStream get() = StreamId(identity.deviceId, StreamId.Channel.WIDGET).wire
+    private val archive = RelationshipArchive(db)
 
     suspend fun reconnect() = mailbox.reconnect()
 
@@ -90,13 +93,14 @@ class SyncClient(
         kotlin.coroutines.coroutineContext[Skipped]?.let { it.count++ }
     }
 
-    suspend fun syncOnce(): SyncReport {
+    suspend fun syncOnce(): SyncReport = db.relationshipMutex.withLock {
         val skipped = Skipped()
-        return kotlinx.coroutines.withContext(skipped) { syncRound() }.copy(skipped = skipped.count)
+        kotlinx.coroutines.withContext(skipped) { syncRound() }.copy(skipped = skipped.count)
     }
 
     private suspend fun syncRound(): SyncReport {
         Sodium.init()
+        archive.prepare()
         val couple = db.coupleDao().get() ?: return SyncReport()
         if (couple.partnerUserId.isEmpty()) return SyncReport() // 혼자 모드
         val partnerDevice = db.deviceDao().activeFor(couple.partnerUserId) ?: return SyncReport()
@@ -131,16 +135,17 @@ class SyncClient(
     }
 
     /** 위젯이 보낸 사본을 같은 stream/seq/opId로 보관한다. 오프라인 전송과 재실행도 중복되지 않는다. */
-    suspend fun importWidgetOp(coupleId: String, item: MailItem): Boolean {
-        val couple = db.coupleDao().get() ?: return false
-        if (couple.id != coupleId || item.from != identity.deviceId || item.kind != "missyou") return false
-        val signer = vault.deviceKeys() ?: return false
+    suspend fun importWidgetOp(coupleId: String, item: MailItem): Boolean = db.relationshipMutex.withLock {
+        archive.prepare()
+        val couple = db.coupleDao().get() ?: return@withLock false
+        if (couple.id != coupleId || item.from != identity.deviceId || item.kind != "missyou") return@withLock false
+        val signer = vault.deviceKeys() ?: return@withLock false
         val header = OpHeader.fromBytes(item.header)
-        if (header.stream != widgetStream || header.seq < 1 || header.opId != item.opId) return false
-        val key = vault.coupleKey(header.keyEpoch) ?: return false
+        if (header.stream != widgetStream || header.seq < 1 || header.opId != item.opId) return@withLock false
+        val key = vault.coupleKey(header.keyEpoch) ?: return@withLock false
         val plain = Plain.decode(OpEnvelope.open(OpEnvelope(header, item.ciphertext, item.signature), signer.signPub) { if (it == key.epoch) key else null })
-        val payload = OpCodec.decode(plain.payload) as? OpPayload.MissYouPut ?: return false
-        if (payload.missYou.authorId != identity.userId || payload.missYou.id != item.opId) return false
+        val payload = OpCodec.decode(plain.payload) as? OpPayload.MissYouPut ?: return@withLock false
+        if (payload.missYou.authorId != identity.userId || payload.missYou.id != item.opId) return@withLock false
         db.useWriterConnection { connection ->
             connection.immediateTransaction {
                 val result = inbox.apply(ReceivedOp(StreamId.parse(header.stream), header.seq, header.opId, plain.lamport, plain.payload))
@@ -151,7 +156,7 @@ class SyncClient(
                 }
             }
         }
-        return true
+        return@withLock true
     }
 
     /** 위젯은 별도 번호를 사용한다. 앱 스트림 스냅샷으로 덮지 않고 확인될 때까지 원본을 재전송한다. */
@@ -175,8 +180,13 @@ class SyncClient(
         val key = checkNotNull(vault.currentCoupleKey()) { "커플 키가 없다" }
         val signer = checkNotNull(vault.deviceKeys()) { "기기 키가 없다" }
         val header = OpHeader(op.opId, op.stream, op.seq, key.epoch)
-        val env = OpEnvelope.seal(header, Plain(op.lamport, withBlobs(couple, op.payload)).encode(), key, signer)
-        if (env.ciphertext.size <= MAX_OP_CIPHERTEXT) return MailItem(op.opId, op.kind, identity.deviceId, header.toBytes(), env.ciphertext, env.signature, resend)
+        val original = OpCodec.decode(op.payload)
+        val shared = original?.let { archive.shared(it, currentOnly = true) }
+        // 번호는 빈 스냅샷으로 이어 준다. 보관본 한 건 때문에 뒤의 새 편지가 막히지 않는다.
+        val payload = OpCodec.encode(shared ?: OpPayload.Snapshot(0, emptyList()))
+        val kind = if (shared == null) OpKind.SNAPSHOT.wire else op.kind
+        val env = OpEnvelope.seal(header, Plain(op.lamport, withBlobs(couple, payload)).encode(), key, signer)
+        if (env.ciphertext.size <= MAX_OP_CIPHERTEXT) return MailItem(op.opId, kind, identity.deviceId, header.toBytes(), env.ciphertext, env.signature, resend)
         skip()
         val empty = OpEnvelope.seal(header, Plain(op.lamport, OpCodec.encode(OpPayload.Snapshot(0, emptyList()))).encode(), key, signer)
         return MailItem(op.opId, OpKind.SNAPSHOT.wire, identity.deviceId, header.toBytes(), empty.ciphertext, empty.signature, resend)
@@ -226,9 +236,10 @@ class SyncClient(
     }
 
     /** iOS: NSE 가 App Group 에 받아 둔 Op 을 반영한다(우편함과 같은 확인 · 중복 제거를 거친다). */
-    suspend fun receiveQueued(items: List<MailItem>): Int {
-        val couple = db.coupleDao().get() ?: return 0
-        return items.count { receiveOrReject(couple, it) }
+    suspend fun receiveQueued(items: List<MailItem>): Int = db.relationshipMutex.withLock {
+        archive.prepare()
+        val couple = db.coupleDao().get() ?: return@withLock 0
+        return@withLock items.count { receiveOrReject(couple, it) }
     }
 
     suspend fun receiveQueued(item: MailItem): Boolean = receiveQueued(listOf(item)) == 1
@@ -261,6 +272,7 @@ class SyncClient(
 
     /** 첨부 하나를 무작위 키로 암호화해 blob 으로. 돌려주는 값은 (blob id, base64 키). 한도([MAX_BLOB_BYTES])를 넘으면 빼고 보낸다. */
     private suspend fun upload(couple: CoupleEntity, attachmentId: String): Pair<String, String>? {
+        if (archive.contains("attachment", attachmentId)) return null
         val bytes = attachments.read(attachmentId) ?: return null
         val blobKey = Sodium.random(Aead.KEY_BYTES)
         val blobId = Uuid.random().toString()
@@ -277,6 +289,7 @@ class SyncClient(
         if (blobId == null || key == null || attachmentId == null) return
         // 잘못된 첨부 참조는 그 항목만 건너뛰어 나머지 기록과 스트림은 계속 처리한다.
         if (!AttachmentStore.isSafeId(blobId) || !AttachmentStore.isSafeId(attachmentId)) return
+        if (archive.contains("attachment", attachmentId)) return
         val sealed = blobs.get(couple.id, blobId) ?: return
         attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
         blobs.delete(couple.id, blobId)
@@ -288,6 +301,7 @@ class SyncClient(
     }
 
     private suspend fun fetchBlobs(couple: CoupleEntity, p: OpPayload) {
+        if (archive.shared(p) == null) return
         when (p) {
             is OpPayload.Snapshot -> p.items.forEach { fetchBlobs(couple, it) }
             // 이미 받은 사진은 다시 받지 않는다(일정을 고칠 때마다 사진이 함께 다시 온다).
@@ -369,6 +383,7 @@ class SyncClient(
      * 받는 쪽은 lamport 로 병합하고, 이 스트림을 [coversThrough] 까지 반영한 것으로 처리한다.
      */
     suspend fun writeSnapshot(coversThrough: Long) {
+        archive.prepare()
         val items = buildList<OpPayload> {
             db.userDao().get(identity.userId)?.let { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
             db.serviceDao().get(identity.userId)?.let { add(OpPayload.ServicePut(it.toModel())) }
@@ -391,6 +406,7 @@ class SyncClient(
      * 새 기기는 내 스트림 커서가 없으므로 지금까지의 번호를 모두 반영한 것으로 처리하게 한다.
      */
     suspend fun writeFullSnapshot() {
+        archive.prepare()
         val stream = myStream.wire
         val items = buildList<OpPayload> {
             db.userDao().all().forEach { add(OpPayload.UserPut(it.id, it.role, it.nickname, it.nicknameLamport, it.deviceName.orEmpty(), it.perks?.split(',')?.filter { p -> p.isNotBlank() }.orEmpty())) }
@@ -416,7 +432,7 @@ class SyncClient(
     private suspend fun writeSnapshotOps(entityId: String, coversThrough: Long, items: List<OpPayload>) {
         val chunks = mutableListOf<MutableList<OpPayload>>()
         var size = 0
-        items.forEach { item ->
+        items.mapNotNull { archive.shared(it, currentOnly = true) }.forEach { item ->
             val itemSize = wireSize(item)
             if (chunks.isEmpty() || size + itemSize > SNAPSHOT_CHUNK_BYTES) {
                 chunks += mutableListOf<OpPayload>()

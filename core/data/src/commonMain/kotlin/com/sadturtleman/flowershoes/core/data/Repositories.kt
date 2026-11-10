@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.BookCoverEntity
 import com.sadturtleman.flowershoes.core.database.DrawingEntity
@@ -118,38 +120,56 @@ class ProfileRepository(
         saveMe(Role.valueOf(me.role), me.nickname, deviceName)
     }
 
-    suspend fun saveService(service: Service) {
+    suspend fun saveService(service: Service, expectedOriginal: Service? = null) {
         writer.write(
             OpKind.PROFILE, "service", service.userId,
-            localWrite = { lamport -> db.serviceDao().upsert(service.copy(lamport = lamport).toEntity()) },
+            localWrite = { lamport ->
+                if (expectedOriginal != null &&
+                    (service.userId != expectedOriginal.userId || db.serviceDao().get(service.userId)?.toModel() != expectedOriginal)
+                ) throw StaleRecordException()
+                db.serviceDao().upsert(service.copy(lamport = lamport).toEntity())
+            },
             payload = { lamport -> OpPayload.ServicePut(service.copy(lamport = lamport)) },
         )
     }
 
     /** 커플 기념일(함께한 날의 1일째). 기념일 일정([Event.COUPLE_ANNIVERSARY_ID])의 날짜다. */
     fun observeAnniversary(): Flow<LocalDate?> =
-        db.eventDao().observe(Event.COUPLE_ANNIVERSARY_ID).map { e -> e?.toModel()?.takeIf { it.type == EventType.ANNIVERSARY }?.start?.date }
+        observeAnniversaryRecord().map { it?.start?.date }.distinctUntilChanged()
+
+    /** 날짜 선택기를 열 때 보관할 원본. 저장 시 같은 기록인지 원자적으로 확인한다. */
+    fun observeAnniversaryRecord(): Flow<Event?> =
+        db.eventDao().observe(Event.COUPLE_ANNIVERSARY_ID).map { e -> e?.toModel()?.takeIf { it.type == EventType.ANNIVERSARY } }
             .distinctUntilChanged()
 
     /**
      * 커플 기념일을 매년 반복 기념일 일정 하나로 남긴다(조용한 종류 — 알림 없이 반영). null 이면 그 일정을 지운다.
      * 두 폰이 같은 id 를 쓰니 동시에 고쳐도 일정 LWW 로 하나만 남는다.
      */
-    suspend fun setAnniversary(date: LocalDate?) {
-        val id = Event.COUPLE_ANNIVERSARY_ID
-        val local = db.eventDao().get(id)?.toModel()
-        val at = clock.now()
-        val next = if (date == null) {
-            local?.takeIf { it.deletedAt == null }?.copy(deletedAt = at) ?: return
-        } else {
-            (local ?: Event(id, EventType.ANNIVERSARY, "사귄 날", date.atTime(0, 0), date.atTime(23, 59), false, at, 0, identity.deviceId))
-                .copy(start = date.atTime(0, 0), end = date.atTime(23, 59), deletedAt = null)
+    suspend fun setAnniversary(date: LocalDate?, expectedOriginal: Event? = null) {
+        db.useWriterConnection { tx ->
+            tx.immediateTransaction<Unit> {
+                // 고정 ID를 읽기 전에 보관 이관을 마친다. 해제와 읽기/복사 사이에도 다른 쓰기가 끼어들 수 없다.
+                RelationshipArchive(db).prepare()
+                val id = Event.COUPLE_ANNIVERSARY_ID
+                val local = db.eventDao().get(id)?.toModel()
+                if (expectedOriginal != null &&
+                    (expectedOriginal.id != id || local == null || local.deletedAt != null || local != expectedOriginal)
+                ) throw StaleRecordException()
+                val at = clock.now()
+                val next = if (date == null) {
+                    local?.takeIf { it.deletedAt == null }?.copy(deletedAt = at) ?: return@immediateTransaction
+                } else {
+                    (local ?: Event(id, EventType.ANNIVERSARY, "사귄 날", date.atTime(0, 0), date.atTime(23, 59), false, at, 0, identity.deviceId))
+                        .copy(start = date.atTime(0, 0), end = date.atTime(23, 59), deletedAt = null)
+                }
+                writer.write(
+                    OpKind.PROFILE, "event", id,
+                    localWrite = { lamport -> db.eventDao().upsert(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at).toEntity()) },
+                    payload = { lamport -> OpPayload.EventPut(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at)) },
+                )
+            }
         }
-        writer.write(
-            OpKind.PROFILE, "event", id,
-            localWrite = { lamport -> db.eventDao().upsert(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at).toEntity()) },
-            payload = { lamport -> OpPayload.EventPut(next.copy(lamport = lamport, lastWriterDevice = identity.deviceId, updatedAt = at)) },
-        )
     }
 }
 
@@ -173,10 +193,17 @@ class EventRepository(
     fun observeNext(): Flow<Event?> =
         db.eventDao().observeNext("${clock.today()}T00:00").map { it?.toModel() }
 
-    suspend fun save(event: Event) {
+    /** 편집 화면이 읽은 [expectedOriginal]은 쓰기 트랜잭션 안에서 확인해 이동·삭제·재사용된 행을 덮지 않는다. */
+    suspend fun save(event: Event, expectedOriginal: Event? = null) {
         writer.write(
             OpKind.EVENT, "event", event.id,
-            localWrite = { lamport -> db.eventDao().upsert(stamp(event, lamport).toEntity()) },
+            localWrite = { lamport ->
+                if (expectedOriginal != null) {
+                    val current = db.eventDao().get(event.id)?.toModel()
+                    if (current == null || current.deletedAt != null || current != expectedOriginal) throw StaleRecordException()
+                }
+                db.eventDao().upsert(stamp(event, lamport).toEntity())
+            },
             payload = { lamport -> OpPayload.EventPut(stamp(event, lamport)) },
         )
     }
