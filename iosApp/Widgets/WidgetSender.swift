@@ -8,8 +8,9 @@ enum WidgetSender {
 
     static func sendMissYou() async throws {
         guard let config = linkConfig(),
-              let coupleKey = SharedStore.secret("coupleKey.\(config.epoch)", scope: config.keyScope),
-              let signSecret = SharedStore.secret("device.signSecret", scope: config.keyScope) else { throw Failure.notLinked }
+              let secrets = SharedStore.readSecrets(scope: config.keyScope),
+              let coupleKey = secrets.secret("coupleKey.\(config.epoch)"),
+              let signSecret = secrets.secret("device.signSecret") else { throw Failure.notLinked }
 
         let seq = nextSeq()
         let opId = UUID().uuidString.lowercased()
