@@ -21,6 +21,7 @@ import com.sadturtleman.flowershoes.core.data.SyncWriter
 import com.sadturtleman.flowershoes.core.data.toModel
 import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.CoupleEntity
+import com.sadturtleman.flowershoes.core.database.DeviceEntity
 import com.sadturtleman.flowershoes.core.database.MetaEntity
 import com.sadturtleman.flowershoes.core.database.PeerCursorEntity
 import com.sadturtleman.flowershoes.core.database.SyncOpEntity
@@ -271,12 +272,41 @@ class SyncClient(
         } catch (_: CryptoException) {
             return false
         }
-        val payload = try { downloadBlobs(couple, plain.payload) } catch (_: AttachmentConflictException) {
+        val authorization = ReceiveAuthorization(couple, sender, stream, header.seq)
+        val payload = try { downloadBlobs(authorization, plain.payload) } catch (_: AttachmentConflictException) {
             // 서명과 복호화를 확인한 확정 충돌은 소비한다. 뒤의 정상 기록 ACK를 영구히 막지 않는다.
             OpCodec.encode(OpPayload.Snapshot(0, emptyList()))
         }
-        inbox.apply(ReceivedOp(stream, header.seq, header.opId, plain.lamport, payload))
+        authorization.write { inbox.apply(ReceivedOp(stream, header.seq, header.opId, plain.lamport, payload)) }
         return true
+    }
+
+    /**
+     * 다운로드는 DB 밖에서 기다리되, 검증한 신원과 실제 쓰기는 같은 SQLite 경계에 둔다.
+     * relationshipMutex를 공유하지 않는 앱/백그라운드 DB 인스턴스의 변경도 여기서 보인다.
+     */
+    private inner class ReceiveAuthorization(
+        val couple: CoupleEntity,
+        private val sender: DeviceEntity,
+        private val stream: StreamId,
+        private val seq: Long,
+    ) {
+        private val receiverDevice = identity.deviceId
+
+        suspend fun <T> write(block: suspend () -> T): T = db.useWriterConnection { connection ->
+            connection.immediateTransaction {
+                val currentSender = db.deviceDao().get(sender.id)
+                check(identity.userId == couple.myUserId && identity.deviceId == receiverDevice &&
+                    db.coupleDao().get() == couple && currentSender != null &&
+                    currentSender.userId == sender.userId && currentSender.uid == sender.uid &&
+                    currentSender.signPub.contentEquals(sender.signPub) && currentSender.boxPub.contentEquals(sender.boxPub) &&
+                    currentSender.state == sender.state && currentSender.registeredAtMs == sender.registeredAtMs &&
+                    currentSender.revokedAtMs == sender.revokedAtMs && inbox.accepts(stream, seq)) {
+                    "연결 또는 송신 기기가 바뀌어 수신을 중단했어요"
+                }
+                block()
+            }
+        }
     }
 
     /** 첨부 하나를 무작위 키로 암호화해 blob 으로. 돌려주는 값은 (blob id, base64 키). 한도([MAX_BLOB_BYTES])를 넘으면 빼고 보낸다. */
@@ -294,7 +324,8 @@ class SyncClient(
         return blobId to blobKey.b64()
     }
 
-    private suspend fun download(couple: CoupleEntity, blobId: String?, key: String?, attachmentId: String?, kind: AttachmentKind) {
+    private suspend fun download(authorization: ReceiveAuthorization, blobId: String?, key: String?, attachmentId: String?, kind: AttachmentKind) {
+        val couple = authorization.couple
         if (blobId == null || key == null || attachmentId == null) return
         // 잘못된 첨부 참조는 그 항목만 건너뛰어 나머지 기록과 스트림은 계속 처리한다.
         if (!AttachmentStore.isSafeId(blobId) || !AttachmentStore.isSafeId(attachmentId)) return
@@ -303,14 +334,19 @@ class SyncClient(
         val sealed = blobs.get(couple.id, blobId)
         if (sealed == null) {
             // 실제로 내용이 같았던 수신만 기존 파일에 연결한다. 확인되지 않은 누락은 재전송으로 복구한다.
-            val local = db.attachmentDao().get(attachmentId)
-            val bytes = if (db.syncDao().meta(binding) != null) attachments.read(attachmentId) else null
-            check(local != null && bytes != null && bytes.size.toLong() == local.sizeBytes &&
-                bytes.toByteString().sha256().hex() == local.sha256) { "첨부 연결을 아직 확인할 수 없어요" }
+            authorization.write {
+                val local = db.attachmentDao().get(attachmentId)
+                val bytes = if (db.syncDao().meta(binding) != null) attachments.read(attachmentId) else null
+                check(local != null && bytes != null && bytes.size.toLong() == local.sizeBytes &&
+                    bytes.toByteString().sha256().hex() == local.sha256) { "첨부 연결을 아직 확인할 수 없어요" }
+            }
             return
         }
-        attachments.putWithId(attachmentId, kind, Aead.open(key.unb64(), sealed))
-        db.syncDao().setMeta(MetaEntity(binding, 1))
+        val bytes = Aead.open(key.unb64(), sealed)
+        authorization.write {
+            attachments.putWithId(attachmentId, kind, bytes)
+            db.syncDao().setMeta(MetaEntity(binding, 1))
+        }
         blobs.delete(couple.id, blobId)
     }
 
@@ -318,10 +354,11 @@ class SyncClient(
         "$prefix:" + json.encodeToString(parts.toList()).encodeToByteArray().toByteString().sha256().hex()
 
     /** 편지 안 그림 문서를 받아 보낸 쪽과 같은 첨부 id 로 둔다. 다 받은 뒤에 편지를 반영한다(반쯤 받은 편지를 보여 주지 않게). */
-    private suspend fun downloadBlobs(couple: CoupleEntity, payload: ByteArray): ByteArray =
-        OpCodec.decode(payload)?.let { OpCodec.encode(fetchBlobs(couple, it)) } ?: payload
+    private suspend fun downloadBlobs(authorization: ReceiveAuthorization, payload: ByteArray): ByteArray =
+        OpCodec.decode(payload)?.let { OpCodec.encode(fetchBlobs(authorization, it)) } ?: payload
 
-    private suspend fun fetchBlobs(couple: CoupleEntity, p: OpPayload): OpPayload {
+    private suspend fun fetchBlobs(authorization: ReceiveAuthorization, p: OpPayload): OpPayload {
+        val couple = authorization.couple
         if (archive.shared(p) == null) return p
         // 편지는 불변 ID, 일정은 LWW 버전에 묶는다. 재전송마다 바뀌는 blob ID에 격리를 의존하지 않는다.
         val rejected = when (p) {
@@ -334,22 +371,22 @@ class SyncClient(
             when (p) {
                 // 충돌한 참조를 다른 원본 사진으로 표시하지 않는다. 같은 스냅샷의 정상 기록은 계속 반영한다.
                 is OpPayload.Snapshot -> return p.copy(items = p.items.mapNotNull {
-                    try { fetchBlobs(couple, it) } catch (_: AttachmentConflictException) { null }
+                    try { fetchBlobs(authorization, it) } catch (_: AttachmentConflictException) { null }
                 })
                 // 파일이 있어도 새 blob의 내용을 비교해야 다른 사진을 기존 ID로 연결하지 않는다.
-                is OpPayload.EventPut -> p.photos.forEach { ph -> download(couple, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
+                is OpPayload.EventPut -> p.photos.forEach { ph -> download(authorization, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
                 is OpPayload.LetterPut -> {
                     p.drawings.forEach { d ->
-                        download(couple, d.docBlobId, d.docBlobKey, d.docAttachmentId, AttachmentKind.DRAWING_DOC)
-                        download(couple, d.pngBlobId, d.pngBlobKey, d.pngAttachmentId, AttachmentKind.DRAWING_PNG)
-                        download(couple, d.photoBlobId, d.photoBlobKey, d.photoAttachmentId, AttachmentKind.PHOTO)
+                        download(authorization, d.docBlobId, d.docBlobKey, d.docAttachmentId, AttachmentKind.DRAWING_DOC)
+                        download(authorization, d.pngBlobId, d.pngBlobKey, d.pngAttachmentId, AttachmentKind.DRAWING_PNG)
+                        download(authorization, d.photoBlobId, d.photoBlobKey, d.photoAttachmentId, AttachmentKind.PHOTO)
                     }
-                    p.photos.forEach { ph -> download(couple, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
+                    p.photos.forEach { ph -> download(authorization, ph.blobId, ph.blobKey, ph.attachmentId, AttachmentKind.PHOTO) }
                 }
                 else -> Unit
             }
         } catch (collision: AttachmentConflictException) {
-            if (rejected != null) db.syncDao().setMeta(MetaEntity(rejected, 1))
+            if (rejected != null) authorization.write { db.syncDao().setMeta(MetaEntity(rejected, 1)) }
             throw collision
         }
         return p
