@@ -96,9 +96,9 @@ object DrawingCodec {
         var total = 0L
         header.fields { t, v ->
             when (t) {
-                H_VERSION -> version = v.varint().toInt()
-                H_MIN_READER -> minReader = v.varint().toInt()
-                H_SHAPE -> shape = WidgetShape.entries.getOrElse(v.varint().toInt()) { WidgetShape.SQUARE }
+                H_VERSION -> version = v.nonNegativeInt()
+                H_MIN_READER -> minReader = v.nonNegativeInt()
+                H_SHAPE -> shape = WidgetShape.entries.getOrElse(v.nonNegativeInt()) { WidgetShape.SQUARE }
                 H_BACKGROUND -> background = v.varint()
                 H_TOTAL_DURATION -> total = v.varint()
             }
@@ -180,9 +180,9 @@ object DrawingCodec {
                 F_START -> start = v.varint()
                 else -> when (type) {
                     T_STROKE, T_ERASER -> when (tag) {
-                        F_TOOL -> tool = Tool.entries.getOrElse(v.varint().toInt()) { Tool.PEN }
+                        F_TOOL -> tool = Tool.entries.getOrElse(v.nonNegativeInt()) { Tool.PEN }
                         F_COLOR -> color = v.varint()
-                        F_BRUSH -> brush = BrushSize.entries.getOrElse(v.varint().toInt()) { BrushSize.M }
+                        F_BRUSH -> brush = BrushSize.entries.getOrElse(v.nonNegativeInt()) { BrushSize.M }
                         F_POINTS -> points = v.points()
                         F_SEGMENTS -> segments = v.deltas()
                     }
@@ -193,7 +193,7 @@ object DrawingCodec {
                     T_PHOTO -> when (tag) {
                         F_ATTACHMENT -> text = v.rest().decodeToString()
                         F_DIM -> dim = v.floatBits().coerceIn(0f, PhotoBackground.MAX_DIM)
-                        F_CROP -> crop = Rect(v.zigzag().toInt(), v.zigzag().toInt(), v.zigzag().toInt(), v.zigzag().toInt())
+                        F_CROP -> crop = Rect(v.signedInt(), v.signedInt(), v.signedInt(), v.signedInt())
                     }
                     T_TEMPLATE -> if (tag == F_TEMPLATE_ID) text = v.rest().decodeToString()
                 }
@@ -243,11 +243,13 @@ object DrawingCodec {
     }
 
     private fun ByteReader.deltas(): IntArray {
-        val n = varint().toInt()
-        if (n < 0 || n > MAX_POINTS) throw DrawingFormatException("점 개수가 비정상이다: $n")
+        val n = nonNegativeInt()
+        if (n > MAX_POINTS) throw DrawingFormatException("점 개수가 비정상이다: $n")
         var prev = 0L
         return IntArray(n) {
-            prev += zigzag()
+            val delta = zigzag()
+            if (delta !in (Int.MIN_VALUE.toLong() - prev)..(Int.MAX_VALUE.toLong() - prev)) throw DrawingFormatException("점 좌표가 범위를 넘는다")
+            prev += delta
             prev.toInt()
         }
     }

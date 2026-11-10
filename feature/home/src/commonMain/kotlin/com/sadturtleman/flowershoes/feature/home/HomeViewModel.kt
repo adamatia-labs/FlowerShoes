@@ -61,6 +61,7 @@ data class HomeState(
     /** 연인 이름. 연결 전이면 null(초대 문구는 "연인"). */
     val partnerName: String? = null,
     val sentMissYouToday: Int = 0,
+    val missYouStatus: MissYouSendStatus = MissYouSendStatus.IDLE,
     /** 보낸 초대 링크가 아직 유효하다(연결 전 "초대 보냄 · 기다리는 중 · 링크 다시 보내기"). */
     val invitePending: Boolean = false,
     /** 연결 전인데 입대일이 아직 오지 않았다(홈 · 입대 전 350:972): "입대 전에 같이 연결해 두세요" + 초대. */
@@ -87,6 +88,7 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val me = profile.myUserId()
+    private val missYouSender = MissYouSender(viewModelScope, missYou::send)
 
     private data class People(val linked: Boolean, val partnerId: String?, val myRole: Role, val myName: String, val partnerName: String, val anniversary: LocalDate?, val linkedAt: Long?)
 
@@ -152,11 +154,12 @@ class HomeViewModel(
         )
     }.combine(pendingInvite) { s, invite ->
         s.copy(invitePending = !s.linked && invite != null && invite.expireAtMs > clock.now().toEpochMilliseconds())
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
+    }.combine(missYouSender.status) { s, status -> s.copy(missYouStatus = status) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 
     fun onIntent(intent: HomeIntent) {
         when (intent) {
-            HomeIntent.SendMissYou -> viewModelScope.launch { missYou.send() }
+            HomeIntent.SendMissYou -> missYouSender.send()
             is HomeIntent.DismissDayLine -> viewModelScope.launch { dayLineCards?.dismiss(intent.eventId) }
         }
     }
