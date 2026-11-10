@@ -2,7 +2,6 @@
 
 package com.sadturtleman.flowershoes.core.crypto
 
-import com.ionspin.kotlin.crypto.LibsodiumInitializer
 import com.ionspin.kotlin.crypto.aead.AuthenticatedEncryptionWithAssociatedData
 import com.ionspin.kotlin.crypto.box.Box
 import com.ionspin.kotlin.crypto.generichash.GenericHash
@@ -11,15 +10,16 @@ import com.ionspin.kotlin.crypto.util.LibsodiumRandom
 
 /** libsodium 초기화. 어떤 연산보다 먼저, 앱 시작 시 한 번 부른다(여러 번 불러도 된다). */
 object Sodium {
-    fun init() {
-        if (!LibsodiumInitializer.isInitialized()) LibsodiumInitializer.initializeWithCallback {}
-    }
+    fun init() = initializeSodium()
 
     /** 초기화 완료를 기다린 뒤 암호 연산을 시작한다. */
-    suspend fun awaitInit() = LibsodiumInitializer.initialize()
+    suspend fun awaitInit() = initializeSodium()
 
     fun random(size: Int): ByteArray = LibsodiumRandom.buf(size).toByteArray()
 }
+
+/** 현재 타깃의 초기화는 동기식이다. 완료 전 다른 호출이 빠져나가지 않게 한다. */
+internal expect fun initializeSodium()
 
 class CryptoException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
