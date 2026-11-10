@@ -15,6 +15,10 @@ import com.sadturtleman.flowershoes.core.compression.Zstd
  */
 object DrawingCodec {
 
+    const val MAX_DOCUMENT_BYTES = Zstd.MAX_DECOMPRESSED_BYTES
+    const val MAX_ELEMENTS = 10_000
+    private const val MAX_TOTAL_INT_VALUES = 3_000_000
+
     private val MAGIC = byteArrayOf(0x4B, 0x4B, 0x44, 0x01) // "KKD\1"
 
     private const val HEADER = 1
@@ -57,6 +61,13 @@ object DrawingCodec {
     private const val P_PRESSURE = 4
 
     fun encode(doc: DrawingDocument): ByteArray {
+        require(doc.elements.size <= MAX_ELEMENTS) { "그림 요소가 너무 많아요" }
+        val budget = DecodeBudget()
+        doc.elements.forEach { element ->
+            val points = when (element) { is Stroke -> element.points; is EraserStroke -> element.points; else -> null }
+            points?.let { repeat(3) { _ -> budget.reserve(it.size) } }
+            (element as? Stroke)?.replaySegments?.let { budget.reserve(it.size) }
+        }
         val w = ByteWriter()
         w.bytes(MAGIC)
         w.field(HEADER) {
@@ -78,10 +89,15 @@ object DrawingCodec {
 
         /** 이 앱보다 새 문서라 리플레이할 수 없다. 완성 PNG 만 보여 준다. */
         data class TooNew(val minReaderVersion: Int) : Result
+        /** 손상·크기 제한 초과. 원본은 건드리지 않고 호출부가 완성 PNG 또는 실패 안내를 보여 준다. */
+        data object Unreadable : Result
     }
 
-    fun decode(stored: ByteArray, readerVersion: Int = DrawingDocument.CURRENT_VERSION): Result {
-        val bytes = Zstd.unpack(stored)
+    fun decode(stored: ByteArray, readerVersion: Int = DrawingDocument.CURRENT_VERSION): Result = try {
+        decodeDocument(Zstd.unpack(stored, MAX_DOCUMENT_BYTES), readerVersion)
+    } catch (_: Exception) { Result.Unreadable }
+
+    private fun decodeDocument(bytes: ByteArray, readerVersion: Int): Result {
         if (bytes.size < MAGIC.size || !bytes.copyOf(MAGIC.size).contentEquals(MAGIC)) {
             throw DrawingFormatException("그림 문서가 아니다")
         }
@@ -106,10 +122,12 @@ object DrawingCodec {
         if (minReader > readerVersion) return Result.TooNew(minReader)
 
         val elements = mutableListOf<Element>()
+        val budget = DecodeBudget()
         var skipped = 0
         while (r.hasMore) {
+            if (elements.size + skipped >= MAX_ELEMENTS) throw DrawingFormatException("그림 요소가 너무 많다")
             val (type, body) = r.field()
-            val element = readElement(type, body)
+            val element = readElement(type, body, budget)
             if (element == null) skipped++ else elements += element
         }
         return Result.Ok(
@@ -161,7 +179,7 @@ object DrawingCodec {
         }
     }
 
-    private fun readElement(type: Int, body: ByteReader): Element? {
+    private fun readElement(type: Int, body: ByteReader, budget: DecodeBudget): Element? {
         if (type !in T_STROKE..T_TEMPLATE) return null
         var id = ""
         var start = 0L
@@ -183,8 +201,8 @@ object DrawingCodec {
                         F_TOOL -> tool = Tool.entries.getOrElse(v.nonNegativeInt()) { Tool.PEN }
                         F_COLOR -> color = v.varint()
                         F_BRUSH -> brush = BrushSize.entries.getOrElse(v.nonNegativeInt()) { BrushSize.M }
-                        F_POINTS -> points = v.points()
-                        F_SEGMENTS -> segments = v.deltas()
+                        F_POINTS -> points = v.points(budget)
+                        F_SEGMENTS -> segments = v.deltas(budget)
                     }
                     T_STICKER -> when (tag) {
                         F_STICKER_ID -> text = v.rest().decodeToString()
@@ -215,16 +233,16 @@ object DrawingCodec {
         p.pressure?.let { field(P_PRESSURE) { bytes(it) } }
     }
 
-    private fun ByteReader.points(): PointBuffer {
+    private fun ByteReader.points(budget: DecodeBudget): PointBuffer {
         var xs = IntArray(0)
         var ys = IntArray(0)
         var ts = IntArray(0)
         var pressure: ByteArray? = null
         fields { tag, v ->
             when (tag) {
-                P_XS -> xs = v.deltas()
-                P_YS -> ys = v.deltas()
-                P_TS -> ts = v.deltas()
+                P_XS -> xs = v.deltas(budget)
+                P_YS -> ys = v.deltas(budget)
+                P_TS -> ts = v.deltas(budget)
                 P_PRESSURE -> pressure = v.rest()
             }
         }
@@ -242,9 +260,10 @@ object DrawingCodec {
         }
     }
 
-    private fun ByteReader.deltas(): IntArray {
+    private fun ByteReader.deltas(budget: DecodeBudget): IntArray {
         val n = nonNegativeInt()
-        if (n > MAX_POINTS) throw DrawingFormatException("점 개수가 비정상이다: $n")
+        budget.reserve(n)
+        if (n > remaining) throw DrawingFormatException("점 데이터가 중간에 끝났다")
         var prev = 0L
         return IntArray(n) {
             val delta = zigzag()
@@ -279,4 +298,12 @@ object DrawingCodec {
     }
 
     private const val MAX_POINTS = 100_000
+
+    private class DecodeBudget {
+        private var left = MAX_TOTAL_INT_VALUES
+        fun reserve(count: Int) {
+            if (count !in 0..MAX_POINTS || count > left) throw DrawingFormatException("그림의 점 데이터가 너무 많다")
+            left -= count
+        }
+    }
 }

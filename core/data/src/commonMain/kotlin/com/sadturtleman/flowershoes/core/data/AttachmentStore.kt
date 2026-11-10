@@ -43,14 +43,22 @@ class AttachmentStore(
         if (fs.exists(root)) fs.deleteRecursively(root)
     }
 
-    suspend fun read(id: String): ByteArray? {
+    suspend fun read(id: String, maxBytes: Int = Int.MAX_VALUE): ByteArray? {
+        require(maxBytes >= 0)
         if (!isSafeId(id)) return null
         val row = db.attachmentDao().get(id) ?: return null
         if (!isSafeId(row.id)) return null
         val path = root / row.id
         if (fs.metadataOrNull(path)?.symlinkTarget != null) return null
         val actual = safeExistingPath(root, path.toString(), fs) ?: return null
-        return fs.read(actual) { readByteArray() }
+        val size = fs.metadataOrNull(actual)?.size ?: return null
+        if (size !in 0..maxBytes.toLong()) return null
+        return try {
+            fs.read(actual) {
+                val bytes = readByteArray(size)
+                if (exhausted()) bytes else null
+            }
+        } catch (_: okio.IOException) { null }
     }
 
     companion object {

@@ -42,7 +42,7 @@ class TlvBoundsTest {
             bytes(byteArrayOf(0x4b, 0x4b, 0x44, 1))
             field(1) { field(2) { varint((1L shl 32) + 1) } }
         }.toByteArray()
-        assertFailsWith<DrawingFormatException> { DrawingCodec.decode(input) }
+        assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(input))
     }
 
     @Test
@@ -52,7 +52,7 @@ class TlvBoundsTest {
             field(1) { }
             field(1) { field(6) { field(1) { varint(1L shl 32) } } }
         }.toByteArray()
-        assertFailsWith<DrawingFormatException> { DrawingCodec.decode(input) }
+        assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(input))
     }
 
     @Test
@@ -62,7 +62,7 @@ class TlvBoundsTest {
             field(1) { }
             field(1) { field(6) { field(1) { varint(1); zigzag(Int.MAX_VALUE.toLong() + 1) } } }
         }.toByteArray()
-        assertFailsWith<DrawingFormatException> { DrawingCodec.decode(input) }
+        assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(input))
     }
 
     @Test
@@ -79,7 +79,7 @@ class TlvBoundsTest {
             field(1) { }
             field(1) { field(6) { field(1) { varint(2); zigzag(Int.MIN_VALUE.toLong()); zigzag(-1) } } }
         }.toByteArray()
-        assertFailsWith<DrawingFormatException> { DrawingCodec.decode(input) }
+        assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(input))
     }
 
     @Test
@@ -89,7 +89,7 @@ class TlvBoundsTest {
             field(1) { }
             field(4) { field(5) { zigzag(Int.MAX_VALUE.toLong() + 1); zigzag(0); zigzag(0); zigzag(0) } }
         }.toByteArray()
-        assertFailsWith<DrawingFormatException> { DrawingCodec.decode(input) }
+        assertEquals(DrawingCodec.Result.Unreadable, DrawingCodec.decode(input))
     }
 
     @Test

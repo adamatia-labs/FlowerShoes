@@ -459,7 +459,7 @@ class SyncClient(
 
     /** 그림 문서가 가리키는 배경 사진 첨부(스냅샷에서 사진도 함께 보내려고). DB 에 따로 두지 않고 문서에서 읽는다. */
     private suspend fun photoOf(docAttachmentId: String?): String? {
-        val bytes = docAttachmentId?.let { attachments.read(it) } ?: return null
+        val bytes = docAttachmentId?.let { attachments.read(it, com.sadturtleman.flowershoes.core.drawing.DrawingCodec.MAX_DOCUMENT_BYTES) } ?: return null
         // 깨진 문서는 사진 없이 보낸다(스냅샷 전체를 막지 않는다).
         val doc = (runCatching { com.sadturtleman.flowershoes.core.drawing.DrawingCodec.decode(bytes) }.getOrNull() as? com.sadturtleman.flowershoes.core.drawing.DrawingCodec.Result.Ok)?.document
         return doc?.elements?.filterIsInstance<com.sadturtleman.flowershoes.core.drawing.PhotoBackground>()?.firstOrNull()?.attachmentId
