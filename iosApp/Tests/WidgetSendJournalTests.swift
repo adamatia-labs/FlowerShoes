@@ -79,4 +79,41 @@ final class WidgetSendJournalTests: XCTestCase {
         try Data("corrupt".utf8).write(to: counter)
         XCTAssertThrowsError(try WidgetSendJournal(root: root).enqueue { self.envelope($0) })
     }
+
+    private func outgoing(_ seq: Int64, couple: String = "couple") throws -> WidgetSendJournal.Envelope {
+        let id = UUID().uuidString
+        let header = OpEnvelope.Header(opId: id, stream: "device:widget", seq: seq, keyEpoch: 1)
+        let body = try JSONSerialization.data(withJSONObject: [
+            "coupleId": couple, "fromDeviceId": "device", "toDeviceId": "partner", "opId": id,
+            "header": Data(header.bytes()).base64EncodedString(), "ct": "encrypted", "sig": "signature",
+        ])
+        return WidgetSendJournal.Envelope(opId: id, body: body)
+    }
+
+    func testNextWidgetTapDeliversRecoveredEnvelopeFirstWithoutOpeningApp() async throws {
+        let beforeCrash = WidgetSendJournal(root: root) { if $0 == .journalSaved { throw Crash.injected } }
+        var first: WidgetSendJournal.Envelope!
+        XCTAssertThrowsError(try beforeCrash.enqueue { first = try self.outgoing($0); return first })
+        let second = try WidgetSendJournal(root: root).enqueue { try self.outgoing($0) }
+        // A previous relationship's copy must remain private and must not block this delivery.
+        _ = try WidgetSendJournal(root: root).enqueue { try self.outgoing($0, couple: "previous") }
+        let destination = WidgetOutboxDelivery.Destination(coupleId: "couple", deviceId: "device", partnerDeviceId: "partner")
+        var delivered: [Data] = []
+        try await WidgetOutboxDelivery.send(root: root, destination: destination) { delivered.append($0) }
+        XCTAssertEqual(delivered, [first.body, second.body])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("widget-outbox/\(first.opId).json").path))
+    }
+
+    func testTransportFailureRetainsOriginalAndRetriesInOrder() async throws {
+        let first = try WidgetSendJournal(root: root).enqueue { try self.outgoing($0) }
+        let second = try WidgetSendJournal(root: root).enqueue { try self.outgoing($0) }
+        let destination = WidgetOutboxDelivery.Destination(coupleId: "couple", deviceId: "device", partnerDeviceId: "partner")
+        do {
+            try await WidgetOutboxDelivery.send(root: root, destination: destination) { _ in throw Crash.injected }
+            XCTFail("transport failure must propagate")
+        } catch Crash.injected { }
+        var delivered: [Data] = []
+        try await WidgetOutboxDelivery.send(root: root, destination: destination) { delivered.append($0) }
+        XCTAssertEqual(delivered, [first.body, second.body])
+    }
 }

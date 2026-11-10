@@ -11,7 +11,7 @@ enum WidgetSender {
               let coupleKey = SharedStore.secret("coupleKey.\(config.epoch)"),
               let signSecret = SharedStore.secret("device.signSecret") else { throw Failure.notLinked }
 
-        let envelope = try WidgetSendJournal(root: SharedStore.container).enqueue { seq in
+        _ = try WidgetSendJournal(root: SharedStore.container).enqueue { seq in
             guard linkConfig() == config else { throw Failure.notLinked }
             let opId = UUID().uuidString.lowercased()
             let header = OpEnvelope.Header(opId: opId, stream: "\(config.deviceId):widget", seq: seq, keyEpoch: config.epoch)
@@ -30,15 +30,19 @@ enum WidgetSender {
         }
         guard linkConfig() == config else { throw Failure.notLinked }
         guard let address = config.sendEndpoint, let endpoint = URL(string: address) else { throw Failure.notLinked }
-        var req = URLRequest(url: endpoint)
-        req.timeoutInterval = 10
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = envelope.body
-        let (_, response) = try await URLSession.shared.data(for: req)
-        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        // 실패해도 사본이 남아 있어 앱이 다음 실행 때 보낸다.
-        if code != 200 && code != 409 { throw Failure.rejected(code) }
+        let destination = WidgetOutboxDelivery.Destination(coupleId: config.coupleId, deviceId: config.deviceId, partnerDeviceId: config.partnerDeviceId)
+        try await WidgetOutboxDelivery.send(root: SharedStore.container, destination: destination) { body in
+            guard linkConfig() == config else { throw Failure.notLinked }
+            var req = URLRequest(url: endpoint)
+            req.timeoutInterval = 10
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+            let (_, response) = try await URLSession.shared.data(for: req)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            // 실패해도 사본이 남아 있어 다음 위젯 전송 또는 앱 실행 때 다시 보낸다.
+            if code != 200 && code != 409 { throw Failure.rejected(code) }
+        }
     }
 
     struct LinkConfig: Codable, Equatable {
