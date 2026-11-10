@@ -14,6 +14,7 @@ import okio.Path.Companion.toPath
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.uuid.Uuid
 
 class LetterDraftStoreTest {
@@ -22,11 +23,12 @@ class LetterDraftStoreTest {
     private val store = RoomLetterDraftStore(db)
 
     private val settingsPath = (FileSystem.SYSTEM_TEMPORARY_DIRECTORY.toString() + "/kkotsin-drafts-${Uuid.random()}.preferences_pb").toPath()
-    private val server = object : AccountTransport {
+    private val settings = DeviceSettings(PreferenceDataStoreFactory.createWithPath { settingsPath })
+    private val transport = object : AccountTransport {
         override suspend fun unlinkCouple(coupleId: String) = Unit
         override suspend fun deleteAccount() = Unit
     }
-    private val unlink = UnlinkService(db, InMemoryKeyVault(), DeviceSettings(PreferenceDataStoreFactory.createWithPath { settingsPath }), server)
+    private val unlink = UnlinkService(db, InMemoryKeyVault(), settings, transport)
 
     @AfterTest
     fun close() {
@@ -66,5 +68,13 @@ class LetterDraftStoreTest {
         store.save("a", "{}", atMs = 100)
         unlink.deleteAccount()
         assertEquals(emptyList(), store.observe().first())
+    }
+
+    @Test
+    fun `탈퇴 서버가 없으면 성공으로 처리하거나 쓰던 편지를 지우지 않는다`() = runTest {
+        store.save("a", "{}", atMs = 100)
+        val unavailable = UnlinkService(db, InMemoryKeyVault(), settings, null)
+        assertFailsWith<IllegalStateException> { unavailable.deleteAccount() }
+        assertEquals(listOf("a"), store.observe().first().map { it.id })
     }
 }
