@@ -303,6 +303,17 @@ private fun MainShell() {
     var heldChange by remember { mutableStateOf<com.sadturtleman.flowershoes.core.data.sync.DeviceChangePrompt?>(null) }
     // 편지 쓰기 · 편지함이 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
+    val letterState by letters.state.collectAsState()
+    val drawingScope = rememberCoroutineScope()
+    var drawingForDraft by remember { mutableStateOf<String?>(null) }
+    var previousDraftSession by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(letterState.draftSession) {
+        if (previousDraftSession != null && previousDraftSession != letterState.draftSession) {
+            overlay = null
+            drawingForDraft = null
+        }
+        previousDraftSession = letterState.draftSession
+    }
     val calendar = koinViewModel<com.sadturtleman.flowershoes.feature.calendar.CalendarViewModel>()
     val imageSaver = rememberImageSaver()
     val window = LocalKkWindowWidth.current
@@ -398,7 +409,9 @@ private fun MainShell() {
     when (shown) {
         Overlay.COMPOSE -> KkContentWidth {
             LetterComposeRoute(
-                onAddDrawing = { overlay = Overlay.DRAW_FOR_LETTER },
+                onAddDrawing = { drawingScope.launch {
+                    letters.prepareDrawing()?.let { token -> drawingForDraft = token; overlay = Overlay.DRAW_FOR_LETTER }
+                } },
                 onClose = { overlay = null },
                 photoPicker = { rememberPhotoPicker(it) },
                 // 평생 안내 시트 › 꽃신 평생 보기 → 설정 › 꽃신 평생(쓰던 편지는 화면을 나갈 때 저장된다).
@@ -414,13 +427,16 @@ private fun MainShell() {
                 viewModel = letters,
             )
         }
-        Overlay.DRAW_FOR_LETTER -> {
+        Overlay.DRAW_FOR_LETTER -> drawingForDraft?.let { target ->
             DrawingEditorRoute(
+                editorSession = target,
                 photoPicker = { rememberPhotoPicker(it) },
                 saveImage = imageSaver,
                 onSaved = {
-                    letters.onIntent(LetterIntent.AddDrawing(it))
-                    overlay = Overlay.COMPOSE
+                    target.takeIf { token -> token == letterState.draftEditorToken }?.let { token ->
+                        letters.onIntent(LetterIntent.AddDrawing(it, token))
+                        overlay = Overlay.COMPOSE
+                    }
                 },
                 onClose = { overlay = Overlay.COMPOSE },
             )

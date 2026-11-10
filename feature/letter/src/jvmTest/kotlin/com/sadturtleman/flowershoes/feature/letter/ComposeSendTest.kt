@@ -15,6 +15,7 @@ import com.sadturtleman.flowershoes.core.logging.BizEvent
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.core.model.LetterBlock
 import com.sadturtleman.flowershoes.core.model.ReceiptEntity
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
@@ -50,17 +51,6 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class ComposeSendTest {
 
-    private class MemoryDrafts : LetterDraftStore {
-        val rows = MutableStateFlow<List<StoredDraft>>(emptyList())
-        override fun observe(): Flow<List<StoredDraft>> = rows
-        override suspend fun save(id: String, json: String, atMs: Long) {
-            rows.value = rows.value.filterNot { it.id == id } + StoredDraft(id, json, atMs)
-        }
-        override suspend fun delete(id: String) {
-            rows.value = rows.value.filterNot { it.id == id }
-        }
-    }
-
     private class Phone(val db: AppDatabase, user: String) {
         var broken = false
         val identity = object : Identity {
@@ -82,6 +72,7 @@ class ComposeSendTest {
         override fun destroy() = Unit
     }
     private lateinit var vm: LetterViewModel
+    private val drafts = TestDraftStore("jisu")
     private var delayedId: String? = null
     private val loadStarted = CompletableDeferred<Unit>()
     private val releaseLoad = CompletableDeferred<Unit>()
@@ -99,7 +90,7 @@ class ComposeSendTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         vm = LetterViewModel(
             jisu.letters, AttachmentStore(db, FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kk-letter-test"), ProfileRepository(db, jisu.writer, jisu.identity),
-            MemoryDrafts(), bizLogger = logger,
+            drafts, bizLogger = logger,
             loadLetter = { id ->
                 if (id == delayedId) { loadStarted.complete(Unit); releaseLoad.await() }
                 if (id == delayedId && failDelayedLoad) error("read failed")
@@ -135,6 +126,55 @@ class ComposeSendTest {
     }
 
     private suspend fun until(cond: (LetterState) -> Boolean) = vm.state.first { cond(it) }
+
+    @Test fun `열린 편집 화면은 계정 전환에서 비워지고 이전 사진 응답을 받지 않는다`() = withScreen {
+        until { !it.loading && it.draftReady }
+        vm.onIntent(LetterIntent.EditText("이전 계정의 사적인 글"))
+        val old = until { it.draft.plainText.isNotEmpty() }.draftEditorToken
+        drafts.switchAccount("other-account")
+        val changed = until { it.draftEditorToken != old && it.draftReady }
+        assertTrue(changed.draft.isEmpty)
+        assertTrue(changed.draftPhotos.isEmpty()); assertTrue(changed.draftThumbs.isEmpty()); assertTrue(changed.drafts.isEmpty())
+        vm.onIntent(LetterIntent.AddPhoto(byteArrayOf(1, 2), old))
+        vm.onIntent(LetterIntent.EditText("새 계정 글"))
+        assertTrue(until { it.draft.plainText == "새 계정 글" }.draft.photos.isEmpty())
+        assertTrue(drafts.owned("jisu").single().json.contains("이전 계정의 사적인 글"))
+    }
+
+    @Test fun `전송 시작 뒤 계정이 바뀌면 이전 본문을 새 편지로 만들지 않는다`() = withScreen {
+        until { !it.loading && it.draftReady }
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        drafts.beforeSend = { entered.complete(Unit); release.await() }
+        vm.onIntent(LetterIntent.EditText("이전 계정 전송 대기 글"))
+        vm.onIntent(LetterIntent.Send)
+        entered.await()
+        vm.onIntent(LetterIntent.LeaveCompose)
+        drafts.switchAccount("other-account")
+        until { it.draftSession == drafts.session.generation && it.draftReady }
+        release.complete(Unit)
+        vm.toasts.first { it.kind == LetterToast.Kind.ERROR }
+        withTimeout(5_000) { while (drafts.owned("jisu").none { it.json.contains("이전 계정 전송 대기 글") }) delay(10) }
+        assertTrue(db.letterDao().allActive().isEmpty())
+        assertNull(vm.state.value.done)
+        assertTrue(vm.state.value.draft.isEmpty)
+    }
+
+    @Test fun `보냄 화면 준비 중 전환하면 이전 편지 첫 줄을 다시 표시하지 않는다`() = runBlocking {
+        vm.viewModelScope.coroutineContext[Job]!!.cancelAndJoin()
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        vm = LetterViewModel(jisu.letters, AttachmentStore(db, FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kk-letter-test"),
+            ProfileRepository(db, jisu.writer, jisu.identity), drafts, bizLogger = logger,
+            sentNoteProvider = { entered.complete(Unit); release.await(); ComposeDone.Sent("이전 계정 첫 줄", "", "", "") })
+        withScreen {
+            until { !it.loading && it.draftReady }
+            vm.onIntent(LetterIntent.EditText("이전 계정 첫 줄")); vm.onIntent(LetterIntent.Send)
+            entered.await()
+            drafts.switchAccount("other-account")
+            until { it.draftSession == drafts.session.generation && it.draftReady }
+            release.complete(Unit)
+            assertNull(withTimeoutOrNull(200) { vm.state.first { it.done != null } })
+        }
+    }
 
     @Test
     fun `보내면 보냄 화면 혼자 모드면 대기 우표와 보낼 편지 수`() = withScreen {
