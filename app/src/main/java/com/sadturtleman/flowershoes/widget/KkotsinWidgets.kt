@@ -134,7 +134,7 @@ private class WidgetPalette(s: WidgetSnapshot?) {
     }
 }
 
-/** 테마 v2 텍스트 스타일(Glance 판): Caption 11 · Label 13 · D-day/S 24 · D-day/M 52 · Hand/Letter 21 · Hand/L 26. */
+/** 테마 v2 텍스트 스타일(Glance 판): Caption 11 · Label 13 · D-day/S 24 · Overview 40 · D-day/M 52 · Hand/Letter 21 · Hand/L 26. */
 private object WidgetType {
     fun caption(color: ColorProvider) = TextStyle(color = color, fontSize = 11.sp)
     fun label(color: ColorProvider, bold: Boolean = true) =
@@ -142,6 +142,8 @@ private object WidgetType {
     /** 숫자: 곰신은 명조(Gowun Batang), 군인은 굵은 고딕(Black Han Sans)에 가깝게. */
     fun number(p: WidgetPalette, size: TextUnit = 24.sp) =
         TextStyle(color = p.ink, fontSize = size, fontWeight = FontWeight.Bold, fontFamily = if (p.soldier) null else FontFamily.Serif)
+    /** 250dp 큰 위젯에서도 편지와 보고싶어 행의 공간을 남기는 전역 숫자. */
+    fun overviewNumber(p: WidgetPalette) = number(p, 40.sp)
     fun hand(color: ColorProvider, size: TextUnit = 21.sp) = TextStyle(color = color, fontSize = size, fontFamily = FontFamily.Cursive)
 }
 
@@ -418,7 +420,7 @@ class OverviewWidget : GlanceAppWidget() {
                             Column {
                                 Caption(s.ddayCaption.orEmpty(), p.sub)
                                 Spacer(GlanceModifier.height(4.dp))
-                                Text(value, style = WidgetType.number(p, 40.sp), maxLines = 1)
+                                Text(value, style = WidgetType.overviewNumber(p), maxLines = 1)
                                 Spacer(GlanceModifier.height(8.dp))
                                 if (s.progress != null) ServiceProgress(p, s) else s.ddayFoot?.let { Caption(it, p.sub) }
                                 val tags = listOfNotNull(s.tagLeave, s.tagMeet, s.tagRank)
