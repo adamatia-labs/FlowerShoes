@@ -30,6 +30,52 @@ class LetterDraftStoreTest {
     }
     private val unlink = UnlinkService(db, InMemoryKeyVault(), settings, transport)
 
+    @Test
+    fun `계정을 바꾸면 이전 계정의 초안이 보이지 않는다`() = runTest {
+        settings.ensureIdentity()
+        settings.bindAccount("account-a")
+        store.save("private-a", "{\"text\":\"A의 편지\"}", 100)
+        settings.bindAccount("account-b")
+        val other = RoomLetterDraftStore(db)
+        assertEquals(emptyList(), other.observe().first())
+    }
+
+    @Test
+    fun `다른 계정은 같은 식별자로 원래 초안을 덮어쓸 수 없다`() = runTest {
+        settings.ensureIdentity()
+        settings.bindAccount("account-a")
+        store.save("private-a", "original", 100)
+        settings.bindAccount("account-b")
+        val other = RoomLetterDraftStore(db)
+        runCatching { other.save("private-a", "replacement", 200) }
+        settings.bindAccount("account-a")
+        assertEquals("original", store.observe().first().single().json)
+    }
+
+    @Test
+    fun `다른 계정의 삭제 요청은 원래 초안을 보존한다`() = runTest {
+        settings.ensureIdentity()
+        settings.bindAccount("account-a")
+        store.save("private-a", "original", 100)
+        settings.bindAccount("account-b")
+        val other = RoomLetterDraftStore(db)
+        runCatching { other.delete("private-a") }
+        settings.bindAccount("account-a")
+        assertEquals(listOf("private-a"), store.observe().first().map { it.id })
+    }
+
+    @Test
+    fun `관계 정리는 다른 계정과 소유자 미상 초안을 보존한다`() = runTest {
+        db.letterDraftDao().upsert(com.sadturtleman.flowershoes.core.database.LetterDraftEntity("legacy", "unknown owner", 1))
+        settings.ensureIdentity()
+        settings.bindAccount("account-b")
+        store.save("private-b", "B", 100)
+        settings.bindAccount("account-a")
+        store.save("private-a", "A", 200)
+        unlink.onPartnerUnlinked(AfterUnlink.KEEP_AS_MEMORIES)
+        assertEquals(setOf("legacy", "private-b"), db.letterDraftDao().observeAll().first().map { it.id }.toSet())
+    }
+
     @AfterTest
     fun close() {
         db.close()
