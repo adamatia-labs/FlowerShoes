@@ -240,4 +240,9 @@ data class LetterDraftEntity(
     @PrimaryKey val id: String,
     val draftJson: String,
     val updatedAtMs: Long,
+    /** null은 소유자를 확인하지 못한 구버전 초안. 로그인만으로 귀속시키지 않는다. */
+    val ownerUid: String? = null,
+    val editorToken: String? = null,
+    /** 자동 저장 전에 만들어지는 사진·그림 파일도 다른 계정 정리에서 보존한다. */
+    @ColumnInfo(defaultValue = "0") val hasAttachments: Boolean = false,
 )

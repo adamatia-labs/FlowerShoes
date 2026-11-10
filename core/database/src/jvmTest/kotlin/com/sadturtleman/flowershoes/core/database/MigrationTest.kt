@@ -53,6 +53,20 @@ class MigrationTest {
     }
 
     @Test
+    fun `이전 버전 초안은 내용과 시각을 보존하고 소유자를 임의로 정하지 않는다`() = runTest {
+        for (version in 1..2) {
+            val file = dir.root.toPath().resolve("legacy-drafts-$version.db")
+            helper(file).createDatabase(version).use {
+                it.execSQL("INSERT INTO letter_draft (id, draftJson, updatedAtMs) VALUES ('legacy', 'private content', 123)")
+            }
+            helper(file).runMigrationsAndValidate(AppDatabase.VERSION, AppDatabase.MIGRATIONS).close()
+            val db = Room.databaseBuilder<AppDatabase>(name = file.toString()).buildKkotsin()
+            try { assertEquals(LetterDraftEntity("legacy", "private content", 123), db.letterDraftDao().get("legacy")) }
+            finally { db.close() }
+        }
+    }
+
+    @Test
     fun `출시 기준부터 현재까지 모든 버전의 스키마가 남아 있다`() {
         val missing = (1..AppDatabase.VERSION).filterNot { schemas.resolve("$it.json").exists() }
         assertEquals(emptyList(), missing, "지운 스키마 JSON 이 있으면 그 버전에서 오는 이전을 검증할 수 없다")

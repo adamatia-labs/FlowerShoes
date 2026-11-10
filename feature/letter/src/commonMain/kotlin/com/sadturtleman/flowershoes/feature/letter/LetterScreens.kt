@@ -246,6 +246,15 @@ fun LetterInboxScreen(
 ) {
     val c = KkTheme.colors
     var writeMenu by remember { mutableStateOf(false) }
+    var recoverDrafts by remember(state.draftSession) { mutableStateOf(false) }
+    if (recoverDrafts) {
+        KkModalSheet({ recoverDrafts = false }) {
+            KkSheetHeader("이전에 쓰던 편지를 복구할까요?")
+            Text("이 기기에 계정 정보가 없는 편지 ${state.unclaimedDrafts}통이 있어요. 편지를 썼던 계정으로 로그인했으며, 모두 본인이 쓴 편지인지 확인해 주세요. 복구해도 자동으로 보내지 않아요.", style = KkTheme.type.body, color = c.ink)
+            KkPrimaryButton("내가 쓴 편지예요 · 복구하기", onClick = { recoverDrafts = false; state.draftSession?.let { onIntent(LetterIntent.RecoverDrafts(it)) } }, modifier = Modifier.fillMaxWidth())
+            KkSecondaryButton("나중에", onClick = { recoverDrafts = false }, modifier = Modifier.fillMaxWidth())
+        }
+    }
     // Figma 4 · 편지함: 제목 줄 → 밑줄 탭 → 쓰던 편지 → 월 머리 + 봉투(행은 반듯하게, 장식만 기운다).
     Column(
         Modifier.fillMaxSize().background(c.canvas).verticalScroll(rememberScrollState())
@@ -274,6 +283,7 @@ fun LetterInboxScreen(
         // 혼자 모드(Figma 편지함 · 혼자 모드): 연결 전 안내 + 연결하기. 보조 설명 줄은 없다(design.md).
         if (state.solo && !state.loading) KkBanner(soloBannerTitle(state.partnerName), action = "연결하기", onAction = onConnect)
         if (state.drafts.isNotEmpty()) DraftRow(state.drafts, onOpenDrafts)
+        if (state.unclaimedDrafts > 0) KkBanner("이전에 쓰던 편지 ${state.unclaimedDrafts}통이 있어요", action = "확인하기", onAction = { recoverDrafts = true })
         when {
             state.loading -> repeat(4) { EnvelopeSkeleton() }
             // 빈 상태는 제목 + 동작만(설명 줄 없음).
@@ -594,10 +604,14 @@ fun LetterComposeRoute(
     var fonts by remember { mutableStateOf(false) }
     var photoSource by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
-    val pickPhoto = photoPicker?.invoke { viewModel.onIntent(LetterIntent.AddPhoto(it)) }
+    val pickPhoto = androidx.compose.runtime.key(state.draftEditorToken) {
+        val token = state.draftEditorToken
+        photoPicker?.invoke { bytes -> token?.let { viewModel.onIntent(LetterIntent.AddPhoto(bytes, it)) } }
+    }
     // 쓰던 글은 멈추고 2초 뒤 · 화면을 나갈 때(닫기 · 그림판 · 앱 전환) 이 기기에 저장한다.
     DisposableEffect(viewModel) { onDispose { viewModel.onIntent(LetterIntent.LeaveCompose) } }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onIntent(LetterIntent.LeaveCompose) }
+    LaunchedEffect(state.draftSession) { focus.clearFocus(); leaving = false; photoSource = false; paperSheet = false; scheduling = false; stickers = false; fonts = false }
     when (val done = state.done) {
         is ComposeDone.Sent -> {
             LetterSentScreen(done) {
@@ -618,7 +632,12 @@ fun LetterComposeRoute(
         if (d.isEmpty || d.sending) onClose() else leaving = true
     }
     Box(Modifier.fillMaxSize().background(KkTheme.colors.canvas)) {
-        LetterComposeScreen(
+        if (!state.draftReady) {
+            Column(Modifier.fillMaxSize().statusBarsPadding()) {
+                KkTopBar("편지 쓰기", onLeading = onClose)
+                Text("쓰던 편지를 준비하고 있어요", modifier = Modifier.padding(KkSpacing.xl), color = KkTheme.colors.sub)
+            }
+        } else LetterComposeScreen(
             state = state,
             lifetimeOn = lifetimeOn,
             canPhoto = pickPhoto != null,
