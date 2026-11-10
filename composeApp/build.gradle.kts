@@ -60,6 +60,7 @@ kotlin {
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.jb.lifecycle.runtime.compose)
+            implementation(libs.jb.lifecycle.viewmodel.compose)
             // 시스템 뒤로 가기(Android) · 스와이프 뒤로(iOS)로 덮어 띄운 화면을 닫는다.
             implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composeMultiplatform.get()}")
         }
