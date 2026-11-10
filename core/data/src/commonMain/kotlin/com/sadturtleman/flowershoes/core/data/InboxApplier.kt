@@ -52,7 +52,7 @@ class InboxApplier(
         tx.immediateTransaction {
             RelationshipArchive(db).prepare()
             val sync = db.syncDao()
-            if (!RevocationFilter(revoked()).accepts(op.stream, op.seq)) return@immediateTransaction ApplyResult.REJECTED_REVOKED
+            if (!accepts(op.stream, op.seq)) return@immediateTransaction ApplyResult.REJECTED_REVOKED
 
             val state = ReceiveState(sync.cursor(op.stream.wire) ?: 0L, sync.pending(op.stream.wire).toSet())
             if (state.isDuplicate(op.seq)) return@immediateTransaction ApplyResult.DUPLICATE
@@ -90,6 +90,9 @@ class InboxApplier(
         sync.deleteMetaPrefix(prefix)
         return true
     }
+
+    /** 호출자는 실제 파일/본문 쓰기와 같은 Room 쓰기 트랜잭션에서 검사한다. */
+    internal suspend fun accepts(stream: StreamId, seq: Long): Boolean = RevocationFilter(revoked()).accepts(stream, seq)
 
     private suspend fun revoked(): List<RevokedDevice> = db.syncDao().revoked().map { r ->
         val cutoff = Json.parseToJsonElement(r.cutoffJson).jsonObject.mapKeys { StreamId.parse(it.key) }
