@@ -8,6 +8,7 @@ import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.database.CleanupEntity
 import com.sadturtleman.flowershoes.core.database.CoupleEntity
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
@@ -37,24 +38,25 @@ class UnlinkService(
     private val transport: AccountTransport?,
     private val wipeAttachmentFiles: suspend () -> Unit = {},
 ) {
-    val pendingChoice = db.cleanupDao().observe().map { it?.choice?.let(AfterUnlink::valueOf) }
+    val pendingCleanup = combine(db.cleanupDao().observe(), settings.cleanupRequests) { journal, request -> journal ?: request }
+    val pendingChoice = pendingCleanup.map { it?.choice?.let(AfterUnlink::valueOf) }
 
     /** 재시도 화면의 선택보다 먼저 저장한 원래 선택이 우선한다. */
     suspend fun unlink(after: AfterUnlink): AfterUnlink? = db.relationshipMutex.withLock {
-        val cleanup = db.cleanupDao().get() ?: begin("UNLINK", after) ?: return@withLock null
+        val cleanup = restoreJournal() ?: begin("UNLINK", after) ?: return@withLock null
         resume(cleanup)
         AfterUnlink.valueOf(cleanup.choice)
     }
 
     suspend fun onPartnerUnlinked(after: AfterUnlink, expectedCoupleId: String? = null): Unit = db.relationshipMutex.withLock {
-        val saved = db.cleanupDao().get()
+        val saved = restoreJournal()
         if (expectedCoupleId != null && (saved?.coupleId ?: db.coupleDao().get()?.id) != expectedCoupleId) return@withLock
         val cleanup = saved ?: begin("PARTNER", after) ?: return@withLock
         resume(cleanup)
     }
 
     suspend fun deleteAccount(): Unit = db.relationshipMutex.withLock {
-        db.cleanupDao().get()?.let {
+        restoreJournal()?.let {
             resume(it)
             if (it.source == "ACCOUNT") return@withLock
         }
@@ -63,7 +65,7 @@ class UnlinkService(
 
     /** 앱/백그라운드 재시작에서는 저장된 작업만 이어간다. 새 삭제는 시작하지 않는다. */
     suspend fun resumePending(): Boolean = db.relationshipMutex.withLock {
-        val saved = db.cleanupDao().get()
+        val saved = restoreJournal()
         if (saved == null) {
             settings.releaseFinishedCleanupIf { db.cleanupDao().get() == null }
             false
@@ -88,15 +90,35 @@ class UnlinkService(
             keyEpoch = couple?.keyEpoch, linkedAtMs = couple?.linkedAtMs, sealedKeys = couple?.sealedKeys,
             appleInstructions = legacyAccount ?: false,
         )
-        settings.withCleanupIdentity(candidate, starting = true) {
-            db.useWriterConnection { tx -> tx.immediateTransaction {
-                check(db.cleanupDao().get() == null) { "이미 정리가 진행 중이에요" }
-                check(db.coupleDao().get() == couple) { "연결이 바뀌었어요" }
-                db.cleanupDao().save(candidate)
-            } }
-        }
-        return candidate
+        settings.reserveCleanup(candidate)
+        return installJournal(candidate)
     }
+
+    private suspend fun restoreJournal(): CleanupEntity? = db.cleanupDao().get() ?: settings.cleanupRequest()?.let { installJournal(it) }
+
+    private suspend fun installJournal(candidate: CleanupEntity): CleanupEntity {
+        try {
+            settings.withCleanupIdentity(candidate) {
+                db.useWriterConnection { tx -> tx.immediateTransaction {
+                    val saved = db.cleanupDao().get()
+                    if (saved == null) {
+                        if (db.coupleDao().get() != candidate.expectedCouple()) throw StaleCleanupTarget()
+                        db.cleanupDao().save(candidate)
+                    } else check(saved.token == candidate.token) { "이미 다른 정리가 진행 중이에요" }
+                } }
+            }
+        } catch (stale: StaleCleanupTarget) {
+            settings.cancelCleanupReservation(candidate.token) {
+                db.useWriterConnection { tx -> tx.immediateTransaction {
+                    db.cleanupDao().get() == null && db.coupleDao().get() != candidate.expectedCouple()
+                } }
+            }
+            throw stale
+        }
+        return checkNotNull(db.cleanupDao().get())
+    }
+
+    private class StaleCleanupTarget : IllegalStateException("연결이 바뀌었어요. 현재 연결을 다시 확인해 주세요")
 
     private suspend fun resume(initial: CleanupEntity) {
         var cleanup = initial

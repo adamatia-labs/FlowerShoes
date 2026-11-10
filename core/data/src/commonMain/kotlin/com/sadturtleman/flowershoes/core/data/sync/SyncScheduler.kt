@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import com.sadturtleman.flowershoes.core.data.CleanupInProgressException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -134,7 +135,12 @@ class SyncScheduler(
     /** 푸시 수신처럼 결과를 기다려야 할 때. */
     suspend fun runOnce(): SyncReport? = running.withLock {
         var finished = false
-        val report = withTimeoutOrNull(syncTimeout) { syncOnce().also { finished = true } }
+        val report = withTimeoutOrNull(syncTimeout) {
+            // 정리와 경합한 이번 회차만 중단한다. 장기 실행 중인 수집기는 재시도를 계속한다.
+            val result = try { syncOnce() } catch (_: CleanupInProgressException) { null }
+            finished = true
+            result
+        }
         if (!finished) {
             // 서버가 시간 안에 답하지 않았다 — 이것도 서버 오류 화면에 보인다(코드 없음).
             failed(null)

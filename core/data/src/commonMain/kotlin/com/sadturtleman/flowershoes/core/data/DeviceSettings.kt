@@ -120,15 +120,39 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     suspend fun setKeyEpoch(epoch: Int) = store.edit { it[KEY_EPOCH] = epoch }
 
+    internal val cleanupRequests = store.data.map { p -> p[CLEANUP_REQUEST]?.let {
+        prefsJson.decodeFromString(com.sadturtleman.flowershoes.core.database.CleanupEntity.serializer(), it)
+    } }
+
+    internal suspend fun cleanupRequest() = cleanupRequests.first()
+
+    /** 아직 서버 요청/Room 기록이 없고 대상이 교체된 예약만 취소한다. */
+    internal suspend fun cancelCleanupReservation(token: String, canRelease: suspend () -> Boolean) {
+        store.edit { p ->
+            if (p[CLEANUP_TOKEN] == token && p[CLEANUP_FINISHED] == null && canRelease()) {
+                p.remove(CLEANUP_REQUEST)
+                p.remove(CLEANUP_TOKEN)
+            }
+        }
+    }
+
+    /** Room 기록 전에 요청 전체와 잠금을 먼저 커밋한다. 중간 종료 시 같은 요청을 Room에 복구한다. */
+    internal suspend fun reserveCleanup(cleanup: com.sadturtleman.flowershoes.core.database.CleanupEntity) {
+        store.edit { p ->
+            check(p[CLEANUP_TOKEN] == null && p[USER_ID].orEmpty() == cleanup.ownerUid && p[DEVICE_ID].orEmpty() == cleanup.deviceId &&
+                p[ACCOUNT_SESSION].orEmpty() == cleanup.accountSession) { "로그인 또는 진행 중인 정리가 바뀌었어요" }
+            check(cleanup.source == "ACCOUNT" || p.acceptances().none { it.ownerUid == cleanup.ownerUid && it.deviceId == cleanup.deviceId }) { "진행 중인 연결을 먼저 확인해 주세요" }
+            p[CLEANUP_REQUEST] = prefsJson.encodeToString(com.sadturtleman.flowershoes.core.database.CleanupEntity.serializer(), cleanup)
+            p[CLEANUP_TOKEN] = cleanup.token
+        }
+    }
+
     /** Room 쓰기보다 먼저 설정 잠금을 잡는다. block은 설정에 재진입하지 않는다. */
-    internal suspend fun withCleanupIdentity(cleanup: com.sadturtleman.flowershoes.core.database.CleanupEntity, starting: Boolean = false, block: suspend () -> Unit) {
+    internal suspend fun withCleanupIdentity(cleanup: com.sadturtleman.flowershoes.core.database.CleanupEntity, block: suspend () -> Unit) {
         store.edit { p ->
             check(p[USER_ID].orEmpty() == cleanup.ownerUid && p[DEVICE_ID].orEmpty() == cleanup.deviceId &&
                 p[ACCOUNT_SESSION].orEmpty() == cleanup.accountSession &&
-                (p[CLEANUP_TOKEN] == null || p[CLEANUP_TOKEN] == cleanup.token)) { "로그인한 계정이 바뀌었어요" }
-            check(!starting || cleanup.source == "ACCOUNT" || p.acceptances().none { it.ownerUid == cleanup.ownerUid && it.deviceId == cleanup.deviceId }) {
-                "진행 중인 연결을 먼저 확인해 주세요"
-            }
+                p[CLEANUP_TOKEN] == cleanup.token) { "로그인한 계정이 바뀌었어요" }
             block()
             p[CLEANUP_TOKEN] = cleanup.token
         }
@@ -155,6 +179,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
                 p.remove(PENDING_INVITE)
                 p.remove(PENDING_ACCEPTANCES)
             }
+            p.remove(CLEANUP_REQUEST)
             p[CLEANUP_TOKEN] = cleanup.token
             p[CLEANUP_FINISHED] = cleanup.token
         }
@@ -166,6 +191,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
             clearJournal()
             p.remove(CLEANUP_TOKEN)
             p.remove(CLEANUP_FINISHED)
+            p.remove(CLEANUP_REQUEST)
         }
     }
 
@@ -176,6 +202,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
             if (token != null && p[CLEANUP_FINISHED] == token && noJournal()) {
                 p.remove(CLEANUP_TOKEN)
                 p.remove(CLEANUP_FINISHED)
+                p.remove(CLEANUP_REQUEST)
             }
         }
     }
@@ -372,6 +399,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     private companion object {
         val CLEANUP_TOKEN = stringPreferencesKey("relationship_cleanup_token")
+        val CLEANUP_REQUEST = stringPreferencesKey("relationship_cleanup_request")
         val CLEANUP_FINISHED = stringPreferencesKey("relationship_cleanup_finished")
         val PENDING_ACCEPTANCES = stringPreferencesKey("pending_received_invites")
         val ACCOUNT_CLEANUP = intPreferencesKey("pending_account_cleanup")

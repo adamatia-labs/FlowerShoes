@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 
 /** 서버 요청 전부터 설정 정리가 끝날 때까지 남는 단일 로컬 작업. 프로필/동기화 정리로 지우지 않는다. */
 @Entity(tableName = "relationship_cleanup")
+@kotlinx.serialization.Serializable
 data class CleanupEntity(
     @PrimaryKey val id: Int = 1,
     val token: String,

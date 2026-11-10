@@ -5,6 +5,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.room.Room
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 import com.sadturtleman.flowershoes.core.crypto.InviteToken
 import com.sadturtleman.flowershoes.core.crypto.Pairing
@@ -46,6 +48,125 @@ class DurableUnlinkTest {
         var unlinks = 0
         override suspend fun unlinkCouple(coupleId: String) { unlinks++ }
         override suspend fun deleteAccount() = Unit
+    }
+
+    @Test
+    fun `첫 설정 커밋 실패에는 Room 작업과 서버 요청을 남기지 않는다`() = runBlocking {
+        fs.createDirectories(root)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val db = open()
+        try {
+            val original = PreferenceDataStoreFactory.createWithPath(scope = scope) { root / "settings.preferences_pb" }
+            val token = stringPreferencesKey("relationship_cleanup_token")
+            val failingStore = object : DataStore<Preferences> by original {
+                override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = original.updateData { before ->
+                    val after = transform(before)
+                    if (before[token] == null && after[token] != null) error("injected first settings commit failure")
+                    after
+                }
+            }
+            val settings = DeviceSettings(failingStore)
+            val letterId = prepare(db, settings)
+            val server = Server()
+            val service = UnlinkService(db, InMemoryKeyVault(), settings, server)
+            assertFailsWith<IllegalStateException> { service.unlink(AfterUnlink.WIPE) }
+            assertNull(db.cleanupDao().get())
+            assertNull(settings.cleanupRequest())
+            assertEquals(0, server.unlinks)
+            settings.bindAccount("next-owner")
+            assertFalse(service.resumePending())
+            assertNotNull(db.letterDao().get(letterId))
+            assertTrue(fs.exists(root / "attachments" / "photo"))
+        } finally { db.close(); scope.coroutineContext[Job]!!.cancelAndJoin(); fs.deleteRecursively(root) }
+    }
+
+    @Test
+    fun `설정 예약 뒤 Room 저장 실패는 재실행에서 같은 선택으로 복원한다`() = bootstrapFailure(replaceRelationship = false)
+
+    @Test
+    fun `예약 뒤 대상이 바뀌면 서버 요청 없이 예약을 해제하고 새 관계를 보존한다`() = bootstrapFailure(replaceRelationship = true)
+
+    private fun bootstrapFailure(replaceRelationship: Boolean): Unit = runBlocking {
+        fs.createDirectories(root)
+        var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        var db = open()
+        try {
+            var settings = settings(scope)
+            val letterId = prepare(db, settings)
+            val server = Server()
+            db.useWriterConnection { tx -> tx.immediateTransaction {
+                usePrepared("CREATE TRIGGER reject_cleanup BEFORE INSERT ON relationship_cleanup BEGIN SELECT RAISE(ABORT, 'injected journal commit failure'); END") { it.step() }
+            } }
+            val first = UnlinkService(db, InMemoryKeyVault(), settings, server)
+            assertFails { first.unlink(AfterUnlink.KEEP_AS_MEMORIES) }
+            assertNull(db.cleanupDao().get())
+            assertNotNull(settings.cleanupRequest())
+            assertEquals(AfterUnlink.KEEP_AS_MEMORIES, first.pendingChoice.first())
+            assertEquals(0, server.unlinks)
+            assertFailsWith<IllegalStateException> { settings.bindAccount("next-owner") }
+            val owner = settings.state.first()
+            assertFailsWith<IllegalStateException> {
+                settings.pendingInvites.saveAcceptance(PendingAcceptance("token", 1, owner.userId, owner.deviceId, "partner", "keys"))
+            }
+            db.close(); scope.coroutineContext[Job]!!.cancelAndJoin()
+            db = open(); scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            settings = settings(scope)
+            db.useWriterConnection { tx -> tx.immediateTransaction {
+                usePrepared("DROP TRIGGER reject_cleanup") { it.step() }
+            } }
+            val replacement = CoupleEntity("next-couple", "owner", "next-partner", 9, 900)
+            if (replaceRelationship) db.useWriterConnection { tx -> tx.immediateTransaction {
+                db.coupleDao().clear()
+                db.coupleDao().upsert(replacement)
+            } }
+            val recovered = UnlinkService(db, InMemoryKeyVault(), settings, server) { error("KEEP must not wipe files") }
+            if (replaceRelationship) {
+                assertFailsWith<IllegalStateException> { recovered.resumePending() }
+                assertEquals(0, server.unlinks)
+                assertEquals(replacement, db.coupleDao().get())
+                assertFalse(recovered.resumePending())
+            } else {
+                assertEquals(AfterUnlink.KEEP_AS_MEMORIES, recovered.unlink(AfterUnlink.WIPE))
+                assertEquals(1, server.unlinks)
+                assertEquals("", db.coupleDao().get()?.partnerUserId)
+            }
+            assertNull(db.cleanupDao().get())
+            assertNull(settings.cleanupRequest())
+            assertNotNull(db.letterDao().get(letterId))
+            assertTrue(fs.exists(root / "attachments" / "photo"))
+            settings.bindAccount("next-owner")
+        } finally { db.close(); scope.coroutineContext[Job]!!.cancelAndJoin(); fs.deleteRecursively(root) }
+    }
+
+    @Test
+    fun `정리 중 쓰기 거부는 화면 작업을 취소하고 미처리 예외로 전파되지 않는다`(): Unit = runBlocking {
+        fs.createDirectories(root)
+        val failures = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, error -> failures.add(error) })
+        val db = open()
+        try {
+            val settings = settings(scope)
+            prepare(db, settings)
+            val state = settings.state.first()
+            val identity = object : Identity {
+                override val userId = state.userId
+                override val deviceId = state.deviceId
+                override val keyEpoch = state.keyEpoch
+            }
+            assertFailsWith<IllegalStateException> {
+                UnlinkService(db, InMemoryKeyVault(), settings, Server()) { error("disk busy") }.unlink(AfterUnlink.WIPE)
+            }
+            val attachments = AttachmentStore(db, root / "attachments")
+            val writer = SyncWriter(db, identity)
+            val writes = listOf(
+                scope.launch { MissYouRepository(db, writer, identity).send(); fail("write should be cancelled") },
+                scope.launch { attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, byteArrayOf(1)); fail("write should be cancelled") },
+            )
+            writes.joinAll()
+            assertTrue(writes.all { it.isCancelled })
+            assertTrue(failures.isEmpty(), "예상된 쓰기 취소가 앱 예외 처리기로 올라가면 안 된다: $failures")
+            assertNotNull(db.cleanupDao().get())
+        } finally { db.close(); scope.coroutineContext[Job]!!.cancelAndJoin(); fs.deleteRecursively(root) }
     }
 
     @Test

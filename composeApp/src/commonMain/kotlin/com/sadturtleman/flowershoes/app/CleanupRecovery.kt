@@ -5,7 +5,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
-import com.sadturtleman.flowershoes.core.database.AppDatabase
 import com.sadturtleman.flowershoes.core.designsystem.KkButton
 import com.sadturtleman.flowershoes.core.designsystem.KkTheme
 import kotlinx.coroutines.CancellationException
@@ -15,9 +14,8 @@ import org.koin.compose.koinInject
 /** 재실행에서 저장된 정리를 이어가며, 새 연결/편집 화면으로 들어가기 전에 결과를 보여 준다. */
 @Composable
 internal fun CleanupRecovery() {
-    val db = koinInject<AppDatabase>()
     val service = koinInject<UnlinkService>()
-    val pending by db.cleanupDao().observe().collectAsState(null)
+    val pending by service.pendingCleanup.collectAsState(null)
     var retry by remember { mutableIntStateOf(0) }
     var failed by remember(pending?.token) { mutableStateOf(false) }
     LaunchedEffect(pending?.token, retry) {
