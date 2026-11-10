@@ -208,6 +208,7 @@ test('탈퇴한 초대 발신자나 수락자의 지연 이벤트는 사용자�
 test('Apple 코드 교환 응답이 탈퇴보다 늦어도 토큰을 다시 저장하지 않고 폐기를 시도한다', async () => {
   const uid = 'late-apple';
   await getAuth().createUser({ uid });
+  await getFirestore().doc(`appleTokens/${uid}`).set({ refreshToken: 'previous-refresh' });
   const exchanging = deferred();
   const deliver = deferred();
   let revoked = false;
@@ -223,12 +224,28 @@ test('Apple 코드 교환 응답이 탈퇴보다 늦어도 토큰을 다시 저�
   const store = functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, rawRequest: {} } as never);
   try {
     await exchanging.promise;
-    await remove(uid);
+    assert.deepEqual(await remove(uid), { ok: true, appleRevocation: 'manual' });
     deliver.resolve();
     assert.deepEqual(await store, { stored: false });
     assert.equal(revoked, true);
     assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).exists, false);
   } finally { deliver.resolve(); await store.catch(() => {}); request.mock.restore(); }
+});
+
+test('완료된 Apple 코드 교환은 대기 수를 줄이고 폐기 성공 결과를 반환한다', async () => {
+  const uid = 'stored-apple';
+  await getAuth().createUser({ uid });
+  const request = mock.method(globalThis, 'fetch', (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).endsWith('/auth/token')) return Response.json({ refresh_token: 'stored-refresh' });
+    if (String(url).endsWith('/auth/revoke')) return new Response('', { status: 200 });
+    return realFetch(url, init);
+  }) as typeof fetch);
+  try {
+    const stored = await functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, rawRequest: {} } as never);
+    assert.deepEqual(stored, { stored: true });
+    assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).get('pendingExchanges'), 0);
+    assert.deepEqual(await remove(uid), { ok: true, appleRevocation: 'revoked' });
+  } finally { request.mock.restore(); }
 });
 
 test('카카오 연결 해제 응답이 불확정이면 탈퇴 성공과 재가입을 허용하지 않는다', async () => {

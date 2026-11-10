@@ -30,6 +30,43 @@ class AccountTransportSafetyTest {
     private val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kk-account-safety-${Uuid.random()}"
 
     @Test
+    fun `서버 삭제 후 로컬 정리가 실패하면 재실행해도 서버 호출 없이 Apple 안내를 복구한다`() = runBlocking {
+        fs.createDirectories(root)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val db = inMemoryDatabaseBuilder().buildKkotsin()
+        try {
+            val store = PreferenceDataStoreFactory.createWithPath(scope = scope) { root / "settings.preferences_pb" }
+            val settings = DeviceSettings(store)
+            settings.bindAccount("apple-owner", "APPLE")
+            val server = object : AccountTransport {
+                var calls = 0
+                override suspend fun unlinkCouple(coupleId: String) = Unit
+                override suspend fun deleteAccount() = Unit
+                override suspend fun deleteAccountWithOutcome(): com.sadturtleman.flowershoes.core.data.sync.AppleRevocation {
+                    calls++
+                    return com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.MANUAL
+                }
+            }
+            val vault = InMemoryKeyVault()
+            val first = UnlinkService(db, vault, settings, server) { error("disk unavailable") }
+            assertFailsWith<IllegalStateException> { first.deleteAccount() }
+            assertEquals(true, settings.pendingAccountCleanup.first())
+            assertFalse(settings.farewellPending.first())
+
+            val reopened = DeviceSettings(store)
+            UnlinkService(db, vault, reopened, null).deleteAccount()
+            assertEquals(1, server.calls)
+            assertEquals(null, reopened.pendingAccountCleanup.first())
+            assertEquals(true, reopened.farewellAppleInstructions.first())
+            assertEquals(true, reopened.farewellPending.first())
+        } finally {
+            db.close()
+            scope.coroutineContext[Job]!!.cancelAndJoin()
+            if (fs.exists(root)) fs.deleteRecursively(root)
+        }
+    }
+
+    @Test
     fun `탈퇴 서버가 없으면 서버 탈퇴를 가장하지 않고 기기 기록을 보존한다`() = runBlocking {
         fs.createDirectories(root)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

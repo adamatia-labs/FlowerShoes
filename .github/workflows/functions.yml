@@ -50,3 +50,6 @@ jobs:
       - name: Account generation and deletion integration tests
         working-directory: firebase/functions
         run: npm run test:account:emulator
+      - name: Apple account deletion integration tests
+        working-directory: firebase/functions
+        run: npm run test:apple:emulator

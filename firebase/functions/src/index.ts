@@ -29,7 +29,7 @@ import { refreshEntitlements } from './revenuecat';
 import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } from './invite';
 import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
-import { claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, requireLiveAccount } from './account-lifecycle';
+import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
 import { deliverUnlinkNotification, forgetUnlinkMember, unlink, UnlinkForbidden, UnlinkNotFound, UnlinkStore, UnlinkHistory } from './unlink';
 export { onMailCreated } from './mail-function';
 
@@ -625,6 +625,9 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
   const claim = await claimAccountDeletion(uid);
   if (claim.result) return claim.result;
+  const firebaseClaims = req.auth?.token.firebase;
+  const appleAccount = firebaseClaims?.sign_in_provider === 'apple.com' || !!firebaseClaims?.identities?.['apple.com'];
+  let appleRevocation: AppleRevocationResult = claim.appleRevocation ?? (appleAccount ? 'manual' : 'not_required');
   let providerUncertain = false;
   try {
     const user = await db.doc(`users/${uid}`).get();
@@ -659,7 +662,15 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
     // Apple: 로그인 때 보관한 refresh token 을 폐기한다(App Store 심사 기준 5.1.1(v)).
     const apple = await db.doc(`appleTokens/${uid}`).get();
     const refreshToken = apple.get('refreshToken') as string | undefined;
-    if (refreshToken && appleConfigured(appleConfig())) await revokeApple(appleConfig(), refreshToken).catch(() => false);
+    if (claim.appleRevocation === undefined) {
+      if (refreshToken) {
+        appleRevocation = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false)
+          ? 'revoked' : 'manual';
+      }
+      // A code exchange that started before deletion may still produce a token; never promise full revocation then.
+      if ((apple.get('pendingExchanges') as number ?? 0) > 0) appleRevocation = 'manual';
+      await rememberAppleRevocation(uid, claim.attempt, appleRevocation);
+    }
     await apple.ref.delete();
     await db.recursiveDelete(db.doc(`users/${uid}`));
     await db.doc(`notifyState/${uid}`).delete();
@@ -668,7 +679,7 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
     await getAuth().deleteUser(uid).catch((error: { code?: string }) => {
       if (error.code !== 'auth/user-not-found') throw error;
     });
-    const result = { ok: true as const };
+    const result = { ok: true as const, appleRevocation };
     await completeAccountDeletion(uid, claim.attempt, result);
     return result;
   } catch (error) {
@@ -705,16 +716,35 @@ export const appleStoreToken = onCall({ region: REGION }, async (req) => {
   const code = (req.data as { code?: unknown })?.code;
   if (typeof code !== 'string' || code.length === 0 || code.length > 1024) throw new HttpsError('invalid-argument', 'code 가 없다');
   if (!appleConfigured(appleConfig())) return { stored: false };
-  const refreshToken = await exchangeCode(appleConfig(), code);
-  if (!refreshToken) throw new HttpsError('permission-denied', 'Apple 이 code 를 거절했다');
-  const stored = await db.runTransaction(async (tx) => {
-    if ((await tx.get(deletionRef(uid))).exists) return false;
-    tx.set(db.doc(`appleTokens/${uid}`), { refreshToken, storedAt: FieldValue.serverTimestamp() });
-    return true;
+  const tokenRef = db.doc(`appleTokens/${uid}`);
+  await db.runTransaction(async (tx) => {
+    if ((await tx.get(deletionRef(uid))).exists) throw new HttpsError('failed-precondition', '탈퇴한 계정이에요. 다시 로그인해 주세요.');
+    tx.set(tokenRef, { pendingExchanges: FieldValue.increment(1) }, { merge: true });
   });
-  // 코드 교환을 기다리는 동안 탈퇴했으면 민감한 토큰을 다시 저장하지 않는다.
-  if (!stored) await revokeApple(appleConfig(), refreshToken).catch(() => false);
-  return { stored };
+  let issued: string | null = null;
+  let stored = false;
+  try {
+    issued = await exchangeCode(appleConfig(), code);
+    if (!issued) throw new HttpsError('permission-denied', 'Apple 이 code 를 거절했다');
+    stored = await db.runTransaction(async (tx) => {
+      if ((await tx.get(deletionRef(uid))).exists) return false;
+      tx.set(tokenRef, { refreshToken: issued, storedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return true;
+    });
+    // 코드 교환을 기다리는 동안 탈퇴했으면 민감한 토큰을 다시 저장하지 않는다.
+    if (!stored) await revokeApple(appleConfig(), issued).catch(() => false);
+    return { stored };
+  } catch (error) {
+    if (issued) await revokeApple(appleConfig(), issued).catch(() => false);
+    throw error;
+  } finally {
+    // 불확정 교환은 표시를 남겨 이후 탈퇴에서 수동 확인을 안내한다. 삭제된 문서는 다시 만들지 않는다.
+    if (stored) await db.runTransaction(async (tx) => {
+      const deletion = await tx.get(deletionRef(uid));
+      const token = await tx.get(tokenRef);
+      if (!deletion.exists && token.exists) tx.update(tokenRef, { pendingExchanges: FieldValue.increment(-1) });
+    }).catch(() => undefined);
+  }
 });
 
 

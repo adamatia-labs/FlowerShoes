@@ -40,8 +40,9 @@ export function kakaoProviderId(uid: string): string | undefined {
   return /^kakao:(\d+)(?::[a-f0-9-]+)?$/.exec(uid)?.[1];
 }
 
-export type DeletionResult = { ok: true; appleRevocation?: string };
-export type DeletionClaim = { attempt: string; result?: never } | { result: DeletionResult; attempt?: never };
+export type AppleRevocationResult = 'not_required' | 'revoked' | 'manual';
+export type DeletionResult = { ok: true; appleRevocation: AppleRevocationResult };
+export type DeletionClaim = { attempt: string; appleRevocation?: AppleRevocationResult; result?: never } | { result: DeletionResult; attempt?: never };
 
 /** Only one executor may reach provider/Auth deletion. An abandoned claim requires operator verification, not a lease timeout. */
 export async function claimAccountDeletion(uid: string): Promise<DeletionClaim> {
@@ -55,7 +56,17 @@ export async function claimAccountDeletion(uid: string): Promise<DeletionClaim> 
       throw new HttpsError('failed-precondition', '탈퇴 처리 결과를 확인하고 있어요. 잠시 후 다시 시도하거나 고객지원에 문의해 주세요.', { reason: 'ACCOUNT_DELETION_PENDING' });
     }
     tx.set(ref, { state: 'deleting', attempt, phase: 'cleanup', startedAt: FieldValue.serverTimestamp() }, { merge: true });
-    return { attempt };
+    return { attempt, appleRevocation: deletion.get('appleRevocation') as AppleRevocationResult | undefined };
+  });
+}
+
+/** Persist before token deletion: a later database/Auth failure must not turn a confirmed result into 'missing token'. */
+export async function rememberAppleRevocation(uid: string, attempt: string, appleRevocation: AppleRevocationResult): Promise<void> {
+  await getFirestore().runTransaction(async (tx) => {
+    const ref = deletionRef(uid);
+    const deletion = await tx.get(ref);
+    if (deletion.get('attempt') !== attempt || deletion.get('state') !== 'deleting') throw new Error('ACCOUNT_DELETION_OWNERSHIP_LOST');
+    tx.update(ref, { appleRevocation });
   });
 }
 

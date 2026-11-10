@@ -397,6 +397,26 @@ class EndToEndTest {
     }
 
     @Test
+    fun `Apple 폐기 결과에 따라 탈퇴 완료 안내를 보관한다`() = runTest {
+        for ((index, outcome) in listOf(AppleRevocation.MANUAL, AppleRevocation.UNKNOWN, AppleRevocation.REVOKED).withIndex()) {
+            val store = androidx.datastore.preferences.core.PreferenceDataStoreFactory.createWithPath { root / "apple-outcome-$index.preferences_pb" }
+            val settings = com.sadturtleman.flowershoes.core.data.DeviceSettings(store)
+            settings.bindAccount("jisu", "APPLE")
+            val transport = object : AccountTransport {
+                override suspend fun unlinkCouple(coupleId: String) = Unit
+                override suspend fun deleteAccount() = Unit
+                override suspend fun deleteAccountWithOutcome() = outcome
+            }
+            UnlinkService(jisu.db, jisu.vault, settings, transport).deleteAccount()
+            val reopened = com.sadturtleman.flowershoes.core.data.DeviceSettings(store)
+            assertEquals(true, reopened.farewellPending.first())
+            assertEquals(outcome != AppleRevocation.REVOKED, reopened.farewellAppleInstructions.first())
+            reopened.setFarewellPending(false)
+            assertEquals(false, reopened.farewellAppleInstructions.first())
+        }
+    }
+
+    @Test
     fun `탈퇴하면 이 폰의 데이터 · 키 · 설정이 모두 지워진다`() = runTest {
         link()
         jisu.profile.saveMe(com.sadturtleman.flowershoes.core.model.Role.GOMSIN, "지수")
