@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sadturtleman.flowershoes.core.data.sync.PendingInvite
 import com.sadturtleman.flowershoes.core.data.sync.PendingInviteStore
+import com.sadturtleman.flowershoes.core.data.sync.PendingAcceptance
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.AppTheme
 import kotlin.uuid.Uuid
@@ -127,17 +128,76 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     }
 
     /** 기다리는 초대 링크(홈 "초대 보냄 · 기다리는 중"). 연결되거나 만료되면 null. */
-    val pendingInvite: Flow<PendingInvite?> = store.data.map { it.pendingInvite() }
+    val pendingInvite: Flow<PendingInvite?> = store.data.map { p ->
+        p.pendingInvite()?.takeIf { it.ownerUid == p[USER_ID] && it.deviceId == p[DEVICE_ID] }
+    }
 
-    private fun Preferences.pendingInvite(): PendingInvite? =
-        this[PENDING_INVITE]?.split('|')?.takeIf { it.size == 2 }?.let { (t, at) -> at.toLongOrNull()?.let { PendingInvite(t, it) } }
+    private fun Preferences.pendingInvite(): PendingInvite? {
+        val saved = this[PENDING_INVITE] ?: return null
+        if (saved.startsWith("{")) return prefsJson.decodeFromString<PendingInvite>(saved)
+        // 구버전에는 소유자가 없다. 원문을 보존하되 현재 계정에 임의로 귀속하지 않는다.
+        return saved.split('|').takeIf { it.size == 2 }?.let { (t, at) -> at.toLongOrNull()?.let { PendingInvite(t, it) } }
+    }
+
+    private fun Preferences.acceptances(): List<PendingAcceptance> =
+        this[PENDING_ACCEPTANCES]?.let { prefsJson.decodeFromString<List<PendingAcceptance>>(it) }.orEmpty()
 
     /** 보낸 초대 링크(토큰 · 만료). 앱을 다시 켜도 수락을 이어 받는다 — [com.sadturtleman.flowershoes.core.data.sync.PairingSession]. */
     val pendingInvites: PendingInviteStore = object : PendingInviteStore {
         override suspend fun load(): PendingInvite? = store.data.first().pendingInvite()
 
         override suspend fun save(invite: PendingInvite?) {
-            store.edit { if (invite == null) it.remove(PENDING_INVITE) else it[PENDING_INVITE] = "${invite.token}|${invite.expireAtMs}" }
+            store.edit { p ->
+                if (invite == null) p.remove(PENDING_INVITE) else {
+                    check(invite.ownerUid == p[USER_ID] && invite.deviceId == p[DEVICE_ID]) { "로그인한 계정이 바뀌었어요" }
+                    p[PENDING_INVITE] = prefsJson.encodeToString(PendingInvite.serializer(), invite)
+                }
+            }
+        }
+
+        override suspend fun isCurrentIdentity(uid: String, deviceId: String): Boolean =
+            store.data.first().let { it[USER_ID] == uid && it[DEVICE_ID] == deviceId }
+
+        override suspend fun withCurrentIdentity(uid: String, deviceId: String, block: suspend () -> Unit): Boolean {
+            var applied = false
+            // bindAccount/reset과 같은 DataStore 갱신 경계에서 검사한다. block은 설정을 다시 쓰지 않는다.
+            store.edit { p ->
+                if (p[USER_ID] == uid && p[DEVICE_ID] == deviceId) {
+                    block()
+                    applied = true
+                }
+            }
+            return applied
+        }
+
+        override suspend fun loadAcceptance(uid: String, deviceId: String): PendingAcceptance? = store.data.first().let { p ->
+            if (p[USER_ID] != uid || p[DEVICE_ID] != deviceId) null
+            else p.acceptances().firstOrNull { it.ownerUid == uid && it.deviceId == deviceId }
+        }
+
+        override suspend fun saveAcceptance(acceptance: PendingAcceptance) {
+            store.edit { p ->
+                check(p[USER_ID] == acceptance.ownerUid && p[DEVICE_ID] == acceptance.deviceId) { "로그인한 계정이 바뀌었어요" }
+                val saved = p.acceptances()
+                val old = saved.firstOrNull { it.ownerUid == acceptance.ownerUid && it.deviceId == acceptance.deviceId }
+                check(old == null || old == acceptance) { "먼저 진행 중인 연결을 확인해 주세요" }
+                p[PENDING_ACCEPTANCES] = prefsJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(PendingAcceptance.serializer()), saved.filterNot { it == old } + acceptance)
+            }
+        }
+
+        override suspend fun clearAcceptance(expected: PendingAcceptance) {
+            store.edit { p ->
+                if (p[USER_ID] == expected.ownerUid && p[DEVICE_ID] == expected.deviceId) {
+                    p[PENDING_ACCEPTANCES] = prefsJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(PendingAcceptance.serializer()), p.acceptances().filterNot { it == expected })
+                }
+            }
+        }
+
+        override suspend fun clearSent(uid: String, deviceId: String) {
+            store.edit { p ->
+                val saved = p.pendingInvite()
+                if (p[USER_ID] == uid && p[DEVICE_ID] == deviceId && saved?.ownerUid == uid && saved.deviceId == deviceId) p.remove(PENDING_INVITE)
+            }
         }
     }
 
@@ -208,6 +268,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     suspend fun setFarewellPending(on: Boolean) = store.edit { if (on) it[FAREWELL] = 1 else { it.remove(FAREWELL); it.remove(FAREWELL_APPLE) } }
 
     private companion object {
+        val PENDING_ACCEPTANCES = stringPreferencesKey("pending_received_invites")
         val ACCOUNT_CLEANUP = intPreferencesKey("pending_account_cleanup")
         val FAREWELL = intPreferencesKey("farewell_pending")
         val FAREWELL_APPLE = intPreferencesKey("farewell_apple_manual")
