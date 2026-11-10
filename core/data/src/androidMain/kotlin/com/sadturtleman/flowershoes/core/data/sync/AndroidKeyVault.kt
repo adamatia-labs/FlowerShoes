@@ -32,7 +32,7 @@ import kotlinx.serialization.json.Json
  * files/crypto/ 는 자동 백업 · 기기 간 이전에서 빠진다(data_extraction_rules.xml). Keystore 키도 백업되지 않으므로
  * 이 파일만 다른 기기로 옮겨져도 풀 수 없다 — 복원은 앱 자체 암호화 백업으로만 한다.
  */
-class AndroidKeyVault(context: Context) : KeyVault {
+class AndroidKeyVault(context: Context, private val wrappingKeyAlias: String = ALIAS) : KeyVault {
 
     private val file = File(context.filesDir, "crypto/vault.bin")
     private var cache: Stored? = null
@@ -151,10 +151,10 @@ class AndroidKeyVault(context: Context) : KeyVault {
 
     private fun wrappingKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
+        (ks.getKey(wrappingKeyAlias, null) as? SecretKey)?.let { return it }
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         gen.init(
-            KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            KeyGenParameterSpec.Builder(wrappingKeyAlias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
