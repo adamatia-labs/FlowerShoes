@@ -169,6 +169,7 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(project(":feature:memory"))
     androidTestImplementation(project(":feature:letter"))
+    androidTestImplementation(project(":feature:home"))
     androidTestImplementation(project(":core:compression"))
     androidTestImplementation("com.google.firebase:firebase-firestore")
     androidTestImplementation("com.google.firebase:firebase-storage")

@@ -100,6 +100,7 @@ fun kkotsinModules(
         single<com.sadturtleman.flowershoes.core.data.LetterDraftStore> { com.sadturtleman.flowershoes.core.data.RoomLetterDraftStore(get(), get()) }
         single { MissYouRepository(get(), get(), get(), get()) }
         single { StatusRepository(get(), get(), get(), get()) }
+        single { com.sadturtleman.flowershoes.core.data.StatusEditorStore(get(), get(), get(), get(), get()) }
         single { com.sadturtleman.flowershoes.core.data.BookCoverRepository(get(), get(), get()) }
         single<KeyVault> { vault.forDatabase(database, get()) }
         single { UnlinkService(get(), get(), get(), cloud?.account, wipeAttachmentFiles = { get<AttachmentStore>().deleteAllFiles() }) }
@@ -145,7 +146,7 @@ fun kkotsinModules(
     },
     module {
         viewModel { OnboardingViewModel(get(), get(), get(), linkedElsewhere = { getOrNull<DeviceChangeSession>()?.linkedElsewhere() != null }) }
-        viewModel { HomeViewModel(get(), get(), get(), get(), pendingInvite = get<DeviceSettings>().pendingInvite, dayLineCards = get<DeviceSettings>().dayLineCards) }
+        viewModel { HomeViewModel(get(), get(), get(), get(), get(), pendingInvite = get<DeviceSettings>().pendingInvite, dayLineCards = get<DeviceSettings>().dayLineCards) }
         viewModel { CalendarViewModel(get(), get(), get(), get()) }
         viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
         viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }

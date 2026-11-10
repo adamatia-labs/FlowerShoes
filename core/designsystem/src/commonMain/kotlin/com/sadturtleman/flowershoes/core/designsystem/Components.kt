@@ -757,7 +757,7 @@ fun KkSheetHeader(title: String, description: String? = null, modifier: Modifier
 
 /** 시트 안 선택 한 줄(라디오 포함). 높이 52, 선택되면 brand-subtle 배경. */
 @Composable
-fun KkSheetOption(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, meta: String? = null) {
+fun KkSheetOption(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, meta: String? = null, enabled: Boolean = true) {
     val c = KkTheme.colors
     Row(
         modifier
@@ -765,7 +765,7 @@ fun KkSheetOption(label: String, selected: Boolean, onClick: () -> Unit, modifie
             .height(52.dp)
             .clip(RoundedCornerShape(KkRadius.md))
             .background(if (selected) c.bar else c.surface)
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = KkSpacing.lg, vertical = KkSpacing.md),
         horizontalArrangement = Arrangement.spacedBy(KkSpacing.md),
         verticalAlignment = Alignment.CenterVertically,

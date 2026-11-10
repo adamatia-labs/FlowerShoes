@@ -71,6 +71,19 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
 
     val draftSessions: Flow<DraftSession?> = store.data.map { it.draftSession() }
 
+    /** 화면을 열었을 때의 계정 세대와 실제 쓰기를 같은 설정 잠금에서 확인한다. */
+    internal suspend fun withCurrentAccount(expected: DeviceState, block: suspend () -> Unit): Boolean {
+        var applied = false
+        store.edit { p ->
+            if (p[USER_ID] == expected.userId && p[DEVICE_ID] == expected.deviceId &&
+                p[ACCOUNT_SESSION] == expected.accountSession && p[ACCOUNT_CLEANUP] == null && p[CLEANUP_TOKEN] == null) {
+                block()
+                applied = true
+            }
+        }
+        return applied
+    }
+
     private fun Preferences.draftGenerations(): Map<String, String> =
         prefsJson.decodeFromString<Map<String, String>>(this[DRAFT_GENERATIONS] ?: "{}")
 
