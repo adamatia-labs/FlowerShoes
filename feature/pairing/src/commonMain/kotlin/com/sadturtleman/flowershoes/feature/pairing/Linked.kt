@@ -43,6 +43,9 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -100,6 +103,8 @@ class LinkWatchViewModel(
     private val handoff = LinkHandoff(settings, sync)
     private val _ui = MutableStateFlow<AfterLinkUi?>(null)
     val ui: StateFlow<AfterLinkUi?> = _ui.asStateFlow()
+    private var handoffJob: Job? = null
+    private var pendingDialog: String? = null
 
     /** 앱이 앞에 있는 동안 부른다. 기다리는 링크가 없거나 결과가 나면 끝난다. */
     suspend fun watch() {
@@ -121,17 +126,29 @@ class LinkWatchViewModel(
     }
 
     private fun linked(coupleId: String, showDialog: Boolean) {
-        handled = coupleId
-        bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = false))
-        viewModelScope.launch {
+        if (handoffJob?.isActive == true || pendingDialog == coupleId) return
+        handoffJob = viewModelScope.launch {
             handoff.begin()
-            if (showDialog) _ui.value = AfterLinkUi(partnerName())
+            val name = if (showDialog) partnerName() else null
+            currentCoroutineContext().ensureActive()
+            if (logged != coupleId) {
+                bizLogger.record(BizView.PAIRING, BizEvent.PairingLinked(relink = false))
+                logged = coupleId
+            }
+            if (name != null) {
+                pendingDialog = coupleId
+                _ui.value = AfterLinkUi(name)
+            } else handled = coupleId
             handoff.send {}
         }
     }
 
     /** 연결 안내를 닫는다. 기록 동기화는 계속된다. */
-    fun start() { _ui.value = null }
+    fun start() {
+        pendingDialog?.let { handled = it }
+        pendingDialog = null
+        _ui.value = null
+    }
 
     private suspend fun partnerName(): String {
         val partner = runCatching { profile.observePartnerId().first() }.getOrNull() ?: return "연인"
@@ -143,10 +160,11 @@ class LinkWatchViewModel(
         const val POLL_MS = 10_000L
 
         /**
-         * 모달을 띄운 커플. 세션(PairingSession)은 앱 전체에 하나라 화면이 새로 만들어져도 연결됨을 계속 돌려준다 —
-         * 프로세스 안에서 한 번만 띄우고 한 번만 기록한다.
+         * 후처리와 모달 확인을 마친 커플. 첫 연결로 화면 범위가 교체되더라도 취소된 후처리는 재개하고,
+         * 아직 확인하지 않은 안내는 새 ViewModel에서 다시 보인다. 분석 이벤트는 별도로 한 번만 기록한다.
          */
         var handled: String? = null
+        var logged: String? = null
     }
 }
 
