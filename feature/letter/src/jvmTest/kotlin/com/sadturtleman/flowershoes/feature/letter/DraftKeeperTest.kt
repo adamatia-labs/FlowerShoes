@@ -12,6 +12,8 @@ import kotlin.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -65,6 +67,56 @@ class DraftKeeperTest {
         assertTrue(store.rows.value.isEmpty())
     }
 
+    @Test fun `저장 중 계정이 바뀌어도 취소된 입력을 원래 편집으로 다시 저장한다`() = runTest {
+        val k = keeper()
+        var calls = 0
+        val suspended = CompletableDeferred<Unit>()
+        store.beforeSave = { if (++calls == 1) { suspended.complete(Unit); CompletableDeferred<Unit>().await() } }
+        k.edited(ComposeDraft(text = "저장 중이던 입력"))
+        testScheduler.advanceTimeBy(2_001); runCurrent()
+        assertTrue(suspended.isCompleted)
+        store.switchAccount("b"); runCurrent()
+        assertEquals(2, calls)
+        assertTrue(store.owned("a").single().json.contains("저장 중이던 입력"))
+        assertTrue(store.owned("b").isEmpty())
+    }
+
+    @Test fun `계정 전환으로 취소된 이어 쓰기는 원래 초안을 삭제하지 않는다`() = runTest {
+        val k = keeper()
+        k.flush(ComposeDraft(text = "보존할 원본")); runCurrent()
+        val id = k.currentId
+        k.startNew(); runCurrent()
+        val started = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        store.afterOpen = { if (it.id == id) { started.complete(Unit); release.await() } }
+        val opening = backgroundScope.async { k.resume(id) }
+        runCurrent(); assertTrue(started.isCompleted)
+        store.switchAccount("b"); runCurrent()
+        release.complete(Unit); runCurrent()
+        assertNull(opening.await())
+        assertTrue(store.owned("a").single().json.contains("보존할 원본"))
+    }
+
+    @Test fun `읽을 수 없는 초안 원문을 지우지 않는다`() = runTest {
+        val k = keeper()
+        val handle = checkNotNull(store.open(store.session, "unknown"))
+        store.save(handle, "{not-valid-json", 1)
+        assertNull(k.resume("unknown"))
+        assertEquals("{not-valid-json", store.owned("a").single().json)
+    }
+
+    @Test fun `옛 전송 완료는 같은 초안의 새 편집을 지우지 않는다`() = runTest {
+        val k = keeper()
+        k.flush(ComposeDraft(text = "보낸 글")); runCurrent()
+        val sent = checkNotNull(k.currentEditor)
+        k.startNew(); runCurrent()
+        k.resume(sent.id)
+        val current = checkNotNull(k.currentEditor)
+        k.flush(ComposeDraft(text = "다시 쓴 글")); runCurrent()
+        k.sent(sent); runCurrent()
+        assertEquals(current, k.currentEditor)
+        assertTrue(store.rows.value.single().json.contains("다시 쓴 글"))
+    }
+
     @Test
     fun `글을 멈추고 2초가 지나면 저장한다`() = runTest {
         val k = keeper()
@@ -110,11 +162,11 @@ class DraftKeeperTest {
         val d = ComposeDraft(text = "잘 자")
         k.flush(d)
         runCurrent()
-        val id = k.currentId
+        val sentEditor = checkNotNull(k.currentEditor)
         k.flush(d.copy(sending = true))
         k.startNew()
         runCurrent()
-        k.sent(id)
+        k.sent(sentEditor)
         runCurrent()
         assertEquals(emptyList(), store.rows.value)
     }
@@ -190,4 +242,3 @@ class DraftKeeperTest {
         assertTrue(draftWhen(LocalDateTime(2026, 10, 28, 0, 30), now).startsWith("오늘 오전 12:30"))
     }
 }
-

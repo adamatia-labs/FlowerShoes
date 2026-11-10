@@ -63,12 +63,13 @@ class DraftAccountBoundaryTest {
             }
             compose.waitUntil(15_000) { screen.state.value.draftReady && !screen.state.value.loading }
             val oldId = screen.state.value.draftId
-            compose.runOnIdle { screen.onIntent(LetterIntent.EditText("A_PRIVATE_PENDING_TEXT")) }
+            val oldToken = screen.state.value.draftEditorToken
+            compose.runOnIdle { screen.onIntent(LetterIntent.EditText("A_PRIVATE_PENDING_TEXT", external = true)) }
             compose.onNodeWithText("A_PRIVATE_PENDING_TEXT", useUnmergedTree = true).assertExists()
             settings.bindAccount("owner-b")
             compose.waitUntil(15_000) { screen.state.value.draftId != oldId && screen.state.value.draftReady }
             compose.onNodeWithText("A_PRIVATE_PENDING_TEXT", useUnmergedTree = true).assertDoesNotExist()
-            compose.runOnIdle { screen.onIntent(LetterIntent.AddPhoto(byteArrayOf(1, 2, 3), oldId)) }
+            compose.runOnIdle { screen.onIntent(LetterIntent.AddPhoto(byteArrayOf(1, 2, 3), oldToken)) }
             assertTrue(screen.state.value.draft.photos.isEmpty())
             withTimeout(10_000) { while (db.letterDraftDao().get(oldId)?.draftJson?.contains("A_PRIVATE_PENDING_TEXT") != true) delay(20) }
             assertTrue(drafts.observe().first { it.loaded }.drafts.isEmpty())

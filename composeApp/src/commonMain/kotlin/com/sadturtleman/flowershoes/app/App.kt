@@ -408,7 +408,7 @@ private fun MainShell() {
     when (shown) {
         Overlay.COMPOSE -> KkContentWidth {
             LetterComposeRoute(
-                onAddDrawing = { drawingForDraft = letterState.draftId; overlay = Overlay.DRAW_FOR_LETTER },
+                onAddDrawing = { drawingForDraft = letterState.draftEditorToken; overlay = Overlay.DRAW_FOR_LETTER },
                 onClose = { overlay = null },
                 photoPicker = { rememberPhotoPicker(it) },
                 // 평생 안내 시트 › 꽃신 평생 보기 → 설정 › 꽃신 평생(쓰던 편지는 화면을 나갈 때 저장된다).
@@ -429,8 +429,8 @@ private fun MainShell() {
                 photoPicker = { rememberPhotoPicker(it) },
                 saveImage = imageSaver,
                 onSaved = {
-                    drawingForDraft?.takeIf { id -> id == letterState.draftId }?.let { id ->
-                        letters.onIntent(LetterIntent.AddDrawing(it, id))
+                    drawingForDraft?.takeIf { token -> token == letterState.draftEditorToken }?.let { token ->
+                        letters.onIntent(LetterIntent.AddDrawing(it, token))
                         overlay = Overlay.COMPOSE
                     }
                 },

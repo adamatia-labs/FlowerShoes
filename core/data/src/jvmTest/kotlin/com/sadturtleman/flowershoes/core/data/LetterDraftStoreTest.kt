@@ -59,6 +59,15 @@ class LetterDraftStoreTest {
         assertFalse(store.save(a, "late", 200))
         assertNull(db.letterDraftDao().get("a"))
     }
+    @Test fun `해제 직후 새로 쓴 입력도 계정 전환 때 원래 계정에 저장된다`() = runBlocking {
+        write("old")
+        unlink.onPartnerUnlinked(AfterUnlink.KEEP_AS_MEMORIES)
+        val current = checkNotNull(settings.draftSessions.first())
+        val editor = checkNotNull(store.open(current, "after-unlink"))
+        settings.bindAccount("account-b")
+        assertTrue(store.save(editor, "new solo input", 200))
+        assertEquals("new solo input", db.letterDraftDao().get("after-unlink")?.draftJson)
+    }
     @Test fun `탈퇴 서버가 없으면 성공으로 처리하거나 쓰던 편지를 지우지 않는다`() = runBlocking {
         write("a")
         assertFailsWith<IllegalStateException> { UnlinkService(db, InMemoryKeyVault(), settings, null).deleteAccount() }
@@ -108,6 +117,46 @@ class LetterDraftStoreTest {
             assertFalse(store.save(a, "late-input", 200))
         } finally { release.complete(Unit); deletion.await() }
         assertEquals(0, db.letterDraftDao().count())
+    }
+    @Test fun `다른 계정의 빈 예약만 남았으면 첨부 삭제를 막지 않는다`() = runBlocking {
+        val a = login()
+        assertNotNull(store.open(a, "empty-reservation"))
+        settings.bindAccount("account-b")
+        var wiped = false
+        UnlinkService(db, InMemoryKeyVault(), settings, transport) { wiped = true }.onPartnerUnlinked(AfterUnlink.WIPE)
+        assertTrue(wiped)
+        assertNotNull(db.letterDraftDao().get("empty-reservation"))
+        Unit
+    }
+    @Test fun `계정이 바뀐 초안 전송은 편지와 전송 기록을 만들지 않는다`() = runBlocking {
+        val a = write("a", "private")
+        val identity = object : Identity {
+            override val userId = a.session.ownerUid
+            override val deviceId = a.session.deviceId
+            override val keyEpoch = 0
+        }
+        val letters = LetterRepository(db, SyncWriter(db, identity), identity)
+        val letter = letters.newLetter(listOf(com.sadturtleman.flowershoes.core.model.LetterBlock.Text("private")))
+        settings.bindAccount("account-b")
+        assertFalse(letters.sendDraft(store, a, letter, emptyList()))
+        assertTrue(db.letterDao().allActive().isEmpty())
+        assertTrue(db.syncDao().log("${a.session.deviceId}:app").isEmpty())
+        val current = login()
+        val fresh = checkNotNull(store.open(current, "a"))
+        assertTrue(letters.sendDraft(store, fresh, letter, emptyList()))
+        assertEquals("account-a", db.letterDao().allActive().single().authorId)
+        assertEquals(1, db.syncDao().log("${a.session.deviceId}:app").size)
+    }
+    @Test fun `전송 트랜잭션과 계정 전환을 같은 설정 경계에서 직렬화한다`() = runBlocking {
+        val a = write("a")
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val sending = async { store.withCurrentEditor(a) { entered.complete(Unit); release.await() } }
+        withTimeout(5_000) { entered.await() }
+        val switching = async { settings.bindAccount("account-b") }
+        try { assertNull(withTimeoutOrNull(100) { switching.await(); true }) }
+        finally { release.complete(Unit) }
+        assertTrue(sending.await()); switching.await()
+        assertFalse(store.withCurrentEditor(a) { error("stale send must not execute") })
     }
     @Test fun `이전 계정의 예약된 마지막 입력은 그 계정에만 저장한다`() = runBlocking {
         val a = write("a", "before")

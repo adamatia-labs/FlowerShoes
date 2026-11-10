@@ -6,7 +6,7 @@ import kotlin.uuid.Uuid
 
 /** UI scheduling fixture. Storage isolation itself is tested against Room in core:data. */
 internal class TestDraftStore(owner: String = "a") : LetterDraftStore {
-    var session = DraftSession(owner, "device", "session-1")
+    var session = DraftSession(owner, "dev-$owner", "session-1")
         private set
     val rows = MutableStateFlow<List<StoredDraft>>(emptyList())
     private val snapshots = MutableStateFlow(DraftSnapshot(session))
@@ -14,8 +14,12 @@ internal class TestDraftStore(owner: String = "a") : LetterDraftStore {
     private val tokens = mutableMapOf<String, String>()
     private val allRows = mutableMapOf<String, StoredDraft>()
     var failNextSave = false
+    var beforeSave: suspend () -> Unit = {}
+    var afterOpen: suspend (DraftEditor) -> Unit = {}
+    var beforeSend: suspend () -> Unit = {}
+    var afterSend: suspend () -> Unit = {}
     fun switchAccount(owner: String) {
-        session = DraftSession(owner, "device", Uuid.random().toString())
+        session = DraftSession(owner, session.deviceId, Uuid.random().toString())
         publish()
     }
     fun owned(owner: String) = allRows.values.filter { owners[it.id] == owner && it.json.isNotEmpty() }.sortedByDescending { it.updatedAtMs }
@@ -28,11 +32,12 @@ internal class TestDraftStore(owner: String = "a") : LetterDraftStore {
         if (session != this.session || owners[id]?.let { it != session.ownerUid } == true) return null
         val token = Uuid.random().toString()
         owners[id] = session.ownerUid; tokens[id] = token
-        return DraftEditor(id, session, token, allRows[id]?.takeIf { it.json.isNotEmpty() })
+        return DraftEditor(id, session, token, allRows[id]?.takeIf { it.json.isNotEmpty() }).also { afterOpen(it) }
     }
     private fun valid(editor: DraftEditor) = tokens[editor.id] == editor.token && owners[editor.id] == editor.session.ownerUid &&
         (session == editor.session || session.ownerUid != editor.session.ownerUid)
     override suspend fun save(editor: DraftEditor, json: String, atMs: Long): Boolean {
+        beforeSave()
         if (failNextSave) { failNextSave = false; error("storage unavailable") }
         if (!valid(editor)) return false
         allRows[editor.id] = StoredDraft(editor.id, json, atMs); publish(); return true
@@ -46,4 +51,9 @@ internal class TestDraftStore(owner: String = "a") : LetterDraftStore {
         allRows.remove(id); owners.remove(id); tokens.remove(id); publish(); return true
     }
     override suspend fun recoverUnclaimed(session: DraftSession, confirmedOwner: Boolean) = session == this.session && confirmedOwner
+    override suspend fun withCurrentEditor(editor: DraftEditor, block: suspend () -> Unit): Boolean {
+        beforeSend()
+        if (session != editor.session || !valid(editor)) return false
+        block(); afterSend(); return true
+    }
 }

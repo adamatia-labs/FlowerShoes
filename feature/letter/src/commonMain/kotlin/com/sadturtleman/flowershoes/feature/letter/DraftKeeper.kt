@@ -17,6 +17,7 @@ internal data class DraftKeeperState(
     val session: DraftSession? = null,
     val editorId: String,
     val ready: Boolean = false,
+    val editorToken: String? = null,
     val drafts: List<DraftSummary> = emptyList(),
     val unclaimedCount: Int = 0,
 )
@@ -34,8 +35,8 @@ internal class DraftKeeper(
     private var pending: Job? = null
     private var pendingDraft: Pair<DraftEditor, ComposeDraft>? = null
     private val saved = mutableMapOf<String, String>()
-    private val editors = mutableMapOf<String, DraftEditor>()
     private var editor: DraftEditor? = null
+    val currentEditor get() = editor
     private var request = 0L
     private val _state = MutableStateFlow(DraftKeeperState(editorId = newId()))
     val state: StateFlow<DraftKeeperState> = _state
@@ -63,29 +64,34 @@ internal class DraftKeeper(
         val opened = try { store.open(session, id) } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { onFailure(); null }
         if (request != version || state.value.session != session) {
-            opened?.let { store.retire(it) }
+            opened?.takeIf { it.initial == null }?.let { store.retire(it) }
             return
         }
         editor = opened
-        if (opened != null) editors[id] = opened
-        _state.update { it.copy(ready = opened != null) }
+        _state.update { it.copy(ready = opened != null, editorToken = opened?.token) }
     }
 
     fun edited(draft: ComposeDraft) {
         val captured = editor ?: return
         pending?.cancel()
-        pendingDraft = captured to draft
+        val input = captured to draft
+        pendingDraft = input
         pending = scope.launch {
             delay(2_000)
-            pendingDraft = null
-            persist(captured, draft)
+            if (persist(captured, draft) && pendingDraft === input) pendingDraft = null
         }
     }
 
     fun flush(draft: ComposeDraft, completed: (Boolean) -> Unit = {}) {
         val captured = editor ?: return completed(false)
-        pending?.cancel(); pendingDraft = null
-        scope.launch { completed(persist(captured, draft)) }
+        pending?.cancel()
+        val input = captured to draft
+        pendingDraft = input
+        pending = scope.launch {
+            val success = persist(captured, draft)
+            if (success && pendingDraft === input) pendingDraft = null
+            completed(success)
+        }
     }
 
     private fun flushPending(): Job? {
@@ -99,7 +105,7 @@ internal class DraftKeeper(
         flushPending()
         editor = null
         val id = newId()
-        _state.update { it.copy(editorId = id, ready = false) }
+        _state.update { it.copy(editorId = id, ready = false, editorToken = null) }
         val version = ++request
         state.value.session?.let { session -> scope.launch { openNew(session, id, version) } }
     }
@@ -109,25 +115,24 @@ internal class DraftKeeper(
         flushPending()?.join()
         val version = ++request
         val opened = store.open(session, id) ?: return null
-        if (version != request || state.value.session != session) { store.retire(opened); return null }
+        if (version != request || state.value.session != session) return null
         val draft = opened.initial?.let { decode(it.json) }
-        if (draft == null) { store.retire(opened); return null }
-        editor = opened; editors[id] = opened
+        if (draft == null) return null
+        editor = opened
         saved[opened.token] = encode(draft)
-        _state.update { it.copy(editorId = id, ready = true) }
+        _state.update { it.copy(editorId = id, ready = true, editorToken = opened.token) }
         return draft
     }
 
-    fun sent(id: String) {
-        val captured = editors[id] ?: return
-        if (id == currentId) { pending?.cancel(); pendingDraft = null; startNew() }
-        scope.launch { lock.withLock { store.retire(captured); saved.remove(captured.token); editors.remove(id) } }
+    fun sent(captured: DraftEditor) {
+        if (editor?.token == captured.token) { pending?.cancel(); pendingDraft = null; startNew() }
+        scope.launch { lock.withLock { store.retire(captured); saved.remove(captured.token) } }
     }
 
     fun delete(id: String) {
         val session = state.value.session ?: return
         if (id == currentId) { pending?.cancel(); pendingDraft = null; startNew() }
-        scope.launch { lock.withLock { store.delete(session, id); editors.remove(id)?.let { saved.remove(it.token) } } }
+        scope.launch { lock.withLock { store.delete(session, id) } }
     }
 
     suspend fun recoverUnclaimed(confirmedOwner: Boolean): Boolean {

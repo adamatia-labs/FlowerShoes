@@ -92,7 +92,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
                 p.draftGenerations()[expected.ownerUid] == expected.generation
             if (current == expected || inactiveOwner) {
                 block(); applied = true
-                if (invalidate) p[ACCOUNT_SESSION] = Uuid.random().toString()
+                if (invalidate) {
+                    val generation = Uuid.random().toString()
+                    p[ACCOUNT_SESSION] = generation
+                    p[DRAFT_GENERATIONS] = prefsJson.encodeToString<Map<String, String>>(p.draftGenerations() + (expected.ownerUid to generation))
+                }
             }
         }
         return applied

@@ -604,9 +604,9 @@ fun LetterComposeRoute(
     var fonts by remember { mutableStateOf(false) }
     var photoSource by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
-    val pickPhoto = androidx.compose.runtime.key(state.draftId) {
-        val editorId = state.draftId
-        photoPicker?.invoke { bytes -> viewModel.onIntent(LetterIntent.AddPhoto(bytes, editorId)) }
+    val pickPhoto = androidx.compose.runtime.key(state.draftEditorToken) {
+        val token = state.draftEditorToken
+        photoPicker?.invoke { bytes -> token?.let { viewModel.onIntent(LetterIntent.AddPhoto(bytes, it)) } }
     }
     // 쓰던 글은 멈추고 2초 뒤 · 화면을 나갈 때(닫기 · 그림판 · 앱 전환) 이 기기에 저장한다.
     DisposableEffect(viewModel) { onDispose { viewModel.onIntent(LetterIntent.LeaveCompose) } }

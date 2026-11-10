@@ -186,6 +186,7 @@ data class LetterState(
     /** 지금 쓰는 편지의 id([drafts] 에서 빼고 "이어 쓸까요?" 를 묻는다). */
     val draftId: String = "",
     val draftReady: Boolean = false,
+    val draftEditorToken: String? = null,
     val draftSession: String? = null,
     val unclaimedDrafts: Int = 0,
     /** 편지 쓰기를 새로 열었고 아직 아무것도 고르지 않았다 — 쓰던 편지가 있으면 "이어 쓸까요?" 시트. */
@@ -223,10 +224,10 @@ sealed interface LetterIntent {
     /** 글 속 k 번째 그림 · 사진 빼기. */
     data class RemoveObject(val index: Int) : LetterIntent
     data class ChoosePaper(val paper: Paper) : LetterIntent
-    data class AddDrawing(val meta: DrawingMeta, val editorId: String? = null) : LetterIntent
+    data class AddDrawing(val meta: DrawingMeta, val editorToken: String? = null) : LetterIntent
     data class RemoveDrawing(val id: String) : LetterIntent
     /** 편지 쓰기 › 사진: 고른 사진(줄인 JPEG)을 첨부로 두고 붙인다. */
-    data class AddPhoto(val jpeg: ByteArray, val editorId: String? = null) : LetterIntent
+    data class AddPhoto(val jpeg: ByteArray, val editorToken: String? = null) : LetterIntent
     data class RemovePhoto(val attachmentId: String) : LetterIntent
     data class ChooseFont(val font: String) : LetterIntent
     data class Schedule(val at: LocalDateTime?) : LetterIntent
@@ -264,12 +265,13 @@ class LetterViewModel(
     private val letters: LetterRepository,
     private val attachments: AttachmentStore,
     private val profile: ProfileRepository,
-    draftStore: LetterDraftStore,
+    private val draftStore: LetterDraftStore,
     private val clock: Clock = Clock.System,
     private val bizLogger: BizLogger,
     private val loadLetter: suspend (String) -> Letter? = { letters.find(it) },
     private val deleteLetter: suspend (String) -> Unit = { letters.delete(it) },
     private val recordReceipt: suspend (ReceiptEntity, String) -> Unit = { entity, id -> letters.markRead(entity, id) },
+    private val sentNoteProvider: (suspend (Letter) -> ComposeDone.Sent)? = null,
 ) : ViewModel() {
 
     private val me = profile.myUserId()
@@ -352,7 +354,7 @@ class LetterViewModel(
                     val changed = old.draftSession != drafts.session?.generation || old.draftId != drafts.editorId
                     val next = if (changed) old.freshDraft().copy(done = null) else old
                     next.copy(draftId = drafts.editorId, draftSession = drafts.session?.generation, draftReady = drafts.ready,
-                        drafts = drafts.drafts, unclaimedDrafts = drafts.unclaimedCount)
+                        draftEditorToken = drafts.editorToken, drafts = drafts.drafts, unclaimedDrafts = drafts.unclaimedCount)
                 }
             }
         }
@@ -376,7 +378,7 @@ class LetterViewModel(
             is LetterIntent.RemoveObject -> editDraft { it.copy(draft = it.draft.removeObjectAt(intent.index).let { d -> d.copy(rev = d.rev + 1) }) }
             is LetterIntent.ChoosePaper -> editDraft { it.copy(draft = it.draft.copy(paper = intent.paper.id)) }
             is LetterIntent.AddDrawing -> {
-                if (intent.editorId != null && intent.editorId != keeper.currentId) return
+                if (intent.editorToken != null && intent.editorToken != keeper.currentEditor?.token) return
                 editDraft {
                     if (!it.draft.canAddDrawing) it
                     // 그림은 커서 자리에 한 글자로 들어간다(Figma "그림 · 사진 = 글자").
@@ -385,10 +387,10 @@ class LetterViewModel(
                 loadDraftThumb(intent.meta)
             }
             is LetterIntent.AddPhoto -> viewModelScope.launch {
-                val editorId = intent.editorId ?: keeper.currentId
-                if (!keeper.ready || editorId != keeper.currentId || !ui.value.draft.canAddPhoto) return@launch
+                val editorToken = intent.editorToken ?: keeper.currentEditor?.token
+                if (!keeper.ready || editorToken != keeper.currentEditor?.token || !ui.value.draft.canAddPhoto) return@launch
                 val id = attachments.put(com.sadturtleman.flowershoes.core.model.AttachmentKind.PHOTO, intent.jpeg)
-                if (editorId != keeper.currentId) return@launch
+                if (editorToken != keeper.currentEditor?.token) return@launch
                 editDraft { it.copy(draft = it.draft.copy(photos = it.draft.photos + id).insertObject(photoKey(id)), draftPhotos = it.draftPhotos + (id to intent.jpeg)) }
             }
             is LetterIntent.RemovePhoto -> editDraft {
@@ -412,8 +414,8 @@ class LetterViewModel(
             LetterIntent.SaveDraft -> {
                 val d = ui.value.draft
                 if (d.isEmpty || d.sending) return
-                val editorId = keeper.currentId
-                keeper.flush(d) { saved -> if (saved && editorId == keeper.currentId) toast("임시저장했어요", kind = LetterToast.Kind.SUCCESS) }
+                val editorToken = keeper.currentEditor?.token
+                keeper.flush(d) { saved -> if (saved && editorToken == keeper.currentEditor?.token) toast("임시저장했어요", kind = LetterToast.Kind.SUCCESS) }
             }
             is LetterIntent.RecoverDrafts -> viewModelScope.launch {
                 if (keeper.state.value.session?.generation != intent.sessionGeneration || !keeper.recoverUnclaimed(confirmedOwner = true)) toast("로그인한 계정을 다시 확인해 주세요", kind = LetterToast.Kind.ERROR)
@@ -506,23 +508,24 @@ class LetterViewModel(
         if (id != keeper.currentId) keeper.flush(leaving)
         viewModelScope.launch {
             val draft = keeper.resume(id) ?: return@launch
+            val editorToken = keeper.currentEditor?.token
             ui.update { it.freshDraft().copy(draft = draft.normalized().copy(rev = it.draft.rev + 1)) }
             draft.drawings.forEach { loadDraftThumb(it) }
-            draft.photos.forEach { pid -> attachments.read(pid)?.let { bytes -> if (keeper.currentId == id) ui.update { s -> s.copy(draftPhotos = s.draftPhotos + (pid to bytes)) } } }
+            draft.photos.forEach { pid -> attachments.read(pid)?.let { bytes -> if (keeper.currentEditor?.token == editorToken) ui.update { s -> s.copy(draftPhotos = s.draftPhotos + (pid to bytes)) } } }
         }
     }
 
     /** 빈 편지지. 지금 쓰는 편지 id 는 [keeper] 를 따른다. */
     private fun LetterState.freshDraft() = copy(
         draft = ComposeDraft(rev = draft.rev + 1), draftThumbs = emptyMap(), draftPhotos = emptyMap(),
-        draftId = keeper.currentId, draftReady = keeper.ready, resumeOffer = false,
+        draftId = keeper.currentId, draftReady = keeper.ready, draftEditorToken = keeper.currentEditor?.token, resumeOffer = false,
     )
 
     private fun loadDraftThumb(meta: DrawingMeta) {
         val id = meta.docAttachmentId ?: return
-        val editorId = keeper.currentId
+        val editorToken = keeper.currentEditor?.token
         viewModelScope.launch {
-            decode(id)?.let { doc -> if (keeper.currentId == editorId) ui.update { it.copy(draftThumbs = it.draftThumbs + (meta.id to doc)) } }
+            decode(id)?.let { doc -> if (keeper.currentEditor?.token == editorToken) ui.update { it.copy(draftThumbs = it.draftThumbs + (meta.id to doc)) } }
         }
     }
 
@@ -539,19 +542,19 @@ class LetterViewModel(
         val d = ui.value.draft
         if (!d.canSend) return
         ui.update { it.copy(draft = d.copy(sending = true), done = null) }
-        val draftId = keeper.currentId
+        val capturedEditor = keeper.currentEditor ?: return
         viewModelScope.launch {
             // 글 · 그림 · 사진의 순서: 편지 쓰기 화면의 글 속 자리 그대로.
             val blocks = d.toBlocks()
             val visibleAt = d.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
             val font = d.font.takeIf { it != com.sadturtleman.flowershoes.core.designsystem.KkLetterFont.SANS.id }
-            val letter = letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font)
+            val letter = letters.newLetter(blocks, paper = d.paper, title = d.title.trim().ifBlank { null }, visibleAt = visibleAt, font = font).copy(authorId = capturedEditor.session.ownerUid)
             try {
-                letters.send(letter, d.drawings)
+                check(letters.sendDraft(draftStore, capturedEditor, letter, d.drawings)) { "편집 중인 계정이 바뀌었어요" }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (keeper.currentId == draftId) {
+                if (keeper.currentEditor?.token == capturedEditor.token) {
                     ui.update { s -> s.copy(draft = s.draft.copy(sending = false)) }
                     // 보내는 동안엔 저장하지 않았다 — 쓰던 편지로 다시 남긴다.
                     keeper.edited(ui.value.draft)
@@ -562,14 +565,14 @@ class LetterViewModel(
             bizLogger.record(BizView.LETTER_COMPOSE, BizEvent.LetterSent(paper = d.paper, font = d.font, scheduled = d.revealAt != null, drawings = d.drawings.size, photos = d.photos.size, reply = false))
             recordSoloQueue(BizView.LETTER_COMPOSE)
             // 보낸 편지는 쓰던 편지 목록에서 빠진다. 아직 이 편지를 보고 있으면 빈 편지지로.
-            val stillHere = keeper.currentId == draftId
-            keeper.sent(draftId)
-            // 보내는 사이 화면을 나갔거나 다른 편지를 열었으면 보냄 화면은 띄우지 않는다(다음 편지 쓰기를 가로채지 않게).
+            val done = if (d.revealAt != null) ComposeDone.Scheduled else sentNoteProvider?.invoke(letter) ?: sentNote(letter)
+            // 마지막 비동기 읽기가 끝난 뒤에도 같은 편집 권한인지 확인한다.
+            val stillHere = keeper.currentEditor?.token == capturedEditor.token
+            keeper.sent(capturedEditor)
             if (stillHere) {
-                val done = if (d.revealAt != null) ComposeDone.Scheduled else sentNote(letter)
                 ui.update { it.freshDraft().copy(done = done) }
             }
-            if (d.revealAt != null) toast("${opensAt(d.revealAt)}에 도착해요")
+            if (stillHere && d.revealAt != null) toast("${opensAt(d.revealAt)}에 도착해요")
         }
     }
 

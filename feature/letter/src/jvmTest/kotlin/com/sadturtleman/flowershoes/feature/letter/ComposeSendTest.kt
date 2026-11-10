@@ -129,15 +129,48 @@ class ComposeSendTest {
     @Test fun `열린 편집 화면은 계정 전환에서 비워지고 이전 사진 응답을 받지 않는다`() = withScreen {
         until { !it.loading && it.draftReady }
         vm.onIntent(LetterIntent.EditText("이전 계정의 사적인 글"))
-        val old = until { it.draft.plainText.isNotEmpty() }.draftId
+        val old = until { it.draft.plainText.isNotEmpty() }.draftEditorToken
         drafts.switchAccount("other-account")
-        val changed = until { it.draftId != old && it.draftReady }
+        val changed = until { it.draftEditorToken != old && it.draftReady }
         assertTrue(changed.draft.isEmpty)
         assertTrue(changed.draftPhotos.isEmpty()); assertTrue(changed.draftThumbs.isEmpty()); assertTrue(changed.drafts.isEmpty())
         vm.onIntent(LetterIntent.AddPhoto(byteArrayOf(1, 2), old))
         vm.onIntent(LetterIntent.EditText("새 계정 글"))
         assertTrue(until { it.draft.plainText == "새 계정 글" }.draft.photos.isEmpty())
         assertTrue(drafts.owned("jisu").single().json.contains("이전 계정의 사적인 글"))
+    }
+
+    @Test fun `전송 시작 뒤 계정이 바뀌면 이전 본문을 새 편지로 만들지 않는다`() = withScreen {
+        until { !it.loading && it.draftReady }
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        drafts.beforeSend = { entered.complete(Unit); release.await() }
+        vm.onIntent(LetterIntent.EditText("이전 계정 전송 대기 글"))
+        vm.onIntent(LetterIntent.Send)
+        entered.await()
+        drafts.switchAccount("other-account")
+        until { it.draftSession == drafts.session.generation && it.draftReady }
+        release.complete(Unit)
+        vm.toasts.first { it.kind == LetterToast.Kind.ERROR }
+        assertTrue(db.letterDao().allActive().isEmpty())
+        assertNull(vm.state.value.done)
+        assertTrue(vm.state.value.draft.isEmpty)
+    }
+
+    @Test fun `보냄 화면 준비 중 전환하면 이전 편지 첫 줄을 다시 표시하지 않는다`() = runBlocking {
+        vm.viewModelScope.coroutineContext[Job]!!.cancelAndJoin()
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        vm = LetterViewModel(jisu.letters, AttachmentStore(db, FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "kk-letter-test"),
+            ProfileRepository(db, jisu.writer, jisu.identity), drafts, bizLogger = logger,
+            sentNoteProvider = { entered.complete(Unit); release.await(); ComposeDone.Sent("이전 계정 첫 줄", "", "", "") })
+        withScreen {
+            until { !it.loading && it.draftReady }
+            vm.onIntent(LetterIntent.EditText("이전 계정 첫 줄")); vm.onIntent(LetterIntent.Send)
+            entered.await()
+            drafts.switchAccount("other-account")
+            until { it.draftSession == drafts.session.generation && it.draftReady }
+            release.complete(Unit)
+            assertNull(withTimeoutOrNull(200) { vm.state.first { it.done != null } })
+        }
     }
 
     @Test
@@ -452,4 +485,3 @@ class ComposeSendTest {
         assertEquals(letter.id, jisu.letters.find(letter.id)?.id)
     }
 }
-

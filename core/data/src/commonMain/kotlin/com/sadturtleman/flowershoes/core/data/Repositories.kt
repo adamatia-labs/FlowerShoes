@@ -311,6 +311,22 @@ class LetterRepository(
     private val identity: Identity,
     private val clock: Clock = Clock.System,
 ) {
+    /** 초안 본문이 다른 계정의 발신 편지/Op가 되지 않도록 실제 계정과 편집 권한 안에서 생성한다. */
+    suspend fun sendDraft(store: LetterDraftStore, editor: DraftEditor, letter: Letter, drawings: List<DrawingMeta>): Boolean =
+        store.withCurrentEditor(editor) {
+            val session = editor.session
+            check(identity.userId == session.ownerUid && identity.deviceId == session.deviceId && letter.authorId == session.ownerUid)
+            val cachedEpoch = identity.keyEpoch
+            val couple = db.coupleDao().get()
+            check(couple == null || couple.myUserId == session.ownerUid)
+            val frozen = object : Identity {
+                override val userId = session.ownerUid
+                override val deviceId = session.deviceId
+                override val keyEpoch = couple?.keyEpoch ?: cachedEpoch
+            }
+            LetterRepository(db, SyncWriter(db, frozen, clock), frozen, clock).send(letter, drawings)
+        }
+
     /**
      * 편지함. 공개 시각이 지난 것만 — 예약 편지는 공개 전에 어디에도 보이지 않는다.
      * 시각을 쿼리에 고정하면 그 뒤에 보낸 편지 · 공개 시각이 지난 예약 편지가 계속 빠지므로, 시계와 묶어 다시 거른다.

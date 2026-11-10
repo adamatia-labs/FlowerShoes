@@ -22,6 +22,8 @@ interface LetterDraftStore {
     suspend fun retire(editor: DraftEditor): Boolean
     suspend fun delete(session: DraftSession, id: String): Boolean
     suspend fun recoverUnclaimed(session: DraftSession, confirmedOwner: Boolean): Boolean
+    /** block은 같은 DB 트랜잭션에서 실행한다. 설정을 다시 읽거나 쓰면 안 된다. */
+    suspend fun withCurrentEditor(editor: DraftEditor, block: suspend () -> Unit): Boolean
 }
 
 class RoomLetterDraftStore(private val db: AppDatabase, private val settings: DeviceSettings) : LetterDraftStore {
@@ -77,5 +79,18 @@ class RoomLetterDraftStore(private val db: AppDatabase, private val settings: De
     override suspend fun recoverUnclaimed(session: DraftSession, confirmedOwner: Boolean): Boolean {
         if (!confirmedOwner || session.ownerUid.startsWith("local:")) return false
         return settings.withDraftSession(session) { db.letterDraftDao().claimUnowned(session.ownerUid) }
+    }
+
+    override suspend fun withCurrentEditor(editor: DraftEditor, block: suspend () -> Unit): Boolean {
+        var applied = false
+        settings.withDraftSession(editor.session) {
+            db.useWriterConnection { tx -> tx.immediateTransaction {
+                val row = db.letterDraftDao().get(editor.id)
+                if (row?.ownerUid == editor.session.ownerUid && row.editorToken == editor.token) {
+                    block(); applied = true
+                }
+            } }
+        }
+        return applied
     }
 }

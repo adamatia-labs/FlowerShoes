@@ -87,22 +87,22 @@ class UnlinkService(
     private suspend fun cleanUp(after: AfterUnlink, draftSession: DraftSession?, accountDeletion: Boolean = false) {
         var retainedDrafts = false
         val cleanDatabase: suspend () -> Unit = {
-        db.useWriterConnection { tx ->
-            tx.immediateTransaction {
-                val couple = db.coupleDao().get()
-                if (after == AfterUnlink.KEEP_AS_MEMORIES && couple != null) RelationshipArchive(db).archive(couple)
-                // 동기화 상태는 어느 쪽이든 비운다 — 다시 연결하면 새 커플(새 id · 새 키)이다.
-                SYNC_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
-                draftSession?.let { db.letterDraftDao().clearOwned(it.ownerUid) }
-                retainedDrafts = db.letterDraftDao().count() > 0
-                // 올려 보낸 위치도 지운다 — 다시 연결하면 seq 가 1부터라, 남겨 두면 새 Op 을 "이미 보냄"으로 보고 보내지 않는다.
-                usePrepared("DELETE FROM meta WHERE `key` LIKE 'uploaded:%'") { it.step() }
-                if (after == AfterUnlink.WIPE) SHARED_TABLES.filterNot { it == "attachment" && retainedDrafts }.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
-                // 보관 경계와 커플 상태를 함께 커밋한다. 중간 종료 후에도 이관을 반복하지 않는다.
-                if (after == AfterUnlink.WIPE) db.coupleDao().clear()
-                else couple?.let { db.coupleDao().upsert(it.copy(partnerUserId = "", keyEpoch = 0, sealedKeys = it.sealedKeys?.let { "" })) }
+            db.useWriterConnection { tx ->
+                tx.immediateTransaction {
+                    val couple = db.coupleDao().get()
+                    if (after == AfterUnlink.KEEP_AS_MEMORIES && couple != null) RelationshipArchive(db).archive(couple)
+                    // 동기화 상태는 어느 쪽이든 비운다 — 다시 연결하면 새 커플(새 id · 새 키)이다.
+                    SYNC_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
+                    draftSession?.let { db.letterDraftDao().clearOwned(it.ownerUid) }
+                    retainedDrafts = db.letterDraftDao().countSaved() > 0
+                    // 올려 보낸 위치도 지운다 — 다시 연결하면 seq 가 1부터라, 남겨 두면 새 Op 을 "이미 보냄"으로 보고 보내지 않는다.
+                    usePrepared("DELETE FROM meta WHERE `key` LIKE 'uploaded:%'") { it.step() }
+                    if (after == AfterUnlink.WIPE) SHARED_TABLES.filterNot { it == "attachment" && retainedDrafts }.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
+                    // 보관 경계와 커플 상태를 함께 커밋한다. 중간 종료 후에도 이관을 반복하지 않는다.
+                    if (after == AfterUnlink.WIPE) db.coupleDao().clear()
+                    else couple?.let { db.coupleDao().upsert(it.copy(partnerUserId = "", keyEpoch = 0, sealedKeys = it.sealedKeys?.let { "" })) }
+                }
             }
-        }
         }
         if (draftSession == null) cleanDatabase()
         else check(settings.withDraftSession(draftSession, invalidate = true, includeCleaning = accountDeletion, block = cleanDatabase)) { "로그인한 계정이 바뀌었어요" }
