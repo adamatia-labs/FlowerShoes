@@ -670,8 +670,12 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
     const refreshToken = apple.get('refreshToken') as string | undefined;
     if (claim.appleRevocation === undefined) {
       if (refreshToken) {
-        appleRevocation = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false)
-          ? 'revoked' : 'manual';
+        const revoked = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false);
+        const subjects: unknown = firebaseClaims?.identities?.['apple.com'];
+        const matchesCurrentApple = Array.isArray(subjects)
+          && typeof apple.get('appleSubject') === 'string'
+          && subjects.includes(apple.get('appleSubject'));
+        appleRevocation = revoked && (!appleAccount || matchesCurrentApple) ? 'revoked' : 'manual';
       }
       // A code exchange that started before deletion may still produce a token; never promise full revocation then.
       if ((apple.get('pendingExchanges') as number ?? 0) > 0) appleRevocation = 'manual';

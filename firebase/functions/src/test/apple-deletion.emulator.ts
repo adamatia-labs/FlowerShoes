@@ -30,8 +30,8 @@ test('Apple 토큰 폐기 성공, 실패와 토큰 부재를 구분하고 계정
     ] as const) {
       ok = uid === 'apple-success';
       await getFirestore().doc(`users/${uid}`).set({ nickname: 'test' });
-      if (token) await getFirestore().doc(`appleTokens/${uid}`).set({ refreshToken: 'test-token' });
-      const result = await functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, data: {}, rawRequest: {} } as never);
+      if (token) await getFirestore().doc(`appleTokens/${uid}`).set({ refreshToken: 'test-token', appleSubject: 'apple-sub' });
+      const result = await functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['apple-sub'] } } } }, data: {}, rawRequest: {} } as never);
       assert.equal(result.appleRevocation, expected);
       assert.equal((await getFirestore().doc(`users/${uid}`).get()).exists, false);
       assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).exists, false);
@@ -49,9 +49,9 @@ test('토큰을 지운 뒤 Auth 정리가 실패해도 재시도와 응답 재�
       if (!String(input).endsWith('/auth/revoke')) throw new Error('unexpected test request');
       return new Response('', { status: revoked ? 200 : 503 });
     }) as typeof fetch);
-    const call = () => functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, data: {}, rawRequest: {} } as never);
+    const call = () => functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['apple-sub'] } } } }, data: {}, rawRequest: {} } as never);
     try {
-      await getFirestore().doc(`appleTokens/${uid}`).set({ refreshToken: 'test-token' });
+      await getFirestore().doc(`appleTokens/${uid}`).set({ refreshToken: 'test-token', appleSubject: 'apple-sub' });
       await assert.rejects(call(), /injected-auth-cleanup/);
       assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).exists, false);
       assert.equal((await getFirestore().doc(`accountDeletions/${uid}`).get()).get('appleRevocation'), expected);
@@ -75,12 +75,34 @@ test('일시적인 Apple 오류는 토큰을 보관한 채 재시도하고 확�
     return new Response('', { status: ++calls === 1 ? 503 : 200 });
   }) as typeof fetch);
   try {
-    await tokenRef.set({ refreshToken: 'test-token' });
+    await tokenRef.set({ refreshToken: 'test-token', appleSubject: 'apple-sub' });
     await getFirestore().doc(`users/${uid}`).set({ nickname: 'local-test' });
-    const result = await functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, data: {}, rawRequest: {} } as never);
+    const result = await functions.deleteAccount.run({ auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['apple-sub'] } } } }, data: {}, rawRequest: {} } as never);
     assert.deepEqual(result, { ok: true, appleRevocation: 'revoked' });
     assert.equal(calls, 2);
     assert.equal((await tokenRef.get()).exists, false);
     assert.equal((await getFirestore().doc(`users/${uid}`).get()).exists, false);
+  } finally { request.mock.restore(); remove.mock.restore(); }
+});
+
+test('현재 Apple 신원과 다른 토큰이나 신원 미확인 토큰은 폐기 성공이어도 수동 안내를 유지한다', async () => {
+  const remove = mock.method(getAuth(), 'deleteUser', async () => {});
+  const request = mock.method(globalThis, 'fetch', (async (input: string | URL | Request) => {
+    if (!String(input).endsWith('/auth/revoke')) throw new Error('unexpected test request');
+    return new Response('', { status: 200 });
+  }) as typeof fetch);
+  try {
+    for (const subject of [undefined, 'previous-apple']) {
+      const uid = subject ? 'apple-subject-changed' : 'apple-subject-legacy';
+      const tokenRef = getFirestore().doc(`appleTokens/${uid}`);
+      await tokenRef.set({ refreshToken: 'test-token', ...(subject ? { appleSubject: subject } : {}) });
+      const result = await functions.deleteAccount.run({
+        auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['current-apple'] } } } },
+        data: {}, rawRequest: {},
+      } as never);
+      assert.deepEqual(result, { ok: true, appleRevocation: 'manual' });
+      assert.equal((await tokenRef.get()).exists, false);
+    }
+    assert.equal(request.mock.callCount(), 2);
   } finally { request.mock.restore(); remove.mock.restore(); }
 });

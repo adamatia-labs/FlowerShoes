@@ -8,6 +8,7 @@ import com.sadturtleman.flowershoes.core.auth.AuthGateway
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.auth.SignInResult
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.data.AccountBindingChangedException
 import com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.military.ServiceCalculator
@@ -242,12 +243,15 @@ class OnboardingViewModel(
                 _state.update { it.copy(signingIn = false, appleTokenNotice = false, error = "로그인 계정이 바뀌었어요. 다시 로그인해 주세요") }
                 return
             }
-            if (login.uid.isNotEmpty()) settings.bindAccount(login.uid, login.provider.name)
+            if (login.uid.isNotEmpty()) settings.bindAccount(login.uid, login.provider.name) { auth.currentUserId == login.uid }
             pendingSignIn = null
             val elsewhere = try { linkedElsewhere() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
             _state.update { it.copy(signingIn = false, appleTokenNotice = false, error = null, loginName = login.displayName,
                 step = if (elsewhere) it.step else OnboardingStep.TERMS) }
             if (elsewhere) _events.send(OnboardingEvent.DeviceChange)
+        } catch (_: AccountBindingChangedException) {
+            pendingSignIn = null
+            _state.update { it.copy(signingIn = false, appleTokenNotice = false, error = "로그인 계정이 바뀌었어요. 다시 로그인해 주세요") }
         } catch (cancelled: CancellationException) {
             _state.update { it.copy(signingIn = false) }
             throw cancelled

@@ -59,7 +59,8 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     }
 
     /** [provider] 는 로그인 방법(KAKAO · APPLE · GOOGLE) — 복원 · 설정 › 로그인 계정 화면에 보인다. */
-    suspend fun bindAccount(uid: String, provider: String? = null) = store.edit {
+    suspend fun bindAccount(uid: String, provider: String? = null, isCurrentUser: () -> Boolean = { true }) = store.edit {
+        if (!isCurrentUser()) throw AccountBindingChangedException()
         if (it[USER_ID] != uid || it[ACCOUNT_SESSION] == null) it[ACCOUNT_SESSION] = Uuid.random().toString()
         it[USER_ID] = uid
         it[DRAFT_GENERATIONS] = prefsJson.encodeToString<Map<String, String>>(it.draftGenerations() + (uid to checkNotNull(it[ACCOUNT_SESSION])))

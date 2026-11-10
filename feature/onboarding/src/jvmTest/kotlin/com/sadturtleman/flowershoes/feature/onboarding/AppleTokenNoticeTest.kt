@@ -1,6 +1,8 @@
 package com.sadturtleman.flowershoes.feature.onboarding
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.core.DataStore
 import androidx.lifecycle.viewModelScope
 import com.sadturtleman.flowershoes.core.auth.*
 import com.sadturtleman.flowershoes.core.data.*
@@ -83,6 +85,29 @@ class AppleTokenNoticeTest {
         }
     }
 
+    @Test fun `설정 쓰기 대기 중 SDK 계정이 바뀌어도 이전 계정을 저장하지 않는다`(): Unit = runBlocking {
+        val hold = Hold()
+        try { fixture(hold = hold) { vm, settings, auth ->
+            vm.onIntent(OnboardingIntent.SignIn(AuthProvider.APPLE))
+            await { vm.state.value.appleTokenNotice }
+            hold.active = true
+            vm.onIntent(OnboardingIntent.ContinueAppleSignIn)
+            withTimeout(5_000) { hold.entered.await() }
+            auth.currentUserId = "other"
+            hold.release.complete(Unit)
+            await { !vm.state.value.signingIn }
+            assertNotEquals("owner", settings.state.first().userId)
+            assertEquals(OnboardingStep.LOGIN, vm.state.value.step)
+            assertNotNull(vm.state.value.error)
+        } } finally { hold.release.complete(Unit) }
+    }
+
+    private class Hold {
+        var active = false
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+    }
+
     private class Auth : AuthGateway {
         override var currentUserId: String? = "owner"
         override val providers = listOf(AuthProvider.APPLE)
@@ -93,11 +118,18 @@ class AppleTokenNoticeTest {
         override suspend fun repairAppleToken(): SignInResult { repairs++; return result }
     }
 
-    private suspend fun fixture(linkedElsewhere: Boolean = false, block: suspend (OnboardingViewModel, DeviceSettings, Auth) -> Unit) {
+    private suspend fun fixture(linkedElsewhere: Boolean = false, hold: Hold? = null, block: suspend (OnboardingViewModel, DeviceSettings, Auth) -> Unit) {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val root = FileSystem.SYSTEM_TEMPORARY_DIRECTORY / "apple-notice-${Uuid.random()}"
         val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val settings = DeviceSettings(PreferenceDataStoreFactory.createWithPath(scope = io) { root / "settings.preferences_pb" })
+        val delegate = PreferenceDataStoreFactory.createWithPath(scope = io) { root / "settings.preferences_pb" }
+        val settings = DeviceSettings(object : DataStore<Preferences> {
+            override val data = delegate.data
+            override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences {
+                if (hold?.active == true) { hold.entered.complete(Unit); hold.release.await() }
+                return delegate.updateData(transform)
+            }
+        })
         val db = inMemoryDatabaseBuilder().buildKkotsin()
         val identity = object : Identity {
             override val userId = "local"
