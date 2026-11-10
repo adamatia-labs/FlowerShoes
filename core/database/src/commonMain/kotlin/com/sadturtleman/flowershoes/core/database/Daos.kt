@@ -92,11 +92,13 @@ interface StatusDao {
     @Query("SELECT * FROM status")
     suspend fun all(): List<StatusEntity>
 
-    /** 작성자의 최신 상태 하나. 만료된 것은 뺀다. */
+    /** 가장 최근 변경만 본다. 그것이 만료되어도 과거 상태를 되살리지 않는다. */
     @Query(
         """
-        SELECT * FROM status WHERE authorId = :authorId AND (expiresAtMs IS NULL OR expiresAtMs > :nowMs)
-        ORDER BY createdAtMs DESC LIMIT 1
+        SELECT * FROM (
+            SELECT * FROM status WHERE authorId = :authorId
+            ORDER BY createdAtMs DESC, lamport DESC, id DESC LIMIT 1
+        ) WHERE expiresAtMs IS NULL OR expiresAtMs > :nowMs
         """,
     )
     fun observeLatest(authorId: String, nowMs: Long): Flow<StatusEntity?>
