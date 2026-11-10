@@ -82,7 +82,6 @@ class UnlinkService(
 
     /** 모든 진입점은 서버 요청부터 이 정리까지 relationshipMutex를 보유한다. */
     private suspend fun cleanUp(after: AfterUnlink) {
-        vault.clearCoupleKeys()
         db.useWriterConnection { tx ->
             tx.immediateTransaction {
                 val couple = db.coupleDao().get()
@@ -97,6 +96,8 @@ class UnlinkService(
                 else couple?.let { db.coupleDao().upsert(it.copy(partnerUserId = "", keyEpoch = 0)) }
             }
         }
+        // DB 정리가 실패하면 기존 관계가 롤백된다. 그 기록을 여는 키도 커밋 전까지 보존한다.
+        vault.clearCoupleKeys()
         // 커플 행은 남긴다(보관본의 "누구와의 추억"). 상대 id 를 비워 혼자 모드로 돌아간다.
         if (after == AfterUnlink.WIPE) {
             wipeAttachmentFiles()
