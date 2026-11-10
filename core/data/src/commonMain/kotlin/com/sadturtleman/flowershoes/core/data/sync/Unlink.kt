@@ -76,7 +76,7 @@ class UnlinkService(
         }
         cleanUp(AfterUnlink.WIPE)
         db.useWriterConnection { tx -> tx.immediateTransaction { PROFILE_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } } } }
-        vault.clearAll()
+        vault.platformVault.clearAll()
         settings.reset(showAppleInstructions)
     }
 
@@ -93,11 +93,11 @@ class UnlinkService(
                 if (after == AfterUnlink.WIPE) SHARED_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } }
                 // 보관 경계와 커플 상태를 함께 커밋한다. 중간 종료 후에도 이관을 반복하지 않는다.
                 if (after == AfterUnlink.WIPE) db.coupleDao().clear()
-                else couple?.let { db.coupleDao().upsert(it.copy(partnerUserId = "", keyEpoch = 0)) }
+                else couple?.let { db.coupleDao().upsert(it.copy(partnerUserId = "", keyEpoch = 0, sealedKeys = it.sealedKeys?.let { "" })) }
             }
         }
         // DB 정리가 실패하면 기존 관계가 롤백된다. 그 기록을 여는 키도 커밋 전까지 보존한다.
-        vault.clearCoupleKeys()
+        vault.platformVault.clearCoupleKeys()
         // 커플 행은 남긴다(보관본의 "누구와의 추억"). 상대 id 를 비워 혼자 모드로 돌아간다.
         if (after == AfterUnlink.WIPE) {
             wipeAttachmentFiles()

@@ -122,6 +122,29 @@ enum SharedStore {
 
     // MARK: Keychain
 
+    struct RelationshipKeys: Decodable {
+        let scope: String
+        let values: [String: String]
+
+        static func decode(_ data: Data, expectedScope: String) -> RelationshipKeys? {
+            guard let keys = try? JSONDecoder().decode(Self.self, from: data), keys.scope == expectedScope else { return nil }
+            return keys
+        }
+
+        func secret(_ account: String) -> [UInt8]? {
+            guard let value = values[account], let data = Data(base64Encoded: value) else { return nil }
+            return [UInt8](data)
+        }
+    }
+
+    /// 같은 관계·기기·epoch의 묶음만 사용한다. 누락돼도 이전 개별 키로 돌아가지 않는다.
+    static func secret(_ account: String, scope: String?) -> [UInt8]? {
+        guard let scope else { return secret(account) }
+        guard let bytes = secret("relationship.keys"),
+              let keys = RelationshipKeys.decode(Data(bytes), expectedScope: scope) else { return nil }
+        return keys.secret(account)
+    }
+
     static func secret(_ account: String) -> [UInt8]? {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

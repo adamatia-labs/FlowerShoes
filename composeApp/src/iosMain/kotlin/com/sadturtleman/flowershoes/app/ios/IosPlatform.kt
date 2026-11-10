@@ -2,6 +2,10 @@
 
 package com.sadturtleman.flowershoes.app.ios
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
+import com.sadturtleman.flowershoes.core.data.sync.forDatabase
+import com.sadturtleman.flowershoes.core.data.sync.platformVault
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.sync.MailItem
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
@@ -110,24 +114,34 @@ class IosNotificationScheduler : NotificationScheduler {
 
 /** 위젯 전송(App Intent)이 읽는 연결 정보. WidgetSender.swift 의 LinkConfig 와 같은 필드. */
 @Serializable
-data class LinkConfig(val coupleId: String, val userId: String, val deviceId: String, val partnerDeviceId: String, val epoch: Int, val sendEndpoint: String? = null)
+data class LinkConfig(val coupleId: String, val userId: String, val deviceId: String, val partnerDeviceId: String, val epoch: Int, val sendEndpoint: String? = null, val keyScope: String? = null)
 
 internal var widgetSendEndpoint: String? = null
 
 /** 연결 · 기기 교체 · 키 교체 뒤에 부른다. */
-suspend fun writeLinkConfig(db: AppDatabase, identity: Identity, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM, vault: com.sadturtleman.flowershoes.core.data.sync.KeyVault? = null) {
+suspend fun writeLinkConfig(db: AppDatabase, identity: Identity, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM, vault: com.sadturtleman.flowershoes.core.data.sync.KeyVault? = null) = db.useWriterConnection { tx -> tx.immediateTransaction {
     val couple = db.coupleDao().get()
     val partner = couple?.let { db.deviceDao().activeFor(it.partnerUserId) }
-    if (couple == null || partner == null) {
+    if (couple == null || partner == null || couple.myUserId != identity.userId || couple.partnerUserId.isBlank()) {
         fs.delete(root / "link.json", mustExist = false)
-        return
+        return@immediateTransaction
     }
-    (vault as? com.sadturtleman.flowershoes.core.data.sync.IosKeyVault)?.putPartnerSignPub(partner.signPub)
-    val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch, widgetSendEndpoint)
+    val native = vault?.platformVault as? com.sadturtleman.flowershoes.core.data.sync.IosKeyVault
+    val scope = if (couple.sealedKeys != null) {
+        checkNotNull(native)
+        val committed = checkNotNull(vault).forDatabase(db, identity)
+        val keyScope = "${couple.id}:${identity.deviceId}:${couple.keyEpoch}"
+        native.putSharedRelationship(keyScope, committed.sharedCoupleKeys(), partner.signPub, checkNotNull(committed.deviceKeys()))
+        keyScope
+    } else {
+        native?.putPartnerSignPub(partner.signPub)
+        null
+    }
+    val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch, widgetSendEndpoint, scope)
     val temporary = root / "link.json.tmp"
     fs.write(temporary) { writeUtf8(Json.encodeToString(LinkConfig.serializer(), config)) }
     fs.atomicMove(temporary, root / "link.json")
-}
+} }
 
 @Serializable
 private data class WidgetOutgoing(val coupleId: String, val fromDeviceId: String, val opId: String, val kind: String, val header: String, val ct: String, val sig: String)

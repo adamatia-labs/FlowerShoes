@@ -63,7 +63,7 @@ data class SyncReport(val sent: Int = 0, val received: Int = 0, val resent: Int 
 class SyncClient(
     private val db: AppDatabase,
     private val identity: Identity,
-    private val vault: KeyVault,
+    vault: KeyVault,
     private val mailbox: Mailbox,
     private val blobs: BlobStore,
     private val attachments: AttachmentStore,
@@ -72,6 +72,7 @@ class SyncClient(
     private val clock: Clock = Clock.System,
     private val planner: ResendPlanner = ResendPlanner(),
 ) {
+    private val vault = vault.forDatabase(db, identity)
     private val myStream get() = StreamId(identity.deviceId, StreamId.Channel.APP)
     private val widgetStream get() = StreamId(identity.deviceId, StreamId.Channel.WIDGET).wire
     private val archive = RelationshipArchive(db)

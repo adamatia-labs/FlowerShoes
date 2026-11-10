@@ -27,7 +27,7 @@ class RelationshipArchiveTest {
 
     private inner class Phone(val uid: String) {
         val db = inMemoryDatabaseBuilder().buildKkotsin()
-        val vault = InMemoryKeyVault()
+        val vault by lazy { InMemoryKeyVault().forDatabase(db, identity) }
         val identity = object : Identity {
             override val userId = uid
             override val deviceId = "device-$uid"

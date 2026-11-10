@@ -172,6 +172,8 @@ dependencies {
     androidTestImplementation("com.google.firebase:firebase-storage")
     androidTestImplementation(libs.kotlinx.coroutines.play.services)
     androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.libsodium.bindings)
+    androidTestImplementation("net.java.dev.jna:jna:5.18.1@aar")
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

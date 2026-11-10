@@ -27,6 +27,7 @@ import com.sadturtleman.flowershoes.feature.settings.SettingsViewModel
 import com.sadturtleman.flowershoes.core.data.sync.BlobStore
 import com.sadturtleman.flowershoes.core.data.sync.InMemoryKeyVault
 import com.sadturtleman.flowershoes.core.data.sync.KeyVault
+import com.sadturtleman.flowershoes.core.data.sync.forDatabase
 import com.sadturtleman.flowershoes.core.data.sync.Mailbox
 import com.sadturtleman.flowershoes.core.data.sync.PairingSession
 import com.sadturtleman.flowershoes.core.data.sync.PairingTransport
@@ -100,7 +101,7 @@ fun kkotsinModules(
         single { MissYouRepository(get(), get(), get(), get()) }
         single { StatusRepository(get(), get(), get(), get()) }
         single { com.sadturtleman.flowershoes.core.data.BookCoverRepository(get(), get(), get()) }
-        single { vault }
+        single<KeyVault> { vault.forDatabase(database, get()) }
         single { UnlinkService(get(), get(), get(), cloud?.account, wipeAttachmentFiles = { get<AttachmentStore>().deleteAllFiles() }) }
         // 서버 설정이 없는 빌드에서는 등록하지 않는다(화면은 getOrNull 로 "설정 전" 안내를 보여 준다).
         if (cloud != null) {

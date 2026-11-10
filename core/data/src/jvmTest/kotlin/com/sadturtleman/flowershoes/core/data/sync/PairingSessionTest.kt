@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import androidx.room.immediateTransaction
+import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.Sodium
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.database.AppDatabase
@@ -16,6 +18,8 @@ import kotlin.test.assertTrue
 import kotlin.test.assertIs
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertFails
+import kotlin.test.assertNotNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
@@ -28,7 +32,7 @@ class PairingSessionTest {
 
     private inner class Phone(val userId: String, val deviceId: String, clock: Clock = Clock.System, private val transport: PairingTransport = cloud) {
         val db: AppDatabase = inMemoryDatabaseBuilder().buildKkotsin()
-        val vault = InMemoryKeyVault()
+        val vault by lazy { InMemoryKeyVault().forDatabase(db, identity) }
         val pending = InMemoryPendingInvite()
         val identity = object : Identity {
             override val userId = this@Phone.userId
@@ -50,6 +54,44 @@ class PairingSessionTest {
 
     @AfterTest
     fun tearDown() = phones.forEach { it.db.close() }
+
+    @Test
+    fun `기기 저장 실패는 관계와 활성 키를 노출하지 않고 재시작 후 같은 연결을 마친다`() = runTest {
+        val a = Phone("a", "device-a")
+        val b = Phone("b", "device-b")
+        val token = assertIs<PairingState.Waiting>(a.pairing.createLink()).token
+        assertIs<PairingState.Linked>(b.pairing.accept(token))
+        a.db.useWriterConnection { tx -> tx.immediateTransaction {
+            usePrepared("CREATE TRIGGER fail_pairing BEFORE INSERT ON device WHEN NEW.id = 'device-b' BEGIN SELECT RAISE(ABORT, 'injected pairing failure'); END") { it.step() }
+        } }
+        assertFails { a.pairing.poll() }
+        assertNull(a.db.coupleDao().get())
+        assertNull(a.db.deviceDao().get("device-a"))
+        assertNull(a.db.deviceDao().get("device-b"))
+        assertNull(a.vault.currentCoupleKey())
+        assertNotNull(a.pending.load())
+        a.db.useWriterConnection { tx -> tx.immediateTransaction {
+            usePrepared("DROP TRIGGER fail_pairing") { it.step() }
+        } }
+        assertIs<PairingState.Linked>(a.relaunch().poll())
+        assertContentEquals(b.vault.currentCoupleKey()!!.export(), a.vault.currentCoupleKey()!!.export())
+    }
+
+    @Test fun `완료 기록 정리 실패의 재시도는 이후 교체된 키를 되돌리지 않는다`() = runTest {
+        val a = Phone("a", "device-a"); val b = Phone("b", "device-b")
+        val token = assertIs<PairingState.Waiting>(a.pairing.createLink()).token
+        assertIs<PairingState.Linked>(b.pairing.accept(token))
+        val brokenCleanup = object : PendingInviteStore by a.pending {
+            override suspend fun clearSent(uid: String, deviceId: String) = error("injected journal failure")
+        }
+        assertFails { PairingSession(a.db, a.identity, a.vault, cloud, pending = brokenCleanup).poll() }
+        val newer = com.sadturtleman.flowershoes.core.crypto.CoupleKey.generate(2)
+        a.vault.putCoupleKey(newer)
+        a.db.coupleDao().upsert(a.db.coupleDao().get()!!.copy(keyEpoch = 2))
+        assertIs<PairingState.Linked>(a.relaunch().poll())
+        assertEquals(2, a.db.coupleDao().get()!!.keyEpoch)
+        assertContentEquals(newer.export(), a.vault.currentCoupleKey()!!.export())
+    }
 
     @Test
     fun `링크를 누른 사람과 연결되고 양쪽이 같은 커플 키를 얻는다`() = runTest {

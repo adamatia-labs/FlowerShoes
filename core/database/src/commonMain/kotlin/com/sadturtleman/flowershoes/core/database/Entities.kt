@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.core.database
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -14,6 +15,8 @@ data class CoupleEntity(
     val partnerUserId: String,
     val keyEpoch: Int,
     val linkedAtMs: Long,
+    /** 기기 비밀키로 봉인한 관계별 키. null은 기존 플랫폼 보관함을 사용하는 구버전 행이다. */
+    @ColumnInfo(defaultValue = "NULL") val sealedKeys: String? = null,
 )
 
 @Entity(tableName = "user")

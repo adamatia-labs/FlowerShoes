@@ -14,6 +14,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import libsodium.sodium_init
 
 /**
@@ -141,18 +143,32 @@ class IosKeyVault(
 
     override suspend fun clearCoupleKeys() = lock.withLock {
         val s = load()
+        delete("relationship.keys")
         s.coupleKeys.keys.forEach { delete("coupleKey.$it") }
         save(s.copy(coupleKeys = emptyMap(), pendingApproval = null))
     }
 
     override suspend fun clearAll() = lock.withLock {
         load().coupleKeys.keys.forEach { delete("coupleKey.$it") }
-        listOf(ACCOUNT, "device.signSecret", "partner.signPub").forEach(::delete)
+        listOf(ACCOUNT, "device.signSecret", "partner.signPub", "relationship.keys").forEach(::delete)
         cache = Stored()
     }
 
     /** NSE 가 상대 서명을 확인할 때 쓴다. 연결 · 기기 교체 때 앱이 부른다. */
     fun putPartnerSignPub(pub: ByteArray) = write("partner.signPub", pub)
+
+    /** 관계 식별자와 모든 확장용 키를 단일 Keychain 항목으로 교체한다. */
+    fun putSharedRelationship(scope: String, keys: List<CoupleKey>, partnerPub: ByteArray, device: DeviceKeys) {
+        val bundle = buildJsonObject {
+            put("scope", scope)
+            put("values", buildJsonObject {
+                keys.forEach { put("coupleKey.${it.epoch}", it.export().b64()) }
+                put("partner.signPub", partnerPub.b64())
+                put("device.signSecret", device.exportSecret().copyOf(64).b64())
+            })
+        }
+        write("relationship.keys", bundle.toString().encodeToByteArray())
+    }
 
     private var keychain = IosKeychainStore(accessGroup)
 

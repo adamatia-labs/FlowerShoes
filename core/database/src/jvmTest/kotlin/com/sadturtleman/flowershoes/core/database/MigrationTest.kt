@@ -38,6 +38,21 @@ class MigrationTest {
     )
 
     @Test
+    fun `버전 1 관계와 기록은 보존하고 기존 키 보관 방식을 유지한다`() = runTest {
+        val file = dir.root.toPath().resolve("legacy-keys.db")
+        helper(file).createDatabase(1).use {
+            it.execSQL("INSERT INTO couple (id, myUserId, partnerUserId, keyEpoch, linkedAtMs) VALUES ('legacy', 'a', 'b', 3, 123)")
+            it.execSQL("INSERT INTO meta (key, value) VALUES ('clock', 7)")
+        }
+        helper(file).runMigrationsAndValidate(AppDatabase.VERSION, AppDatabase.MIGRATIONS).close()
+        val db = Room.databaseBuilder<AppDatabase>(name = file.toString()).buildKkotsin()
+        try {
+            assertEquals(CoupleEntity("legacy", "a", "b", 3, 123), db.coupleDao().get())
+            assertEquals(7L, db.syncDao().meta("clock"))
+        } finally { db.close() }
+    }
+
+    @Test
     fun `출시 기준부터 현재까지 모든 버전의 스키마가 남아 있다`() {
         val missing = (1..AppDatabase.VERSION).filterNot { schemas.resolve("$it.json").exists() }
         assertEquals(emptyList(), missing, "지운 스키마 JSON 이 있으면 그 버전에서 오는 이전을 검증할 수 없다")

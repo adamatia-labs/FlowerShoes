@@ -55,7 +55,7 @@ class EndToEndTest {
 
     private inner class Phone(val userId: String, val deviceId: String) {
         val db: AppDatabase = inMemoryDatabaseBuilder().buildKkotsin()
-        val vault = InMemoryKeyVault()
+        val vault by lazy { InMemoryKeyVault().forDatabase(db, identity) }
         val identity = object : Identity {
             override val userId = this@Phone.userId
             override val deviceId = this@Phone.deviceId

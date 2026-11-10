@@ -125,11 +125,12 @@ class InMemoryPendingInvite : PendingInviteStore {
 class PairingSession(
     private val db: AppDatabase,
     private val identity: Identity,
-    private val vault: KeyVault,
+    vault: KeyVault,
     private val transport: PairingTransport,
     private val clock: Clock = Clock.System,
     private val pending: PendingInviteStore = InMemoryPendingInvite(),
 ) {
+    private val vault = vault.forDatabase(db, identity)
     var state: PairingState = PairingState.Idle
         private set
 
@@ -321,15 +322,30 @@ class PairingSession(
         val applied = pending.withCurrentIdentity(expectedOwner.first, expectedOwner.second) {
             val keys = if (accepting != null) checkNotNull(vault.deviceKeys()) { "수락한 기기의 키를 확인할 수 없어요" } else myKeys()
             accepting?.let { check(Pairing.PublicKeys.of(keys).encode() == it.publicKeys) { "수락한 기기의 키를 확인할 수 없어요" } }
-            vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, inviteToken))
             val now = clock.now().toEpochMilliseconds()
             db.useWriterConnection { tx -> tx.immediateTransaction {
+                check(db.coupleDao().get() == current) { "연결이 바뀌었어요" }
+                // 이미 완료한 연결의 수락 기록 정리만 재시도한다. 교체된 epoch/기기를 되돌리지 않는다.
+                if (current?.partnerUserId?.isNotBlank() == true && current.id == coupleId) {
+                    check(current.myUserId == expectedOwner.first && vault.currentCoupleKey() != null)
+                    val ownDevice = db.deviceDao().get(expectedOwner.second)
+                    val peerDevice = db.deviceDao().activeFor(current.partnerUserId)
+                    if (ownDevice?.state == DeviceState.ACTIVE.name && ownDevice.userId == expectedOwner.first &&
+                        ownDevice.signPub.contentEquals(keys.signPub) && ownDevice.boxPub.contentEquals(keys.boxPub) && peerDevice != null
+                    ) return@immediateTransaction
+                    // 구버전의 부분 커밋은 epoch 1에서만 같은 초대로 복구한다.
+                    check(current.keyEpoch == 1 && current.sealedKeys == null) { "연결된 기기 정보를 확인할 수 없어요" }
+                }
                 RelationshipArchive(db).prepare()
+                val complete = vault.sealRelationship(
+                    CoupleEntity(coupleId, expectedOwner.first, partner.uid, keyEpoch = 1, linkedAtMs = now),
+                    Pairing.coupleKey(keys, partner.keys, inviteToken),
+                )
                 db.coupleDao().clear()
-                db.coupleDao().upsert(CoupleEntity(coupleId, expectedOwner.first, partner.uid, keyEpoch = 1, linkedAtMs = now))
+                db.coupleDao().upsert(complete)
+                db.deviceDao().upsert(DeviceEntity(expectedOwner.second, expectedOwner.first, expectedOwner.first, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
+                db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
             } }
-            db.deviceDao().upsert(DeviceEntity(expectedOwner.second, expectedOwner.first, expectedOwner.first, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
-            db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
         }
         if (!applied) return@withLock null
         // 연결됐으면 내가 보낸 링크도 끝났다(서버가 두 사람의 초대를 지운다).

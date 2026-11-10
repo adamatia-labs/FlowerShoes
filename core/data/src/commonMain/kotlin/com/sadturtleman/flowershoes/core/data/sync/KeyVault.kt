@@ -6,7 +6,8 @@ import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
 /**
  * 비밀 키 보관함. 기기 키 · 커플 키(epoch 별)는 이 기기에만 둔다(ThisDeviceOnly, 백업 · 동기화 안 함).
  *
- * 실제 구현은 Android Keystore 로 감싼 파일 · iOS Keychain(access group 공유)이다.
+ * 기기 비밀키와 구버전 커플 키는 Android Keystore 로 감싼 파일 · iOS Keychain에 둔다.
+ * 새 관계의 커플 키는 [CommittedKeyVault]가 기기 키로 봉인해 관계 행과 같은 DB 커밋으로 공개한다.
  * 옛 epoch 키는 아직 안 받은 Op 을 풀기 위해 31일 보관한 뒤 [dropEpochsBefore] 로 지운다.
  */
 interface KeyVault {
