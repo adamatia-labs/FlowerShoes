@@ -1101,9 +1101,10 @@ internal fun UnlinkPage(
     val c = KkTheme.colors
     val scope = rememberCoroutineScope()
     val selection by viewModel.unlinkSelection.collectAsStateWithLifecycle()
+    val lockedChoice by viewModel.lockedUnlinkChoice.collectAsStateWithLifecycle()
     var authenticating by remember { mutableStateOf(false) }
     val busy = operation is UnlinkOperation.Running || operation is UnlinkOperation.Completed || authenticating
-    val selectedAfter = when (val current = operation) {
+    val selectedAfter = lockedChoice ?: when (val current = operation) {
         is UnlinkOperation.Running -> current.after
         is UnlinkOperation.Completed -> current.after
         else -> selection
@@ -1140,7 +1141,8 @@ internal fun UnlinkPage(
             Text("${state.partnerName.withAnd()}의 연결을 해제할까요?", style = KkTheme.type.title, color = c.ink)
             Text("해제하면 서로 소식을 주고받을 수 없고, 되돌릴 수 없어요.", style = KkTheme.type.body, color = c.sub)
         }
-        KeepChoice(selectedKeep, enabled = !busy) {
+        if (lockedChoice != null && operation is UnlinkOperation.Failed) Text("처음 선택한 방식으로 정리를 이어가요", style = KkTheme.type.body, color = c.sub)
+        KeepChoice(selectedKeep, enabled = !busy && lockedChoice == null) {
             viewModel.selectUnlinkAfter(if (it) AfterUnlink.KEEP_AS_MEMORIES else AfterUnlink.WIPE)
         }
         KkInput(confirm, { confirm = it }, label = "확인을 위해 \"연결 해제\"를 입력해 주세요", placeholder = "연결 해제", helper = "다음 단계에서 지문 · 얼굴 또는 기기 암호를 확인해요", enabled = !busy)

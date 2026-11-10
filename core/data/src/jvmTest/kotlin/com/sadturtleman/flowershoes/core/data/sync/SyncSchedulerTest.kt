@@ -35,6 +35,28 @@ class SyncSchedulerTest {
     @AfterTest fun cleanup() { db.close(); FileSystem.SYSTEM.deleteRecursively(root, mustExist = false) }
     private fun client(mailbox: Mailbox) = SyncClient(db, identity, vault, mailbox, cloud, AttachmentStore(db, root), InboxApplier(db), writer)
 
+    @Test fun `cleanup cancels only the current round and scheduler resumes after cleanup`() = runBlocking {
+        val pending = CleanupEntity(
+            token = "cleanup", ownerUid = identity.userId, deviceId = identity.deviceId, accountSession = "session",
+            source = "UNLINK", choice = "KEEP_AS_MEMORIES", phase = "REQUESTED",
+            coupleId = "couple", coupleOwner = "me", partnerUid = "partner", keyEpoch = 1, linkedAtMs = 0, sealedKeys = null,
+        )
+        db.cleanupDao().save(pending)
+        val attempts = AtomicInteger()
+        val scheduler = SyncScheduler(db, client(cloud), period = 1.hours, retryBase = 20.milliseconds, resumeCleanup = { attempts.incrementAndGet() })
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val job = scheduler.start(scope)
+        try {
+            withTimeout(5000) { while (attempts.get() < 2) delay(10) }
+            assertTrue(job.isActive)
+            assertNull(scheduler.lastReport)
+            assertNull(scheduler.failure.value)
+            db.cleanupDao().delete(pending.token)
+            withTimeout(5000) { while (scheduler.lastReport == null) delay(10) }
+            assertTrue(job.isActive)
+        } finally { job.cancelAndJoin(); scope.cancel() }
+    }
+
     @Test fun `new database write wakes an already idle scheduler`() = runBlocking {
         val scheduler = SyncScheduler(db, client(cloud), period = 1.hours)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
