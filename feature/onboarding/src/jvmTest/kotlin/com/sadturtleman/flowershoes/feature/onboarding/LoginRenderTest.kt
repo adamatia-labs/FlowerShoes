@@ -28,4 +28,32 @@ class LoginRenderTest {
             assertTrue(out.length() > 0)
         }
     }
+
+    @Test
+    fun `Figma 기준 크기의 로그인 화면을 그린다`() {
+        val png = ImageComposeScene(width = 360 * 3, height = 780 * 3, density = Density(3f)) {
+            KkotsinTheme(theme = AppTheme.GOMSIN, dark = false) {
+                OnboardingScreen(OnboardingState(today = LocalDate(2026, 10, 29)), onIntent = {})
+            }
+        }.use { scene ->
+            scene.render()
+            scene.render(1_000_000_000L).encodeToData(EncodedImageFormat.PNG)!!.bytes
+        }
+        val out = File("build/render/login_figma_size.png").apply { parentFile.mkdirs(); writeBytes(png) }
+        assertTrue(out.length() > 0)
+    }
+
+    @Test
+    fun `작은 화면에서 글자를 키운 로그인 화면을 그린다`() {
+        val png = ImageComposeScene(width = 320 * 2, height = 640 * 2, density = Density(2f, 2f)) {
+            KkotsinTheme(theme = AppTheme.GOMSIN, dark = false) {
+                OnboardingScreen(OnboardingState(today = LocalDate(2026, 10, 29)), onIntent = {})
+            }
+        }.use { scene ->
+            scene.render()
+            scene.render(1_000_000_000L).encodeToData(EncodedImageFormat.PNG)!!.bytes
+        }
+        val out = File("build/render/login_large_text.png").apply { parentFile.mkdirs(); writeBytes(png) }
+        assertTrue(out.length() > 0)
+    }
 }

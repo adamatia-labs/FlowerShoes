@@ -59,6 +59,7 @@ internal class ByteReader(private val buf: ByteArray, private var pos: Int = 0, 
         var shift = 0
         while (true) {
             val b = byte()
+            if (shift == 63 && b and 0xFE != 0) throw DrawingFormatException("varint 가 너무 크다")
             result = result or ((b and 0x7F).toLong() shl shift)
             if (b and 0x80 == 0) return result
             shift += 7
@@ -71,16 +72,31 @@ internal class ByteReader(private val buf: ByteArray, private var pos: Int = 0, 
         return (v ushr 1) xor -(v and 1)
     }
 
+    fun nonNegativeInt(): Int {
+        val value = varint()
+        if (value !in 0..Int.MAX_VALUE.toLong()) throw DrawingFormatException("정수가 범위를 넘는다")
+        return value.toInt()
+    }
+
+    fun signedInt(): Int {
+        val value = zigzag()
+        if (value !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) throw DrawingFormatException("정수가 범위를 넘는다")
+        return value.toInt()
+    }
+
     fun bytes(length: Int): ByteArray {
-        if (length < 0 || pos + length > end) throw DrawingFormatException("길이가 범위를 넘는다")
+        if (length < 0 || length > end - pos) throw DrawingFormatException("길이가 범위를 넘는다")
         return buf.copyOfRange(pos, pos + length).also { pos += length }
     }
 
     /** 다음 `[tag][length][본문]` 하나를 읽어 본문을 따로 읽는 리더와 함께 돌려준다. */
     fun field(): Pair<Int, ByteReader> {
-        val tag = varint().toInt()
-        val length = varint().toInt()
-        if (length < 0 || pos + length > end) throw DrawingFormatException("필드 길이가 범위를 넘는다")
+        val tagValue = varint()
+        if (tagValue !in 0..Int.MAX_VALUE.toLong()) throw DrawingFormatException("필드 태그가 범위를 넘는다")
+        val tag = tagValue.toInt()
+        val lengthValue = varint()
+        if (lengthValue !in 0..(end - pos).toLong()) throw DrawingFormatException("필드 길이가 범위를 넘는다")
+        val length = lengthValue.toInt()
         val body = ByteReader(buf, pos, pos + length)
         pos += length
         return tag to body

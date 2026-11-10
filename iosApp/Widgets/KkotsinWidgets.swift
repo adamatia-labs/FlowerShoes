@@ -307,7 +307,8 @@ struct DrawingWidgetView: View {
     var body: some View {
         let s = entry.snapshot
         let p = WidgetPalette(theme: s?.theme, dark: scheme == .dark)
-        let image = s?.drawingPngPath.flatMap { UIImage(contentsOfFile: $0) }
+        let image = (SharedStore.isSafeWidgetDrawingID(s?.drawingId) ? SharedStore.safeWidgetImageURL(s?.drawingPngPath, directory: SharedStore.container.appendingPathComponent("widget")) : nil)
+            .flatMap { UIImage(contentsOfFile: $0.path) }
         Group {
             if let image {
                 if family == .systemMedium {

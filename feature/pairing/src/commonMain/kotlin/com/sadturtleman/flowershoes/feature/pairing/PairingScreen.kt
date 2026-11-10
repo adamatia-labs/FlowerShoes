@@ -15,6 +15,7 @@ import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.logging.BizEvent
 import com.sadturtleman.flowershoes.core.logging.BizLogger
 import com.sadturtleman.flowershoes.core.logging.BizView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,7 +82,7 @@ class PairingViewModel(
         val s = session ?: return
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
-            val next = runCatching { block(s) }.getOrElse { PairingState.Failed(it.message ?: "연결하지 못했어요") }
+            val next = runCatching { block(s) }.getOrElse { pairingFailure(it) }
             val myName = runCatching { profile?.let { p -> p.observeUsers().first().firstOrNull { it.id == p.myUserId() }?.nickname } }.getOrNull().orEmpty()
             _ui.update { it.copy(state = next, busy = false, inviterName = next.inviterName() ?: it.inviterName, myName = myName) }
             if (next is PairingState.Linked) linked(s) else startPolling(s)
@@ -123,6 +124,11 @@ class PairingViewModel(
         viewModelScope.launch { handoff.send {} }
         _ui.update { it.copy(receiveDone = true) }
     }
+}
+
+internal fun pairingFailure(error: Throwable): PairingState.Failed {
+    if (error is CancellationException) throw error
+    return PairingState.Failed("연결하지 못했어요. 다시 시도해 주세요")
 }
 
 private fun PairingState.inviterName(): String? = when (this) {

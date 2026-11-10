@@ -498,14 +498,20 @@ internal fun filledMonths(progress: Float, months: Int): Int {
  * @param onClick 보고싶어 보내기.
  */
 @Composable
-fun KkMissYouFab(sent: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun KkMissYouFab(
+    sent: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    sentLabel: String = "보냈어요",
+) {
     val c = KkTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val shape = RoundedCornerShape(KkRadius.full)
     Row(
         modifier
-            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {}
             .minimumInteractiveComponentSize()
             .kkElevation(if (pressed) KkElevation.None else KkElevation.Mid, shape)
@@ -516,7 +522,7 @@ fun KkMissYouFab(sent: Boolean, onClick: () -> Unit, modifier: Modifier = Modifi
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (sent) KkIcon(KkIcons.Check, tint = c.loveOn, size = 16.dp) else KkHeartIcon(c.loveOn, 16.dp)
-        Text(if (sent) "보냈어요" else "보고싶어", style = KkTheme.type.labelBold, color = c.loveOn, maxLines = 1)
+        Text(if (sent) sentLabel else "보고싶어", style = KkTheme.type.labelBold, color = c.loveOn, maxLines = 1)
     }
 }
 

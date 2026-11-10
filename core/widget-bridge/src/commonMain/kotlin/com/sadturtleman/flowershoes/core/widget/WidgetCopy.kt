@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.core.widget
 
 import com.sadturtleman.flowershoes.core.data.SEOUL
+import com.sadturtleman.flowershoes.core.data.AttachmentStore
 import com.sadturtleman.flowershoes.core.database.DrawingEntity
 import com.sadturtleman.flowershoes.core.military.ServiceTimeline
 import com.sadturtleman.flowershoes.core.military.expectedName
@@ -19,6 +20,31 @@ import kotlinx.datetime.daysUntil
 import kotlinx.datetime.number
 import kotlinx.datetime.toLocalDateTime
 import okio.Path
+import okio.ByteString.Companion.toByteString
+import okio.FileSystem
+import kotlin.uuid.Uuid
+
+/** App Group 파일명은 식별자 길이와 무관하게 고정 길이로 만든다. */
+fun widgetDrawingFileName(id: String, attachmentId: String): String {
+    require(AttachmentStore.isSafeId(id) && AttachmentStore.isSafeId(attachmentId))
+    return "drawing-${(id + "\u0000" + attachmentId).encodeToByteArray().toByteString().sha256().hex()}.png"
+}
+
+/** 그림과 첨부 조합마다 별도 파일을 만들고, 복사 중인 파일이 표시되지 않게 한다. */
+fun copyWidgetDrawing(fs: FileSystem, source: Path, directory: Path, id: String): Path {
+    require(AttachmentStore.isSafeId(id) && AttachmentStore.isSafeId(source.name))
+    fs.createDirectories(directory)
+    val temporary = directory / ".drawing-${Uuid.random()}.tmp"
+    val destination = directory / widgetDrawingFileName(id, source.name)
+    if (fs.exists(destination)) return destination
+    try {
+        fs.copy(source, temporary)
+        fs.atomicMove(temporary, destination)
+    } finally {
+        if (fs.exists(temporary)) fs.delete(temporary)
+    }
+    return destination
+}
 
 // 위젯 v2(Figma 9 · 위젯 383:5321)에 들어갈 글자. 위젯은 스냅샷의 글자를 그대로 그린다.
 
@@ -58,7 +84,7 @@ internal fun widgetSnapshot(inputs: WidgetInputs, attachmentsRoot: Path, now: In
     fun next(vararg types: EventType) = upcoming.filter { it.type in types }.minByOrNull { it.start }
     val serving = hero?.serving == true
     val meet = next(EventType.VISIT, EventType.OVERNIGHT, EventType.VACATION)
-    val drawing = inputs.drawing
+    val drawing = inputs.drawing?.takeIf { AttachmentStore.isSafeId(it.id) }
     // 상태는 구독한 때의 시각으로 걸러 오므로, 끝난 상태는 여기서 한 번 더 뺀다.
     val status = inputs.status?.takeIf { st -> st.expiresAt.let { it == null || it > now } }
     val letter = letterRow(inputs.letters, partner, partnerName, inputs.readLetterIds, today)
@@ -97,11 +123,11 @@ internal fun widgetSnapshot(inputs: WidgetInputs, attachmentsRoot: Path, now: In
         missYouSentToday = inputs.missYouSentToday,
         missYouJustSentAtMs = inputs.missYouLastSentAtMs?.takeIf { now.toEpochMilliseconds() - it in 0 until JUST_SENT_MS },
         linked = partner != null,
-        drawingDocPath = drawing?.docAttachmentId?.let { (attachmentsRoot / it).toString() },
-        drawingPngPath = drawing?.takeIf { it.pngAttachmentId != it.docAttachmentId }?.let { (attachmentsRoot / it.pngAttachmentId).toString() },
+        drawingDocPath = drawing?.docAttachmentId?.takeIf { AttachmentStore.isSafeId(it) }?.let { (attachmentsRoot / it).toString() },
+        drawingPngPath = drawing?.takeIf { it.pngAttachmentId != it.docAttachmentId && AttachmentStore.isSafeId(it.pngAttachmentId) }?.let { (attachmentsRoot / it.pngAttachmentId).toString() },
         drawingShape = drawing?.shape,
         drawingLetterId = drawing?.letterId,
-        drawingId = drawing?.id,
+        drawingId = drawing?.id?.takeIf { AttachmentStore.isSafeId(it) },
         drawingCaption = drawing?.caption?.takeIf { it.isNotBlank() },
         drawingMeta = drawing?.let { d ->
             val day = Instant.fromEpochMilliseconds(d.receivedAtMs ?: d.sentAtMs).toLocalDateTime(SEOUL).date

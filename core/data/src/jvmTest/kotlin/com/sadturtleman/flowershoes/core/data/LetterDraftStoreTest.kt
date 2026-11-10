@@ -1,6 +1,7 @@
 package com.sadturtleman.flowershoes.core.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.sadturtleman.flowershoes.core.data.sync.AccountTransport
 import com.sadturtleman.flowershoes.core.data.sync.AfterUnlink
 import com.sadturtleman.flowershoes.core.data.sync.InMemoryKeyVault
 import com.sadturtleman.flowershoes.core.data.sync.UnlinkService
@@ -21,7 +22,11 @@ class LetterDraftStoreTest {
     private val store = RoomLetterDraftStore(db)
 
     private val settingsPath = (FileSystem.SYSTEM_TEMPORARY_DIRECTORY.toString() + "/kkotsin-drafts-${Uuid.random()}.preferences_pb").toPath()
-    private val unlink = UnlinkService(db, InMemoryKeyVault(), DeviceSettings(PreferenceDataStoreFactory.createWithPath { settingsPath }), null)
+    private val server = object : AccountTransport {
+        override suspend fun unlinkCouple(coupleId: String) = Unit
+        override suspend fun deleteAccount() = Unit
+    }
+    private val unlink = UnlinkService(db, InMemoryKeyVault(), DeviceSettings(PreferenceDataStoreFactory.createWithPath { settingsPath }), server)
 
     @AfterTest
     fun close() {

@@ -164,6 +164,7 @@ data class OpenLetter(
     val envelopeLine: String = "",
     val envelopeMeta: String = "",
     val stamp: String = "",
+    val viewSessionId: String = kotlin.uuid.Uuid.random().toString(),
 )
 
 data class LetterState(
@@ -247,7 +248,7 @@ sealed interface LetterIntent {
     /** 아직 못 여는 편지 › 열리면 알려 주세요: 공개 시각 알림은 이미 잡혀 있다(NotificationPlanner) — 닫고 알린다. */
     data object NotifyWhenOpen : LetterIntent
     data class Open(val letterId: String) : LetterIntent
-    data class DrawingSeen(val drawingId: String) : LetterIntent
+    data class DrawingSeen(val letterId: String, val drawingId: String, val viewSessionId: String) : LetterIntent
     data object Close : LetterIntent
     data class Delete(val letterId: String) : LetterIntent
 
@@ -262,11 +263,16 @@ class LetterViewModel(
     draftStore: LetterDraftStore,
     private val clock: Clock = Clock.System,
     private val bizLogger: BizLogger,
+    private val loadLetter: suspend (String) -> Letter? = { letters.find(it) },
+    private val deleteLetter: suspend (String) -> Unit = { letters.delete(it) },
+    private val recordReceipt: suspend (ReceiptEntity, String) -> Unit = { entity, id -> letters.markRead(entity, id) },
 ) : ViewModel() {
 
     private val me = profile.myUserId()
     private val keeper = DraftKeeper(draftStore, viewModelScope, clock)
     private val ui = MutableStateFlow(LetterState(draftId = keeper.currentId))
+    private var openRequestId = 0L
+    private var openingLetterId: String? = null
     private val thumbs = MutableStateFlow<Map<String, DrawingDocument?>>(emptyMap())
 
     private val _toasts = MutableSharedFlow<LetterToast>(replay = 1, extraBufferCapacity = 4)
@@ -424,14 +430,24 @@ class LetterViewModel(
                 }
             }
             LetterIntent.NotifyWhenOpen -> {
+                openRequestId++
+                openingLetterId = null
                 ui.update { it.copy(open = null) }
                 toast("열리면 알려 드릴게요")
             }
             is LetterIntent.Open -> open(intent.letterId)
             is LetterIntent.DrawingSeen -> viewModelScope.launch {
-                if (ui.value.open?.mine == false) letters.markRead(ReceiptEntity.DRAWING, intent.drawingId)
+                val open = ui.value.open
+                if (open != null && !open.mine && !open.locked && open.letter.id == intent.letterId && open.viewSessionId == intent.viewSessionId &&
+                    open.letter.blocks.any { it is LetterBlock.DrawingRef && it.drawingId == intent.drawingId }) {
+                    recordView(ReceiptEntity.DRAWING, intent.drawingId, "그림 확인 기록을 저장하지 못했어요") { ui.value.open?.viewSessionId == intent.viewSessionId }
+                }
             }
-            LetterIntent.Close -> ui.update { it.copy(open = null) }
+            LetterIntent.Close -> {
+                openRequestId++
+                openingLetterId = null
+                ui.update { it.copy(open = null) }
+            }
             is LetterIntent.SendDrawing -> viewModelScope.launch {
                 val visibleAt = intent.revealAt?.toInstant(SEOUL)?.takeIf { it > clock.now() } ?: clock.now()
                 val letter = letters.newLetter(listOf(LetterBlock.DrawingRef(intent.meta.id)), paper = Paper.ROSE.id, title = intent.caption, visibleAt = visibleAt)
@@ -442,9 +458,24 @@ class LetterViewModel(
                 if (intent.revealAt != null) toast("${opensAt(intent.revealAt)}에 ${partner}에게 도착해요")
                 else toast("${partner}에게 그림을 보냈어요", openLetterId = letter.id)
             }
-            is LetterIntent.Delete -> viewModelScope.launch {
-                letters.delete(intent.letterId)
-                ui.update { it.copy(open = null) }
+            is LetterIntent.Delete -> {
+                if (openingLetterId == intent.letterId) {
+                    openRequestId++
+                    openingLetterId = null
+                }
+                viewModelScope.launch {
+                    try { deleteLetter(intent.letterId) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) {
+                        if (ui.value.open?.letter?.id == intent.letterId) toast("편지를 삭제하지 못했어요", kind = LetterToast.Kind.ERROR)
+                        return@launch
+                    }
+                    if (openingLetterId == intent.letterId) {
+                        openRequestId++
+                        openingLetterId = null
+                    }
+                    ui.update { state -> if (state.open?.letter?.id == intent.letterId) state.copy(open = null) else state }
+                }
             }
         }
     }
@@ -543,55 +574,80 @@ class LetterViewModel(
     }
 
     private fun open(letterId: String) {
+        val requestId = ++openRequestId
+        openingLetterId = letterId
         viewModelScope.launch {
-            // 알림으로 처음 실행하면 화면의 stateIn은 아직 빈 초기값일 수 있어 저장소에서 바로 읽는다.
-            val letter = letters.find(letterId) ?: run {
-                ui.update { it.copy(open = null) }
-                toast("편지를 찾을 수 없어요")
-                return@launch
-            }
-            val mine = letter.authorId == me
-            val (my, partner) = names.first()
-            val at = letter.visibleAt.toLocalDateTime(SEOUL)
-            val senderRole = roleOf(letter.authorId, roles.first())
-            if (!mine && letter.visibleAt > clock.now()) {
-                // 아직 못 여는 예약 편지: 봉투와 열리는 때만. 글 · 그림 · 사진은 열린 뒤에 읽는다.
-                ui.update {
-                    it.copy(
-                        open = OpenLetter(
-                            letter, mine, meta = "", drawings = emptyMap(), firstView = emptySet(),
-                            title = readTitle(false, partner), subtitle = "예약 편지", senderRole = senderRole,
-                            locked = true, opensAt = at,
-                            envelopeLine = letter.firstLine(), envelopeMeta = "$partner · ${opensAt(at)} 도착",
-                            stamp = stampText(discharge.first(), at.date),
-                        ),
-                    )
+            try {
+                // 알림으로 처음 실행하면 화면의 stateIn은 아직 빈 초기값일 수 있어 저장소에서 바로 읽는다.
+                val letter = loadLetter(letterId) ?: run {
+                    if (requestId != openRequestId) return@launch
+                    openingLetterId = null
+                    ui.update { it.copy(open = null) }
+                    toast("편지를 찾을 수 없어요")
+                    return@launch
                 }
-                return@launch
-            }
-            val rows = letters.drawingsOf(letterId)
-            val docs = rows.mapNotNull { row -> row.docAttachmentId?.let { decode(it) }?.let { row.id to it } }.toMap()
-            val first = rows.filter { !mine && it.replayEnabled && letters.isFirstView(it.id) }.map { it.id }.toSet()
-            val photos = letter.blocks.filterIsInstance<LetterBlock.Photo>().mapNotNull { b -> attachments.read(b.attachmentId)?.let { b.attachmentId to it } }.toMap()
-            val thanked = !mine && letters.thanked(letterId)
-            val meta = (if (mine) my else partner) + " · ${at.short()} (${weekday(at.date)})"
-            val drawingOnly = !letter.hasText && letter.drawingCount == 1
-            ui.update {
-                it.copy(
-                    open = OpenLetter(
-                        letter, mine,
-                        drawingOnly = drawingOnly,
-                        drawingTitle = if (mine) "내가 그린 그림" else "${partner.withSubject()} 그린 그림",
-                        sentAt = "${at.month.ordinal + 1}월 ${at.day}일 ${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}",
-                        meta = meta, drawings = docs, firstView = first, photos = photos,
-                        title = readTitle(mine, partner), subtitle = readWhen(at), senderRole = senderRole,
-                        postmark = postmarkDate(at.date),
-                        captions = rows.mapNotNull { r -> r.caption?.takeIf { it.isNotBlank() }?.let { r.id to it } }.toMap(),
-                        thanked = thanked,
-                    ),
+                val mine = letter.authorId == me
+                val (my, partner) = names.first()
+                val at = letter.visibleAt.toLocalDateTime(SEOUL)
+                val senderRole = roleOf(letter.authorId, roles.first())
+                if (!mine && letter.visibleAt > clock.now()) {
+                    val stamp = stampText(discharge.first(), at.date)
+                    if (requestId != openRequestId) return@launch
+                    openingLetterId = null
+                    // 아직 못 여는 예약 편지: 봉투와 열리는 때만. 글 · 그림 · 사진은 열린 뒤에 읽는다.
+                    ui.update {
+                        it.copy(
+                            open = OpenLetter(
+                                letter, mine, meta = "", drawings = emptyMap(), firstView = emptySet(),
+                                title = readTitle(false, partner), subtitle = "예약 편지", senderRole = senderRole,
+                                locked = true, opensAt = at,
+                                envelopeLine = letter.firstLine(), envelopeMeta = "$partner · ${opensAt(at)} 도착",
+                                stamp = stamp,
+                            ),
+                        )
+                    }
+                    return@launch
+                }
+                val rows = letters.drawingsOf(letterId)
+                val docs = rows.mapNotNull { row -> row.docAttachmentId?.let { decode(it) }?.let { row.id to it } }.toMap()
+                val first = rows.filter { !mine && it.replayEnabled && letters.isFirstView(it.id) }.map { it.id }.toSet()
+                val photos = letter.blocks.filterIsInstance<LetterBlock.Photo>().mapNotNull { b -> attachments.read(b.attachmentId)?.let { b.attachmentId to it } }.toMap()
+                val thanked = !mine && letters.thanked(letterId)
+                val meta = (if (mine) my else partner) + " · ${at.short()} (${weekday(at.date)})"
+                val drawingOnly = !letter.hasText && letter.drawingCount == 1
+                if (requestId != openRequestId) return@launch
+                openingLetterId = null
+                val opened = OpenLetter(
+                    letter, mine,
+                    drawingOnly = drawingOnly,
+                    drawingTitle = if (mine) "내가 그린 그림" else "${partner.withSubject()} 그린 그림",
+                    sentAt = "${at.month.ordinal + 1}월 ${at.day}일 ${at.hour.toString().padStart(2, '0')}:${at.minute.toString().padStart(2, '0')}",
+                    meta = meta, drawings = docs, firstView = first, photos = photos,
+                    title = readTitle(mine, partner), subtitle = readWhen(at), senderRole = senderRole,
+                    postmark = postmarkDate(at.date),
+                    captions = rows.mapNotNull { r -> r.caption?.takeIf { it.isNotBlank() }?.let { r.id to it } }.toMap(),
+                    thanked = thanked,
                 )
+                ui.update { it.copy(open = opened) }
+                if (!mine) recordView(ReceiptEntity.LETTER, letterId, "읽음 표시를 저장하지 못했어요") { ui.value.open?.viewSessionId == opened.viewSessionId }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (requestId == openRequestId) {
+                    openingLetterId = null
+                    toast("편지를 불러오지 못했어요", kind = LetterToast.Kind.ERROR)
+                }
             }
-            if (!mine) letters.markRead(ReceiptEntity.LETTER, letterId)
+        }
+    }
+
+    private suspend fun recordView(entity: ReceiptEntity, id: String, failureMessage: String, isCurrent: () -> Boolean = { true }) {
+        try {
+            recordReceipt(entity, id)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (isCurrent()) toast(failureMessage, kind = LetterToast.Kind.ERROR)
         }
     }
 

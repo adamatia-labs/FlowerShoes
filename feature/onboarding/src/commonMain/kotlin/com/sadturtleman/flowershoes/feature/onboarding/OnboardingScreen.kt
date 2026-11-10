@@ -12,17 +12,22 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -43,9 +49,11 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role as A11y
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadturtleman.flowershoes.core.auth.AuthProvider
 import com.sadturtleman.flowershoes.core.designsystem.KkBanner
@@ -59,6 +67,7 @@ import com.sadturtleman.flowershoes.core.designsystem.KkIcon
 import com.sadturtleman.flowershoes.core.designsystem.KkIcons
 import com.sadturtleman.flowershoes.core.designsystem.KkInput
 import com.sadturtleman.flowershoes.core.designsystem.KkLogoMark
+import com.sadturtleman.flowershoes.core.designsystem.KkTape
 import com.sadturtleman.flowershoes.core.designsystem.KkPrimaryButton
 import com.sadturtleman.flowershoes.core.designsystem.KkRadio
 import com.sadturtleman.flowershoes.core.designsystem.KkRadius
@@ -162,14 +171,24 @@ fun OnboardingScreen(
         return
     }
     var sheet by remember { mutableStateOf<ServiceSheet?>(null) }
-    Box(Modifier.fillMaxSize().background(c.canvas)) {
+    val loginFooterScroll = rememberScrollState()
+    LaunchedEffect(state.step, state.error) {
+        if (state.step == OnboardingStep.LOGIN && state.error != null) {
+            // 오류가 버튼 아래 화면 밖에 있으면 먼저 보이도록 이동한다.
+            withFrameNanos { }
+            loginFooterScroll.scrollTo(loginFooterScroll.maxValue)
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().background(c.canvas)) {
+        val loginFooterMaxHeight = minOf(380.dp, maxHeight * 0.65f)
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             // Content: 좌우 20 · 위아래 16, 사이 16. 로그인만 가운데 정렬.
             Column(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .then(if (state.step == OnboardingStep.LOGIN) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .then(if (state.step == OnboardingStep.LOGIN) Modifier.testTag("login-content") else Modifier)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = KkSpacing.xl, vertical = KkSpacing.lg),
                 verticalArrangement = if (state.step == OnboardingStep.LOGIN) {
                     Arrangement.spacedBy(KkSpacing.lg, Alignment.CenterVertically)
@@ -198,13 +217,15 @@ fun OnboardingScreen(
             }
             // Footer: 위 24 · 좌우 20 · 아래 34(홈 인디케이터는 navigationBarsPadding 이 더한다).
             Column(
-                Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(KkSpacing.sm),
+                Modifier.fillMaxWidth().padding(start = KkSpacing.xl, end = KkSpacing.xl, top = KkSpacing.xxl, bottom = 14.dp)
+                    .then(if (state.step == OnboardingStep.LOGIN) Modifier.heightIn(max = loginFooterMaxHeight).testTag("login-footer").verticalScroll(loginFooterScroll) else Modifier),
+                verticalArrangement = Arrangement.spacedBy(if (state.step == OnboardingStep.LOGIN) KkSpacing.md else KkSpacing.sm),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 when (state.step) {
                     OnboardingStep.LOGIN -> {
                         state.providers.forEach { p ->
-                            KkSocialButton(p.social(), onClick = { onIntent(OnboardingIntent.SignIn(p)) }, enabled = !state.signingIn)
+                            KkSocialButton(p.social(), onClick = { onIntent(OnboardingIntent.SignIn(p)) }, modifier = Modifier.widthIn(max = 312.dp), enabled = !state.signingIn)
                         }
                         state.error?.let { Text(it, style = KkTheme.type.caption, color = c.danger) }
                     }
@@ -237,9 +258,24 @@ private fun AuthProvider.social() = when (this) {
 @Composable
 private fun LoginContent() {
     val c = KkTheme.colors
-    KkLogoMark()
-    Text("꽃신", style = KkTheme.type.title, color = c.accent)
-    Text("편지로 이어지는 우리 둘만의 달력", style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
+    val shape = RoundedCornerShape(KkRadius.sm)
+    Box(Modifier.widthIn(max = 312.dp).fillMaxWidth().padding(top = 48.dp)) {
+        Column(
+            Modifier.align(Alignment.Center).widthIn(max = 272.dp).fillMaxWidth().rotate(2f)
+                .testTag("login-paper").kkElevation(KkElevation.Mid, shape).clip(shape).background(c.surface)
+                .heightIn(min = 250.dp).padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 20.dp),
+        ) {
+            Text("꽃신", style = KkTheme.type.ddayM, color = c.ink, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
+            Spacer(Modifier.height(6.dp))
+            Text("편지로 이어지는\n우리 둘만의 달력", style = KkTheme.type.handL.copy(lineHeight = 29.sp), color = c.sub, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
+            Spacer(Modifier.height(27.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(c.line))
+        }
+        KkTape(Modifier.align(Alignment.TopCenter).offset(y = (-12).dp).rotate(-4f))
+        KkIcon(KkIcons.Sprig, tint = c.plant, size = 72.dp, modifier = Modifier.align(Alignment.TopEnd).offset(x = (-10).dp, y = (-60).dp))
+    }
 }
 
 // ── 온보딩 0-1 · 약관 동의 ──

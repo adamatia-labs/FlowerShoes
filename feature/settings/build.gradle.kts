@@ -37,6 +37,10 @@ kotlin {
             implementation(kotlin("test"))
             // 설정 견본 그림(4개 모드 · 글자 200%).
             implementation(compose.desktop.currentOs)
+            implementation(compose.desktop.uiTestJUnit4)
+            implementation(project(":core:database"))
+            implementation(libs.androidx.datastore.preferences.core)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }
