@@ -89,6 +89,13 @@ class WidgetRefreshTest {
                 val initial = WidgetSnapshot(theme = "GOMSIN", drawingId = "contrast-drawing", drawingPngPath = image.absolutePath,
                     drawingLetterId = "contrast-letter", drawingCaption = "그림 제목", drawingMeta = "준비", updatedAtMs = System.currentTimeMillis())
                 withWidget(initial, DrawingWidgetReceiver::class.java, size) { view ->
+                    // Cold Glance startup on the emulator can outlast an active-session update.
+                    awaitText(view, "준비", timeoutMs = 60_000)
+                    instrumentation.runOnMainSync {
+                        val px = (size * context.resources.displayMetrics.density).toInt()
+                        val spec = View.MeasureSpec.makeMeasureSpec(px, View.MeasureSpec.EXACTLY)
+                        view.measure(spec, spec); view.layout(0, 0, px, px)
+                    }
                     for (theme in listOf("GOMSIN", "SOLDIER")) for ((frame, background) in frames) {
                         val label = "$theme $frame"
                         snapshotStore(context).write(initial.copy(theme = theme, widgetFrame = frame, drawingMeta = label))
@@ -173,9 +180,9 @@ class WidgetRefreshTest {
         }
     }
 
-    private suspend fun awaitText(view: AppWidgetHostView, expected: String) {
+    private suspend fun awaitText(view: AppWidgetHostView, expected: String, timeoutMs: Long = 15_000) {
         var last = emptyList<String>()
-        val found = kotlinx.coroutines.withTimeoutOrNull(15_000) {
+        val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
             while (true) {
                 instrumentation.runOnMainSync { last = texts(view) }
                 if (expected in last) return@withTimeoutOrNull true
