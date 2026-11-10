@@ -93,6 +93,8 @@ class RelationshipArchiveTest {
         a.cover.choose(BookCover.entries.first())
         a.missYou.send(); b.missYou.send()
         a.status.set("AB private", 1); b.status.set("B private", 2)
+        a.profile.saveService(Service("b", Branch.ARMY, LocalDate(2025, 1, 1), 1))
+        a.profile.saveService(Service(PENDING_SOLDIER, Branch.NAVY, LocalDate(2025, 2, 1), 1))
         exchange(a, b)
         b.letters.markRead(ReceiptEntity.LETTER, letter.id); exchange(b, a)
         val oldCouple = a.db.coupleDao().get()!!.id
@@ -101,6 +103,8 @@ class RelationshipArchiveTest {
         val newLetter = a.letters.newLetter(listOf(LetterBlock.Text("for C")))
         a.letters.send(newLetter, emptyList())
         a.missYou.send(); a.status.set("for C", 3)
+        val freshService = Service(PENDING_SOLDIER, Branch.AIR_FORCE, LocalDate(2026, 10, 1), 1)
+        a.profile.saveService(freshService)
         link(a, c)
         a.profile.setAnniversary(LocalDate(2026, 10, 1))
         a.cover.choose(BookCover.entries.last())
@@ -123,6 +127,11 @@ class RelationshipArchiveTest {
         assertEquals(BookCover.entries.last(), c.cover.observe().first())
         assertEquals(1, c.db.missYouDao().all().size)
         assertEquals(listOf("for C"), c.db.statusDao().all().map { it.label })
+        assertNull(c.db.serviceDao().get("b"))
+        assertEquals(freshService.branch.name, c.db.serviceDao().get("c")?.branch)
+        assertEquals(setOf("c"), c.db.serviceDao().all().map { it.userId }.toSet())
+        assertNotNull(a.db.serviceDao().get("b"))
+        assertNotNull(a.db.serviceDao().get("archived:$oldCouple:$PENDING_SOLDIER"))
         assertEquals(TransferCounts(letters = 1, events = 2), a.db.transferCounts())
 
         assertFailsWith<IllegalStateException> { a.letters.send(letter, emptyList()) }
