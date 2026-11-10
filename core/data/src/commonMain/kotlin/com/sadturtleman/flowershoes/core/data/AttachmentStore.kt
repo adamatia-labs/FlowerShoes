@@ -13,6 +13,7 @@ import okio.Path.Companion.toPath
 import okio.HashingSource
 import okio.blackholeSink
 import okio.buffer
+import okio.use
 
 /** 이미 쓰인 식별자는 내용과 종류가 바뀔 수 없다. 호출자는 충돌한 기록을 수신하지 않는다. */
 class AttachmentConflictException : IllegalStateException("기존 첨부와 내용이 달라 받을 수 없어요")
