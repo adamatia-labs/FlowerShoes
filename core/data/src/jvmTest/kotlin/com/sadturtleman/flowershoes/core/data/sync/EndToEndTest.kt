@@ -100,6 +100,89 @@ class EndToEndTest {
     }
 
     @Test
+    fun `첨부 충돌 편지는 잘못된 사진으로 표시하지 않고 뒤의 정상 편지는 받는다`() = runTest {
+        verifyAttachmentCollision("letter")
+    }
+
+    @Test
+    fun `일정도 이미 있는 첨부와 다른 내용을 검증해 잘못된 사진 연결을 거부한다`() = runTest {
+        verifyAttachmentCollision("event")
+    }
+
+    @Test
+    fun `스냅샷의 첨부 충돌 한 건이 나머지 정상 기록을 막지 않는다`() = runTest {
+        verifyAttachmentCollision("snapshot")
+    }
+
+    private suspend fun verifyAttachmentCollision(kind: String) {
+        link()
+        val original = "original photo".encodeToByteArray()
+        minjun.attachments.putWithId("same-photo", AttachmentKind.PHOTO, original)
+        val metadata = minjun.db.attachmentDao().get("same-photo")
+        val couple = jisu.db.coupleDao().get()!!.id
+        val key = Sodium.random(com.sadturtleman.flowershoes.core.crypto.Aead.KEY_BYTES)
+        cloud.put(couple, "collision-blob", com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, "different photo".encodeToByteArray()))
+        val photo = PhotoRef("same-photo", "collision-blob", key.toByteString().base64())
+        val bad = jisu.letters.newLetter(listOf(LetterBlock.Photo("same-photo")))
+        val good = jisu.letters.newLetter(listOf(LetterBlock.Text("정상 기록")))
+        val badLetter = OpPayload.LetterPut(bad, photos = listOf(photo))
+        val goodLetter = OpPayload.LetterPut(good)
+        val payload = when (kind) {
+            "event" -> OpPayload.EventPut(com.sadturtleman.flowershoes.core.model.Event(
+                id = "collision-event", type = com.sadturtleman.flowershoes.core.model.EventType.VISIT, title = "면회",
+                start = kotlinx.datetime.LocalDateTime(2026, 11, 11, 10, 0), end = kotlinx.datetime.LocalDateTime(2026, 11, 11, 12, 0),
+                alarm = false, updatedAt = kotlin.time.Clock.System.now(), lamport = 1, lastWriterDevice = "dev-a", photoIds = listOf("same-photo"),
+            ), listOf(photo))
+            "snapshot" -> OpPayload.Snapshot(0, listOf(badLetter, goodLetter))
+            else -> badLetter
+        }
+        suspend fun deliver(seq: Long, body: OpPayload) {
+            val opId = Uuid.random().toString()
+            val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(opId, "dev-a:app", seq, 1)
+            val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(header, Plain(seq, OpCodec.encode(body)).encode(), jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!)
+            cloud.put(couple, "dev-b", MailItem(opId, kind, "dev-a", header.toBytes(), env.ciphertext, env.signature))
+        }
+        deliver(1, payload)
+        if (kind != "snapshot") deliver(2, goodLetter)
+        minjun.sync.syncOnce()
+        assertContentEquals(original, minjun.attachments.read("same-photo"))
+        assertEquals(metadata, minjun.db.attachmentDao().get("same-photo"))
+        assertNull(minjun.db.letterDao().get(bad.id))
+        assertNull(minjun.db.eventDao().get("collision-event"))
+        assertNotNull(minjun.db.letterDao().get(good.id))
+        val through = if (kind == "snapshot") 1L else 2L
+        assertEquals(through, minjun.db.syncDao().cursor("dev-a:app"), "확정 충돌을 계속 재요청하면 정상 기록의 ACK도 막힌다")
+        // 서버 blob의 보존 기간이 끝나도 충돌이 사라졌다고 간주하면 안 된다.
+        cloud.delete(couple, "collision-blob")
+        deliver(through + 1, payload)
+        val restarted = SyncClient(minjun.db, minjun.identity, minjun.vault, cloud, cloud, minjun.attachments, InboxApplier(minjun.db), minjun.writer)
+        restarted.syncOnce()
+        assertNull(minjun.db.letterDao().get(bad.id))
+        assertNull(minjun.db.eventDao().get("collision-event"))
+        assertContentEquals(original, minjun.attachments.read("same-photo"))
+        fun resent(p: OpPayload): OpPayload = when (p) {
+            is OpPayload.LetterPut -> p.copy(photos = p.photos.map { it.copy(blobId = "new-expired-blob") })
+            is OpPayload.EventPut -> p.copy(photos = p.photos.map { it.copy(blobId = "new-expired-blob") })
+            is OpPayload.Snapshot -> p.copy(items = p.items.map(::resent))
+            else -> p
+        }
+        // 실제 재전송은 매번 새 blob ID를 만들므로 이전 blob ID만 기억해서는 부족하다.
+        deliver(through + 2, resent(payload))
+        restarted.syncOnce()
+        assertNull(minjun.db.letterDao().get(bad.id))
+        assertNull(minjun.db.eventDao().get("collision-event"))
+        assertEquals(through + 2, minjun.db.syncDao().cursor("dev-a:app"))
+        if (payload is OpPayload.EventPut) {
+            // 새 버전의 올바른 일정 수정까지 영구히 막지는 않는다.
+            cloud.put(couple, "corrected-blob", com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, original))
+            deliver(through + 3, payload.copy(event = payload.event.copy(lamport = 2), photos = listOf(photo.copy(blobId = "corrected-blob"))))
+            restarted.syncOnce()
+            assertEquals(2L, minjun.db.eventDao().get("collision-event")?.lamport)
+            assertContentEquals(original, minjun.attachments.read("same-photo"))
+        }
+    }
+
+    @Test
     fun `첨부 수신 취소는 우편함을 지우지 않고 호출자에게 전달한다`() = runTest {
         link()
         val couple = jisu.db.coupleDao().get()!!

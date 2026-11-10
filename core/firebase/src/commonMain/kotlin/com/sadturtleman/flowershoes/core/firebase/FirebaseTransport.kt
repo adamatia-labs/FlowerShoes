@@ -12,6 +12,7 @@ import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
 import dev.gitlive.firebase.firestore.FirebaseFirestore
 import dev.gitlive.firebase.firestore.Timestamp
+import dev.gitlive.firebase.firestore.Source
 import dev.gitlive.firebase.firestore.firestore
 import dev.gitlive.firebase.storage.storage
 import kotlin.io.encoding.Base64
@@ -168,7 +169,7 @@ class FirestoreTransport(
     }
 
     override suspend fun invite(token: String): Invite? {
-        val snap = pairing(token).get()
+        val snap = pairing(token).get(Source.SERVER)
         if (!snap.exists) return null
         val d = runCatching { snap.data(InviteDoc.serializer()) }.getOrNull() ?: return null
         val keys = Pairing.PublicKeys.decode(d.pubKey) ?: return null
@@ -176,7 +177,21 @@ class FirestoreTransport(
     }
 
     override suspend fun accept(token: String, uid: String, deviceId: String, keys: Pairing.PublicKeys) {
-        pairing(token).collection("steps").document("accept").set(AcceptDoc(uid, deviceId, keys.encode()))
+        val target = pairing(token).collection("steps").document("accept")
+        val request = AcceptDoc(uid, deviceId, keys.encode())
+        try {
+            target.set(request)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            // create 응답 유실 후 재전송은 update 거부가 된다. 서버의 동일 수락 문서를 확인한 경우만 성공으로 취급한다.
+            val existing = try {
+                target.get(Source.SERVER).takeIf { it.exists }?.data(AcceptDoc.serializer())
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) { null }
+            if (existing != request) throw failure
+        }
     }
 
     /**
@@ -189,7 +204,7 @@ class FirestoreTransport(
     }
 
     override suspend fun linkedCoupleId(token: String, myUid: String): String? {
-        val snap = db.collection("users").document(myUid).get()
+        val snap = db.collection("users").document(myUid).get(Source.SERVER)
         if (!snap.exists) return null
         // 이 토큰으로 생긴 커플일 때만(다시 연결하면 coupleId 가 잠깐 옛 커플을 가리킨다).
         if (snap.get<String?>("linkedVia") != token) return null
@@ -197,7 +212,7 @@ class FirestoreTransport(
     }
 
     override suspend fun partnerDevice(coupleId: String, myUid: String): LinkedDevice? {
-        val docs = db.collection("couples").document(coupleId).collection("devices").get().documents
+        val docs = db.collection("couples").document(coupleId).collection("devices").get(Source.SERVER).documents
         val d = docs.firstOrNull { it.get<String?>("uid") != myUid && it.get<Boolean?>("active") == true } ?: return null
         return LinkedDevice(d.get("uid"), d.id, Pairing.PublicKeys(d.get<String>("signPub").unb64(), d.get<String>("boxPub").unb64()))
     }
