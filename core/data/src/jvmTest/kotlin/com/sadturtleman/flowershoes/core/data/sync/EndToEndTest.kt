@@ -150,14 +150,36 @@ class EndToEndTest {
         assertNull(minjun.db.letterDao().get(bad.id))
         assertNull(minjun.db.eventDao().get("collision-event"))
         assertNotNull(minjun.db.letterDao().get(good.id))
+        val through = if (kind == "snapshot") 1L else 2L
+        assertEquals(through, minjun.db.syncDao().cursor("dev-a:app"), "확정 충돌을 계속 재요청하면 정상 기록의 ACK도 막힌다")
         // 서버 blob의 보존 기간이 끝나도 충돌이 사라졌다고 간주하면 안 된다.
         cloud.delete(couple, "collision-blob")
-        deliver(3, payload)
+        deliver(through + 1, payload)
         val restarted = SyncClient(minjun.db, minjun.identity, minjun.vault, cloud, cloud, minjun.attachments, InboxApplier(minjun.db), minjun.writer)
         restarted.syncOnce()
         assertNull(minjun.db.letterDao().get(bad.id))
         assertNull(minjun.db.eventDao().get("collision-event"))
         assertContentEquals(original, minjun.attachments.read("same-photo"))
+        fun resent(p: OpPayload): OpPayload = when (p) {
+            is OpPayload.LetterPut -> p.copy(photos = p.photos.map { it.copy(blobId = "new-expired-blob") })
+            is OpPayload.EventPut -> p.copy(photos = p.photos.map { it.copy(blobId = "new-expired-blob") })
+            is OpPayload.Snapshot -> p.copy(items = p.items.map(::resent))
+            else -> p
+        }
+        // 실제 재전송은 매번 새 blob ID를 만들므로 이전 blob ID만 기억해서는 부족하다.
+        deliver(through + 2, resent(payload))
+        restarted.syncOnce()
+        assertNull(minjun.db.letterDao().get(bad.id))
+        assertNull(minjun.db.eventDao().get("collision-event"))
+        assertEquals(through + 2, minjun.db.syncDao().cursor("dev-a:app"))
+        if (payload is OpPayload.EventPut) {
+            // 새 버전의 올바른 일정 수정까지 영구히 막지는 않는다.
+            cloud.put(couple, "corrected-blob", com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, original))
+            deliver(through + 3, payload.copy(event = payload.event.copy(lamport = 2), photos = listOf(photo.copy(blobId = "corrected-blob"))))
+            restarted.syncOnce()
+            assertEquals(2L, minjun.db.eventDao().get("collision-event")?.lamport)
+            assertContentEquals(original, minjun.attachments.read("same-photo"))
+        }
     }
 
     @Test
