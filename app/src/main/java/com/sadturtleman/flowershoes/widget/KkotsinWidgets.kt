@@ -124,6 +124,13 @@ private class WidgetPalette(s: WidgetSnapshot?) {
     /** 상대가 고른 상태 색(콘텐츠). 없으면 보조 글자 색. */
     fun status(argb: Long?) = argb?.takeIf { it != 0L }?.let(::fixed) ?: sub
 
+    /** 고정 프레임 위의 글자는 프레임 밝기를 따른다. 태그 내부 글자는 기존 테마 ink를 쓴다. */
+    fun frameText(frame: String?, secondary: Boolean = false): ColorProvider = when (frame) {
+        "NIGHT" -> ColorProvider(dark.ink, dark.ink)
+        "BLOSSOM", "KRAFT", "POLAROID" -> ColorProvider(light.ink, light.ink)
+        else -> if (secondary) sub else ink
+    }
+
     /** 그림 프레임 바탕 + (옆, 아래) 여백. 기본은 null — 테마 표면을 쓴다. */
     fun frame(frame: String?) = when (frame) {
         "BLOSSOM" -> fixed(0xFFFFF4F5) to (14.dp to 14.dp)
@@ -492,7 +499,7 @@ class DrawingWidget : GlanceAppWidget() {
                         .padding(start = pad.first, end = pad.first, top = pad.first, bottom = pad.second).clickable(open),
                 ) {
                     when {
-                        bitmap == null -> Caption("받은 그림", p.sub)
+                        bitmap == null -> Caption("받은 그림", p.frameText(s?.widgetFrame, secondary = true))
                         LocalSize.current.width >= MEDIUM.width -> DrawingMedium(p, s, bitmap)
                         else -> DrawingSmall(p, s, bitmap)
                     }
@@ -517,9 +524,9 @@ private fun DrawingSmall(p: WidgetPalette, s: WidgetSnapshot?, bitmap: Bitmap) {
         TapedDrawing(p, bitmap, GlanceModifier.fillMaxWidth().defaultWeight())
         Spacer(GlanceModifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(ImageProvider(R.drawable.widget_ic_play), contentDescription = null, modifier = GlanceModifier.size(10.dp), colorFilter = ColorFilter.tint(p.sub))
+            Image(ImageProvider(R.drawable.widget_ic_play), contentDescription = null, modifier = GlanceModifier.size(10.dp), colorFilter = ColorFilter.tint(p.frameText(s?.widgetFrame, secondary = true)))
             Spacer(GlanceModifier.width(4.dp))
-            Caption(s?.drawingMeta.orEmpty(), p.sub)
+            Caption(s?.drawingMeta.orEmpty(), p.frameText(s?.widgetFrame, secondary = true))
         }
     }
 }
@@ -530,9 +537,9 @@ private fun DrawingMedium(p: WidgetPalette, s: WidgetSnapshot?, bitmap: Bitmap) 
         TapedDrawing(p, bitmap, GlanceModifier.width(130.dp).fillMaxHeight())
         Spacer(GlanceModifier.width(16.dp))
         Column(GlanceModifier.defaultWeight().fillMaxHeight()) {
-            s?.drawingCaption?.let { Text(it, style = WidgetType.hand(p.ink), maxLines = 2) }
+            s?.drawingCaption?.let { Text(it, style = WidgetType.hand(p.frameText(s.widgetFrame)), maxLines = 2) }
             Spacer(GlanceModifier.height(6.dp))
-            Caption(s?.drawingMeta.orEmpty(), p.sub)
+            Caption(s?.drawingMeta.orEmpty(), p.frameText(s?.widgetFrame, secondary = true))
             Spacer(GlanceModifier.defaultWeight())
             Row(
                 GlanceModifier.cornerRadius(999.dp).background(p.tag).padding(horizontal = 12.dp, vertical = 6.dp),
