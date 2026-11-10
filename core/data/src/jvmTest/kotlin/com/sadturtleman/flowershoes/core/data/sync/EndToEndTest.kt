@@ -9,8 +9,12 @@ import com.sadturtleman.flowershoes.core.data.LetterRepository
 import com.sadturtleman.flowershoes.core.data.MissYouRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.PENDING_SOLDIER
+import com.sadturtleman.flowershoes.core.data.OpCodec
+import com.sadturtleman.flowershoes.core.data.OpPayload
+import com.sadturtleman.flowershoes.core.data.PhotoRef
 import com.sadturtleman.flowershoes.core.data.SyncWriter
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import com.sadturtleman.flowershoes.core.database.RevokedDeviceEntity
 import com.sadturtleman.flowershoes.core.database.buildKkotsin
 import com.sadturtleman.flowershoes.core.database.inMemoryDatabaseBuilder
 import com.sadturtleman.flowershoes.core.model.AttachmentKind
@@ -20,9 +24,15 @@ import com.sadturtleman.flowershoes.core.model.ReceiptEntity
 import com.sadturtleman.flowershoes.core.model.Role
 import com.sadturtleman.flowershoes.core.model.Service
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import okio.FileSystem
+import okio.ByteString.Companion.toByteString
 import kotlin.uuid.Uuid
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -31,7 +41,9 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 /**
  * 두 폰 + 메모리 서버로 첫 연결부터 편지 · 그림 · 읽음 · 커서 · 바꿔치기 거부까지 끝까지 돌린다.
@@ -85,6 +97,134 @@ class EndToEndTest {
         jisu.sync.syncOnce()
         minjun.sync.syncOnce()
         jisu.sync.syncOnce()
+    }
+
+    @Test
+    fun `첨부 수신 취소는 우편함을 지우지 않고 호출자에게 전달한다`() = runTest {
+        link()
+        val couple = jisu.db.coupleDao().get()!!
+        val letter = jisu.letters.newLetter(listOf(LetterBlock.Photo("first"), LetterBlock.Photo("photo")))
+        val key = ByteArray(32)
+        val payload = OpPayload.LetterPut(letter, photos = listOf(
+            PhotoRef("first", "first-blob", key.toByteString().base64()),
+            PhotoRef("photo", "blob", key.toByteString().base64()),
+        ))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "dev-a:app", 1, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(
+            header, Plain(1, OpCodec.encode(payload)).encode(),
+            jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!,
+        )
+        val item = MailItem(id, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature)
+        cloud.put(couple.id, minjun.deviceId, item)
+        val firstPhoto = "먼저 받은 사진".encodeToByteArray()
+        cloud.put(couple.id, "first-blob", com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, firstPhoto))
+        val cancelledBlobs = object : BlobStore by cloud {
+            override suspend fun get(coupleId: String, blobId: String): ByteArray? =
+                if (blobId == "blob") throw CancellationException("test cancellation") else cloud.get(coupleId, blobId)
+        }
+        val receiver = SyncClient(minjun.db, minjun.identity, minjun.vault, cloud, cancelledBlobs, minjun.attachments, InboxApplier(minjun.db), minjun.writer)
+
+        assertFailsWith<CancellationException> { receiver.syncOnce() }
+        assertEquals(1, cloud.inboxSize(couple.id, minjun.deviceId))
+        assertNull(minjun.db.letterDao().get(letter.id))
+        assertContentEquals(firstPhoto, minjun.attachments.read("first"))
+        assertFailsWith<CancellationException> { receiver.receiveQueued(item) }
+        assertEquals(1, cloud.inboxSize(couple.id, minjun.deviceId))
+        val entered = CompletableDeferred<Unit>()
+        val slowBlobs = object : BlobStore by cloud {
+            override suspend fun get(coupleId: String, blobId: String): ByteArray? {
+                entered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        val slowReceiver = SyncClient(minjun.db, minjun.identity, minjun.vault, cloud, slowBlobs, minjun.attachments, InboxApplier(minjun.db), minjun.writer)
+        val job = async { slowReceiver.syncOnce() }
+        entered.await()
+        job.cancelAndJoin()
+        assertEquals(1, cloud.inboxSize(couple.id, minjun.deviceId))
+        val photo = "다시 받은 사진".encodeToByteArray()
+        cloud.put(couple.id, "blob", com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, photo))
+        minjun.sync.syncOnce()
+        assertNotNull(minjun.db.letterDao().get(letter.id))
+        assertContentEquals(firstPhoto, minjun.attachments.read("first"))
+        assertContentEquals(photo, minjun.attachments.read("photo"))
+        assertEquals(0, cloud.inboxSize(couple.id, minjun.deviceId))
+    }
+
+    @Test
+    fun `서명한 기기와 다른 스트림으로 폐기 검사를 우회하지 못한다`() = runTest {
+        link()
+        minjun.db.syncDao().addRevoked(RevokedDeviceEntity("dev-a", 0, """{"dev-a:app":0}"""))
+        val letter = jisu.letters.newLetter(listOf(LetterBlock.Text("차단해야 하는 편지")))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "other-device:app", 1, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(header, Plain(1, OpCodec.encode(OpPayload.LetterPut(letter))).encode(), jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!)
+        val item = MailItem(id, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature)
+        assertEquals(0, minjun.sync.receiveQueued(listOf(item)))
+        assertNull(minjun.db.letterDao().get(letter.id))
+        assertNull(minjun.db.syncDao().cursor("other-device:app"))
+    }
+
+    @Test
+    fun `상대가 아닌 내 기기의 메시지는 상대 메시지로 반영하지 않는다`() = runTest {
+        link()
+        val letter = minjun.letters.newLetter(listOf(LetterBlock.Text("내 기기")))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "dev-b:app", 1, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(header, Plain(1, OpCodec.encode(OpPayload.LetterPut(letter))).encode(), minjun.vault.currentCoupleKey()!!, minjun.vault.deviceKeys()!!)
+        assertEquals(0, minjun.sync.receiveQueued(listOf(MailItem(id, "letter", "dev-b", header.toBytes(), env.ciphertext, env.signature))))
+        assertNull(minjun.db.letterDao().get(letter.id))
+    }
+
+    @Test
+    fun `번호가 0인 메시지는 반영하지 않는다`() = runTest {
+        link()
+        val letter = jisu.letters.newLetter(listOf(LetterBlock.Text("잘못된 번호")))
+        val id = Uuid.random().toString()
+        val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(id, "dev-a:app", 0, 1)
+        val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(header, Plain(1, OpCodec.encode(OpPayload.LetterPut(letter))).encode(), jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!)
+        assertEquals(0, minjun.sync.receiveQueued(listOf(MailItem(id, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature))))
+        assertNull(minjun.db.letterDao().get(letter.id))
+    }
+
+    @Test
+    fun `경로를 벗어나는 첨부는 건너뛰고 뒤의 정상 편지는 계속 받는다`() = runTest {
+        link()
+        val couple = jisu.db.coupleDao().get()!!
+        val outside = root / "outside"
+        FileSystem.SYSTEM.createDirectories(root)
+        FileSystem.SYSTEM.write(outside) { writeUtf8("original") }
+        val key = Sodium.random(com.sadturtleman.flowershoes.core.crypto.Aead.KEY_BYTES)
+        val encrypted = com.sadturtleman.flowershoes.core.crypto.Aead.seal(key, "changed".encodeToByteArray())
+        cloud.put(couple.id, "blob-safe", encrypted)
+        cloud.put(couple.id, "../bad-blob", encrypted)
+        cloud.put(couple.id, "valid-blob", encrypted)
+        val bad = jisu.letters.newLetter(listOf(LetterBlock.Text("잘못된 첨부"), LetterBlock.Photo("../outside"), LetterBlock.Photo("safe-ref"), LetterBlock.Photo("valid-photo")))
+        val good = jisu.letters.newLetter(listOf(LetterBlock.Text("다음 편지")))
+        suspend fun deliver(seq: Long, payload: OpPayload) {
+            val opId = Uuid.random().toString()
+            val header = com.sadturtleman.flowershoes.core.crypto.OpHeader(opId, "dev-a:app", seq, 1)
+            val env = com.sadturtleman.flowershoes.core.crypto.OpEnvelope.seal(
+                header, Plain(seq, OpCodec.encode(payload)).encode(),
+                jisu.vault.currentCoupleKey()!!, jisu.vault.deviceKeys()!!,
+            )
+            cloud.put(couple.id, "dev-b", MailItem(opId, "letter", "dev-a", header.toBytes(), env.ciphertext, env.signature))
+        }
+        deliver(1, OpPayload.LetterPut(bad, photos = listOf(
+            PhotoRef("../outside", "blob-safe", key.toByteString().base64()),
+            PhotoRef("safe-ref", "../bad-blob", key.toByteString().base64()),
+            PhotoRef("valid-photo", "valid-blob", key.toByteString().base64()),
+        )))
+        deliver(2, OpPayload.LetterPut(good))
+        minjun.sync.syncOnce()
+        assertContentEquals("original".encodeToByteArray(), FileSystem.SYSTEM.read(outside) { readByteArray() })
+        assertNull(minjun.attachments.read("../outside"))
+        assertNull(minjun.attachments.read("safe-ref"))
+        assertContentEquals("changed".encodeToByteArray(), minjun.attachments.read("valid-photo"))
+        assertNotNull(minjun.db.letterDao().get(bad.id))
+        assertNotNull(minjun.db.letterDao().get(good.id))
+        assertEquals(2L, minjun.db.syncDao().cursors().first { it.stream == "dev-a:app" }.contiguousSeq)
     }
 
     private suspend fun widgetItem(seq: Long): MailItem {

@@ -49,7 +49,8 @@ class UnlinkService(
 ) {
     suspend fun unlink(after: AfterUnlink) {
         val couple = db.coupleDao().get() ?: return
-        transport?.unlinkCouple(couple.id)
+        val server = checkNotNull(transport) { "연결 해제 서버에 연결할 수 없어요" }
+        server.unlinkCouple(couple.id)
         cleanUp(after)
     }
 
@@ -60,9 +61,14 @@ class UnlinkService(
      * 카카오 연결 끊기 · Apple 토큰 폐기 포함) + 기기 키 삭제.
      */
     suspend fun deleteAccount() {
-        val result = checkNotNull(transport) { "탈퇴 서버에 연결할 수 없어요" }.deleteAccountWithOutcome()
-        val showAppleInstructions = result == AppleRevocation.MANUAL ||
-            (result in setOf(AppleRevocation.UNKNOWN, AppleRevocation.NOT_REQUIRED) && settings.accountProvider.first() == "APPLE")
+        // 서버 성공 뒤 로컬 정리가 중단돼도 삭제된 계정으로 서버를 다시 호출하지 않는다.
+        val showAppleInstructions = settings.pendingAccountCleanup.first() ?: run {
+            val result = checkNotNull(transport) { "탈퇴 서버에 연결할 수 없어요" }.deleteAccountWithOutcome()
+            val manual = result == AppleRevocation.MANUAL ||
+                (result in setOf(AppleRevocation.UNKNOWN, AppleRevocation.NOT_REQUIRED) && settings.accountProvider.first() == "APPLE")
+            settings.setPendingAccountCleanup(manual)
+            manual
+        }
         cleanUp(AfterUnlink.WIPE)
         db.useWriterConnection { tx -> tx.immediateTransaction { PROFILE_TABLES.forEach { t -> usePrepared("DELETE FROM $t") { it.step() } } } }
         vault.clearAll()

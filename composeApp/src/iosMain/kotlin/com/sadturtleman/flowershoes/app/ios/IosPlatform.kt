@@ -174,16 +174,25 @@ suspend fun mergeNseQueue(sync: SyncClient, root: Path = appGroupRoot(), fs: Fil
  */
 fun mirrorWidgetDrawing(store: com.sadturtleman.flowershoes.core.widget.SnapshotStore, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) {
     val snap = store.read() ?: return
-    val src = snap.drawingPngPath?.toPath() ?: return
-    if (src.toString().startsWith(root.toString())) return
     val dir = root / "widget"
-    val dst = dir / "drawing-${snap.drawingId ?: "latest"}.png"
+    val safe = com.sadturtleman.flowershoes.core.data.AttachmentStore
+    val drawingId = snap.drawingId?.takeIf { safe.isSafeId(it) } ?: run {
+        if (snap.drawingPngPath != null) store.write(snap.copy(drawingPngPath = null, drawingDocPath = null))
+        return
+    }
+    val existing = safe.safePath(dir, snap.drawingPngPath)
+    if (existing != null && existing.name.startsWith("drawing-") && existing.name.endsWith(".png")) return
+    val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)?.path ?: return
+    val attachments = (support + "/db/attachments").toPath()
+    val src = safe.safePath(attachments, snap.drawingPngPath) ?: run {
+        if (snap.drawingPngPath != null) store.write(snap.copy(drawingPngPath = null, drawingDocPath = null))
+        return
+    }
+    if (!fs.exists(src)) return
+    val actual = safe.safeExistingPath(attachments, src.toString(), fs) ?: return
     runCatching {
-        fs.createDirectories(dir)
-        if (!fs.exists(dst)) {
-            fs.list(dir).filter { it.name.startsWith("drawing-") && it != dst }.forEach { fs.delete(it) }
-            fs.copy(src, dst)
-        }
+        val dst = com.sadturtleman.flowershoes.core.widget.copyWidgetDrawing(fs, actual, dir, drawingId)
         store.write(snap.copy(drawingPngPath = dst.toString()))
+        fs.list(dir).filter { it.name.startsWith("drawing-") && it != dst }.forEach { fs.delete(it) }
     }
 }

@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,7 +48,11 @@ import com.sadturtleman.flowershoes.core.designsystem.kkElevation
 import com.sadturtleman.flowershoes.core.drawingui.ReplayCanvas
 import com.sadturtleman.flowershoes.core.drawingui.ReplayState
 import com.sadturtleman.flowershoes.core.drawingui.rememberReplayState
+import com.sadturtleman.flowershoes.core.drawingui.LocalDrawingPhotoLoader
+import com.sadturtleman.flowershoes.core.drawing.DrawingDocument
+import com.sadturtleman.flowershoes.core.drawing.PhotoBackground
 import com.sadturtleman.flowershoes.core.model.LetterBlock
+import org.jetbrains.compose.resources.decodeToImageBitmap
 
 /**
  * 그림 한 장 편지(Figma 받은 그림 / 재생 중 · 재생 끝): 그린 순서대로 다시 그리고, 아래 재생 줄로 멈추기 · 다시 보기.
@@ -67,14 +73,15 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
         )
         Box(Modifier.weight(1f).fillMaxWidth().background(c.surface).padding(KkSpacing.lg), contentAlignment = Alignment.Center) {
             if (doc == null || replay == null) {
-                Text("그림을 받는 중이에요", style = KkTheme.type.body, color = c.sub)
+                Text("그림을 불러오지 못했어요", style = KkTheme.type.body, color = c.sub)
             } else {
                 val shape = RoundedCornerShape(KkRadius.md)
                 Box(Modifier.fillMaxWidth().kkElevation(KkElevation.Low, shape).clip(shape).background(Color.White)) {
-                    ReplayCanvas(doc, replay, onFinished = { onIntent(LetterIntent.DrawingSeen(ref.drawingId)) })
+                    ReplayCanvas(doc, replay, onFinished = { onIntent(LetterIntent.DrawingSeen(open.letter.id, ref.drawingId, open.viewSessionId)) })
                 }
             }
         }
+        if (doc != null) DrawingPhotoNotice(doc, c.sub)
         if (replay != null) {
             ReplayBar(replay, Modifier.padding(start = 20.dp, end = 18.dp, top = KkSpacing.lg))
             if (replay.finished) {
@@ -109,6 +116,22 @@ fun DrawingLetterScreen(open: OpenLetter, onIntent: (LetterIntent) -> Unit, onRe
             else -> Box(Modifier.height(KkSpacing.xxxl))
         }
     }
+}
+
+/** 그림은 보여 주되 빠진 배경 사진을 사용자가 알 수 있게 한다. */
+@Composable
+internal fun DrawingPhotoNotice(doc: DrawingDocument, color: Color) {
+    val ids = doc.elements.filterIsInstance<PhotoBackground>().map { it.attachmentId }.distinct()
+    if (ids.isEmpty()) return
+    val load = LocalDrawingPhotoLoader.current
+    val missing by produceState(false, ids, load) {
+        value = ids.any { id ->
+            try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { load(id)?.decodeToImageBitmap() == null } }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { true }
+        }
+    }
+    if (missing) Text("그림의 배경 사진을 불러오지 못했어요", style = KkTheme.type.body, color = color, modifier = Modifier.padding(KkSpacing.md))
 }
 
 /** 재생 줄(Figma replay): 멈추기 · 이어 보기 · 다시(24) + 4pt 진행 줄과 14pt 손잡이 + 시간. */

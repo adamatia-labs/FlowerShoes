@@ -24,6 +24,9 @@ kotlin {
     }
 
     sourceSets {
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         commonMain.dependencies {
             implementation(project(":core:drawing-engine"))
             api(project(":core:model"))
@@ -36,6 +39,7 @@ kotlin {
             implementation(libs.androidx.sqlite.bundled)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.libsodium.bindings)
             // 이 기기에만 저장하는 설정(테마 · 온보딩 진행 · 로컬 신원). 동기화하지 않는다.
             api(libs.androidx.datastore.preferences.core)
             api(libs.okio)

@@ -24,7 +24,7 @@ data class OpHeader(
         fun fromBytes(bytes: ByteArray): OpHeader {
             var pos = 0
             fun int(): Int {
-                if (pos + 4 > bytes.size) throw CryptoException("머리가 짧다")
+                if (bytes.size - pos < 4) throw CryptoException("머리가 짧다")
                 val v = (bytes[pos].toInt() and 0xFF shl 24) or (bytes[pos + 1].toInt() and 0xFF shl 16) or
                     (bytes[pos + 2].toInt() and 0xFF shl 8) or (bytes[pos + 3].toInt() and 0xFF)
                 pos += 4
@@ -32,7 +32,7 @@ data class OpHeader(
             }
             fun str(): String {
                 val n = int()
-                if (n < 0 || pos + n > bytes.size) throw CryptoException("머리 길이가 범위를 넘는다")
+                if (n < 0 || n > bytes.size - pos) throw CryptoException("머리 길이가 범위를 넘는다")
                 return bytes.decodeToString(pos, pos + n).also { pos += n }
             }
             val opId = str()

@@ -192,8 +192,8 @@ fun LetterInboxPanes(
         // 편지를 열면 편지함 장이 넘어가고, 닫으면 다시 덮인다.
         KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "inbox" }, isForward = { _, to -> to != null }) { open ->
             when {
-                open != null && open.drawingOnly -> DrawingLetterScreen(open, onIntent, onReplyDrawing)
-                open != null -> LetterReadScreen(open, onIntent, onReply, onReplyDrawing)
+                open != null && open.drawingOnly -> androidx.compose.runtime.key(open.viewSessionId) { DrawingLetterScreen(open, onIntent, onReplyDrawing) }
+                open != null -> androidx.compose.runtime.key(open.viewSessionId) { LetterReadScreen(open, onIntent, onReply, onReplyDrawing) }
                 else -> LetterInboxScreen(state, onIntent, onWriteLetter, onDraw, onOpenDrafts, onConnect)
             }
         }
@@ -210,8 +210,8 @@ fun LetterInboxPanes(
             KkPageFlip(state.open, pageKey = { it?.letter?.id ?: "none" }, isForward = { _, to -> to != null }) { open ->
                 when {
                     open == null -> Box(Modifier.fillMaxSize().background(c.canvas))
-                    open.drawingOnly -> DrawingLetterScreen(open, onIntent, onReplyDrawing)
-                    else -> LetterReadScreen(open, onIntent, onReply, onReplyDrawing, pane = true)
+                    open.drawingOnly -> androidx.compose.runtime.key(open.viewSessionId) { DrawingLetterScreen(open, onIntent, onReplyDrawing) }
+                    else -> androidx.compose.runtime.key(open.viewSessionId) { LetterReadScreen(open, onIntent, onReply, onReplyDrawing, pane = true) }
                 }
             }
         }
@@ -454,7 +454,7 @@ private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
                         val doc = open.drawings[block.drawingId]
                         Box(Modifier.fillMaxWidth().padding(vertical = KkSpacing.xl), contentAlignment = Alignment.Center) {
                             if (doc == null) {
-                                Text("그림을 받는 중이에요", style = KkTheme.type.body, color = look.ink, modifier = Modifier.padding(KkSpacing.xxl))
+                                Text("그림을 불러오지 못했어요", style = KkTheme.type.body, color = look.ink, modifier = Modifier.padding(KkSpacing.xxl))
                             } else {
                                 val replay = rememberReplayState(doc, autoPlay = block.drawingId in open.firstView)
                                 KkPolaroid(
@@ -462,10 +462,11 @@ private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
                                     onReplay = if (replay.playing) null else replay::restart,
                                 ) {
                                     // 그림 바탕은 그림 문서가 칠한다(콘텐츠).
-                                    ReplayCanvas(doc, replay, Modifier.fillMaxSize(), onFinished = { onIntent(LetterIntent.DrawingSeen(block.drawingId)) })
+                                    ReplayCanvas(doc, replay, Modifier.fillMaxSize(), onFinished = { onIntent(LetterIntent.DrawingSeen(open.letter.id, block.drawingId, open.viewSessionId)) })
                                 }
                             }
                         }
+                        if (doc != null) DrawingPhotoNotice(doc, look.ink)
                     }
                     is LetterBlock.Photo -> {
                         val bytes = open.photos[block.attachmentId]
@@ -475,7 +476,7 @@ private fun LetterSheet(open: OpenLetter, onIntent: (LetterIntent) -> Unit) {
                                 Image(bitmap, contentDescription = "사진", modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
                             } else {
                                 Box(Modifier.fillMaxWidth().height(160.dp).background(look.rule), contentAlignment = Alignment.Center) {
-                                    Text("사진을 받는 중이에요", style = KkTheme.type.body, color = look.ink)
+                                    Text("사진을 불러오지 못했어요", style = KkTheme.type.body, color = look.ink)
                                 }
                             }
                         }

@@ -193,6 +193,13 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         if (showAppleInstructions) it[FAREWELL_APPLE] = 1
     }
 
+    /** null: 서버 삭제 미확인, 그 외: 서버 삭제 완료 후 남은 로컬 정리와 Apple 안내 여부. */
+    val pendingAccountCleanup: Flow<Boolean?> = store.data.map { it[ACCOUNT_CLEANUP]?.let { value -> value == 1 } }
+
+    suspend fun setPendingAccountCleanup(showAppleInstructions: Boolean) = store.edit {
+        it[ACCOUNT_CLEANUP] = if (showAppleInstructions) 1 else 0
+    }
+
     /** 탈퇴 완료 화면("그동안 고마웠어요")을 아직 보이지 않았다. */
     val farewellPending: Flow<Boolean> = store.data.map { it[FAREWELL] == 1 }
 
@@ -201,6 +208,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     suspend fun setFarewellPending(on: Boolean) = store.edit { if (on) it[FAREWELL] = 1 else { it.remove(FAREWELL); it.remove(FAREWELL_APPLE) } }
 
     private companion object {
+        val ACCOUNT_CLEANUP = intPreferencesKey("pending_account_cleanup")
         val FAREWELL = intPreferencesKey("farewell_pending")
         val FAREWELL_APPLE = intPreferencesKey("farewell_apple_manual")
         val USER_ID = stringPreferencesKey("user_id")

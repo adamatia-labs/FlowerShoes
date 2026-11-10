@@ -354,8 +354,15 @@ export const onDeviceChangeAnswered = onDocumentCreated({ document: 'couples/{c}
     }
     const now = FieldValue.serverTimestamp();
     if (result === 'approve') {
-      const couple = (await tx.get(db.doc(`couples/${c}`))).data() as { members: Record<string, string> };
-      const oldDevice = couple.members[req.uid];
+      const couple = (await tx.get(db.doc(`couples/${c}`))).data() as { members?: Record<string, string> } | undefined;
+      const oldDevice = couple?.members?.[req.uid];
+      const target = (await tx.get(db.doc(`couples/${c}/devices/${req.newDeviceId}`))).data();
+      // 답이 작성된 뒤 현재 기기가 달라졌다면 서명된 cutoff는 더 이상 그 기기의 상태가 아니다.
+      if (!oldDevice || oldDevice !== req.oldDeviceId || !approver || couple?.members?.[approver.uid] !== answer.approverDeviceId ||
+          !target || target.uid !== req.uid || target.state !== 'pending' || target.active !== false) {
+        tx.update(ref, { status: 'cancelled', answeredAt: now });
+        return { result: 'ignore' as const, req };
+      }
       tx.update(db.doc(`couples/${c}/devices/${req.newDeviceId}`), { state: 'active', active: true });
       if (oldDevice && oldDevice !== req.newDeviceId) {
         tx.update(db.doc(`couples/${c}/devices/${oldDevice}`), { state: 'revoked', active: false, revokedAt: now, cutoff: answer.cutoff ?? {} });
