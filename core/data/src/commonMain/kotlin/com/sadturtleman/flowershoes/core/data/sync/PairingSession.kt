@@ -15,6 +15,7 @@ import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 
 /** 연결 화면이 그리는 상태(#15 결정 6). */
 sealed interface PairingState {
@@ -49,23 +50,67 @@ sealed interface PairingState {
 }
 
 /** 보낸 쪽이 만든 링크. 앱을 껐다 켜도 수락을 이어 받도록 이 기기에 둔다. */
-data class PendingInvite(val token: String, val expireAtMs: Long) {
+@kotlinx.serialization.Serializable
+data class PendingInvite(val token: String, val expireAtMs: Long, val ownerUid: String? = null, val deviceId: String? = null) {
     override fun toString() = "PendingInvite(token=[REDACTED], expireAtMs=$expireAtMs)"
 }
+
+/** 서버에 수락을 보내기 전에 저장한다. 비밀 키는 보관함에 두고 여기에는 공개키만 기록한다. */
+@kotlinx.serialization.Serializable
+data class PendingAcceptance(
+    val token: String,
+    val expireAtMs: Long,
+    val ownerUid: String,
+    val deviceId: String,
+    val inviterName: String,
+    val publicKeys: String,
+) {
+    override fun toString() = "PendingAcceptance(token=[REDACTED], owner=[REDACTED])"
+}
+
+/** 서버가 수락을 확정 거부한 경우만 사용한다. 네트워크 오류는 거부의 근거가 아니다. */
+class InviteRejectedException : IllegalStateException("이 초대 링크는 만료됐어요")
 
 interface PendingInviteStore {
     suspend fun load(): PendingInvite?
 
     suspend fun save(invite: PendingInvite?)
+
+    suspend fun loadAcceptance(uid: String, deviceId: String): PendingAcceptance?
+    suspend fun saveAcceptance(acceptance: PendingAcceptance)
+    suspend fun clearAcceptance(expected: PendingAcceptance)
+    suspend fun clearSent(uid: String, deviceId: String)
+
+    /** 설정 저장이 신원 캐시 갱신보다 먼저 끝난 경우도 거부한다. */
+    suspend fun isCurrentIdentity(uid: String, deviceId: String): Boolean = true
+
+    suspend fun withCurrentIdentity(uid: String, deviceId: String, block: suspend () -> Unit): Boolean {
+        if (!isCurrentIdentity(uid, deviceId)) return false
+        block()
+        return true
+    }
 }
 
 class InMemoryPendingInvite : PendingInviteStore {
     private var value: PendingInvite? = null
+    private val received = mutableMapOf<Pair<String, String>, PendingAcceptance>()
 
     override suspend fun load() = value
 
     override suspend fun save(invite: PendingInvite?) {
         value = invite
+    }
+
+    override suspend fun loadAcceptance(uid: String, deviceId: String) = received[uid to deviceId]
+    override suspend fun saveAcceptance(acceptance: PendingAcceptance) {
+        received[acceptance.ownerUid to acceptance.deviceId] = acceptance
+    }
+    override suspend fun clearAcceptance(expected: PendingAcceptance) {
+        val owner = expected.ownerUid to expected.deviceId
+        if (received[owner] == expected) received.remove(owner)
+    }
+    override suspend fun clearSent(uid: String, deviceId: String) {
+        if (value?.ownerUid == uid && value?.deviceId == deviceId) value = null
     }
 }
 
@@ -91,6 +136,20 @@ class PairingSession(
     /** 지금 다루는 링크. 보낸 쪽이면 [inviter]. */
     private var token: String? = null
     private var inviter = false
+    private var owner: Pair<String, String>? = null
+    private var accepting: PendingAcceptance? = null
+
+    private fun identityNow() = identity.userId to identity.deviceId
+    private suspend fun owns(expected: Pair<String, String>): Boolean =
+        identityNow() == expected && pending.isCurrentIdentity(expected.first, expected.second)
+
+    private fun resetSession(): PairingState {
+        token = null
+        owner = null
+        accepting = null
+        inviter = false
+        return set(PairingState.Idle)
+    }
 
     /** 지금 다루는 링크를 내가 보냈다. 연결되면 보낸 쪽만 연결 모달을 띄운다. */
     val isInviter: Boolean get() = inviter
@@ -105,14 +164,19 @@ class PairingSession(
      */
     suspend fun createLink(name: String? = null): PairingState {
         resumePending()?.let { if (it is PairingState.Linked) return it }
+        if (accepting != null) return state
         if (linkedLocally()) return set(PairingState.AlreadyLinked)
+        val creatingOwner = identityNow()
+        if (!owns(creatingOwner)) return resetSession()
         val keys = myKeys()
         val shownName = (name ?: db.userDao().get(identity.userId)?.nickname.orEmpty()).trim().take(MAX_NAME)
         val newToken = InviteToken.random()
         val expireAtMs = (clock.now() + INVITE_TTL).toEpochMilliseconds()
-        transport.createInvite(newToken, Invite(identity.userId, identity.deviceId, Pairing.PublicKeys.of(keys), shownName, expireAtMs))
-        pending.save(PendingInvite(newToken, expireAtMs))
+        transport.createInvite(newToken, Invite(creatingOwner.first, creatingOwner.second, Pairing.PublicKeys.of(keys), shownName, expireAtMs))
+        if (!owns(creatingOwner)) return resetSession()
+        pending.save(PendingInvite(newToken, expireAtMs, creatingOwner.first, creatingOwner.second))
         token = newToken
+        owner = creatingOwner
         inviter = true
         return set(PairingState.Waiting(newToken, expireAtMs))
     }
@@ -131,31 +195,70 @@ class PairingSession(
     suspend fun accept(input: String): PairingState {
         if (linkedLocally()) return set(PairingState.AlreadyLinked)
         if (!InviteToken.isValid(input)) return set(PairingState.Expired)
+        val acceptingOwner = identityNow()
+        if (!owns(acceptingOwner)) return resetSession()
+        pending.loadAcceptance(acceptingOwner.first, acceptingOwner.second)?.let { saved ->
+            restoreAcceptance(saved)
+            return poll()
+        }
         val invite = transport.invite(input)
             // 문서가 없다: 쓰였거나 만료. 내가 수락하고 끝내지 못한 링크면 마저 끝낸다.
             ?: return set(finishIfLinkedVia(input) ?: PairingState.Expired)
         // 자기 링크: 보낸 쪽 상태(기다리는 링크)는 그대로 둔다.
         if (invite.inviterUid == identity.userId) return set(PairingState.OwnLink(input))
         if (invite.expireAtMs <= clock.now().toEpochMilliseconds()) return set(PairingState.Expired)
-        token = input
-        inviter = false
+        if (!owns(acceptingOwner)) return resetSession()
+        val keys = myKeys()
+        val saved = PendingAcceptance(input, invite.expireAtMs, acceptingOwner.first, acceptingOwner.second, invite.name, Pairing.PublicKeys.of(keys).encode())
+        pending.saveAcceptance(saved)
+        restoreAcceptance(saved)
         // 이미 누가 수락했으면(규칙상 한 번만) 쓰기가 거절된다 — 내가 끝내지 못한 수락이 아니면 만료다.
-        runCatching { transport.accept(input, identity.userId, identity.deviceId, Pairing.PublicKeys.of(myKeys())) }
-            .onFailure { return set(finishIfLinkedVia(input) ?: PairingState.Expired) }
-        set(PairingState.Accepting(invite.name))
+        try {
+            transport.accept(input, acceptingOwner.first, acceptingOwner.second, Pairing.PublicKeys.of(keys))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (rejected: InviteRejectedException) {
+            if (!owns(acceptingOwner)) return resetSession()
+            finishIfLinkedVia(input)?.let { return set(it) }
+            pending.clearAcceptance(saved)
+            accepting = null
+            return set(PairingState.Expired)
+        } catch (_: Exception) {
+            // 요청은 서버에 도착했을 수 있다. 성공/만료로 단정하지 않고 저장된 요청을 다음 poll에서 확인한다.
+            if (!owns(acceptingOwner)) return resetSession()
+            return state
+        }
+        if (!owns(acceptingOwner)) return resetSession()
         return poll()
     }
 
     /** 서버가 커플을 만들었는지 본다. 보낸 쪽은 앱을 다시 켠 뒤 처음 부를 때 저장해 둔 링크를 이어 받는다. */
     suspend fun poll(): PairingState {
+        owner?.let { if (!owns(it)) resetSession() }
         if (token == null) return resumePending() ?: state
         return set(refresh())
     }
 
+    private fun restoreAcceptance(saved: PendingAcceptance) {
+        token = saved.token
+        owner = saved.ownerUid to saved.deviceId
+        accepting = saved
+        inviter = false
+        state = PairingState.Accepting(saved.inviterName)
+    }
+
     private suspend fun resumePending(): PairingState? {
         if (token != null) return null
+        val currentOwner = identityNow()
+        if (!owns(currentOwner)) return resetSession()
+        pending.loadAcceptance(currentOwner.first, currentOwner.second)?.let {
+            restoreAcceptance(it)
+            return set(refresh())
+        }
         val saved = pending.load() ?: return null
+        if (saved.ownerUid != currentOwner.first || saved.deviceId != currentOwner.second) return null
         token = saved.token
+        owner = currentOwner
         inviter = true
         state = PairingState.Waiting(saved.token, saved.expireAtMs)
         return set(refresh())
@@ -166,13 +269,41 @@ class PairingSession(
         val shown = state
         if (shown is PairingState.Linked) return shown
         finishIfLinkedVia(current)?.let { return it }
+        owner?.let { if (!owns(it)) return resetSession() }
         val invite = if (inviter || shown is PairingState.Accepting) transport.invite(current) else return shown
-        val gone = invite == null || invite.expireAtMs <= clock.now().toEpochMilliseconds()
-        if (!gone) return shown
+        owner?.let { if (!owns(it)) return resetSession() }
+        // 수락 요청은 만료 전에 서버가 승인하고 아직 커밋 중일 수 있다. 클라이언트 시계는 최종 거절 근거가 아니다.
+        val gone = invite == null || (accepting == null && invite.expireAtMs <= clock.now().toEpochMilliseconds())
+        if (!gone) {
+            accepting?.let { saved ->
+                val expected = saved.ownerUid to saved.deviceId
+                if (!owns(expected)) return resetSession()
+                val keys = checkNotNull(vault.deviceKeys()) { "수락한 기기의 키를 확인할 수 없어요" }
+                check(Pairing.PublicKeys.of(keys).encode() == saved.publicKeys) { "수락한 기기의 키를 확인할 수 없어요" }
+                // 저장 직후·요청 전 종료도 복구한다. 전송 계층은 같은 기기의 동일 요청을 멱등 처리한다.
+                try {
+                    transport.accept(saved.token, saved.ownerUid, saved.deviceId, Pairing.PublicKeys.of(keys))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: InviteRejectedException) {
+                    finishIfLinkedVia(current)?.let { return it }
+                    pending.clearAcceptance(saved)
+                    accepting = null
+                    return PairingState.Expired
+                } catch (_: Exception) {
+                    return shown
+                }
+                if (!owns(expected)) return resetSession()
+                finishIfLinkedVia(current)?.let { return it }
+            }
+            return shown
+        }
         // 함수는 커플을 만든 뒤 초대를 지운다 — 두 읽기 사이에 연결됐을 수 있어 한 번 더 본다.
         finishIfLinkedVia(current)?.let { return it }
         // 만료 · 새 링크로 무효 · 함수가 수락을 거절(그사이 다른 사람과 연결 등).
-        if (inviter) pending.save(null)
+        if (inviter) owner?.let { pending.clearSent(it.first, it.second) }
+        accepting?.let { pending.clearAcceptance(it) }
+        accepting = null
         return PairingState.Expired
     }
 
@@ -181,21 +312,30 @@ class PairingSession(
 
     /** 서버가 만든 커플에서 상대 기기 공개키를 읽어 커플 키(epoch 1)를 도출하고 커플 · 기기 행을 만든다. */
     private suspend fun finish(coupleId: String, inviteToken: String): PairingState? = db.relationshipMutex.withLock {
+        val expectedOwner = owner ?: identityNow()
+        if (!owns(expectedOwner)) return@withLock null
         val current = db.coupleDao().get()
         if (current?.partnerUserId?.isNotBlank() == true && current.id != coupleId) return@withLock null
         val partner = transport.partnerDevice(coupleId, identity.userId) ?: return@withLock null
-        val keys = myKeys()
-        vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, inviteToken))
-        val now = clock.now().toEpochMilliseconds()
-        db.useWriterConnection { tx -> tx.immediateTransaction {
-            RelationshipArchive(db).prepare()
-            db.coupleDao().clear()
-            db.coupleDao().upsert(CoupleEntity(coupleId, identity.userId, partner.uid, keyEpoch = 1, linkedAtMs = now))
-        } }
-        db.deviceDao().upsert(DeviceEntity(identity.deviceId, identity.userId, identity.userId, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
-        db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
+        if (!owns(expectedOwner)) return@withLock null
+        val applied = pending.withCurrentIdentity(expectedOwner.first, expectedOwner.second) {
+            val keys = if (accepting != null) checkNotNull(vault.deviceKeys()) { "수락한 기기의 키를 확인할 수 없어요" } else myKeys()
+            accepting?.let { check(Pairing.PublicKeys.of(keys).encode() == it.publicKeys) { "수락한 기기의 키를 확인할 수 없어요" } }
+            vault.putCoupleKey(Pairing.coupleKey(keys, partner.keys, inviteToken))
+            val now = clock.now().toEpochMilliseconds()
+            db.useWriterConnection { tx -> tx.immediateTransaction {
+                RelationshipArchive(db).prepare()
+                db.coupleDao().clear()
+                db.coupleDao().upsert(CoupleEntity(coupleId, expectedOwner.first, partner.uid, keyEpoch = 1, linkedAtMs = now))
+            } }
+            db.deviceDao().upsert(DeviceEntity(expectedOwner.second, expectedOwner.first, expectedOwner.first, keys.signPub, keys.boxPub, DeviceState.ACTIVE.name, now, null))
+            db.deviceDao().upsert(DeviceEntity(partner.deviceId, partner.uid, partner.uid, partner.keys.signPub, partner.keys.boxPub, DeviceState.ACTIVE.name, now, null))
+        }
+        if (!applied) return@withLock null
         // 연결됐으면 내가 보낸 링크도 끝났다(서버가 두 사람의 초대를 지운다).
-        pending.save(null)
+        pending.clearSent(expectedOwner.first, expectedOwner.second)
+        accepting?.let { pending.clearAcceptance(it) }
+        accepting = null
         return@withLock PairingState.Linked(coupleId)
     }
 

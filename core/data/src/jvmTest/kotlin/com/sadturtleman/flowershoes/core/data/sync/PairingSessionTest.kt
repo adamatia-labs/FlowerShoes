@@ -14,6 +14,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.assertIs
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
@@ -24,7 +26,7 @@ class PairingSessionTest {
     private val cloud = InMemoryCloud()
     private val phones = mutableListOf<Phone>()
 
-    private inner class Phone(val userId: String, val deviceId: String, clock: Clock = Clock.System) {
+    private inner class Phone(val userId: String, val deviceId: String, clock: Clock = Clock.System, private val transport: PairingTransport = cloud) {
         val db: AppDatabase = inMemoryDatabaseBuilder().buildKkotsin()
         val vault = InMemoryKeyVault()
         val pending = InMemoryPendingInvite()
@@ -33,10 +35,10 @@ class PairingSessionTest {
             override val deviceId = this@Phone.deviceId
             override val keyEpoch = 1
         }
-        val pairing = PairingSession(db, identity, vault, cloud, clock, pending)
+        val pairing = PairingSession(db, identity, vault, transport, clock, pending)
 
         /** 앱을 껐다 켠 것: 메모리 상태는 사라지고 기기 키 · DB · 보낸 링크 기록만 남는다. */
-        fun relaunch() = PairingSession(db, identity, vault, cloud, Clock.System, pending)
+        fun relaunch() = PairingSession(db, identity, vault, transport, Clock.System, pending)
 
         init {
             phones += this
@@ -77,6 +79,120 @@ class PairingSessionTest {
         assertEquals("지수", assertIs<PairingState.Accepting>(minjun.pairing.accept(token)).inviterName)
         cloud.releaseAccepts()
         assertIs<PairingState.Linked>(minjun.pairing.poll())
+    }
+
+    @Test
+    fun `받은 초대는 서버 처리 중 재시작해도 자동으로 수락을 이어받는다`() = runTest {
+        val sender = Phone("sender", "sender-device")
+        val receiver = Phone("receiver", "receiver-device")
+        val token = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람")).token
+        cloud.holdAccepts = true
+        assertIs<PairingState.Accepting>(receiver.pairing.accept(token))
+
+        val restarted = receiver.relaunch()
+        assertEquals("보낸 사람", assertIs<PairingState.Accepting>(restarted.poll()).inviterName)
+        assertFalse(restarted.isInviter)
+        cloud.releaseAccepts()
+        assertIs<PairingState.Linked>(restarted.poll())
+        assertIs<PairingState.Idle>(receiver.relaunch().poll())
+    }
+
+    @Test
+    fun `클라이언트 만료 시각이 지나도 처리 중인 수락은 서버 확인까지 보존한다`() = runTest {
+        var now = Clock.System.now()
+        val clientClock = object : Clock { override fun now() = now }
+        val sender = Phone("sender", "sender-device")
+        val receiver = Phone("receiver", "receiver-device", clock = clientClock)
+        val token = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람")).token
+        cloud.holdAccepts = true
+        assertIs<PairingState.Accepting>(receiver.pairing.accept(token))
+        now += 8.days // 서버 처리가 지연되는 동안 기기 시계가 만료를 가리킨다.
+        assertIs<PairingState.Accepting>(receiver.pairing.poll())
+        val restarted = PairingSession(receiver.db, receiver.identity, receiver.vault, cloud, clientClock, receiver.pending)
+        assertIs<PairingState.Accepting>(restarted.poll())
+        cloud.releaseAccepts()
+        assertIs<PairingState.Linked>(restarted.poll())
+    }
+
+    @Test
+    fun `수락 응답이 유실돼도 만료로 단정하지 않고 서버 결과를 이어받는다`() = runTest {
+        val sender = Phone("sender", "sender-device")
+        val uncertain = object : PairingTransport by cloud {
+            override suspend fun accept(token: String, uid: String, deviceId: String, keys: com.sadturtleman.flowershoes.core.crypto.Pairing.PublicKeys) {
+                cloud.accept(token, uid, deviceId, keys)
+                error("response lost")
+            }
+        }
+        val receiver = Phone("receiver", "receiver-device", transport = uncertain)
+        val token = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람")).token
+        cloud.holdAccepts = true
+        assertIs<PairingState.Accepting>(receiver.pairing.accept(token))
+        cloud.releaseAccepts()
+        assertIs<PairingState.Linked>(receiver.relaunch().poll())
+    }
+
+    @Test
+    fun `받은 초대의 대기는 기존에 보낸 링크를 덮어쓰지 않는다`() = runTest {
+        val sender = Phone("sender", "sender-device")
+        val receiver = Phone("receiver", "receiver-device")
+        val outgoing = assertIs<PairingState.Waiting>(receiver.pairing.createLink("받는 사람"))
+        val incoming = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람"))
+        cloud.holdAccepts = true
+        receiver.pairing.accept(incoming.token)
+        assertEquals(outgoing.token, receiver.pending.load()?.token)
+        assertIs<PairingState.Accepting>(receiver.relaunch().poll())
+    }
+
+    @Test
+    fun `수락 상태 저장 직후 요청 전에 취소돼도 재실행하면 요청을 보낸다`() = runTest {
+        var cancelFirst = true
+        val interrupted = object : PairingTransport by cloud {
+            override suspend fun accept(token: String, uid: String, deviceId: String, keys: com.sadturtleman.flowershoes.core.crypto.Pairing.PublicKeys) {
+                if (cancelFirst) {
+                    cancelFirst = false
+                    throw kotlinx.coroutines.CancellationException("interrupted before send")
+                }
+                cloud.accept(token, uid, deviceId, keys)
+            }
+        }
+        val sender = Phone("sender", "sender-device")
+        val receiver = Phone("receiver", "receiver-device", transport = interrupted)
+        val token = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람")).token
+        assertFailsWith<kotlinx.coroutines.CancellationException> { receiver.pairing.accept(token) }
+        assertNull(receiver.db.coupleDao().get())
+        assertIs<PairingState.Linked>(receiver.relaunch().poll())
+    }
+
+    @Test
+    fun `다른 계정은 이전 계정의 수락을 이어받지 않는다`() = runTest {
+        val sender = Phone("sender", "sender-device")
+        val receiver = Phone("receiver", "receiver-device")
+        val token = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람")).token
+        cloud.holdAccepts = true
+        receiver.pairing.accept(token)
+        cloud.releaseAccepts()
+        val other = object : Identity {
+            override val userId = "other-account"
+            override val deviceId = receiver.deviceId
+            override val keyEpoch = 0
+        }
+        assertIs<PairingState.Idle>(PairingSession(receiver.db, other, receiver.vault, cloud, pending = receiver.pending).poll())
+        assertNull(receiver.db.coupleDao().get())
+        assertIs<PairingState.Linked>(receiver.relaunch().poll())
+    }
+
+    @Test
+    fun `수락 뒤 기기 키가 사라지면 새 키로 잘못 연결하지 않는다`() = runTest {
+        val sender = Phone("sender", "sender-device")
+        val receiver = Phone("receiver", "receiver-device")
+        val token = assertIs<PairingState.Waiting>(sender.pairing.createLink("보낸 사람")).token
+        cloud.holdAccepts = true
+        receiver.pairing.accept(token)
+        receiver.vault.clearAll()
+        cloud.releaseAccepts()
+        assertFailsWith<IllegalStateException> { receiver.relaunch().poll() }
+        assertNull(receiver.db.coupleDao().get())
+        assertNull(receiver.vault.deviceKeys())
     }
 
     @Test

@@ -5,6 +5,9 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.TextUnit
@@ -17,19 +20,21 @@ import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
+import androidx.glance.currentState
 import androidx.glance.action.Action
 import androidx.glance.action.ActionParameters
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.LinearProgressIndicator
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
-import androidx.glance.appwidget.updateAll
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
@@ -69,10 +74,19 @@ import org.koin.core.context.GlobalContext
  * 홈 화면 위젯 v2(Figma 9 · 위젯 383:5321). 위젯은 DB 를 읽지 않고 스냅샷 파일만 읽고, 글자도 스냅샷에 만들어져 있다.
  * 색은 기기 테마(스냅샷)의 테마 v2 값([WidgetPalette] 한 곳)이고 라이트/다크는 시스템을 따른다.
  * Glance 로는 기울기 · 손글씨 글꼴을 쓸 수 없어 종이 태그는 반듯하게, 손글씨는 시스템 cursive 로 그린다.
- * Android 에는 잠금 화면 위젯이 없다(iOS accessory 위젯만).
+ * 이 앱의 Android 위젯은 home_screen으로 등록한다. 잠금 화면 배치는 제공하지 않는다.
  */
 internal fun snapshotStore(context: Context) =
     SnapshotStore(context.filesDir.resolve("widget/snapshot.json").absolutePath.toPath())
+
+private val snapshotRevision = longPreferencesKey("snapshot_revision")
+
+/** update()는 살아 있는 provideGlance를 다시 실행하지 않는다. Glance 상태 변경으로 새 파일을 읽는다. */
+@Composable
+private fun currentSnapshot(context: Context): WidgetSnapshot? {
+    val revision = currentState<Preferences>()[snapshotRevision]
+    return remember(revision) { snapshotStore(context).read() }
+}
 
 /**
  * 위젯 색은 여기서만 정한다. Compose 토큰([KkColors])을 쓸 수 없는 Glance 를 위해 테마 v2 값을 라이트/다크 쌍으로 옮긴다.
@@ -120,7 +134,7 @@ private class WidgetPalette(s: WidgetSnapshot?) {
     }
 }
 
-/** 테마 v2 텍스트 스타일(Glance 판): Caption 11 · Label 13 · D-day/S 24 · D-day/M 52 · Hand/Letter 21 · Hand/L 26. */
+/** 테마 v2 텍스트 스타일(Glance 판): Caption 11 · Label 13 · D-day/S 24 · Overview 40 · D-day/M 52 · Hand/Letter 21 · Hand/L 26. */
 private object WidgetType {
     fun caption(color: ColorProvider) = TextStyle(color = color, fontSize = 11.sp)
     fun label(color: ColorProvider, bold: Boolean = true) =
@@ -128,6 +142,8 @@ private object WidgetType {
     /** 숫자: 곰신은 명조(Gowun Batang), 군인은 굵은 고딕(Black Han Sans)에 가깝게. */
     fun number(p: WidgetPalette, size: TextUnit = 24.sp) =
         TextStyle(color = p.ink, fontSize = size, fontWeight = FontWeight.Bold, fontFamily = if (p.soldier) null else FontFamily.Serif)
+    /** 250dp 큰 위젯에서도 편지와 보고싶어 행의 공간을 남기는 전역 숫자. */
+    fun overviewNumber(p: WidgetPalette) = number(p, 40.sp)
     fun hand(color: ColorProvider, size: TextUnit = 21.sp) = TextStyle(color = color, fontSize = size, fontFamily = FontFamily.Cursive)
 }
 
@@ -217,9 +233,9 @@ class DdayWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Responsive(setOf(SMALL, MEDIUM))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val s = snapshotStore(context).read()
-        val p = WidgetPalette(s)
         provideContent {
+            val s = currentSnapshot(context)
+            val p = WidgetPalette(s)
             GlanceTheme {
                 Card(p, context.openApp()) {
                     if (s?.ddayValue == null) {
@@ -274,10 +290,10 @@ class DdayWidgetReceiver : GlanceAppWidgetReceiver() {
 
 class MissYouWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val s = snapshotStore(context).read()
-        val p = WidgetPalette(s)
-        val sent = s?.justSent(System.currentTimeMillis()) == true
         provideContent {
+            val s = currentSnapshot(context)
+            val p = WidgetPalette(s)
+            val sent = s?.justSent(System.currentTimeMillis()) == true
             GlanceTheme {
                 // 연결 전에는 보낼 사람이 없다 — 앱을 연다.
                 Card(p, if (s?.linked == true) actionRunCallback<SendMissYouAction>() else context.openApp()) {
@@ -313,7 +329,7 @@ class MissYouWidgetReceiver : GlanceAppWidgetReceiver() {
 class SendMissYouAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         GlobalContext.getOrNull()?.get<MissYouRepository>()?.send()
-        MissYouWidget().updateAll(context)
+        updateAllWidgets(context)
     }
 }
 
@@ -321,23 +337,24 @@ class SendMissYouAction : ActionCallback {
 
 class NextMeetingWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val s = snapshotStore(context).read()
-        val p = WidgetPalette(s)
         provideContent {
+            val s = currentSnapshot(context)
+            val p = WidgetPalette(s)
+            val compact = LocalSize.current.height < 150.dp
             GlanceTheme {
-                Card(p, context.openUri("kkotsin://calendar")) {
+                Card(p, context.openUri("kkotsin://calendar"), padding = if (compact) 8 else 16) {
                     Column(GlanceModifier.fillMaxSize()) {
                         Caption("다음 만남", p.sub)
                         val value = s?.nextEventValue ?: return@Column
-                        Spacer(GlanceModifier.height(8.dp))
+                        Spacer(GlanceModifier.height(if (compact) 2.dp else 8.dp))
                         Text(value, style = WidgetType.number(p), maxLines = 1)
                         Spacer(GlanceModifier.defaultWeight())
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Dot(p.event(s.nextEventType))
                             Spacer(GlanceModifier.width(6.dp))
-                            Text(s.nextEventLine.orEmpty(), style = WidgetType.hand(p.ink), maxLines = 1)
+                            Text(s.nextEventLine.orEmpty(), style = WidgetType.label(p.ink, bold = false), maxLines = 2)
                         }
-                        s.nextEventWhen?.let {
+                        s.nextEventWhen?.takeUnless { compact }?.let {
                             Spacer(GlanceModifier.height(4.dp))
                             Caption(it, p.sub)
                         }
@@ -356,9 +373,9 @@ class NextMeetingWidgetReceiver : GlanceAppWidgetReceiver() {
 
 class PartnerStatusWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val s = snapshotStore(context).read()
-        val p = WidgetPalette(s)
         provideContent {
+            val s = currentSnapshot(context)
+            val p = WidgetPalette(s)
             GlanceTheme {
                 Card(p, context.openApp()) {
                     Column(GlanceModifier.fillMaxSize()) {
@@ -392,27 +409,30 @@ class OverviewWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Responsive(setOf(LARGE))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val s = snapshotStore(context).read()
-        val p = WidgetPalette(s)
         provideContent {
+            val s = currentSnapshot(context)
+            val p = WidgetPalette(s)
             GlanceTheme {
-                Card(p, context.openApp(), padding = 20) {
+                Card(p, context.openApp(), padding = 16) {
                     Column(GlanceModifier.fillMaxSize()) {
                         s?.ddayValue?.let { value ->
-                            Caption(s.ddayCaption.orEmpty(), p.sub)
-                            Spacer(GlanceModifier.height(6.dp))
-                            Text(value, style = WidgetType.number(p, 52.sp), maxLines = 1)
-                            Spacer(GlanceModifier.height(12.dp))
-                            if (s.progress != null) ServiceProgress(p, s) else s.ddayFoot?.let { Caption(it, p.sub) }
-                            val tags = listOfNotNull(s.tagLeave, s.tagMeet, s.tagRank)
-                            if (tags.isNotEmpty()) {
-                                Spacer(GlanceModifier.height(18.dp))
-                                PaperTags(p, tags)
+                            // Glance의 한 컨테이너는 자식 10개까지만 반영하므로 전역 영역을 묶는다.
+                            Column {
+                                Caption(s.ddayCaption.orEmpty(), p.sub)
+                                Spacer(GlanceModifier.height(4.dp))
+                                Text(value, style = WidgetType.overviewNumber(p), maxLines = 1)
+                                Spacer(GlanceModifier.height(8.dp))
+                                if (s.progress != null) ServiceProgress(p, s) else s.ddayFoot?.let { Caption(it, p.sub) }
+                                val tags = listOfNotNull(s.tagLeave, s.tagMeet, s.tagRank)
+                                if (tags.isNotEmpty()) {
+                                    Spacer(GlanceModifier.height(10.dp))
+                                    PaperTags(p, tags)
+                                }
                             }
                         }
                         Spacer(GlanceModifier.defaultWeight())
                         Box(GlanceModifier.fillMaxWidth().height(1.dp).background(p.line)) {}
-                        Spacer(GlanceModifier.height(16.dp))
+                        Spacer(GlanceModifier.height(10.dp))
                         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             val letter = s?.letterLine
                             Row(
@@ -451,16 +471,18 @@ class DrawingWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Responsive(setOf(SMALL, MEDIUM))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val s = snapshotStore(context).read()
-        val p = WidgetPalette(s)
-        // 완성 PNG 가 있으면 그대로, 없으면(옛 그림) 문서를 그 자리에서 그린다.
-        val attachments = context.filesDir.resolve("attachments").absolutePath.toPath()
-        fun safeFile(raw: String?): String? = com.sadturtleman.flowershoes.core.data.AttachmentStore.safeExistingPath(attachments, raw)?.toString()
-        val bitmap: Bitmap? = s?.drawingId?.takeIf { com.sadturtleman.flowershoes.core.data.AttachmentStore.isSafeId(it) }?.let {
-            safeFile(s.drawingPngPath)?.let { path -> android.graphics.BitmapFactory.decodeFile(path) }
-                ?: safeFile(s.drawingDocPath)?.let { path -> DrawingBitmap.render(path, widthPx = 680) }
-        }
         provideContent {
+            val s = currentSnapshot(context)
+            val p = WidgetPalette(s)
+            // 완성 PNG가 있으면 그대로 쓰고, 이전 문서는 필요할 때만 그린다.
+            val bitmap: Bitmap? = remember(s) {
+                val attachments = context.filesDir.resolve("attachments").absolutePath.toPath()
+                fun safeFile(raw: String?): String? = com.sadturtleman.flowershoes.core.data.AttachmentStore.safeExistingPath(attachments, raw)?.toString()
+                s?.drawingId?.takeIf { com.sadturtleman.flowershoes.core.data.AttachmentStore.isSafeId(it) }?.let {
+                    safeFile(s.drawingPngPath)?.let { path -> android.graphics.BitmapFactory.decodeFile(path) }
+                        ?: safeFile(s.drawingDocPath)?.let { path -> DrawingBitmap.render(path, widthPx = 680) }
+                }
+            }
             GlanceTheme {
                 val open = s?.drawingLetterId?.let { context.openUri("kkotsin://letter/$it") } ?: context.openApp()
                 val frame = p.frame(s?.widgetFrame)
@@ -530,10 +552,13 @@ class DrawingWidgetReceiver : GlanceAppWidgetReceiver() {
 
 /** 스냅샷이 바뀌면 앱이 부른다. */
 suspend fun updateAllWidgets(context: Context) {
-    DdayWidget().updateAll(context)
-    MissYouWidget().updateAll(context)
-    NextMeetingWidget().updateAll(context)
-    PartnerStatusWidget().updateAll(context)
-    OverviewWidget().updateAll(context)
-    DrawingWidget().updateAll(context)
+    val manager = GlanceAppWidgetManager(context)
+    for (widget in listOf(DdayWidget(), MissYouWidget(), NextMeetingWidget(), PartnerStatusWidget(), OverviewWidget(), DrawingWidget())) {
+        for (id in manager.getGlanceIds(widget.javaClass)) {
+            updateAppWidgetState(context, id) { prefs ->
+                prefs[snapshotRevision] = (prefs[snapshotRevision] ?: 0L) + 1
+            }
+            widget.update(context, id)
+        }
+    }
 }
