@@ -34,6 +34,7 @@ class AttachmentStore(
     /** 받은 첨부를 보낸 쪽과 같은 id 로 둔다(편지 블록이 그 id 를 가리킨다). */
     suspend fun putWithId(id: String, kind: AttachmentKind, bytes: ByteArray): String = db.useWriterConnection { connection ->
         connection.immediateTransaction {
+            db.requireNoCleanup()
             require(isSafeId(id)) { "첨부 식별자가 올바르지 않습니다" }
             RelationshipArchive(db).prepare()
             if (RelationshipArchive(db).contains("attachment", id)) throw ArchivedRecordException()

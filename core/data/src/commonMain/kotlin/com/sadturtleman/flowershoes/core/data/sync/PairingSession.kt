@@ -1,5 +1,7 @@
 package com.sadturtleman.flowershoes.core.data.sync
 
+import com.sadturtleman.flowershoes.core.data.requireNoCleanup
+
 import androidx.room.immediateTransaction
 import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.crypto.DeviceKeys
@@ -324,6 +326,7 @@ class PairingSession(
             accepting?.let { check(Pairing.PublicKeys.of(keys).encode() == it.publicKeys) { "수락한 기기의 키를 확인할 수 없어요" } }
             val now = clock.now().toEpochMilliseconds()
             db.useWriterConnection { tx -> tx.immediateTransaction {
+                db.requireNoCleanup()
                 check(db.coupleDao().get() == current) { "연결이 바뀌었어요" }
                 // 이미 완료한 연결의 수락 기록 정리만 재시도한다. 교체된 epoch/기기를 되돌리지 않는다.
                 if (current?.partnerUserId?.isNotBlank() == true && current.id == coupleId) {

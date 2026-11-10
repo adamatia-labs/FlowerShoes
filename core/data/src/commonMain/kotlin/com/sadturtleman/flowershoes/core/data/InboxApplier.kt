@@ -50,6 +50,7 @@ class InboxApplier(
 ) {
     suspend fun apply(op: ReceivedOp): ApplyResult = db.useWriterConnection { tx ->
         tx.immediateTransaction {
+            db.requireNoCleanup()
             RelationshipArchive(db).prepare()
             val sync = db.syncDao()
             if (!accepts(op.stream, op.seq)) return@immediateTransaction ApplyResult.REJECTED_REVOKED

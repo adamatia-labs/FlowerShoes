@@ -161,7 +161,9 @@ class AccountTransportSafetyTest {
             assertFailsWith<IllegalStateException> { service.deleteAccount() }
             assertEquals("partner", db.coupleDao().get()?.partnerUserId)
             assertNotNull(db.userDao().get("owner"))
-            assertEquals(listOf("draft"), drafts.observe().first { it.loaded }.drafts.map { it.id })
+            // The request may have reached the server. Keep the original data while blocking new edits until recovery.
+            assertEquals("{}", db.letterDraftDao().get("draft")?.draftJson)
+            assertEquals(null, settings.draftSessions.first())
             assertFalse(vault.cleared)
             assertFalse(wiped)
             assertEquals("owner", settings.state.first().userId)

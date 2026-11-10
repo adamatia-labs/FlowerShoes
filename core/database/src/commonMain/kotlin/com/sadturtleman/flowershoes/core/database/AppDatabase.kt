@@ -23,13 +23,13 @@ import kotlinx.coroutines.sync.Mutex
         DrawingEntity::class, ReceiptEntity::class, AttachmentEntity::class, MemoryEntity::class,
         SyncOpEntity::class, StreamCounterEntity::class, RecvCursorEntity::class, RecvPendingEntity::class,
         PeerCursorEntity::class, RevokedDeviceEntity::class, MetaEntity::class, LeaveGrantEntity::class, LetterDraftEntity::class,
-        BookCoverEntity::class,
+        BookCoverEntity::class, CleanupEntity::class,
     ],
     version = AppDatabase.VERSION,
     exportSchema = true,
     // 1: 출시 기준. 출시 전 변경(옛 2~10)은 이 버전 하나로 합쳤다.
     // 이제부터 스키마를 바꾸면 버전을 올리고 autoMigrations 에 AutoMigration 을 넣거나 MIGRATIONS 에 Migration 을 넣는다(MigrationTest 가 확인한다).
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -52,9 +52,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncDao(): SyncDao
     abstract fun letterDraftDao(): LetterDraftDao
     abstract fun bookCoverDao(): BookCoverDao
+    abstract fun cleanupDao(): CleanupDao
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
         const val FILE_NAME = "kkotsin.db"
 
         /** 표를 고치는 수동 이전. 자동으로 못 하는 변경(이름 바꾸기 · 값 옮기기)만 여기 둔다. */
