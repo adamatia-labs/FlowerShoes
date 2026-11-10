@@ -486,9 +486,10 @@ private fun MainShell() {
         val settingsState by settingsVm.state.collectAsState()
         // 상대가 연결을 해제했다(Figma 6 · 연결 해제 / 상대 폰): 사본을 어떻게 할지 고를 때까지 다른 화면을 막는다.
         if (scheduler?.partnerUnlinked?.collectAsState()?.value == true) {
+            val unlinkedCoupleId = scheduler.partnerUnlinkedCoupleId.collectAsState().value
             KkContentWidth {
                 com.sadturtleman.flowershoes.feature.settings.PartnerUnlinkedScreen(settingsState.partnerName) { after ->
-                    settingsVm.afterPartnerUnlinked(after)
+                    if (unlinkedCoupleId != null) settingsVm.afterPartnerUnlinked(after, unlinkedCoupleId)
                     scheduler.partnerUnlinkHandled()
                 }
             }

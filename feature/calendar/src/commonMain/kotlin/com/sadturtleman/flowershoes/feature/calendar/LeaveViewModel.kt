@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.feature.calendar
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sadturtleman.flowershoes.core.data.ArchivedRecordException
 import com.sadturtleman.flowershoes.core.data.LeaveRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.ticker
@@ -13,6 +14,8 @@ import com.sadturtleman.flowershoes.core.model.LeaveGrant
 import com.sadturtleman.flowershoes.core.model.LeaveKind
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -91,6 +94,8 @@ class LeaveViewModel(
     profile: ProfileRepository,
     private val clock: Clock = Clock.System,
 ) : ViewModel() {
+    private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    val notices = _notices.asSharedFlow()
 
     private val day = clock.ticker().map { clock.today() }.distinctUntilChanged()
 
@@ -112,13 +117,17 @@ class LeaveViewModel(
     fun save(d: LeaveDraft) {
         if (!d.valid) return
         viewModelScope.launch {
-            val old = d.id?.let { id -> state.value.grant(id) }
-            leave.save(
-                LeaveGrant(
-                    id = d.id ?: leave.newId(), kind = d.kind, name = d.memo.trim().ifBlank { d.kind.label }, days = d.days, grantedOn = d.grantedOn,
-                    updatedAt = clock.now(), lamport = old?.lamport ?: 0, lastWriterDevice = old?.lastWriterDevice.orEmpty(),
-                ),
-            )
+            try {
+                val old = d.id?.let { id -> state.value.grant(id) }
+                leave.save(
+                    LeaveGrant(
+                        id = d.id ?: leave.newId(), kind = d.kind, name = d.memo.trim().ifBlank { d.kind.label }, days = d.days, grantedOn = d.grantedOn,
+                        updatedAt = clock.now(), lamport = old?.lamport ?: 0, lastWriterDevice = old?.lastWriterDevice.orEmpty(),
+                    ),
+                )
+            } catch (error: ArchivedRecordException) {
+                _notices.emit(error.message.orEmpty())
+            }
         }
     }
 

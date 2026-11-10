@@ -2,6 +2,7 @@ package com.sadturtleman.flowershoes.feature.memory
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sadturtleman.flowershoes.core.data.ArchivedRecordException
 import com.sadturtleman.flowershoes.core.data.AttachmentStore
 import com.sadturtleman.flowershoes.core.data.BookCoverRepository
 import com.sadturtleman.flowershoes.core.data.EventRepository
@@ -331,26 +332,30 @@ class MemoryViewModel(
             // 같은 화면을 거듭 열면(알림 · 홈 카드를 여러 번) 한 장만 둔다.
             is MemoryIntent.Open -> stack.update { if (it.lastOrNull() == intent.page) it else it + intent.page }
             MemoryIntent.Back -> stack.update { it.dropLast(1) }
-            is MemoryIntent.SaveDayLine -> viewModelScope.launch {
+            is MemoryIntent.SaveDayLine -> editRecord {
                 events.writeDayLine(intent.eventId, intent.text)
                 stack.update { s -> if (s.lastOrNull() is MemoryPage.DayLine) s.dropLast(1) else s }
             }
-            is MemoryIntent.AddMeetPhoto -> viewModelScope.launch {
-                val e = events.get(intent.eventId) ?: return@launch
+            is MemoryIntent.AddMeetPhoto -> editRecord {
+                val e = events.get(intent.eventId) ?: return@editRecord
                 if (e.photoIds.size >= DayLine.MAX_PHOTOS) {
                     _notices.tryEmit("사진은 둘이 합쳐 ${DayLine.MAX_PHOTOS}장까지예요")
-                    return@launch
+                    return@editRecord
                 }
                 val id = attachments.put(AttachmentKind.PHOTO, intent.jpeg)
-                _photos.update { it + (id to intent.jpeg) }
                 events.save(e.copy(photoIds = e.photoIds + id))
+                _photos.update { it + (id to intent.jpeg) }
             }
-            is MemoryIntent.ChooseCover -> viewModelScope.launch { covers.choose(intent.cover) }
-            is MemoryIntent.RemoveMeetPhoto -> viewModelScope.launch {
-                val e = events.get(intent.eventId) ?: return@launch
+            is MemoryIntent.ChooseCover -> editRecord { covers.choose(intent.cover) }
+            is MemoryIntent.RemoveMeetPhoto -> editRecord {
+                val e = events.get(intent.eventId) ?: return@editRecord
                 events.save(e.copy(photoIds = e.photoIds - intent.attachmentId))
             }
         }
+    }
+
+    private fun editRecord(block: suspend () -> Unit) = viewModelScope.launch {
+        try { block() } catch (error: ArchivedRecordException) { _notices.emit(error.message.orEmpty()) }
     }
 
     private suspend fun firstDrawing(letterId: String): FirstDrawing? {
