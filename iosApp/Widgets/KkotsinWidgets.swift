@@ -384,14 +384,15 @@ struct NextMeetingWidgetView: View {
     let entry: SnapshotEntry
     var body: some View {
         PaperCard(entry: entry) { p in
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("다음 만남").font(WidgetPalette.caption).foregroundStyle(p.sub)
                 if let s = entry.snapshot, let value = s.nextEventValue {
                     Text(value).font(p.number()).foregroundStyle(p.ink)
                     Spacer()
                     HStack(spacing: 6) {
                         Dot(color: p.event(s.nextEventType))
-                        Text(s.nextEventLine ?? "").font(p.hand()).foregroundStyle(p.ink).lineLimit(1)
+                        Text(s.nextEventLine ?? "").font(p.hand(13)).foregroundStyle(p.ink)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     }
                     if let when = s.nextEventWhen { Text(when).font(WidgetPalette.caption).foregroundStyle(p.sub) }
                 }
