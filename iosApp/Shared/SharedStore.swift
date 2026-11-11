@@ -26,9 +26,21 @@ enum SharedStore {
         var value: String
     }
 
+    /// Kotlin WidgetOwner와 같은 필드. 같은 계정으로 다시 로그인해도 세대가 다르면 거부한다.
+    struct WidgetOwner: Codable, Equatable {
+        let userId: String
+        let deviceId: String
+        let accountSession: String
+        let coupleId: String
+        let partnerUserId: String
+        let keyEpoch: Int
+        let linkedAtMs: Int64
+    }
+
     /// 글자는 Kotlin(widgetSnapshot)이 만들어 둔다 — 위젯은 그대로 그린다.
     struct WidgetSnapshot: Codable {
         var version: Int
+        var owner: WidgetOwner?
         var theme: String
         var ddayCaption: String?
         var ddayValue: String?
@@ -92,17 +104,28 @@ enum SharedStore {
         }
     }
 
-    static func readSnapshot() -> WidgetSnapshot? {
-        guard let data = try? Data(contentsOf: snapshotURL) else { return nil }
+    static func readSnapshot(at url: URL = snapshotURL) -> WidgetSnapshot? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
     }
 
-    /// NSE 가 작은 변경(보고싶어 횟수 · 상대 상태)을 스냅샷에 바로 반영한다.
-    static func updateSnapshot(_ change: (inout WidgetSnapshot) -> Void) {
-        guard var s = readSnapshot() else { return }
-        change(&s)
-        s.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
-        if let data = try? JSONEncoder().encode(s) { writeProtected(data, to: snapshotURL) }
+    /// 네트워크·복호화 시작 시 고정한 소유권을 잠금 안에서 다시 확인한다.
+    /// 읽기와 원자적 파일 교체 사이에 앱의 새 스냅샷이 끼어들 수 없다.
+    @discardableResult
+    static func updateSnapshot(owner: WidgetOwner?, at url: URL = snapshotURL, _ change: (inout WidgetSnapshot) -> Void) -> Bool {
+        guard let owner else { return false }
+        return (try? SnapshotFileLock.withLock(snapshot: url) {
+            guard var s = readSnapshot(at: url), s.owner == owner, s.linked else { return false }
+            change(&s)
+            s.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let data = try JSONEncoder().encode(s)
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            var protectedURL = url
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try protectedURL.setResourceValues(values)
+            return true
+        }) ?? false
     }
 
     // MARK: 받은 Op 대기열 — 앱이 실행되면 :core:widget-bridge 가 DB 에 합치고 지운다

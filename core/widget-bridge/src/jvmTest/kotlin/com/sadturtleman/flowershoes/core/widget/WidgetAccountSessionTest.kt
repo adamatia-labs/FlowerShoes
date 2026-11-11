@@ -91,14 +91,19 @@ class WidgetAccountSessionTest {
                 while (snapshot.partnerName != name) snapshot = snapshots.receive()
                 snapshot
             }
-            assertEquals(1, nextFor("Partner A").missYouSentToday)
+            val first = nextFor("Partner A")
+            assertEquals(1, first.missYouSentToday)
+            assertEquals(WidgetOwner.from(settings.state.first(), db.coupleDao().get()), first.owner)
 
             settings.bindAccount("b")
             // 신원 캐시가 아직 a여도 실제 DataStore 계정 b로 집계를 다시 구독한다.
             db.coupleDao().clear()
             db.coupleDao().upsert(CoupleEntity("couple-b", "b", "partner-b", 1, 200))
 
-            assertEquals(2, nextFor("Partner B").missYouSentToday)
+            val second = nextFor("Partner B")
+            assertEquals(2, second.missYouSentToday)
+            assertEquals(WidgetOwner.from(settings.state.first(), db.coupleDao().get()), second.owner)
+            assertNotEquals(first.owner, second.owner)
         } finally {
             publishing?.cancelAndJoin()
             io.coroutineContext[Job]!!.cancelAndJoin()

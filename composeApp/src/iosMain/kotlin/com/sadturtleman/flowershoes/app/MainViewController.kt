@@ -221,7 +221,7 @@ fun onForeground() {
         runCatching { koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.refresh() }
         com.sadturtleman.flowershoes.app.ios.writeLinkConfig(
             koin.get<com.sadturtleman.flowershoes.core.database.AppDatabase>(),
-            koin.get<com.sadturtleman.flowershoes.core.data.Identity>(),
+            koin.get<com.sadturtleman.flowershoes.core.data.DeviceSettings>(),
             vault = koin.get(),
         )
     }

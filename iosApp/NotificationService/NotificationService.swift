@@ -23,6 +23,9 @@ final class NotificationService: UNNotificationServiceExtension {
         guard let linkData = try? Data(contentsOf: SharedStore.container.appendingPathComponent("link.json")),
               let link = (try? JSONSerialization.jsonObject(with: linkData)) as? [String: Any] else { return }
         let scope = link["keyScope"] as? String
+        let snapshotOwner = (link["snapshotOwner"] as? [String: Any]).flatMap {
+            try? JSONDecoder().decode(SharedStore.WidgetOwner.self, from: JSONSerialization.data(withJSONObject: $0))
+        }
         guard kind == "missyou" || kind == "status",
               let ctB64 = info["ct"] as? String, let ct = Data(base64Encoded: ctB64),
               let sigB64 = info["sig"] as? String, let sig = Data(base64Encoded: sigB64),
@@ -46,7 +49,7 @@ final class NotificationService: UNNotificationServiceExtension {
         let json = (try? JSONSerialization.jsonObject(with: Data(payload))) as? [String: Any]
         switch kind {
         case "missyou":
-            SharedStore.updateSnapshot { $0.missYouFromPartnerToday += 1 }
+            SharedStore.updateSnapshot(owner: snapshotOwner) { $0.missYouFromPartnerToday += 1 }
         case "status":
             let put = json?["status"] as? [String: Any]
             if let status = put?["label"] as? String {
@@ -54,7 +57,7 @@ final class NotificationService: UNNotificationServiceExtension {
                 let hidden = FileManager.default.fileExists(atPath: SharedStore.container.appendingPathComponent("prefs/hide_preview").path)
                 if !hidden { content.body = "상태: \(status)" }
                 // 끝나는 시각 문구("내일 08:00까지")는 앱이 다음에 스냅샷을 다시 쓸 때 채운다.
-                SharedStore.updateSnapshot {
+                SharedStore.updateSnapshot(owner: snapshotOwner) {
                     $0.partnerStatus = status
                     $0.partnerStatusColor = (put?["color"] as? NSNumber)?.int64Value
                     $0.partnerStatusUntil = nil
