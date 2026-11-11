@@ -614,4 +614,3 @@ private fun Art(l: MonthLetter, photos: Map<String, ByteArray?>, modifier: Modif
 }
 
 private fun kotlinx.datetime.LocalDate.dot() = "$year.${(month.ordinal + 1).toString().padStart(2, '0')}.${day.toString().padStart(2, '0')}"
-
