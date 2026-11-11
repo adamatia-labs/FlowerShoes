@@ -139,6 +139,22 @@ class ScreenWriteSessionTest {
         assertEquals(next, db.coupleDao().get())
     }
 
+    @Test fun `계정 흐름이 먼저 바뀌어도 다른 소유자의 관계에는 저장하거나 정리하지 않는다`(): Unit = runBlocking {
+        prepare()
+        val original = assertNotNull(db.coupleDao().get())
+        settings.bindAccount("other")
+        val mixed = ScreenData(db, settings, settings.state.first(), original, AttachmentStore(db, root / "attachments"))
+        assertFailsWith<ScreenSessionChangedException> { mixed.events.save(event("wrong-owner")) }
+        assertFailsWith<ScreenSessionChangedException> { mixed.settings.setTheme(AppTheme.SOLDIER) }
+        assertFailsWith<ScreenSessionChangedException> { mixed.attachments.put(AttachmentKind.PHOTO, byteArrayOf(1)) }
+        val service = UnlinkService(db, InMemoryKeyVault(), settings, null)
+        assertFailsWith<ScreenSessionChangedException> { service.onPartnerUnlinked(AfterUnlink.WIPE, screen = mixed.session) }
+        assertNull(db.eventDao().get("wrong-owner"))
+        assertFalse(FileSystem.SYSTEM.exists(root / "attachments"))
+        assertNull(db.cleanupDao().get())
+        assertEquals(original, db.coupleDao().get())
+    }
+
     private suspend fun prepare(): ScreenData {
         settings.ensureIdentity(); settings.bindAccount("owner"); settings.setKeyEpoch(1); settings.setOnboarded()
         identity.update(settings.state.first())

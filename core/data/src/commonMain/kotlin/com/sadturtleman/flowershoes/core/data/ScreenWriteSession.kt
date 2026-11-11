@@ -29,6 +29,7 @@ class ScreenWriteSession internal constructor(
 
     /** 삭제 예약도 화면에서 확인한 계정/관계를 대상으로만 만든다. 예약 이후의 경합은 기존 journal이 검사한다. */
     internal fun requireCleanup(target: CleanupEntity) {
+        requireOwner()
         if (target.ownerUid != account.userId || target.deviceId != account.deviceId || target.accountSession != account.accountSession ||
             target.coupleId != couple?.id || target.coupleOwner != couple?.myUserId || target.partnerUid != couple?.partnerUserId ||
             target.keyEpoch != couple?.keyEpoch || target.linkedAtMs != couple?.linkedAtMs) throw ScreenSessionChangedException()
@@ -48,6 +49,7 @@ class ScreenWriteSession internal constructor(
 
     internal suspend fun <T> transaction(block: suspend () -> T): T = db.useWriterConnection { tx ->
         tx.immediateTransaction {
+            requireOwner()
             db.requireNoCleanup()
             val current = db.coupleDao().get()
             if (current?.id != couple?.id || current?.myUserId != couple?.myUserId ||
@@ -55,6 +57,10 @@ class ScreenWriteSession internal constructor(
                 current?.linkedAtMs != couple?.linkedAtMs) throw ScreenSessionChangedException()
             block()
         }
+    }
+
+    private fun requireOwner() {
+        if (couple != null && couple.myUserId != account.userId) throw ScreenSessionChangedException()
     }
 }
 

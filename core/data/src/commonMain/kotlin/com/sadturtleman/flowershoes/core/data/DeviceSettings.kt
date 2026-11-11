@@ -238,7 +238,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         p[NOTIFY_PREFS]?.let { runCatching { prefsJson.decodeFromString(NotificationPrefs.serializer(), it) }.getOrNull() } ?: NotificationPrefs()
     }
 
-    suspend fun setNotifyPrefs(prefs: NotificationPrefs) = store.edit { it[NOTIFY_PREFS] = prefsJson.encodeToString(NotificationPrefs.serializer(), prefs) }
+    suspend fun setNotifyPrefs(prefs: NotificationPrefs, writePreview: () -> Unit = {}) = store.edit {
+        // iOS 확장의 미리보기 파일도 화면의 계정/관계 검사를 통과한 같은 쓰기 경계 안에서 바꾼다.
+        writePreview()
+        it[NOTIFY_PREFS] = prefsJson.encodeToString(NotificationPrefs.serializer(), prefs)
+    }
 
     /** 설정 › 테마 › 화면 모드: SYSTEM(기본) · LIGHT · DARK. */
     val displayMode: Flow<String> = store.data.map { it[DISPLAY_MODE] ?: "SYSTEM" }

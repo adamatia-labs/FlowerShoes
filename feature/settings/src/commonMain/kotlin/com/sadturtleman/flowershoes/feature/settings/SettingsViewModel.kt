@@ -181,10 +181,11 @@ class SettingsViewModel(
 
     /** 알림 설정: 이 기기에 저장하고 서버(받을 종류 · 조용한 시간 · 묶음)에 올린다. */
     fun setNotify(prefs: NotificationPrefs, platform: PlatformActions) {
-        platform.setHidePreview(prefs.hidePreview)
+        val ownerUid = identity.userId
         viewModelScope.launch {
-            settings.setNotifyPrefs(prefs)
-            runCatching { notifyTransport?.upload(prefs) }
+            settings.setNotifyPrefs(prefs) { platform.setHidePreview(prefs.hidePreview) }
+            runCatching { notifyTransport?.upload(ownerUid, prefs) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
         }
     }
 
