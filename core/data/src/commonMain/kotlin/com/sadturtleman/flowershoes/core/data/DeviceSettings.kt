@@ -36,7 +36,7 @@ data class DeviceState(
 class DeviceSettings(private val store: DataStore<Preferences>) {
 
     /** 화면 전용 설정도 bind/reset과 같은 실제 DataStore 갱신 경계에서 소유자를 확인한다. */
-    internal fun forScreen(session: ScreenWriteSession): DeviceSettings = DeviceSettings(object : DataStore<Preferences> {
+    fun forScreen(session: ScreenWriteSession): DeviceSettings = DeviceSettings(object : DataStore<Preferences> {
         override val data = store.data
         override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = store.updateData { p ->
             if (p.draftSession() != session.owner) throw ScreenSessionChangedException()

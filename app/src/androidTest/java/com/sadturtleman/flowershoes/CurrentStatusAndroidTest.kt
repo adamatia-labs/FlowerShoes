@@ -44,7 +44,7 @@ class CurrentStatusAndroidTest {
             val snapshots = SnapshotStore(f.root.toOkioPath() / "snapshot.json")
             val writer = SyncWriter(f.receiver, f.receiverIdentity)
             WidgetSnapshotPublisher(
-                f.receiver, f.receiverIdentity, f.receiverSettings,
+                f.receiver, f.receiverSettings,
                 ProfileRepository(f.receiver, writer, f.receiverIdentity),
                 EventRepository(f.receiver, writer, f.receiverIdentity),
                 StatusRepository(f.receiver, writer, f.receiverIdentity, clock),

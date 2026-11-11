@@ -112,7 +112,7 @@ fun MainViewController(
                     single { com.sadturtleman.flowershoes.core.widget.SnapshotStore(group / "widget/snapshot.json") }
                     single {
                         com.sadturtleman.flowershoes.core.widget.WidgetSnapshotPublisher(
-                            get(), get(), get(), get(), get(), get(), get(), get(),
+                            get(), get(), get(), get(), get(), get(), get(),
                             (requireNotNull(support?.path) + "/db/attachments").toPath(), get(),
                         )
                     }

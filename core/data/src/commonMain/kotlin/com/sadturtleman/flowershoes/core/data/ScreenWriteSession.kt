@@ -18,8 +18,8 @@ internal class AccountWriteBoundary(val account: DraftSession) : AbstractCorouti
     companion object Key : CoroutineContext.Key<AccountWriteBoundary>
 }
 
-/** 편집 화면의 쓰기 권한. 실제 저장은 항상 DataStore → Room 순서로 검사한다. */
-class ScreenWriteSession internal constructor(
+/** 화면·위젯의 쓰기 권한. 실제 저장은 항상 DataStore → Room 순서로 검사한다. */
+class ScreenWriteSession(
     private val db: AppDatabase,
     private val settings: DeviceSettings,
     internal val account: DeviceState,
@@ -35,7 +35,8 @@ class ScreenWriteSession internal constructor(
             target.keyEpoch != couple?.keyEpoch || target.linkedAtMs != couple?.linkedAtMs) throw ScreenSessionChangedException()
     }
 
-    internal suspend fun <T> write(block: suspend () -> T): T {
+    /** block은 설정을 다시 갱신하지 않는다. 중첩 설정 쓰기는 [DeviceSettings.forScreen]으로 따로 수행한다. */
+    suspend fun <T> write(block: suspend () -> T): T {
         val locked = currentCoroutineContext()[AccountWriteBoundary]
         if (locked != null) {
             if (locked.account != owner) throw ScreenSessionChangedException()
