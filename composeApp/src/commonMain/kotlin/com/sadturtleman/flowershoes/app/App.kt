@@ -103,6 +103,8 @@ fun KkotsinApp() {
         }
     }
     val current = device
+    val relationship = rememberShellRelationship()
+    val screensReady = relationship != null && !relationship.cleaning
     val share = rememberPlatformShare()
     // 그림의 배경 사진: 문서는 첨부 id 만 갖고 있어 렌더러가 여기서 읽는다.
     val attachmentStore = getKoin().getOrNull<com.sadturtleman.flowershoes.core.data.AttachmentStore>()
@@ -123,6 +125,7 @@ fun KkotsinApp() {
             // 큰 화면(Figma 11): 창 폭을 한 번 재서 셸 · 화면들이 Nav Rail · 2단 · 최대 폭을 고른다.
             KkWindowSizeProvider {
             Box(Modifier.fillMaxSize()) {
+                RelationshipScreenScope(current?.takeIf { screensReady }, relationship?.couple, loaded = current != null && relationship != null) {
                 // 업데이트 필요 · 점검 중은 앱 자체를 그리지 않는다 — 연결 모달 · 편지 도착 창 · 책 권유까지 모두 막힌다.
                 when (val g = gate.state) {
                     is AppGate.UpdateRequired -> {
@@ -132,18 +135,33 @@ fun KkotsinApp() {
                     AppGate.Maintenance -> MaintenanceScreen(gate.recheck)
                     else -> {
                         when {
-                            current == null || gate.holdSplash -> ShellSplash()
+                            current == null || gate.holdSplash || !screensReady -> ShellSplash()
                             !current.onboarded -> OnboardingFlow()
                             else -> MainShell()
                         }
                         if (current != null && !gate.holdSplash) ConnectionStates(onboarded = current.onboarded)
                     }
                 }
+                }
                 CleanupRecovery()
             }
             }
         }
     }
+}
+
+private data class ShellRelationship(val couple: com.sadturtleman.flowershoes.core.database.CoupleEntity?, val cleaning: Boolean)
+
+/** 설정에만 남은 정리 예약까지 읽은 뒤 편집 화면을 만든다. */
+@Composable
+private fun rememberShellRelationship(): ShellRelationship? {
+    val profile = koinInject<com.sadturtleman.flowershoes.core.data.ProfileRepository>()
+    val cleanup = koinInject<com.sadturtleman.flowershoes.core.data.sync.UnlinkService>()
+    return produceState<ShellRelationship?>(null, profile, cleanup) {
+        kotlinx.coroutines.flow.combine(profile.observeCouple(), cleanup.pendingCleanup) { couple, pending ->
+            ShellRelationship(couple, pending != null)
+        }.collect { value = it }
+    }.value
 }
 
 /** 앱 막기 판단. [state] 가 null 이면 아직 읽는 중이다. */
@@ -302,7 +320,7 @@ private fun MainShell() {
     var settingsStart by remember { mutableStateOf(com.sadturtleman.flowershoes.feature.settings.SettingsPage.MAIN) }
     // 답한 기기 교체 화면: 결과(승인함 · 막음 완료)를 확인할 때까지 붙잡아 둔다.
     var heldChange by remember { mutableStateOf<com.sadturtleman.flowershoes.core.data.sync.DeviceChangePrompt?>(null) }
-    // 편지 쓰기 · 편지함이 같은 편지 상태를 본다(Activity 범위 ViewModel 하나).
+    // 편지 쓰기 · 편지함이 같은 편지 상태를 본다(현재 계정/연결 범위 ViewModel 하나).
     val letters = koinViewModel<LetterViewModel>()
     val letterState by letters.state.collectAsState()
     val drawingScope = rememberCoroutineScope()
