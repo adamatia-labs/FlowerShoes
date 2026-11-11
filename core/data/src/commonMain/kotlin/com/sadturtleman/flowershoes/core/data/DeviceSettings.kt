@@ -59,7 +59,8 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
     }
 
     /** [provider] 는 로그인 방법(KAKAO · APPLE · GOOGLE) — 복원 · 설정 › 로그인 계정 화면에 보인다. */
-    suspend fun bindAccount(uid: String, provider: String? = null) = store.edit {
+    suspend fun bindAccount(uid: String, provider: String? = null, isCurrentUser: () -> Boolean = { true }) = store.edit {
+        if (!isCurrentUser()) throw AccountBindingChangedException()
         check(it[CLEANUP_TOKEN] == null || it[USER_ID] == uid) { "진행 중인 연결 정리를 먼저 마쳐 주세요" }
         if (it[USER_ID] != uid || it[ACCOUNT_SESSION] == null) it[ACCOUNT_SESSION] = Uuid.random().toString()
         it[USER_ID] = uid

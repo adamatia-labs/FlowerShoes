@@ -8,7 +8,8 @@ sealed interface SignInResult {
      * 로그인됨. [uid] 는 서버가 발급한 Firebase uid다. 카카오도 탈퇴 후 재가입하면 새 uid를 받으므로 구조를 해석하지 않는다.
      * [displayName] 은 제공자가 알려 준 이름(카카오 닉네임 · Google 이름 · Apple 첫 로그인 이름) — 없을 수 있다.
      */
-    data class Success(val uid: String, val provider: AuthProvider, val displayName: String? = null) : SignInResult
+    data class Success(val uid: String, val provider: AuthProvider, val displayName: String? = null,
+        val appleTokenNeedsAttention: Boolean = false) : SignInResult
 
     data object Cancelled : SignInResult
 
@@ -22,6 +23,8 @@ sealed interface SignInResult {
  * 커스텀 토큰을 돌려준다 → signInWithCustomToken. Apple · Google 은 Firebase Auth 기본 제공자다.
  */
 interface AuthGateway {
+    /** SDK의 현재 로그인 계정. 확인할 수 없으면 null이며 저장을 진행하지 않는다. */
+    val currentUserId: String? get() = null
     /** 지금 플랫폼에서 쓸 수 있는 제공자. */
     val providers: List<AuthProvider>
 
@@ -34,7 +37,15 @@ interface AuthGateway {
 
     /** 지금 계정에 Apple · Google 로그인을 더한다. 성공하면 그 방법으로도 같은 계정에 들어온다. */
     suspend fun link(provider: AuthProvider): SignInResult = SignInResult.Failed("이 빌드에서는 연결할 수 없어요")
+
+    /** 현재 계정의 Apple 자동 연결 해제 준비를 확인한다. 토큰 자체를 클라이언트에 가져오지 않는다. */
+    suspend fun appleTokenReady(): Boolean = false
+    /** 같은 계정을 재인증해 새 일회용 코드를 받는다. 로그인 계정을 전환하지 않는다. */
+    suspend fun repairAppleToken(): SignInResult = SignInResult.Failed(APPLE_TOKEN_MANUAL_HELP)
 }
+
+const val APPLE_TOKEN_NOTICE = "로그인은 완료됐지만 Apple 연결 해제 준비를 확인하지 못했어요. 탈퇴할 때 Apple 계정 설정에서 직접 연결을 해제해야 할 수 있어요."
+const val APPLE_TOKEN_MANUAL_HELP = "Apple 계정의 로그인 및 보안 > Apple로 로그인에서 꽃신의 연결을 직접 해제할 수 있어요."
 
 /** 다른 로그인 방법으로 연결할 수 있는 제공자(Figma: Apple · Google). */
 val LINKABLE_PROVIDERS = listOf(AuthProvider.APPLE, AuthProvider.GOOGLE)

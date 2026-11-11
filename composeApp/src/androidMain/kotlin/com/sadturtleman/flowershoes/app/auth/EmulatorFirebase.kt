@@ -47,6 +47,7 @@ class DevEmailAuthGateway(
     private val linker: AuthGateway? = null,
 ) : AuthGateway {
     override val providers: List<AuthProvider> = AuthProvider.entries
+    override val currentUserId: String? get() = FirebaseAuth.getInstance().currentUser?.uid
 
     override suspend fun signIn(provider: AuthProvider): SignInResult = try {
         val auth = FirebaseAuth.getInstance()
@@ -64,6 +65,8 @@ class DevEmailAuthGateway(
     override suspend fun linkedProviders() = linker?.linkedProviders().orEmpty()
 
     override suspend fun link(provider: AuthProvider) = linker?.link(provider) ?: super.link(provider)
+    override suspend fun appleTokenReady() = linker?.appleTokenReady() ?: false
+    override suspend fun repairAppleToken() = linker?.repairAppleToken() ?: super.repairAppleToken()
 
     private companion object {
         const val PASSWORD = "kkotsin-dev"

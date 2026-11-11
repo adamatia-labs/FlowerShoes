@@ -28,6 +28,9 @@ kotlin {
         jvmTest.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(compose.desktop.uiTestJUnit4)
+            implementation(project(":core:database"))
+            implementation(libs.androidx.datastore.preferences.core)
+            implementation(libs.kotlinx.coroutines.test)
         }
         commonMain.dependencies {
             // feature 는 core 만 본다. 다른 feature 로의 이동은 :composeApp 이 콜백으로 잇는다.

@@ -41,8 +41,10 @@ function mockKakao(id: number) {
 async function kakao() {
   return functions.kakaoSignIn.run({ data: { accessToken: 'local-test' }, rawRequest: {} } as never);
 }
-async function remove(uid: string) {
-  return functions.deleteAccount.run({ data: {}, auth: { uid, token: { firebase: { sign_in_provider: 'custom' } } }, rawRequest: {} } as never);
+async function remove(uid: string, appleSubject?: string) {
+  return functions.deleteAccount.run({ data: {}, auth: { uid, token: { firebase: {
+    sign_in_provider: 'custom', ...(appleSubject ? { identities: { 'apple.com': [appleSubject] } } : {}),
+  } } }, rawRequest: {} } as never);
 }
 async function signIn(customToken: string) {
   const response = await realFetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=local-test`, {
@@ -207,6 +209,11 @@ test('탈퇴한 초대 발신자나 수락자의 지연 이벤트는 사용자�
   }
 });
 
+function appleIdentity(subject = 'apple-sub'): string {
+  return `header.${Buffer.from(JSON.stringify({ iss: 'https://appleid.apple.com', aud: 'test.example.app', sub: subject,
+    exp: Math.floor(Date.now() / 1_000) + 300 })).toString('base64url')}.signature`;
+}
+
 test('Apple 코드 교환 응답이 탈퇴보다 늦어도 토큰을 다시 저장하지 않고 폐기를 시도한다', async () => {
   const uid = 'late-apple';
   await getAuth().createUser({ uid });
@@ -218,12 +225,12 @@ test('Apple 코드 교환 응답이 탈퇴보다 늦어도 토큰을 다시 저�
     if (String(url).endsWith('/auth/token')) {
       exchanging.resolve();
       await deliver.promise;
-      return Response.json({ refresh_token: 'late-refresh' });
+      return Response.json({ refresh_token: 'late-refresh', id_token: appleIdentity() });
     }
     if (String(url).endsWith('/auth/revoke')) { revoked = true; return new Response('', { status: 200 }); }
     return realFetch(url, init);
   }) as typeof fetch);
-  const store = functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, rawRequest: {} } as never);
+  const store = functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['apple-sub'] } } } }, rawRequest: {} } as never);
   try {
     await exchanging.promise;
     assert.deepEqual(await remove(uid), { ok: true, appleRevocation: 'manual' });
@@ -238,15 +245,70 @@ test('완료된 Apple 코드 교환은 대기 수를 줄이고 폐기 성공 결
   const uid = 'stored-apple';
   await getAuth().createUser({ uid });
   const request = mock.method(globalThis, 'fetch', (async (url: string | URL | Request, init?: RequestInit) => {
-    if (String(url).endsWith('/auth/token')) return Response.json({ refresh_token: 'stored-refresh' });
+    if (String(url).endsWith('/auth/token')) return Response.json({ refresh_token: 'stored-refresh', id_token: appleIdentity() });
     if (String(url).endsWith('/auth/revoke')) return new Response('', { status: 200 });
     return realFetch(url, init);
   }) as typeof fetch);
   try {
-    const stored = await functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, rawRequest: {} } as never);
+    const stored = await functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: { sign_in_provider: 'apple.com', identities: { 'apple.com': ['apple-sub'] } } } }, rawRequest: {} } as never);
     assert.deepEqual(stored, { stored: true });
     assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).get('pendingExchanges'), 0);
-    assert.deepEqual(await remove(uid), { ok: true, appleRevocation: 'revoked' });
+    assert.deepEqual(await remove(uid, 'apple-sub'), { ok: true, appleRevocation: 'revoked' });
+  } finally { request.mock.restore(); }
+});
+
+test('Google 로그인 계정에 연결한 Apple 신원으로 토큰을 저장하고 준비 상태만 조회한다', async () => {
+  const uid = 'google-linked-apple';
+  await getAuth().createUser({ uid });
+  const call = { data: { code: 'local-code' }, auth: { uid, token: { firebase: {
+    sign_in_provider: 'google.com', identities: { 'apple.com': ['apple-sub'], 'google.com': ['google-sub'] },
+  } } }, rawRequest: {} } as never;
+  const request = mock.method(globalThis, 'fetch', (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).endsWith('/auth/token')) return Response.json({ refresh_token: 'linked-refresh', id_token: appleIdentity() });
+    return realFetch(url, init);
+  }) as typeof fetch);
+  try {
+    assert.deepEqual(await functions.appleTokenState.run(call), { ready: false });
+    assert.deepEqual(await functions.appleStoreToken.run(call), { stored: true });
+    assert.deepEqual(await functions.appleTokenState.run(call), { ready: true });
+    const token = getFirestore().doc(`appleTokens/${uid}`);
+    await token.update({ pendingExchanges: 1 });
+    assert.deepEqual(await functions.appleTokenState.run(call), { ready: false });
+    await token.update({ pendingExchanges: 0, appleSubject: 'previous-apple' });
+    assert.deepEqual(await functions.appleTokenState.run(call), { ready: false });
+  } finally { request.mock.restore(); }
+});
+
+test('다른 Apple 계정의 code는 현재 계정에 저장하지 않고 발급 토큰을 폐기한다', async () => {
+  const uid = 'mismatched-apple';
+  await getAuth().createUser({ uid });
+  let revoked = 0;
+  const request = mock.method(globalThis, 'fetch', (async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).endsWith('/auth/token')) return Response.json({ refresh_token: 'wrong-account-token', id_token: appleIdentity('another-sub') });
+    if (String(url).endsWith('/auth/revoke')) { revoked++; return new Response('', { status: 200 }); }
+    return realFetch(url, init);
+  }) as typeof fetch);
+  try {
+    await assert.rejects(functions.appleStoreToken.run({ data: { code: 'local-code' }, auth: { uid, token: { firebase: {
+      sign_in_provider: 'apple.com', identities: { 'apple.com': ['apple-sub'] },
+    } } }, rawRequest: {} } as never), /연결된 Apple 계정/);
+    assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).get('refreshToken'), undefined);
+    assert.equal((await getFirestore().doc(`appleTokens/${uid}`).get()).get('pendingExchanges'), 0);
+    assert.equal(revoked, 1);
+  } finally { request.mock.restore(); }
+});
+
+test('편집 중 인증 계정이 바뀐 등록은 Apple 요청 전에 거부한다', async () => {
+  const uid = 'apple-changed-owner';
+  await getAuth().createUser({ uid });
+  const request = mock.method(globalThis, 'fetch', (async () => { throw new Error('must not request Apple'); }) as typeof fetch);
+  try {
+    const call = { data: { code: 'local-code', expectedUid: 'previous-owner' }, auth: { uid, token: { firebase: {
+      identities: { 'apple.com': ['apple-sub'] },
+    } } }, rawRequest: {} } as never;
+    await assert.rejects(functions.appleStoreToken.run(call), /계정이 바뀌었어요/);
+    await assert.rejects(functions.appleTokenState.run(call), /계정이 바뀌었어요/);
+    assert.equal(request.mock.callCount(), 0);
   } finally { request.mock.restore(); }
 });
 

@@ -11,6 +11,10 @@ const config = {
   privateKey: privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
 };
 
+const idToken = (claims: Record<string, unknown> = {}) => `header.${Buffer.from(JSON.stringify({
+  iss: 'https://appleid.apple.com', aud: config.clientId, sub: 'apple-sub', exp: Math.floor(Date.now() / 1_000) + 300, ...claims,
+})).toString('base64url')}.signature`;
+
 test('client secret 은 Apple 이 요구하는 ES256 JWT 다', () => {
   const jwt = appleClientSecret(config, 1_000_000);
   const [h, p, s] = jwt.split('.');
@@ -37,10 +41,10 @@ test('code 교환 · 폐기 요청 모양', async () => {
   const calls: { url: string; body: URLSearchParams }[] = [];
   const fake = (async (url: string, init: RequestInit) => {
     calls.push({ url, body: new URLSearchParams(init.body as string) });
-    return new Response(JSON.stringify({ refresh_token: 'rt-1' }), { status: 200 });
+    return new Response(JSON.stringify({ refresh_token: 'rt-1', id_token: idToken() }), { status: 200 });
   }) as unknown as typeof fetch;
 
-  assert.equal(await exchangeCode(config, 'code-1', fake), 'rt-1');
+  assert.deepEqual(await exchangeCode(config, 'code-1', fake), { refreshToken: 'rt-1', subject: 'apple-sub' });
   assert.equal(calls[0].url, 'https://appleid.apple.com/auth/token');
   assert.equal(calls[0].body.get('grant_type'), 'authorization_code');
   assert.equal(calls[0].body.get('code'), 'code-1');
@@ -55,6 +59,13 @@ test('code 교환 · 폐기 요청 모양', async () => {
 test('Apple 이 거절하면 null', async () => {
   const fail = (async () => new Response('{}', { status: 400 })) as unknown as typeof fetch;
   assert.equal(await exchangeCode(config, 'bad', fail), null);
+});
+
+test('교환 응답의 신원이 잘못돼도 발급 토큰은 호출자가 폐기할 수 있게 돌려준다', async () => {
+  for (const claims of [{ iss: 'other' }, { aud: 'other-client' }, { exp: 0 }, { sub: '' }]) {
+    const request = (async () => Response.json({ refresh_token: 'issued', id_token: idToken(claims) })) as typeof fetch;
+    assert.deepEqual(await exchangeCode(config, 'code', request), { refreshToken: 'issued', subject: null });
+  }
 });
 
 test('일시적인 폐기 오류는 같은 토큰으로 재시도해 성공을 확인한다', async () => {
