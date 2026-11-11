@@ -101,4 +101,3 @@ class BookCoverPermissionTest {
         } finally { stopKoin() }
     }
 }
-
