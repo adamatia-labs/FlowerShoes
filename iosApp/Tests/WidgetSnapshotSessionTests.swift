@@ -28,18 +28,23 @@ final class WidgetSnapshotSessionTests: XCTestCase {
         for replacement in [owner(couple: "couple-b"), owner(session: "login-b"), owner(epoch: 2)] {
             let before = try snapshot(owner: replacement)
             try before.write(to: file, options: .atomic)
-            XCTAssertFalse(SharedStore.updateSnapshot(owner: old, at: file) {
+            var deliveredPrivateContent = false
+            XCTAssertFalse(SharedStore.updateSnapshot(owner: old, at: file, onUpdated: { deliveredPrivateContent = true }) {
                 $0.missYouSentToday = 99
                 $0.partnerStatus = "old status"
             })
             XCTAssertEqual(try Data(contentsOf: file), before)
+            XCTAssertFalse(deliveredPrivateContent)
         }
     }
 
     func testMatchingOwnerUpdatesCountsAndStatus() throws {
         let current = owner()
         try snapshot(owner: current).write(to: file, options: .atomic)
-        XCTAssertTrue(SharedStore.updateSnapshot(owner: current, at: file) {
+        var deliveredStatus: String?
+        XCTAssertTrue(SharedStore.updateSnapshot(owner: current, at: file, onUpdated: {
+            deliveredStatus = SharedStore.readSnapshot(at: self.file)?.partnerStatus
+        }) {
             $0.missYouSentToday = 1
             $0.missYouFromPartnerToday = 2
             $0.partnerStatus = "current status"
@@ -48,6 +53,7 @@ final class WidgetSnapshotSessionTests: XCTestCase {
         XCTAssertEqual(saved.missYouSentToday, 1)
         XCTAssertEqual(saved.missYouFromPartnerToday, 2)
         XCTAssertEqual(saved.partnerStatus, "current status")
+        XCTAssertEqual(deliveredStatus, "current status")
     }
 
     func testMissingOwnershipIsReadableButCannotAuthorizeExtensionWrite() throws {
@@ -63,8 +69,39 @@ final class WidgetSnapshotSessionTests: XCTestCase {
         let old = owner()
         try snapshot(owner: old).write(to: file, options: .atomic)
         try SnapshotFileLock.withLock(snapshot: file) { try FileManager.default.removeItem(at: file) }
-        XCTAssertFalse(SharedStore.updateSnapshot(owner: old, at: file) { $0.missYouSentToday = 99 })
+        var deliveredPrivateContent = false
+        XCTAssertFalse(SharedStore.updateSnapshot(owner: old, at: file, onUpdated: { deliveredPrivateContent = true }) { $0.missYouSentToday = 99 })
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertFalse(deliveredPrivateContent)
+    }
+
+    func testCleanupWaitsForAuthorizedNotificationDelivery() throws {
+        let current = owner(), url = file
+        try snapshot(owner: current).write(to: url, options: .atomic)
+        let delivering = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let delivered = DispatchSemaphore(value: 0), clearing = DispatchSemaphore(value: 0), cleared = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        DispatchQueue.global().async {
+            XCTAssertTrue(SharedStore.updateSnapshot(owner: current, at: url, onUpdated: {
+                XCTAssertEqual(SharedStore.readSnapshot(at: url)?.partnerStatus, "current status")
+                delivering.signal()
+                XCTAssertEqual(release.wait(timeout: .now() + 5), .success)
+            }) { $0.partnerStatus = "current status" })
+            delivered.signal()
+        }
+        XCTAssertEqual(delivering.wait(timeout: .now() + 5), .success)
+        DispatchQueue.global().async {
+            clearing.signal()
+            do { try SnapshotFileLock.withLock(snapshot: url) { try FileManager.default.removeItem(at: url) } }
+            catch { XCTFail("cleanup failed: \(error)") }
+            cleared.signal()
+        }
+        XCTAssertEqual(clearing.wait(timeout: .now() + 5), .success)
+        XCTAssertEqual(cleared.wait(timeout: .now() + 0.05), .timedOut)
+        release.signal()
+        XCTAssertEqual(delivered.wait(timeout: .now() + 5), .success)
+        XCTAssertEqual(cleared.wait(timeout: .now() + 5), .success)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
     func testAppReplacementCannotInterleaveExtensionReadAndWrite() throws {
