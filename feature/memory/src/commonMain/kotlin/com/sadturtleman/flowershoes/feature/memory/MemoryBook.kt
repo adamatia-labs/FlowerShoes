@@ -159,7 +159,9 @@ internal fun BookScreen(
     val spreads = remember(pages) { listOf(listOf(pages[0]), listOf(pages[1])) + pages.drop(2).dropLast(1).chunked(2) + listOf(listOf(pages.last())) }
     var spread by remember { mutableStateOf(0) }
     val store = actions?.store
-    val owned by (actions?.sharedOwned ?: store?.owned ?: remember { MutableStateFlow(false) }).collectAsState(initial = false)
+    val purchased by (store?.owned ?: remember { MutableStateFlow(false) }).collectAsState()
+    val sharedOwned by (actions?.sharedOwned ?: remember { MutableStateFlow(false) }).collectAsState(initial = false)
+    val owned = purchased || sharedOwned
     var price by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(store) { price = store?.price() }
     var busy by remember { mutableStateOf(false) }
@@ -211,10 +213,12 @@ internal fun BookScreen(
                 onClose = { picking = false },
                 onConfirm = { cover ->
                     picking = false
-                    if (owned) {
+                    // 고르는 동안 바뀐 구매 상태도 확인한다. 공유 PDF 이용권으로는 표지를 바꾸지 않는다.
+                    if (store?.owned?.value == true) {
                         onChooseCover(cover)
                         make(cover)
-                    } else buy(cover)
+                    } else if (owned) onNotice("표지는 추억 책을 구매한 사람이 바꿀 수 있어요")
+                    else buy(cover)
                 },
             )
         } else Column(Modifier.fillMaxSize().navigationBarsPadding()) {
@@ -255,7 +259,7 @@ internal fun BookScreen(
                     }
                     // 사기 전에는 표지부터 고른다(Figma 표지 고르기). 산 뒤에는 지금 표지로 바로 만든다.
                     KkPrimaryButton(label, { if (owned) make(state.cover) else picking = true }, Modifier.fillMaxWidth(), enabled = capture == null, loading = busy)
-                    if (owned) {
+                    if (purchased) {
                         Text("표지 바꾸기", style = KkTheme.type.label, color = c.accent,
                             modifier = Modifier.heightIn(min = 48.dp).clickable(enabled = capture == null, role = Role.Button) { picking = true }.wrapContentSize(Alignment.CenterStart))
                     }
