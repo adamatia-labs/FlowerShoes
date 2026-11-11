@@ -112,7 +112,9 @@ enum SharedStore {
     /// 네트워크·복호화 시작 시 고정한 소유권을 잠금 안에서 다시 확인한다.
     /// 읽기와 원자적 파일 교체 사이에 앱의 새 스냅샷이 끼어들 수 없다.
     @discardableResult
-    static func updateSnapshot(owner: WidgetOwner?, at url: URL = snapshotURL, _ change: (inout WidgetSnapshot) -> Void) -> Bool {
+    // onUpdated는 같은 잠금 안에서 동기로 실행한다. 정리 완료 뒤 오래된 알림/대기열을 발행하지 않게 한다.
+    // 네트워크 요청이나 이 잠금을 다시 얻는 작업은 넣지 않는다.
+    static func updateSnapshot(owner: WidgetOwner?, at url: URL = snapshotURL, onUpdated: () -> Void = {}, _ change: (inout WidgetSnapshot) -> Void) -> Bool {
         guard let owner else { return false }
         return (try? SnapshotFileLock.withLock(snapshot: url) {
             guard var s = readSnapshot(at: url), s.owner == owner, s.linked else { return false }
@@ -124,6 +126,7 @@ enum SharedStore {
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             try protectedURL.setResourceValues(values)
+            onUpdated()
             return true
         }) ?? false
     }
