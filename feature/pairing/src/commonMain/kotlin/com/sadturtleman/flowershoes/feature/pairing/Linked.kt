@@ -58,8 +58,8 @@ import kotlinx.coroutines.launch
  * 화면 이동을 막지 않고 기존 동기화 경로로 전달한다.
  */
 class LinkHandoff(private val settings: DeviceSettings, private val sync: SyncClient?) {
-    suspend fun begin() {
-        settings.setKeyEpoch(1)
+    suspend fun begin(keyEpoch: Int = 1) {
+        settings.setKeyEpoch(keyEpoch)
         // 기록은 별도 안내 없이 평소 동기화 경로로 전달한다.
         settings.setSoloArrivalWatch(false)
     }
@@ -128,7 +128,9 @@ class LinkWatchViewModel(
     private fun linked(coupleId: String, showDialog: Boolean) {
         if (handoffJob?.isActive == true || pendingDialog == coupleId) return
         handoffJob = viewModelScope.launch {
-            handoff.begin()
+            val current = profile.observeCouple().first()
+            if (current?.id != coupleId) throw com.sadturtleman.flowershoes.core.data.ScreenSessionChangedException()
+            handoff.begin(current.keyEpoch)
             val name = if (showDialog) partnerName() else null
             currentCoroutineContext().ensureActive()
             if (logged != coupleId) {

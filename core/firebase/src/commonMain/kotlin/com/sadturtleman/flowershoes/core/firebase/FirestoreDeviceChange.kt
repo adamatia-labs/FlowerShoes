@@ -239,13 +239,13 @@ class FirestoreNotifyPrefs(private val db: FirebaseFirestore = Firebase.firestor
     @kotlinx.serialization.Serializable
     private data class Doc(val quietStart: Int, val quietEnd: Int, val tz: String, val missYouBundle: Int, val kinds: Map<String, Boolean>)
 
-    override suspend fun upload(prefs: com.sadturtleman.flowershoes.core.data.NotificationPrefs) {
-        val uid = Firebase.auth.currentUser?.uid ?: return
+    override suspend fun upload(ownerUid: String, prefs: com.sadturtleman.flowershoes.core.data.NotificationPrefs) {
+        if (Firebase.auth.currentUser?.uid != ownerUid) throw com.sadturtleman.flowershoes.core.data.ScreenSessionChangedException()
         val kinds = mapOf(
             "letter" to prefs.letters, "letter-drawing" to prefs.letters, "scheduled" to prefs.letters,
             "missyou" to prefs.missYou, "status" to prefs.status,
         )
-        db.collection("users").document(uid).collection("notifyPrefs").document("main")
+        db.collection("users").document(ownerUid).collection("notifyPrefs").document("main")
             .set(Doc.serializer(), Doc(prefs.quietStart, prefs.quietEnd, "Asia/Seoul", prefs.missYouBundle.coerceAtLeast(1), kinds))
     }
 }

@@ -906,10 +906,12 @@ private fun WidgetsPage(state: SettingsState, platform: PlatformActions, onBack:
 
 /** 받은 그림 위젯 프레임(꽃신 평생 · 위젯 꾸미기). 기본은 누구나, 나머지는 이용권이 있으면. */
 @Composable
+@OptIn(org.koin.core.annotation.KoinInternalApi::class)
 private fun WidgetFramePicker() {
     val c = KkTheme.colors
     val koin = org.koin.compose.getKoin()
-    val settings = koin.getOrNull<com.sadturtleman.flowershoes.core.data.DeviceSettings>() ?: return
+    val settings = org.koin.compose.currentKoinScope().getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()?.settings
+        ?: koin.getOrNull<com.sadturtleman.flowershoes.core.data.DeviceSettings>() ?: return
     val lifetimeOn by (koin.getOrNull<com.sadturtleman.flowershoes.core.data.SharedPerks>()?.lifetimeOn
         ?: remember { kotlinx.coroutines.flow.flowOf(false) }).collectAsStateWithLifecycle(false)
     val frame by settings.widgetFrame.collectAsStateWithLifecycle("BASIC")

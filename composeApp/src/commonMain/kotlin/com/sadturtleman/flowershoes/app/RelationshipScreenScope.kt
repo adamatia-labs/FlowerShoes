@@ -20,7 +20,7 @@ fun RelationshipScreenScope(account: DeviceState?, couple: CoupleEntity?, loaded
         account == null -> null
         !account.onboarded -> ScreenSession.Onboarding
         else -> ScreenSession.Main(account.userId, account.deviceId, account.accountSession,
-            couple?.id, couple?.myUserId, couple?.partnerUserId, couple?.linkedAtMs)
+            couple?.id, couple?.myUserId, couple?.partnerUserId, couple?.linkedAtMs, couple?.keyEpoch)
     }
     // Activity 재생성 직후 DataStore/Room의 첫 값을 기다리는 동안에는 기존 보관함을 유지한다.
     val owner = if (loaded) stores.select(session) else null
@@ -34,7 +34,7 @@ private sealed interface ScreenSession {
     // 로그인 성공으로 uid가 바뀌어도 진행 중인 역할/테마 입력을 유지한다. 홈 진입 때 폐기한다.
     data object Onboarding : ScreenSession
     data class Main(val uid: String, val device: String, val generation: String,
-        val couple: String?, val me: String?, val partner: String?, val linkedAt: Long?) : ScreenSession
+        val couple: String?, val me: String?, val partner: String?, val linkedAt: Long?, val epoch: Int?) : ScreenSession
 }
 
 private class RelationshipViewModels : ViewModel() {

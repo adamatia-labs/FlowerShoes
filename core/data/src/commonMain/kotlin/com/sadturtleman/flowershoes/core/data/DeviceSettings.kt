@@ -15,6 +15,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 /** 이 기기의 설정. 온보딩이 어디까지 왔는지 · 테마 · 로컬 신원. */
 data class DeviceState(
@@ -33,6 +34,15 @@ data class DeviceState(
  * 로그인(:core:auth)이 붙기 전에는 첫 실행 때 만든 로컬 id 를 쓴다. 로그인하면 [bindAccount] 로 uid 에 묶는다.
  */
 class DeviceSettings(private val store: DataStore<Preferences>) {
+
+    /** 화면 전용 설정도 bind/reset과 같은 실제 DataStore 갱신 경계에서 소유자를 확인한다. */
+    internal fun forScreen(session: ScreenWriteSession): DeviceSettings = DeviceSettings(object : DataStore<Preferences> {
+        override val data = store.data
+        override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = store.updateData { p ->
+            if (p.draftSession() != session.owner) throw ScreenSessionChangedException()
+            withContext(AccountWriteBoundary(session.owner)) { session.transaction { transform(p) } }
+        }
+    })
 
     val state: Flow<DeviceState> = store.data.map { p ->
         DeviceState(
@@ -78,7 +88,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         store.edit { p ->
             if (p[USER_ID] == expected.userId && p[DEVICE_ID] == expected.deviceId &&
                 p[ACCOUNT_SESSION] == expected.accountSession && p[ACCOUNT_CLEANUP] == null && p[CLEANUP_TOKEN] == null) {
-                block()
+                withContext(AccountWriteBoundary(DraftSession(expected.userId, expected.deviceId, expected.accountSession))) { block() }
                 applied = true
             }
         }
@@ -106,7 +116,7 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
             val inactiveOwner = finishCapturedEdit && current != null && current.deviceId == expected.deviceId && current.ownerUid != expected.ownerUid &&
                 p.draftGenerations()[expected.ownerUid] == expected.generation
             if (current == expected || inactiveOwner) {
-                block(); applied = true
+                withContext(AccountWriteBoundary(checkNotNull(current))) { block() }; applied = true
                 if (invalidate) {
                     val generation = Uuid.random().toString()
                     p[ACCOUNT_SESSION] = generation
@@ -229,7 +239,11 @@ class DeviceSettings(private val store: DataStore<Preferences>) {
         p[NOTIFY_PREFS]?.let { runCatching { prefsJson.decodeFromString(NotificationPrefs.serializer(), it) }.getOrNull() } ?: NotificationPrefs()
     }
 
-    suspend fun setNotifyPrefs(prefs: NotificationPrefs) = store.edit { it[NOTIFY_PREFS] = prefsJson.encodeToString(NotificationPrefs.serializer(), prefs) }
+    suspend fun setNotifyPrefs(prefs: NotificationPrefs, writePreview: () -> Unit = {}) = store.edit {
+        // iOS 확장의 미리보기 파일도 화면의 계정/관계 검사를 통과한 같은 쓰기 경계 안에서 바꾼다.
+        writePreview()
+        it[NOTIFY_PREFS] = prefsJson.encodeToString(NotificationPrefs.serializer(), prefs)
+    }
 
     /** 설정 › 테마 › 화면 모드: SYSTEM(기본) · LIGHT · DARK. */
     val displayMode: Flow<String> = store.data.map { it[DISPLAY_MODE] ?: "SYSTEM" }

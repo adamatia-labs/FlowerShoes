@@ -91,8 +91,10 @@ class LinkHandoffCancellationTest {
             withTimeout(5_000) { restored.ui.first { it != null } }
             assertEquals(1, settings.state.first().keyEpoch)
             withContext(Dispatchers.Main) { stores.last().clear() }
+            db.coupleDao().upsert(checkNotNull(db.coupleDao().get()).copy(keyEpoch = 2))
             val pending = withContext(Dispatchers.Main) { create().also { it.watch() } }
             withTimeout(5_000) { pending.ui.first { it != null } }
+            assertEquals(2, settings.state.first().keyEpoch)
             withContext(Dispatchers.Main) { pending.start(); stores.last().clear() }
             val dismissed = withContext(Dispatchers.Main) { create().also { it.watch() } }
             assertNull(dismissed.ui.value)

@@ -30,5 +30,5 @@ data class NotificationPrefs(
 
 /** 서버(users/{uid}/notifyPrefs/main)에 알림 정책을 올린다. 클라우드가 없으면 없다. */
 fun interface NotifyPrefsTransport {
-    suspend fun upload(prefs: NotificationPrefs)
+    suspend fun upload(ownerUid: String, prefs: NotificationPrefs)
 }

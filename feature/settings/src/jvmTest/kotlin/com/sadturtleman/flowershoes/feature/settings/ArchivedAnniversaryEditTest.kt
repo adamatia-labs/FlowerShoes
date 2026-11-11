@@ -21,7 +21,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -82,7 +81,7 @@ class ArchivedAnniversaryEditTest {
             assertTrue(db.syncDao().log("device:app").isEmpty())
             assertEquals(nextSeq, db.syncDao().nextSeq("device:app"))
         } finally {
-            viewModel?.viewModelScope?.cancel()
+            viewModel?.viewModelScope?.coroutineContext?.get(Job)?.cancelAndJoin()
             settingsScope.coroutineContext[Job]!!.cancelAndJoin()
             db.close()
             if (FileSystem.SYSTEM.exists(root)) FileSystem.SYSTEM.deleteRecursively(root)

@@ -87,6 +87,7 @@ class SettingsViewModel(
     private val events: EventRepository,
     private val notifyTransport: NotifyPrefsTransport? = null,
     private val clock: Clock = Clock.System,
+    private val screenSession: com.sadturtleman.flowershoes.core.data.ScreenWriteSession? = null,
 ) : ViewModel() {
 
     /** 토스트 한 번. [error] 면 오류 토스트(구매 실패 등). */
@@ -180,10 +181,11 @@ class SettingsViewModel(
 
     /** 알림 설정: 이 기기에 저장하고 서버(받을 종류 · 조용한 시간 · 묶음)에 올린다. */
     fun setNotify(prefs: NotificationPrefs, platform: PlatformActions) {
-        platform.setHidePreview(prefs.hidePreview)
+        val ownerUid = identity.userId
         viewModelScope.launch {
-            settings.setNotifyPrefs(prefs)
-            runCatching { notifyTransport?.upload(prefs) }
+            settings.setNotifyPrefs(prefs) { platform.setHidePreview(prefs.hidePreview) }
+            runCatching { notifyTransport?.upload(ownerUid, prefs) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
         }
     }
 
@@ -235,7 +237,7 @@ class SettingsViewModel(
         _unlinkOperation.value = running
         val job = viewModelScope.launch {
             try {
-                val completedChoice = unlink.unlink(after) ?: after
+                val completedChoice = unlink.unlink(after, screenSession) ?: after
                 _unlinkSelection.value = completedChoice
                 _unlinkOperation.compareAndSet(running, UnlinkOperation.Completed(completedChoice, withoutDeviceLock))
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -258,12 +260,12 @@ class SettingsViewModel(
 
     /** 상대가 해제한 뒤 이 폰 사본을 어떻게 할지. */
     fun afterPartnerUnlinked(after: AfterUnlink, expectedCoupleId: String? = null) = viewModelScope.launch {
-        unlink.onPartnerUnlinked(after, expectedCoupleId)
+        unlink.onPartnerUnlinked(after, expectedCoupleId, screenSession)
     }
 
     /** 탈퇴. 끝나면 설정이 비워져 셸이 처음 화면(로그인)으로 돌아간다. */
     fun deleteAccount() = viewModelScope.launch {
-        runCatching { unlink.deleteAccount() }.onFailure {
+        runCatching { unlink.deleteAccount(screenSession) }.onFailure {
             if (it is kotlinx.coroutines.CancellationException) throw it
             notice("탈퇴하지 못했어요. 연결을 확인하고 다시 해 주세요", error = true)
         }

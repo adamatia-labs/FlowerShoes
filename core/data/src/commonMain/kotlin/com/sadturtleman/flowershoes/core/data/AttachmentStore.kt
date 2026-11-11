@@ -28,47 +28,51 @@ class AttachmentStore(
     private val db: AppDatabase,
     private val root: Path,
     private val fs: FileSystem = FileSystem.SYSTEM,
+    private val screenSession: ScreenWriteSession? = null,
 ) {
+    internal fun forScreen(session: ScreenWriteSession) = AttachmentStore(db, root, fs, session)
     suspend fun put(kind: AttachmentKind, bytes: ByteArray): String = putWithId(Uuid.random().toString(), kind, bytes)
 
     /** 받은 첨부를 보낸 쪽과 같은 id 로 둔다(편지 블록이 그 id 를 가리킨다). */
-    suspend fun putWithId(id: String, kind: AttachmentKind, bytes: ByteArray): String = db.useWriterConnection { connection ->
-        connection.immediateTransaction {
-            db.requireNoCleanup()
-            require(isSafeId(id)) { "첨부 식별자가 올바르지 않습니다" }
-            RelationshipArchive(db).prepare()
-            if (RelationshipArchive(db).contains("attachment", id)) throw ArchivedRecordException()
-            fs.createDirectories(root)
-            val path = root / id
-            val metadata = fs.metadataOrNull(path)
-            require(metadata?.symlinkTarget == null && (metadata == null || safeExistingPath(root, path.toString(), fs) != null)) { "첨부 경로가 올바르지 않습니다" }
-            val digest = bytes.toByteString().sha256().hex()
-            val existing = db.attachmentDao().get(id)
-            if (existing != null && (existing.kind != kind.name || existing.sha256 != digest || existing.sizeBytes != bytes.size.toLong())) {
-                throw AttachmentConflictException()
-            }
-            if (metadata != null) {
-                val storedDigest = HashingSource.sha256(fs.source(path)).use { hashing ->
-                    hashing.buffer().use { it.readAll(blackholeSink()) }
-                    hashing.hash.hex()
-                }
-                if (storedDigest != digest) throw AttachmentConflictException()
-            } else {
-                // SQLite 쓰기 경계에서 기존 파일 확인과 설치를 직렬화한다. 부분 쓰기는 최종 이름에 노출하지 않는다.
-                val temporary = root / ".incoming-${Uuid.random()}"
-                try {
-                    fs.write(temporary) { write(bytes) }
-                    fs.atomicMove(temporary, path)
-                } finally {
-                    runCatching { fs.delete(temporary, mustExist = false) }
-                }
-            }
-            if (existing == null) db.attachmentDao().upsert(
-                AttachmentEntity(id, kind.name, path.toString(), digest, bytes.size.toLong()),
-            )
-            id
+    suspend fun putWithId(id: String, kind: AttachmentKind, bytes: ByteArray): String = transaction {
+        db.requireNoCleanup()
+        require(isSafeId(id)) { "첨부 식별자가 올바르지 않습니다" }
+        RelationshipArchive(db).prepare()
+        if (RelationshipArchive(db).contains("attachment", id)) throw ArchivedRecordException()
+        fs.createDirectories(root)
+        val path = root / id
+        val metadata = fs.metadataOrNull(path)
+        require(metadata?.symlinkTarget == null && (metadata == null || safeExistingPath(root, path.toString(), fs) != null)) { "첨부 경로가 올바르지 않습니다" }
+        val digest = bytes.toByteString().sha256().hex()
+        val existing = db.attachmentDao().get(id)
+        if (existing != null && (existing.kind != kind.name || existing.sha256 != digest || existing.sizeBytes != bytes.size.toLong())) {
+            throw AttachmentConflictException()
         }
+        if (metadata != null) {
+            val storedDigest = HashingSource.sha256(fs.source(path)).use { hashing ->
+                hashing.buffer().use { it.readAll(blackholeSink()) }
+                hashing.hash.hex()
+            }
+            if (storedDigest != digest) throw AttachmentConflictException()
+        } else {
+            // SQLite 쓰기 경계에서 기존 파일 확인과 설치를 직렬화한다. 부분 쓰기는 최종 이름에 노출하지 않는다.
+            val temporary = root / ".incoming-${Uuid.random()}"
+            try {
+                fs.write(temporary) { write(bytes) }
+                fs.atomicMove(temporary, path)
+            } finally {
+                runCatching { fs.delete(temporary, mustExist = false) }
+            }
+        }
+        if (existing == null) db.attachmentDao().upsert(
+            AttachmentEntity(id, kind.name, path.toString(), digest, bytes.size.toLong()),
+        )
+        id
     }
+
+    private suspend fun <T> transaction(block: suspend () -> T): T =
+        if (screenSession != null) screenSession.write(block)
+        else db.useWriterConnection { tx -> tx.immediateTransaction { block() } }
 
     /** 연결 해제 "모두 지우기" · 탈퇴. */
     fun deleteAllFiles() {

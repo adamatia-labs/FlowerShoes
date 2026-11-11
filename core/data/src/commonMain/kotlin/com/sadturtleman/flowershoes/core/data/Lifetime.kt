@@ -75,8 +75,8 @@ class SharedPerks(private val lifetime: LifetimeStore?, private val book: BookSt
     val bookOn: kotlinx.coroutines.flow.Flow<Boolean> = all.map { BOOK in it }
 
     /** 내가 산 것이 바뀔 때마다 내 정보에 싣는다(앱이 떠 있는 동안). */
-    suspend fun publish() {
-        mine.distinctUntilChanged().collect { runCatching { profile.publishPerks(it) } }
+    suspend fun publish(target: ProfileRepository = profile) {
+        mine.distinctUntilChanged().collect { runCatching { target.publishPerks(it) } }
     }
 
     companion object {

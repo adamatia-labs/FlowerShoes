@@ -146,16 +146,51 @@ fun kkotsinModules(
     },
     module {
         viewModel { OnboardingViewModel(get(), get(), get(), linkedElsewhere = { getOrNull<DeviceChangeSession>()?.linkedElsewhere() != null }) }
-        viewModel { HomeViewModel(get(), get(), get(), get(), get(), pendingInvite = get<DeviceSettings>().pendingInvite, dayLineCards = get<DeviceSettings>().dayLineCards) }
-        viewModel { CalendarViewModel(get(), get(), get(), get()) }
-        viewModel { com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(get(), get(), get()) }
-        viewModel { LetterViewModel(get(), get(), get(), get(), get(), bizLogger = get()) }
-        viewModel { DrawingEditorViewModel(get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, get(), get(), events = get()) }
-        viewModel { MemoryViewModel(get(), get(), get(), get(), get(), clock = get()) }
-        viewModel { PairingViewModel(getOrNull(), getOrNull(), get(), get(), get(), bizLogger = get()) }
-        viewModel { com.sadturtleman.flowershoes.feature.pairing.DeviceChangeViewModel(getOrNull(), getOrNull(), get(), bizLogger = get()) }
-        viewModel { com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel(getOrNull(), get(), getOrNull(), get(), bizLogger = get()) }
-        viewModel { com.sadturtleman.flowershoes.feature.pairing.SoloArrivalViewModel(get(), get(), get()) }
-        viewModel { SettingsViewModel(get(), get(), get(), get(), get(), getOrNull()) }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            val settings = data?.settings ?: get<DeviceSettings>()
+            HomeViewModel(data?.profile ?: get(), data?.events ?: get(), data?.missYou ?: get(), data?.letters ?: get(),
+                data?.statusEditor ?: get(), pendingInvite = settings.pendingInvite, dayLineCards = settings.dayLineCards)
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            CalendarViewModel(data?.events ?: get(), data?.leave ?: get(), data?.profile ?: get(), get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            com.sadturtleman.flowershoes.feature.calendar.LeaveViewModel(data?.leave ?: get(), data?.profile ?: get(), get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            LetterViewModel(data?.letters ?: get(), data?.attachments ?: get(), data?.profile ?: get(), get(), get(), bizLogger = get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            DrawingEditorViewModel(data?.attachments ?: get(), DrawingRasterizer { doc, photos -> DrawingPng.render(doc, photos = photos) }, data?.profile ?: get(), get(), events = data?.events ?: get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            MemoryViewModel(data?.letters ?: get(), data?.events ?: get(), data?.profile ?: get(), data?.attachments ?: get(), data?.covers ?: get(), clock = get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            PairingViewModel(getOrNull(), getOrNull(), data?.settings ?: get(), get(), data?.profile ?: get(), bizLogger = get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            com.sadturtleman.flowershoes.feature.pairing.DeviceChangeViewModel(getOrNull(), getOrNull(), data?.settings ?: get(), bizLogger = get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            com.sadturtleman.flowershoes.feature.pairing.LinkWatchViewModel(getOrNull(), data?.settings ?: get(), getOrNull(), data?.profile ?: get(), bizLogger = get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            com.sadturtleman.flowershoes.feature.pairing.SoloArrivalViewModel(data?.settings ?: get(), data?.profile ?: get(), data?.letters ?: get())
+        }
+        viewModel {
+            val data = getOrNull<com.sadturtleman.flowershoes.core.data.ScreenData>()
+            SettingsViewModel(data?.settings ?: get(), data?.profile ?: get(), get(), data?.identity ?: get(), data?.events ?: get(), getOrNull(), screenSession = data?.session)
+        }
     },
 )
