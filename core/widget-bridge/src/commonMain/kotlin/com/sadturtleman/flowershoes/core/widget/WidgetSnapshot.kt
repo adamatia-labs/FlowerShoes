@@ -1,8 +1,11 @@
 package com.sadturtleman.flowershoes.core.widget
 
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.data.DeviceState
+import com.sadturtleman.flowershoes.core.data.ScreenWriteSession
+import com.sadturtleman.flowershoes.core.data.ScreenSessionChangedException
+import com.sadturtleman.flowershoes.core.data.CleanupInProgressException
 import com.sadturtleman.flowershoes.core.data.EventRepository
-import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.MissYouRepository
 import com.sadturtleman.flowershoes.core.data.ProfileRepository
 import com.sadturtleman.flowershoes.core.data.StatusRepository
@@ -14,12 +17,17 @@ import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.plus
 import kotlin.time.Duration.Companion.seconds
 import com.sadturtleman.flowershoes.core.database.AppDatabase
+import com.sadturtleman.flowershoes.core.database.CoupleEntity
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -119,7 +127,6 @@ class SnapshotStore(private val file: Path, private val fs: FileSystem = FileSys
  */
 class WidgetSnapshotPublisher(
     private val db: AppDatabase,
-    private val identity: Identity,
     private val settings: DeviceSettings,
     private val profile: ProfileRepository,
     private val events: EventRepository,
@@ -129,81 +136,96 @@ class WidgetSnapshotPublisher(
     private val attachmentsRoot: Path,
     private val clock: Clock = Clock.System,
 ) {
+    private data class Publication(val account: DeviceState, val couple: CoupleEntity?, val snapshot: WidgetSnapshot)
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
     /** [drawingWidgetPlaced]: 홈 화면에 그림 위젯이 있는지 — 없으면 "위젯에 표시됨" 시간을 세지 않는다. */
     fun start(scope: CoroutineScope, drawingWidgetPlaced: suspend () -> Boolean = { true }, onUpdated: suspend () -> Unit): Job = scope.launch {
-        val me = identity.userId
         // 날이 바뀌면 "오늘" 기준 흐름(오늘 보고싶어 · 다음 일정)을 다시 묻는다.
         val days = clock.ticker(60.seconds).map { clock.today() }.distinctUntilChanged()
-        db.coupleDao().observe().flatMapLatest { couple ->
-            val partner = couple?.partnerUserId.orEmpty()
-            days.flatMapLatest { today ->
-                combine(
-                    settings.state,
-                    db.userDao().observeAll(),
-                    profile.observeTimelines(),
-                    events.observeRange(today, today.plus(DatePeriod(years = 2))),
-                    if (partner.isEmpty()) flowOf(null) else status.observeLatest(partner),
-                    if (partner.isEmpty()) flowOf(0) else missYou.observeTodayFrom(partner),
-                    missYou.observeTodayFrom(me),
-                    missYou.observeMyLastSentAt(),
-                    db.letterDao().observeAll(),
-                    db.receiptDao().observeIds(ReceiptEntity.LETTER.name, me),
-                    drawingFlow(),
-                    settings.widgetFrame,
-                    // 1분마다 다시 만든다: 예약 편지 공개 · "보냈어요" 상태가 끝나는 때.
-                    clock.ticker(60.seconds),
-                ) { values ->
-                    val device = values[0] as com.sadturtleman.flowershoes.core.data.DeviceState
-                    @Suppress("UNCHECKED_CAST")
-                    val users = values[1] as List<com.sadturtleman.flowershoes.core.database.UserEntity>
-                    @Suppress("UNCHECKED_CAST")
-                    val timeline = (values[2] as List<Pair<*, com.sadturtleman.flowershoes.core.military.ServiceTimeline>>).firstOrNull()?.second
-                    @Suppress("UNCHECKED_CAST")
-                    val upcoming = values[3] as List<com.sadturtleman.flowershoes.core.model.Event>
-                    @Suppress("UNCHECKED_CAST")
-                    val letters = values[8] as List<com.sadturtleman.flowershoes.core.database.LetterEntity>
-                    @Suppress("UNCHECKED_CAST")
-                    val read = (values[9] as List<String>).toSet()
-                    val now = clock.now()
-                    val mine = users.firstOrNull { it.id == me }
-                    widgetSnapshot(
-                        WidgetInputs(
-                            theme = device.theme.name,
-                            role = mine?.role?.let { r -> com.sadturtleman.flowershoes.core.model.Role.entries.firstOrNull { it.name == r } },
-                            myName = mine?.nickname.orEmpty(),
-                            partnerId = partner.ifEmpty { null },
-                            partnerName = users.firstOrNull { it.id == partner }?.nickname,
-                            timeline = timeline,
-                            events = upcoming,
-                            status = values[4] as com.sadturtleman.flowershoes.core.model.Status?,
-                            missYouFromPartnerToday = values[5] as Int,
-                            missYouSentToday = values[6] as Int,
-                            missYouLastSentAtMs = values[7] as Long?,
-                            letters = letters.filter { it.authorId == partner && it.visibleAtMs <= now.toEpochMilliseconds() }.map { it.toModel() },
-                            readLetterIds = read,
-                            drawing = values[10] as com.sadturtleman.flowershoes.core.database.DrawingEntity?,
-                            widgetFrame = values[11] as String,
-                        ),
-                        attachmentsRoot, now,
-                    )
+        settings.state.distinctUntilChangedBy { Triple(it.userId, it.deviceId, it.accountSession) }.flatMapLatest { account ->
+            val me = account.userId
+            db.coupleDao().observe().flatMapLatest relationship@ { couple ->
+                if (couple != null && couple.myUserId != me) return@relationship emptyFlow()
+                val partner = couple?.partnerUserId.orEmpty()
+                days.flatMapLatest { today ->
+                    combine(
+                        settings.state,
+                        db.userDao().observeAll(),
+                        profile.observeTimelines(),
+                        events.observeRange(today, today.plus(DatePeriod(years = 2))),
+                        if (partner.isEmpty()) flowOf(null) else status.observeLatest(partner),
+                        if (partner.isEmpty()) flowOf(0) else missYou.observeTodayFrom(partner),
+                        missYou.observeTodayFrom(me),
+                        db.missYouDao().observeLastSentAt(me),
+                        db.letterDao().observeAll(),
+                        db.receiptDao().observeIds(ReceiptEntity.LETTER.name, me),
+                        drawingFlow(me),
+                        settings.widgetFrame,
+                        // 1분마다 다시 만든다: 예약 편지 공개 · "보냈어요" 상태가 끝나는 때.
+                        clock.ticker(60.seconds),
+                    ) { values ->
+                        val device = values[0] as com.sadturtleman.flowershoes.core.data.DeviceState
+                        @Suppress("UNCHECKED_CAST")
+                        val users = values[1] as List<com.sadturtleman.flowershoes.core.database.UserEntity>
+                        @Suppress("UNCHECKED_CAST")
+                        val timeline = (values[2] as List<Pair<*, com.sadturtleman.flowershoes.core.military.ServiceTimeline>>).firstOrNull()?.second
+                        @Suppress("UNCHECKED_CAST")
+                        val upcoming = values[3] as List<com.sadturtleman.flowershoes.core.model.Event>
+                        @Suppress("UNCHECKED_CAST")
+                        val letters = values[8] as List<com.sadturtleman.flowershoes.core.database.LetterEntity>
+                        @Suppress("UNCHECKED_CAST")
+                        val read = (values[9] as List<String>).toSet()
+                        val now = clock.now()
+                        val mine = users.firstOrNull { it.id == me }
+                        Publication(account, couple, widgetSnapshot(
+                            WidgetInputs(
+                                theme = device.theme.name,
+                                role = mine?.role?.let { r -> com.sadturtleman.flowershoes.core.model.Role.entries.firstOrNull { it.name == r } },
+                                myName = mine?.nickname.orEmpty(),
+                                partnerId = partner.ifEmpty { null },
+                                partnerName = users.firstOrNull { it.id == partner }?.nickname,
+                                timeline = timeline,
+                                events = upcoming,
+                                status = values[4] as com.sadturtleman.flowershoes.core.model.Status?,
+                                missYouFromPartnerToday = values[5] as Int,
+                                missYouSentToday = values[6] as Int,
+                                missYouLastSentAtMs = values[7] as Long?,
+                                letters = letters.filter { it.authorId == partner && it.visibleAtMs <= now.toEpochMilliseconds() }.map { it.toModel() },
+                                readLetterIds = read,
+                                drawing = values[10] as com.sadturtleman.flowershoes.core.database.DrawingEntity?,
+                                widgetFrame = values[11] as String,
+                            ),
+                            attachmentsRoot, now,
+                        ))
+                    }
                 }
             }
         }
             .distinctUntilChanged()
             .debounce(500)
-            .collect { snap ->
-                store.write(snap.copy(updatedAtMs = clock.now().toEpochMilliseconds()))
-                onUpdated()
-                val placed = runCatching { drawingWidgetPlaced() }.getOrDefault(false)
-                settings.widgetShowing(snap.drawingId?.takeIf { placed }, clock.now().toEpochMilliseconds())
+            .collect { publication ->
+                val session = ScreenWriteSession(db, settings, publication.account, publication.couple)
+                val snap = publication.snapshot
+                try {
+                    session.write {
+                        store.write(snap.copy(updatedAtMs = clock.now().toEpochMilliseconds()))
+                        onUpdated()
+                    }
+                    val placed = runCatching { drawingWidgetPlaced() }.getOrDefault(false)
+                    settings.forScreen(session).widgetShowing(snap.drawingId?.takeIf { placed }, clock.now().toEpochMilliseconds())
+                } catch (_: ScreenSessionChangedException) {
+                    currentCoroutineContext().ensureActive()
+                } catch (_: CleanupInProgressException) {
+                    currentCoroutineContext().ensureActive()
+                }
             }
     }
 
     /** 위젯에 다시 띄운 그림이 있으면 그것 — 그 뒤에 새 그림이 오면 새 그림. 예약 편지는 공개 시각이 지나야 나온다(시계와 묶어 다시 묻는다). */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private fun drawingFlow() = combine(
-        clock.ticker(60.seconds).flatMapLatest { now -> db.drawingDao().observeForWidget(identity.userId, now.toEpochMilliseconds()) },
+    private fun drawingFlow(userId: String) = combine(
+        clock.ticker(60.seconds).flatMapLatest { now -> db.drawingDao().observeForWidget(userId, now.toEpochMilliseconds()) },
         settings.widgetPin.flatMapLatest { pin ->
             if (pin == null) flowOf<Pair<com.sadturtleman.flowershoes.core.database.DrawingEntity, Long>?>(null)
             else db.drawingDao().observe(pin.first).map { d -> d?.let { it to pin.second } }

@@ -49,7 +49,7 @@ fun kkotsinAndroidModules(
         invite = invite,
     ) + module {
         single { SnapshotStore(app.filesDir.resolve("widget/snapshot.json").absolutePath.toPath()) }
-        single { WidgetSnapshotPublisher(get(), get(), get(), get(), get(), get(), get(), get(), attachments, get()) }
+        single { WidgetSnapshotPublisher(get(), get(), get(), get(), get(), get(), get(), attachments, get()) }
     }
 }
 
