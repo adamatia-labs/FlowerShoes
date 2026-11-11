@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -28,6 +29,28 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class LoginInteractionTest {
+    @Test fun `Apple 저장 안내에서 재확인과 계속하기를 선택할 수 있다`() = runComposeUiTest {
+        val selected = mutableListOf<OnboardingIntent>()
+        setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, 2f)) {
+                KkotsinTheme(AppTheme.GOMSIN) {
+                    OnboardingScreen(OnboardingState(today = LocalDate(2026, 11, 11), appleTokenNotice = true), selected::add)
+                }
+            }
+        }
+        onNodeWithText("다시 확인").performScrollTo().assertIsDisplayed().performClick()
+        onNodeWithText("계속하기").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(listOf(OnboardingIntent.RetryAppleToken, OnboardingIntent.ContinueAppleSignIn), selected)
+    }
+
+    @Test fun `Apple 재확인 중에는 중복 요청과 계속하기를 막는다`() = runComposeUiTest {
+        setContent { KkotsinTheme(AppTheme.GOMSIN) {
+            OnboardingScreen(OnboardingState(today = LocalDate(2026, 11, 11), appleTokenNotice = true, signingIn = true)) {}
+        } }
+        onNodeWithText("계속하기").assertIsNotEnabled()
+        onNodeWithText("확인 중…").assertIsNotEnabled()
+    }
+
     @Test
     fun `가로 화면에 글자를 200퍼센트 확대해도 각 로그인 버튼을 사용할 수 있다`() = runComposeUiTest {
         val selected = mutableListOf<AuthProvider>()

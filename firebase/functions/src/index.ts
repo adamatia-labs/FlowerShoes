@@ -30,8 +30,9 @@ import { AcceptDoc, acceptDecision, InviteDoc, invitePageHtml, tokenFromPath } f
 import { inviteHeadRef, readInviteOrder, recordInviteOrder } from './invite-order';
 import { AnswerSide, answerDecision, blockedPush, compareRequestOrder, isSecondWithin24h, requestPush } from './device-change';
 import { kakaoNickname } from './kakao';
-import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
+import { AppleRevocationResult, claimAccountDeletion, completeAccountDeletion, completedDeletion, deletionPhase, deletionRef, failAccountDeletion, kakaoAccountUid, kakaoProviderId, rememberAppleRevocation, requireLiveAccount } from './account-lifecycle';
 import { deliverUnlinkNotification, forgetUnlinkMember, unlink, UnlinkForbidden, UnlinkNotFound, UnlinkStore, UnlinkHistory } from './unlink';
+import { deleteStoragePrefix } from './storage-cleanup';
 export { onMailCreated } from './mail-function';
 
 initializeApp();
@@ -537,7 +538,7 @@ const unlinkStore: UnlinkStore = {
   },
   async deleteFiles(coupleId) {
     // 오류를 삼키면 삭제가 끝나지 않아도 완료로 기록되므로 호출자에게 알린다.
-    await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/` });
+    await deleteStoragePrefix(getStorage().bucket(), `couples/${coupleId}/`);
   },
   async clearMember(coupleId, uid) {
     const userRef = db.doc(`users/${uid}`);
@@ -628,7 +629,10 @@ export const unlinkCouple = onCall({ region: REGION }, async (req) => {
 export const deleteAccount = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
-  const claim = await claimAccountDeletion(uid);
+  if (req.data?.expectedUid !== undefined && req.data.expectedUid !== uid) throw new HttpsError('permission-denied', '로그인 계정이 바뀌었어요');
+  const receiptToken = req.data?.receiptToken;
+  if (receiptToken !== undefined && typeof receiptToken !== 'string') throw new HttpsError('invalid-argument', '탈퇴 확인 정보가 올바르지 않아요');
+  const claim = await claimAccountDeletion(uid, receiptToken);
   if (claim.result) return claim.result;
   const firebaseClaims = req.auth?.token.firebase;
   const appleAccount = firebaseClaims?.sign_in_provider === 'apple.com' || !!firebaseClaims?.identities?.['apple.com'];
@@ -670,8 +674,12 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
     const refreshToken = apple.get('refreshToken') as string | undefined;
     if (claim.appleRevocation === undefined) {
       if (refreshToken) {
-        appleRevocation = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false)
-          ? 'revoked' : 'manual';
+        const revoked = appleConfigured(appleConfig()) && await revokeApple(appleConfig(), refreshToken).catch(() => false);
+        const subjects: unknown = firebaseClaims?.identities?.['apple.com'];
+        const matchesCurrentApple = Array.isArray(subjects)
+          && typeof apple.get('appleSubject') === 'string'
+          && subjects.includes(apple.get('appleSubject'));
+        appleRevocation = revoked && matchesCurrentApple ? 'revoked' : 'manual';
       }
       // A code exchange that started before deletion may still produce a token; never promise full revocation then.
       if ((apple.get('pendingExchanges') as number ?? 0) > 0) appleRevocation = 'manual';
@@ -694,6 +702,14 @@ export const deleteAccount = onCall({ region: REGION }, async (req) => {
   }
 });
 
+/** Auth 삭제로 로그인 토큰을 잃어도, 이전에 등록한 작업 비밀로 완료 결과만 확인한다. */
+export const accountDeletionResult = onCall({ region: REGION }, async (req) => {
+  const { ownerUid, receiptToken } = req.data ?? {};
+  if (typeof ownerUid !== 'string' || typeof receiptToken !== 'string') throw new HttpsError('invalid-argument', '탈퇴 확인 정보가 올바르지 않아요');
+  const result = await completedDeletion(ownerUid, receiptToken);
+  return result ? { completed: true, appleRevocation: result.appleRevocation } : { completed: false };
+});
+
 /**
  * 문의 답변 알림(Figma 7 · 문의 내역 "답변이 오면 알림"). 답변은 콘솔 · 관리자 SDK 로 answer 를 쓴다.
  * answeredAt 이 없으면 채운다 — 그 쓰기로 다시 불려도 before 에 answer 가 있어 알림은 한 번만 간다.
@@ -711,14 +727,32 @@ export const onInquiryAnswered = onDocumentWritten({ document: 'users/{uid}/inqu
 });
 
 /**
- * Sign in with Apple 직후 iOS 가 부른다: 일회용 authorization code → refresh token 을 appleTokens/{uid} 에 보관.
- * 이 컬렉션은 규칙에 없어 클라이언트가 읽고 쓸 수 없다(관리자 SDK 만).
+ * 클라이언트에는 토큰이나 Apple 식별자를 주지 않고 현재 로그인 신원의 준비 여부만 돌려준다.
  */
+export const appleTokenState = onCall({ region: REGION }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
+  if (req.data?.expectedUid !== undefined && req.data.expectedUid !== uid) throw new HttpsError('failed-precondition', '로그인 계정이 바뀌었어요');
+  await requireLiveAccount(uid);
+  const subjects: unknown = req.auth?.token.firebase?.identities?.['apple.com'];
+  const token = await db.doc(`appleTokens/${uid}`).get();
+  const ready = Array.isArray(subjects) && subjects.includes(token.get('appleSubject')) &&
+    typeof token.get('refreshToken') === 'string' && token.get('refreshToken').length > 0 &&
+    (token.get('pendingExchanges') ?? 0) === 0;
+  return { ready };
+});
+
+/** 로그인 또는 계정 연결 후 fresh ID token의 Apple 신원과 code 교환 결과를 맞춰 보관한다. */
 export const appleStoreToken = onCall({ region: REGION }, async (req) => {
   const uid = req.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요하다');
+  if (req.data?.expectedUid !== undefined && req.data.expectedUid !== uid) throw new HttpsError('failed-precondition', '로그인 계정이 바뀌었어요');
   await requireLiveAccount(uid);
-  if (req.auth?.token.firebase?.sign_in_provider !== 'apple.com') throw new HttpsError('failed-precondition', 'Apple 로그인이 아니다');
+  const subjects: unknown = req.auth?.token.firebase?.identities?.['apple.com'];
+  if (!Array.isArray(subjects) || subjects.length !== 1 || typeof subjects[0] !== 'string') {
+    throw new HttpsError('failed-precondition', 'Apple 연결을 다시 확인해 주세요');
+  }
+  const subject = subjects[0] as string;
   const code = (req.data as { code?: unknown })?.code;
   if (typeof code !== 'string' || code.length === 0 || code.length > 1024) throw new HttpsError('invalid-argument', 'code 가 없다');
   if (!appleConfigured(appleConfig())) return { stored: false };
@@ -729,23 +763,26 @@ export const appleStoreToken = onCall({ region: REGION }, async (req) => {
   });
   let issued: string | null = null;
   let stored = false;
+  let exchangeSettled = false;
   try {
-    issued = await exchangeCode(appleConfig(), code);
+    const authorization = await exchangeCode(appleConfig(), code);
+    issued = authorization?.refreshToken ?? null;
     if (!issued) throw new HttpsError('permission-denied', 'Apple 이 code 를 거절했다');
+    if (authorization?.subject !== subject) throw new HttpsError('permission-denied', '연결된 Apple 계정으로 다시 확인해 주세요');
     stored = await db.runTransaction(async (tx) => {
       if ((await tx.get(deletionRef(uid))).exists) return false;
-      tx.set(tokenRef, { refreshToken: issued, storedAt: FieldValue.serverTimestamp() }, { merge: true });
+      tx.set(tokenRef, { refreshToken: issued, appleSubject: subject, storedAt: FieldValue.serverTimestamp() }, { merge: true });
       return true;
     });
     // 코드 교환을 기다리는 동안 탈퇴했으면 민감한 토큰을 다시 저장하지 않는다.
-    if (!stored) await revokeApple(appleConfig(), issued).catch(() => false);
+    exchangeSettled = stored || await revokeApple(appleConfig(), issued).catch(() => false);
     return { stored };
   } catch (error) {
-    if (issued) await revokeApple(appleConfig(), issued).catch(() => false);
+    if (issued) exchangeSettled = await revokeApple(appleConfig(), issued).catch(() => false);
     throw error;
   } finally {
     // 불확정 교환은 표시를 남겨 이후 탈퇴에서 수동 확인을 안내한다. 삭제된 문서는 다시 만들지 않는다.
-    if (stored) await db.runTransaction(async (tx) => {
+    if (exchangeSettled) await db.runTransaction(async (tx) => {
       const deletion = await tx.get(deletionRef(uid));
       const token = await tx.get(tokenRef);
       if (!deletion.exists && token.exists) tx.update(tokenRef, { pendingExchanges: FieldValue.increment(-1) });

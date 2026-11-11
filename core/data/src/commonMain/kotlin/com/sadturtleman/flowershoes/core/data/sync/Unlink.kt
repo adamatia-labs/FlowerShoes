@@ -22,6 +22,7 @@ interface AccountTransport {
         deleteAccount()
         return AppleRevocation.UNKNOWN
     }
+    suspend fun deleteAccountWithOutcome(attempt: AccountDeletionAttempt): AppleRevocation = deleteAccountWithOutcome()
     /** 기기 교체 뒤 finalizeDevice가 준 토큰으로 로그인한다. */
     suspend fun signInWithCustomToken(token: String) = Unit
 }
@@ -135,7 +136,7 @@ class UnlinkService(
                 val server = checkNotNull(transport) { "정리 서버에 연결할 수 없어요" }
                 val manual = if (cleanup.source == "ACCOUNT") {
                     val appleAccount = settings.accountProvider.first() == "APPLE"
-                    val result = server.deleteAccountWithOutcome()
+                    val result = server.deleteAccountWithOutcome(AccountDeletionAttempt(cleanup.ownerUid, cleanup.token))
                     result == AppleRevocation.MANUAL ||
                         (result in setOf(AppleRevocation.UNKNOWN, AppleRevocation.NOT_REQUIRED) && appleAccount)
                 } else {

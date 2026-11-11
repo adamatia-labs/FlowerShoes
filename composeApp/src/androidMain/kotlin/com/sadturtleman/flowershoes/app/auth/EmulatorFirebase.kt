@@ -28,7 +28,8 @@ object EmulatorFirebase {
         if (existing == null) FirebaseApp.initializeApp(
             context,
             FirebaseOptions.Builder().setProjectId(PROJECT).setApplicationId("1:000000000000:android:0000000000000000")
-                .setApiKey("demo-key").setStorageBucket("$PROJECT.appspot.com").build(),
+                // A public dummy value that passes the SDK's format check; never a production credential.
+                .setApiKey("AIzaSy" + "0".repeat(33)).setStorageBucket("$PROJECT.appspot.com").build(),
         )
         FirebaseFirestore.getInstance().useEmulator(host, 8080)
         FirebaseAuth.getInstance().useEmulator(host, 9099)
@@ -47,6 +48,7 @@ class DevEmailAuthGateway(
     private val linker: AuthGateway? = null,
 ) : AuthGateway {
     override val providers: List<AuthProvider> = AuthProvider.entries
+    override val currentUserId: String? get() = FirebaseAuth.getInstance().currentUser?.uid
 
     override suspend fun signIn(provider: AuthProvider): SignInResult = try {
         val auth = FirebaseAuth.getInstance()
@@ -64,6 +66,8 @@ class DevEmailAuthGateway(
     override suspend fun linkedProviders() = linker?.linkedProviders().orEmpty()
 
     override suspend fun link(provider: AuthProvider) = linker?.link(provider) ?: super.link(provider)
+    override suspend fun appleTokenReady() = linker?.appleTokenReady() ?: false
+    override suspend fun repairAppleToken() = linker?.repairAppleToken() ?: super.repairAppleToken()
 
     private companion object {
         const val PASSWORD = "kkotsin-dev"

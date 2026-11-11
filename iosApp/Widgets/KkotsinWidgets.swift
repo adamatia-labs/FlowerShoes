@@ -315,8 +315,8 @@ struct DrawingWidgetView: View {
                     HStack(spacing: 16) {
                         taped(image, p)
                         VStack(alignment: .leading, spacing: 6) {
-                            if let caption = s?.drawingCaption { Text(caption).font(p.hand()).foregroundStyle(p.ink).lineLimit(2) }
-                            Text(s?.drawingMeta ?? "").font(WidgetPalette.caption).foregroundStyle(p.sub)
+                            if let caption = s?.drawingCaption { Text(caption).font(p.hand()).foregroundStyle(p.frameText(s?.widgetFrame)).lineLimit(2) }
+                            Text(s?.drawingMeta ?? "").font(WidgetPalette.caption).foregroundStyle(p.frameText(s?.widgetFrame, secondary: true))
                             Spacer()
                             HStack(spacing: 6) {
                                 Image(systemName: "play.fill").font(.system(size: 9))
@@ -335,11 +335,11 @@ struct DrawingWidgetView: View {
                             Image(systemName: "play.fill").font(.system(size: 8))
                             Text(s?.drawingMeta ?? "").font(WidgetPalette.caption)
                         }
-                        .foregroundStyle(p.sub)
+                        .foregroundStyle(p.frameText(s?.widgetFrame, secondary: true))
                     }
                 }
             } else {
-                Text("받은 그림").font(WidgetPalette.caption).foregroundStyle(p.sub)
+                Text("받은 그림").font(WidgetPalette.caption).foregroundStyle(p.frameText(s?.widgetFrame, secondary: true))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }

@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { HttpsError } from 'firebase-functions/v2/https';
 
@@ -45,7 +46,7 @@ export type DeletionResult = { ok: true; appleRevocation: AppleRevocationResult 
 export type DeletionClaim = { attempt: string; appleRevocation?: AppleRevocationResult; result?: never } | { result: DeletionResult; attempt?: never };
 
 /** Only one executor may reach provider/Auth deletion. An abandoned claim requires operator verification, not a lease timeout. */
-export async function claimAccountDeletion(uid: string): Promise<DeletionClaim> {
+export async function claimAccountDeletion(uid: string, receiptToken?: string): Promise<DeletionClaim> {
   const db = getFirestore();
   const ref = deletionRef(uid);
   const attempt = randomUUID();
@@ -55,7 +56,12 @@ export async function claimAccountDeletion(uid: string): Promise<DeletionClaim> 
     if (deletion.exists && deletion.get('state') !== 'retryable') {
       throw new HttpsError('failed-precondition', '탈퇴 처리 결과를 확인하고 있어요. 잠시 후 다시 시도하거나 고객지원에 문의해 주세요.', { reason: 'ACCOUNT_DELETION_PENDING' });
     }
-    tx.set(ref, { state: 'deleting', attempt, phase: 'cleanup', startedAt: FieldValue.serverTimestamp() }, { merge: true });
+    const receiptHash = receiptToken === undefined ? undefined : deletionReceiptHash(uid, receiptToken);
+    if (receiptHash && deletion.get('receiptHash') && deletion.get('receiptHash') !== receiptHash) {
+      throw new HttpsError('failed-precondition', '이미 다른 기기에서 탈퇴를 진행하고 있어요');
+    }
+    tx.set(ref, { state: 'deleting', attempt, phase: 'cleanup', startedAt: FieldValue.serverTimestamp(),
+      ...(receiptHash ? { receiptHash } : {}) }, { merge: true });
     return { attempt, appleRevocation: deletion.get('appleRevocation') as AppleRevocationResult | undefined };
   });
 }
@@ -93,7 +99,50 @@ export async function completeAccountDeletion(uid: string, attempt: string, resu
   await getFirestore().runTransaction(async (tx) => {
     const ref = deletionRef(uid);
     const deletion = await tx.get(ref);
+    if (deletion.get('state') === 'deleted' && deletion.get('result')?.appleRevocation === result.appleRevocation) return;
     if (deletion.get('attempt') !== attempt || deletion.get('state') !== 'deleting') throw new Error('ACCOUNT_DELETION_OWNERSHIP_LOST');
-    tx.set(ref, { state: 'deleted', result, completedAt: FieldValue.serverTimestamp() });
+    tx.set(ref, { state: 'deleted', result, completedAt: FieldValue.serverTimestamp(),
+      ...(deletion.get('receiptHash') ? { receiptHash: deletion.get('receiptHash') } : {}) });
+  });
+}
+
+/** A receipt only reveals completion of a previously authenticated request; it cannot start deletion. */
+export function deletionReceiptHash(uid: string, token: string): string {
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(token)) {
+    throw new HttpsError('invalid-argument', '탈퇴 확인 정보가 올바르지 않아요');
+  }
+  return createHash('sha256').update(JSON.stringify([uid, token])).digest('hex');
+}
+
+export async function completedDeletion(uid: string, token: string): Promise<DeletionResult | null> {
+  if (typeof uid !== 'string' || uid.length === 0 || uid.length > 128 || uid.includes('/')) {
+    throw new HttpsError('invalid-argument', '탈퇴 확인 정보가 올바르지 않아요');
+  }
+  const hash = deletionReceiptHash(uid, token);
+  const ref = deletionRef(uid);
+  const initial = await ref.get();
+  const storedHash = initial.get('receiptHash');
+  if (typeof storedHash !== 'string' || storedHash.length !== hash.length ||
+      !timingSafeEqual(Buffer.from(storedHash), Buffer.from(hash))) return null;
+  if (initial.get('state') === 'deleted') return initial.get('result') as DeletionResult;
+
+  // All provider/data work precedes this phase. Confirm Auth absence before recovering only the final receipt write.
+  if (initial.get('phase') !== 'auth-delete' || !['deleting', 'retryable'].includes(initial.get('state'))) return null;
+  const appleRevocation = initial.get('appleRevocation') as AppleRevocationResult | undefined;
+  if (!appleRevocation || !['not_required', 'revoked', 'manual'].includes(appleRevocation)) return null;
+  try {
+    await getAuth().getUser(uid);
+    return null;
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'auth/user-not-found') throw error;
+  }
+  return getFirestore().runTransaction(async (tx) => {
+    const current = await tx.get(ref);
+    if (current.get('receiptHash') !== hash) return null;
+    if (current.get('state') === 'deleted') return current.get('result') as DeletionResult;
+    if (current.updateTime?.isEqual(initial.updateTime!) !== true) return null;
+    const result: DeletionResult = { ok: true, appleRevocation };
+    tx.set(ref, { state: 'deleted', result, receiptHash: hash, completedAt: FieldValue.serverTimestamp() });
+    return result;
   });
 }

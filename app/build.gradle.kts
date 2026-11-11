@@ -170,6 +170,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(project(":feature:memory"))
     androidTestImplementation(project(":feature:letter"))
+    androidTestImplementation(project(":feature:onboarding"))
+    androidTestImplementation(project(":core:auth"))
     androidTestImplementation(project(":feature:home"))
     androidTestImplementation(project(":feature:pairing"))
     androidTestImplementation(project(":feature:calendar"))

@@ -64,6 +64,16 @@ struct WidgetPalette {
         }
     }
 
+    /// 고정 프레임의 제목·메타는 프레임 밝기를 따른다. 태그 안의 글자는 기존 ink를 쓴다.
+    func frameText(_ frame: String?, secondary: Bool = false) -> Color {
+        switch frame {
+        case "NIGHT", "BLOSSOM", "KRAFT", "POLAROID":
+            return WidgetPalette(theme: soldier ? "SOLDIER" : "GOMSIN", dark: frame == "NIGHT").ink
+        default:
+            return secondary ? sub : ink
+        }
+    }
+
     /// 테마 v2 텍스트 스타일: 숫자(D-day)는 곰신 명조 · 군인 굵은 고딕, 손글씨는 위젯에 글꼴이 없어 둥근 글꼴로 대신한다.
     func number(_ size: CGFloat = 24) -> Font { .system(size: size, weight: .bold, design: soldier ? .default : .serif) }
     func hand(_ size: CGFloat = 21) -> Font { .system(size: size, design: .rounded) }

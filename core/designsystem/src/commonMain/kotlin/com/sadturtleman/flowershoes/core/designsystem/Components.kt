@@ -819,6 +819,7 @@ fun KkDialog(
     modifier: Modifier = Modifier,
     cancel: String = "취소",
     destructive: Boolean = false,
+    enabled: Boolean = true,
 ) {
     val c = KkTheme.colors
     val shape = RoundedCornerShape(KkRadius.xl)
@@ -834,9 +835,14 @@ fun KkDialog(
     ) {
         Text(title, style = KkTheme.type.title, color = c.ink, textAlign = TextAlign.Center)
         if (body.isNotEmpty()) Text(body, style = KkTheme.type.body, color = c.sub, textAlign = TextAlign.Center)
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
-            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Secondary)
-            KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive)
+        if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) {
+            Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+                KkButton(cancel, onCancel, Modifier.fillMaxWidth(), style = KkButtonStyle.Secondary, enabled = enabled)
+                KkButton(confirm, onConfirm, Modifier.fillMaxWidth(), danger = destructive, enabled = enabled)
+            }
+        } else Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(KkSpacing.sm)) {
+            KkButton(cancel, onCancel, Modifier.weight(1f), style = KkButtonStyle.Secondary, enabled = enabled)
+            KkButton(confirm, onConfirm, Modifier.weight(1f), danger = destructive, enabled = enabled)
         }
     }
 }
