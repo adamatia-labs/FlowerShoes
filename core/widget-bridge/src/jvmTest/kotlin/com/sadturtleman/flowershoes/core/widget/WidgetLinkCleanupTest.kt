@@ -101,4 +101,21 @@ class WidgetLinkCleanupTest {
             assertEquals(solo, f.store.read())
         } finally { f.close() }
     }
+
+    @Test fun `중간 상태 없이 새 관계 링크를 발행해도 이전 스냅샷 권한은 먼저 지운다`(): Unit = runBlocking {
+        val f = Fixture()
+        try {
+            f.prepare(); f.settings.bindAccount("b")
+            f.db.coupleDao().clear()
+            f.db.coupleDao().upsert(CoupleEntity("couple-b", "b", "partner-b", 1, 200))
+            publishWidgetLink(f.db, f.settings, f.root) { _, _ -> "new link" }
+            assertNull(f.store.read())
+            assertEquals("new link", f.fs.read(f.root / "link.json") { readUtf8() })
+            val fresh = WidgetSnapshot(theme = "GOMSIN", linked = true,
+                owner = WidgetOwner.from(f.settings.state.first(), f.db.coupleDao().get()), updatedAtMs = 2)
+            f.store.write(fresh)
+            publishWidgetLink(f.db, f.settings, f.root) { _, _ -> "new link" }
+            assertEquals(fresh, f.store.read())
+        } finally { f.close() }
+    }
 }

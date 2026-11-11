@@ -30,9 +30,9 @@ suspend fun publishWidgetLink(
             if (db.cleanupDao().get() != null) return@immediateTransaction
             val couple = db.coupleDao().get()
             val owner = WidgetOwner.from(account, couple)
+            SnapshotStore(root / "widget/snapshot.json", fs).clearIfOwnerChanged(owner)
             val content = if (owner != null) build(account, checkNotNull(couple)) else null
             if (content == null) {
-                SnapshotStore(root / "widget/snapshot.json", fs).clearIfOwnerChanged(owner)
                 fs.delete(root / "link.json", mustExist = false)
             } else {
                 fs.createDirectories(root)
