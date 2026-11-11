@@ -77,6 +77,7 @@ fun kkotsinModules(
     cloud: CloudBackend? = null,
     vault: KeyVault = InMemoryKeyVault(),
     invite: com.sadturtleman.flowershoes.core.data.sync.InviteConfig = com.sadturtleman.flowershoes.core.data.sync.InviteConfig(),
+    invalidateWidget: suspend () -> Unit = {},
 ): List<Module> = listOf(
     module {
         single { database }
@@ -103,7 +104,8 @@ fun kkotsinModules(
         single { com.sadturtleman.flowershoes.core.data.StatusEditorStore(get(), get(), get(), get(), get()) }
         single { com.sadturtleman.flowershoes.core.data.BookCoverRepository(get(), get(), get()) }
         single<KeyVault> { vault.forDatabase(database, get()) }
-        single { UnlinkService(get(), get(), get(), cloud?.account, wipeAttachmentFiles = { get<AttachmentStore>().deleteAllFiles() }) }
+        single { UnlinkService(get(), get(), get(), cloud?.account, invalidateWidget = invalidateWidget,
+            wipeAttachmentFiles = { get<AttachmentStore>().deleteAllFiles() }) }
         // 서버 설정이 없는 빌드에서는 등록하지 않는다(화면은 getOrNull 로 "설정 전" 안내를 보여 준다).
         if (cloud != null) {
             single { PairingSession(get(), get(), get(), cloud.pairing, get(), get<DeviceSettings>().pendingInvites) }

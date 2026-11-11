@@ -103,6 +103,10 @@ fun MainViewController(
                     },
                     vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
                     invite = inviteConfig(),
+                    invalidateWidget = {
+                        com.sadturtleman.flowershoes.core.widget.invalidateWidgetFiles(group)
+                        widgetReloader?.invoke()
+                    },
                 ) + telemetryModules(firebase = firebase && !emulatorAuth) + org.koin.dsl.module {
                     if (kotlin.native.Platform.isDebugBinary) {
                         single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
@@ -221,7 +225,7 @@ fun onForeground() {
         runCatching { koin.getOrNull<com.sadturtleman.flowershoes.core.data.LifetimeStore>()?.refresh() }
         com.sadturtleman.flowershoes.app.ios.writeLinkConfig(
             koin.get<com.sadturtleman.flowershoes.core.database.AppDatabase>(),
-            koin.get<com.sadturtleman.flowershoes.core.data.Identity>(),
+            koin.get<com.sadturtleman.flowershoes.core.data.DeviceSettings>(),
             vault = koin.get(),
         )
     }

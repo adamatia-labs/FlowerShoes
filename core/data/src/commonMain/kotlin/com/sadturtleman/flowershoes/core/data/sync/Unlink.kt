@@ -38,6 +38,7 @@ class UnlinkService(
     private val vault: KeyVault,
     private val settings: DeviceSettings,
     private val transport: AccountTransport?,
+    private val invalidateWidget: suspend () -> Unit = {},
     private val wipeAttachmentFiles: suspend () -> Unit = {},
 ) {
     val pendingCleanup = combine(db.cleanupDao().observe(), settings.cleanupRequests) { journal, request -> journal ?: request }
@@ -153,6 +154,7 @@ class UnlinkService(
                 settings.withCleanupIdentity(cleanup) {
                     checkedWrite(cleanup) {
                         // DB 정리 커밋 전에는 키를 지우지 않는다. 파일/키 실패는 이 단계만 반복한다.
+                        invalidateWidget()
                         if (cleanup.source == "ACCOUNT") vault.platformVault.clearAll() else vault.platformVault.clearCoupleKeys()
                         if (cleanup.choice == AfterUnlink.WIPE.name && !cleanup.retainedDrafts) wipeAttachmentFiles()
                         db.cleanupDao().save(next)

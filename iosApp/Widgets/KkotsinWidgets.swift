@@ -220,9 +220,9 @@ struct SendMissYouIntent: AppIntent {
     static var title: LocalizedStringResource = "보고싶어 보내기"
 
     func perform() async throws -> some IntentResult {
-        try await WidgetSender.sendMissYou()
+        let owner = try await WidgetSender.sendMissYou()
         // "보냈어요" 상태 · 오늘 보낸 횟수는 앱이 다음에 스냅샷을 다시 쓸 때 DB 기준으로 맞춘다.
-        SharedStore.updateSnapshot {
+        SharedStore.updateSnapshot(owner: owner) {
             $0.missYouSentToday = ($0.missYouSentToday ?? 0) + 1
             $0.missYouJustSentAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         }

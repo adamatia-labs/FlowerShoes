@@ -2,11 +2,11 @@
 
 package com.sadturtleman.flowershoes.app.ios
 
-import androidx.room.immediateTransaction
-import androidx.room.useWriterConnection
 import com.sadturtleman.flowershoes.core.data.sync.forDatabase
 import com.sadturtleman.flowershoes.core.data.sync.platformVault
 import com.sadturtleman.flowershoes.core.data.Identity
+import com.sadturtleman.flowershoes.core.data.DeviceSettings
+import com.sadturtleman.flowershoes.core.widget.WidgetOwner
 import com.sadturtleman.flowershoes.core.data.sync.MailItem
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
 import com.sadturtleman.flowershoes.core.database.AppDatabase
@@ -114,34 +114,34 @@ class IosNotificationScheduler : NotificationScheduler {
 
 /** 위젯 전송(App Intent)이 읽는 연결 정보. WidgetSender.swift 의 LinkConfig 와 같은 필드. */
 @Serializable
-data class LinkConfig(val coupleId: String, val userId: String, val deviceId: String, val partnerDeviceId: String, val epoch: Int, val sendEndpoint: String? = null, val keyScope: String? = null)
+data class LinkConfig(val coupleId: String, val userId: String, val deviceId: String, val partnerDeviceId: String, val epoch: Int, val sendEndpoint: String? = null, val keyScope: String? = null, val snapshotOwner: WidgetOwner? = null)
 
 internal var widgetSendEndpoint: String? = null
 
 /** 연결 · 기기 교체 · 키 교체 뒤에 부른다. */
-suspend fun writeLinkConfig(db: AppDatabase, identity: Identity, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM, vault: com.sadturtleman.flowershoes.core.data.sync.KeyVault? = null) = db.useWriterConnection { tx -> tx.immediateTransaction {
-    val couple = db.coupleDao().get()
-    val partner = couple?.let { db.deviceDao().activeFor(it.partnerUserId) }
-    if (couple == null || partner == null || couple.myUserId != identity.userId || couple.partnerUserId.isBlank()) {
-        fs.delete(root / "link.json", mustExist = false)
-        return@immediateTransaction
+suspend fun writeLinkConfig(db: AppDatabase, settings: DeviceSettings, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM, vault: com.sadturtleman.flowershoes.core.data.sync.KeyVault? = null) =
+    com.sadturtleman.flowershoes.core.widget.publishWidgetLink(db, settings, root, fs) { account, couple ->
+        val partner = db.deviceDao().activeFor(couple.partnerUserId) ?: return@publishWidgetLink null
+        val identity = object : Identity {
+            override val userId = account.userId
+            override val deviceId = account.deviceId
+            override val keyEpoch = couple.keyEpoch
+        }
+        val native = vault?.platformVault as? com.sadturtleman.flowershoes.core.data.sync.IosKeyVault
+        val scope = if (couple.sealedKeys != null) {
+            checkNotNull(native)
+            val committed = checkNotNull(vault).forDatabase(db, identity)
+            val keyScope = "${couple.id}:${identity.deviceId}:${couple.keyEpoch}"
+            native.putSharedRelationship(keyScope, committed.sharedCoupleKeys(), partner.signPub, checkNotNull(committed.deviceKeys()))
+            keyScope
+        } else {
+            native?.putPartnerSignPub(partner.signPub)
+            null
+        }
+        val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch,
+            widgetSendEndpoint, scope, WidgetOwner.from(account, couple))
+        Json.encodeToString(LinkConfig.serializer(), config)
     }
-    val native = vault?.platformVault as? com.sadturtleman.flowershoes.core.data.sync.IosKeyVault
-    val scope = if (couple.sealedKeys != null) {
-        checkNotNull(native)
-        val committed = checkNotNull(vault).forDatabase(db, identity)
-        val keyScope = "${couple.id}:${identity.deviceId}:${couple.keyEpoch}"
-        native.putSharedRelationship(keyScope, committed.sharedCoupleKeys(), partner.signPub, checkNotNull(committed.deviceKeys()))
-        keyScope
-    } else {
-        native?.putPartnerSignPub(partner.signPub)
-        null
-    }
-    val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch, widgetSendEndpoint, scope)
-    val temporary = root / "link.json.tmp"
-    fs.write(temporary) { writeUtf8(Json.encodeToString(LinkConfig.serializer(), config)) }
-    fs.atomicMove(temporary, root / "link.json")
-} }
 
 /** App Intent의 완료된 사본과 중단된 journal을 실제 동기화 로그로 가져온다. */
 suspend fun mergeWidgetQueue(sync: SyncClient, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) =
@@ -178,7 +178,7 @@ fun mirrorWidgetDrawing(store: com.sadturtleman.flowershoes.core.widget.Snapshot
     val dir = root / "widget"
     val safe = com.sadturtleman.flowershoes.core.data.AttachmentStore
     val drawingId = snap.drawingId?.takeIf { safe.isSafeId(it) } ?: run {
-        if (snap.drawingPngPath != null) store.write(snap.copy(drawingPngPath = null, drawingDocPath = null))
+        if (snap.drawingPngPath != null) store.update { it.copy(drawingPngPath = null, drawingDocPath = null) }
         return
     }
     val existing = safe.safePath(dir, snap.drawingPngPath)
@@ -186,14 +186,14 @@ fun mirrorWidgetDrawing(store: com.sadturtleman.flowershoes.core.widget.Snapshot
     val support = NSFileManager.defaultManager.URLForDirectory(NSApplicationSupportDirectory, NSUserDomainMask, null, true, null)?.path ?: return
     val attachments = (support + "/db/attachments").toPath()
     val src = safe.safePath(attachments, snap.drawingPngPath) ?: run {
-        if (snap.drawingPngPath != null) store.write(snap.copy(drawingPngPath = null, drawingDocPath = null))
+        if (snap.drawingPngPath != null) store.update { it.copy(drawingPngPath = null, drawingDocPath = null) }
         return
     }
     if (!fs.exists(src)) return
     val actual = safe.safeExistingPath(attachments, src.toString(), fs) ?: return
     runCatching {
         val dst = com.sadturtleman.flowershoes.core.widget.copyWidgetDrawing(fs, actual, dir, drawingId)
-        store.write(snap.copy(drawingPngPath = dst.toString()))
+        store.update { it.copy(drawingPngPath = dst.toString()) }
         fs.list(dir).filter { it.name.startsWith("drawing-") && it != dst }.forEach { fs.delete(it) }
     }
 }

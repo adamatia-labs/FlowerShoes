@@ -12,7 +12,8 @@ final class NotificationService: UNNotificationServiceExtension {
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
         let info = request.content.userInfo
-        defer { contentHandler(content) }
+        var delivered = false
+        defer { if !delivered { contentHandler(content) } }
 
         guard (info["v"] as? String) == "1", let kind = info["kind"] as? String else {
             // 암호화 Op가 아닌 푸시는 서버가 보낸 안내 문구를 유지한다.
@@ -23,6 +24,9 @@ final class NotificationService: UNNotificationServiceExtension {
         guard let linkData = try? Data(contentsOf: SharedStore.container.appendingPathComponent("link.json")),
               let link = (try? JSONSerialization.jsonObject(with: linkData)) as? [String: Any] else { return }
         let scope = link["keyScope"] as? String
+        let snapshotOwner = (link["snapshotOwner"] as? [String: Any]).flatMap {
+            try? JSONDecoder().decode(SharedStore.WidgetOwner.self, from: JSONSerialization.data(withJSONObject: $0))
+        }
         guard kind == "missyou" || kind == "status",
               let ctB64 = info["ct"] as? String, let ct = Data(base64Encoded: ctB64),
               let sigB64 = info["sig"] as? String, let sig = Data(base64Encoded: sigB64),
@@ -37,31 +41,29 @@ final class NotificationService: UNNotificationServiceExtension {
         let payload = split.payload
         guard (try? Data(contentsOf: SharedStore.container.appendingPathComponent("link.json"))) == linkData else { return }
 
-        // 앱이 다음에 열릴 때 DB 에 합칠 수 있게 대기열에 둔다(중복은 (stream, seq) 로 앱이 거른다).
+        // 대기열과 미리보기 전달도 스냅샷 소유권을 확인한 같은 잠금 안에서만 발행한다.
         let queued: [String: Any] = ["opId": parsed.opId, "stream": parsed.stream, "seq": parsed.seq, "header": headerB64, "ct": ctB64, "sig": sigB64, "kind": kind]
-        if let data = try? JSONSerialization.data(withJSONObject: queued) {
-            SharedStore.enqueueReceived(opId: parsed.opId, json: data)
-        }
-
+        let queuedData = try? JSONSerialization.data(withJSONObject: queued)
         let json = (try? JSONSerialization.jsonObject(with: Data(payload))) as? [String: Any]
-        switch kind {
-        case "missyou":
-            SharedStore.updateSnapshot { $0.missYouFromPartnerToday += 1 }
-        case "status":
-            let put = json?["status"] as? [String: Any]
-            if let status = put?["label"] as? String {
+        let put = json?["status"] as? [String: Any]
+        let status = kind == "status" ? put?["label"] as? String : nil
+        SharedStore.updateSnapshot(owner: snapshotOwner, onUpdated: {
+            if let queuedData { SharedStore.enqueueReceived(opId: parsed.opId, json: queuedData) }
+            if let status {
                 // 설정 › 알림 › 미리보기 숨기기: 문구는 서버 기본 그대로(위젯만 갱신).
                 let hidden = FileManager.default.fileExists(atPath: SharedStore.container.appendingPathComponent("prefs/hide_preview").path)
                 if !hidden { content.body = "상태: \(status)" }
-                // 끝나는 시각 문구("내일 08:00까지")는 앱이 다음에 스냅샷을 다시 쓸 때 채운다.
-                SharedStore.updateSnapshot {
-                    $0.partnerStatus = status
-                    $0.partnerStatusColor = (put?["color"] as? NSNumber)?.int64Value
-                    $0.partnerStatusUntil = nil
-                }
             }
-        default:
-            break
+            delivered = true
+            contentHandler(content)
+        }) { snapshot in
+            if kind == "missyou" { snapshot.missYouFromPartnerToday += 1 }
+            if let status {
+                snapshot.partnerStatus = status
+                snapshot.partnerStatusColor = (put?["color"] as? NSNumber)?.int64Value
+                // 끝나는 시각 문구는 앱이 다음에 스냅샷을 다시 쓸 때 채운다.
+                snapshot.partnerStatusUntil = nil
+            }
         }
     }
 

@@ -46,6 +46,8 @@ import okio.Path
 @Serializable
 data class WidgetSnapshot(
     val version: Int = 2,
+    /** 지연된 확장 작업은 자신이 시작한 소유권과 일치할 때만 수정한다. 이전 파일에는 없을 수 있다. */
+    val owner: WidgetOwner? = null,
     /** 기기 테마(위젯도 이 기기 테마를 따른다). */
     val theme: String,
     /** 전역 D-day: "민준이 전역까지" · "D-479" · "28.6% · 상병(예정) D-53". 입대일이 없으면 셋 다 null. */
@@ -109,7 +111,24 @@ data class WidgetTag(val label: String, val value: String)
 class SnapshotStore(private val file: Path, private val fs: FileSystem = FileSystem.SYSTEM) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    fun write(snapshot: WidgetSnapshot) {
+    fun write(snapshot: WidgetSnapshot) = withSnapshotLock(file) { writeUnlocked(snapshot) }
+
+    /** 정리 완료 전에 호출한다. 확장의 지연된 결과가 이전 파일을 다시 만들 수 없게 한다. */
+    fun clear() = withSnapshotLock(file) { fs.delete(file, mustExist = false) }
+
+    /** 연결 정보를 발행할 수 없어도 현재 혼자 모드의 D-day 스냅샷은 유지한다. */
+    fun clearIfOwnerChanged(owner: WidgetOwner?) = withSnapshotLock(file) {
+        val snapshot = read()
+        if (snapshot == null || snapshot.owner != owner || (owner == null && snapshot.linked)) {
+            fs.delete(file, mustExist = false)
+        }
+    }
+
+    fun update(change: (WidgetSnapshot) -> WidgetSnapshot) = withSnapshotLock(file) {
+        read()?.let { writeUnlocked(change(it)) }
+    }
+
+    private fun writeUnlocked(snapshot: WidgetSnapshot) {
         file.parent?.let { fs.createDirectories(it) }
         val tmp = file.parent!! / "${file.name}.tmp"
         fs.write(tmp) { writeUtf8(json.encodeToString(WidgetSnapshot.serializer(), snapshot)) }
@@ -197,7 +216,7 @@ class WidgetSnapshotPublisher(
                                 widgetFrame = values[11] as String,
                             ),
                             attachmentsRoot, now,
-                        ))
+                        ).copy(owner = WidgetOwner.from(account, couple)))
                     }
                 }
             }

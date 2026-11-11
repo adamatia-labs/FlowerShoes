@@ -6,7 +6,7 @@ enum WidgetSender {
 
     /// Cloud Function 엔드포인트(서울 리전). 프로젝트 id 는 빌드 설정으로 바꾼다.
 
-    static func sendMissYou() async throws {
+    static func sendMissYou() async throws -> SharedStore.WidgetOwner? {
         guard let config = linkConfig(),
               let secrets = SharedStore.readSecrets(scope: config.keyScope),
               let coupleKey = secrets.secret("coupleKey.\(config.epoch)"),
@@ -44,6 +44,7 @@ enum WidgetSender {
             // 실패해도 사본이 남아 있어 다음 위젯 전송 또는 앱 실행 때 다시 보낸다.
             if code != 200 && code != 409 { throw Failure.rejected(code) }
         }
+        return config.snapshotOwner
     }
 
     struct LinkConfig: Codable, Equatable {
@@ -54,6 +55,7 @@ enum WidgetSender {
         let epoch: Int32
         let sendEndpoint: String?
         var keyScope: String? = nil
+        var snapshotOwner: SharedStore.WidgetOwner? = nil
     }
 
     /// 앱이 연결 · 키 교체 때 App Group 에 써 둔다.
