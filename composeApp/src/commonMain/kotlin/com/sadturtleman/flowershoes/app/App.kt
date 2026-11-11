@@ -496,7 +496,11 @@ private fun MainShell() {
                 overlay = null
                 inviteToken = null
             }
-            PairingRoute(onDone = closePairing, onBack = closePairing, invite = inviteToken)
+            PairingRoute(
+                onDone = { closePairing(); tab = Tab.HOME },
+                onBack = closePairing,
+                invite = inviteToken,
+            )
         }
         // 셸에서는 열지 않는다(연결된 폰은 교체 요청을 받는 쪽이다). 온보딩과 같은 화면.
         Overlay.DEVICE_CHANGE -> KkContentWidth { com.sadturtleman.flowershoes.feature.pairing.DeviceChangeRoute(onDone = { overlay = null }, onBack = { overlay = null }) }
