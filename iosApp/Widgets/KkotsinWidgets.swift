@@ -7,6 +7,7 @@ import AppIntents
 struct SnapshotEntry: TimelineEntry {
     let date: Date
     let snapshot: SharedStore.WidgetSnapshot?
+    let displaySize: CGSize
 
     /// 보고싶어를 보낸 지 1분 안이면 "보냈어요" 상태.
     var justSent: Bool {
@@ -16,20 +17,20 @@ struct SnapshotEntry: TimelineEntry {
 }
 
 struct SnapshotProvider: TimelineProvider {
-    func placeholder(in context: Context) -> SnapshotEntry { SnapshotEntry(date: .now, snapshot: nil) }
+    func placeholder(in context: Context) -> SnapshotEntry { SnapshotEntry(date: .now, snapshot: nil, displaySize: context.displaySize) }
 
     func getSnapshot(in context: Context, completion: @escaping (SnapshotEntry) -> Void) {
-        completion(SnapshotEntry(date: .now, snapshot: SharedStore.readSnapshot()))
+        completion(SnapshotEntry(date: .now, snapshot: SharedStore.readSnapshot(), displaySize: context.displaySize))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
         // D-day 는 자정에 바뀐다. 앱 · NSE 가 스냅샷을 바꾸면 WidgetCenter.reloadAllTimelines() 로 앞당긴다.
         let snapshot = SharedStore.readSnapshot()
-        var entries = [SnapshotEntry(date: .now, snapshot: snapshot)]
+        var entries = [SnapshotEntry(date: .now, snapshot: snapshot, displaySize: context.displaySize)]
         // 방금 보낸 보고싶어: 1분 뒤 기본 상태로 돌아간다.
         if let at = snapshot?.missYouJustSentAtMs {
             let back = Date(timeIntervalSince1970: Double(at) / 1000 + 60)
-            if back > .now { entries.append(SnapshotEntry(date: back, snapshot: snapshot)) }
+            if back > .now { entries.append(SnapshotEntry(date: back, snapshot: snapshot, displaySize: context.displaySize)) }
         }
         let midnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86_400))
         completion(Timeline(entries: entries, policy: .after(midnight)))
@@ -302,13 +303,14 @@ struct MissYouWidget: Widget {
 struct DrawingWidgetView: View {
     @Environment(\.widgetFamily) private var family
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var displayScale
     let entry: SnapshotEntry
 
     var body: some View {
         let s = entry.snapshot
         let p = WidgetPalette(theme: s?.theme, dark: scheme == .dark)
         let image = (SharedStore.isSafeWidgetDrawingID(s?.drawingId) ? SharedStore.safeWidgetImageURL(s?.drawingPngPath, directory: SharedStore.container.appendingPathComponent("widget")) : nil)
-            .flatMap { UIImage(contentsOfFile: $0.path) }
+            .flatMap { WidgetDrawingImage.load(at: $0, displayWidth: entry.displaySize.width, scale: displayScale) }
         Group {
             if let image {
                 if family == .systemMedium {

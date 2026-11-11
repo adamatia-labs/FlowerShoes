@@ -265,7 +265,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-    sources: [Tests, Shared, Compression]
+    sources: [Tests, Shared, Compression, Widgets/WidgetDrawingImage.swift]
     dependencies:
       - package: Sodium
       - package: Zstd
