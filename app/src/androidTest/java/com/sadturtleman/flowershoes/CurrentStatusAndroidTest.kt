@@ -119,6 +119,8 @@ class CurrentStatusAndroidTest {
             entered.await()
             compose.onNodeWithText("상태 저장").performScrollTo().performClick()
             compose.waitUntil(15_000) { f.editor.state.value?.saving == true }
+            // 모델 변경 뒤 저장 중 UI가 반영된 상태에서 시스템 뒤로가기를 검증한다.
+            compose.onNodeWithText("저장 중…").performScrollTo().assertIsDisplayed()
             Espresso.pressBack()
             compose.waitForIdle()
             compose.onNodeWithText("저장 중…").performScrollTo().assertIsDisplayed()
