@@ -6,6 +6,7 @@ import com.sadturtleman.flowershoes.core.data.sync.*
 import com.sadturtleman.flowershoes.core.database.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
 import okio.FileSystem
 import kotlin.test.*
 import kotlin.uuid.Uuid
@@ -29,7 +30,8 @@ class WidgetLinkCleanupTest {
             db.coupleDao().upsert(CoupleEntity("couple-a", "a", "partner", 1, 100))
             store.write(WidgetSnapshot(theme = "GOMSIN", linked = true,
                 owner = WidgetOwner.from(settings.state.first(), db.coupleDao().get()), updatedAtMs = 1))
-            fs.write(root / "link.json") { writeUtf8("old link") }
+            val owner = Json.encodeToString(WidgetOwner.serializer(), checkNotNull(store.read()?.owner))
+            fs.write(root / "link.json") { writeUtf8("{\"snapshotOwner\":$owner}") }
         }
         fun service(invalidate: suspend () -> Unit = { invalidateWidgetFiles(root) }) =
             UnlinkService(db, vault, settings, server, invalidateWidget = invalidate)
@@ -91,7 +93,10 @@ class WidgetLinkCleanupTest {
         try {
             f.prepare()
             val linked = f.store.read()
-            publishWidgetLink(f.db, f.settings, f.root) { _, _ -> null } // 상대 기기 정보가 아직 없음.
+            publishWidgetLink(f.db, f.settings, f.root) { _, _ ->
+                assertTrue(f.fs.exists(f.root / "link.json"), "현재 소유자의 링크는 준비 중에도 유지")
+                null // 상대 기기 정보가 아직 없음.
+            }
             assertEquals(linked, f.store.read())
             assertFalse(f.fs.exists(f.root / "link.json"))
             f.db.coupleDao().clear()
@@ -116,6 +121,23 @@ class WidgetLinkCleanupTest {
             f.store.write(fresh)
             publishWidgetLink(f.db, f.settings, f.root) { _, _ -> "new link" }
             assertEquals(fresh, f.store.read())
+        } finally { f.close() }
+    }
+
+    @Test fun `새 계정의 링크 준비가 실패하거나 중단되어도 이전 전송 권한이 남지 않는다`(): Unit = runBlocking {
+        val f = Fixture()
+        try {
+            f.prepare(); f.settings.bindAccount("b")
+            f.db.coupleDao().clear()
+            f.db.coupleDao().upsert(CoupleEntity("couple-b", "b", "partner-b", 1, 200))
+            assertFailsWith<IllegalStateException> {
+                publishWidgetLink(f.db, f.settings, f.root) { _, _ ->
+                    assertFalse(f.fs.exists(f.root / "link.json"), "이전 링크는 준비 전에 무효화")
+                    error("key mirror unavailable")
+                }
+            }
+            assertNull(f.store.read())
+            assertFalse(f.fs.exists(f.root / "link.json"))
         } finally { f.close() }
     }
 }
