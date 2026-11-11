@@ -59,6 +59,14 @@ final class WidgetSnapshotSessionTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: file), before)
     }
 
+    func testCompletionAfterCleanupCannotRecreateRemovedSnapshot() throws {
+        let old = owner()
+        try snapshot(owner: old).write(to: file, options: .atomic)
+        try SnapshotFileLock.withLock(snapshot: file) { try FileManager.default.removeItem(at: file) }
+        XCTAssertFalse(SharedStore.updateSnapshot(owner: old, at: file) { $0.missYouSentToday = 99 })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
     func testAppReplacementCannotInterleaveExtensionReadAndWrite() throws {
         let old = owner(), replacement = owner(couple: "couple-b")
         let url = file

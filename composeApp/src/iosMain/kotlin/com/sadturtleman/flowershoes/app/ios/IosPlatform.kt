@@ -6,9 +6,6 @@ import com.sadturtleman.flowershoes.core.data.sync.forDatabase
 import com.sadturtleman.flowershoes.core.data.sync.platformVault
 import com.sadturtleman.flowershoes.core.data.Identity
 import com.sadturtleman.flowershoes.core.data.DeviceSettings
-import com.sadturtleman.flowershoes.core.data.ScreenWriteSession
-import com.sadturtleman.flowershoes.core.data.ScreenSessionChangedException
-import com.sadturtleman.flowershoes.core.data.CleanupInProgressException
 import com.sadturtleman.flowershoes.core.widget.WidgetOwner
 import com.sadturtleman.flowershoes.core.data.sync.MailItem
 import com.sadturtleman.flowershoes.core.data.sync.SyncClient
@@ -21,9 +18,6 @@ import kotlin.coroutines.resume
 import kotlin.io.encoding.Base64
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okio.FileSystem
@@ -125,43 +119,29 @@ data class LinkConfig(val coupleId: String, val userId: String, val deviceId: St
 internal var widgetSendEndpoint: String? = null
 
 /** 연결 · 기기 교체 · 키 교체 뒤에 부른다. */
-suspend fun writeLinkConfig(db: AppDatabase, settings: DeviceSettings, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM, vault: com.sadturtleman.flowershoes.core.data.sync.KeyVault? = null) {
-    val account = settings.state.first()
-    val couple = db.coupleDao().get()
-    val identity = object : Identity {
-        override val userId = account.userId
-        override val deviceId = account.deviceId
-        override val keyEpoch = couple?.keyEpoch ?: 0
-    }
-    try {
-        ScreenWriteSession(db, settings, account, couple).write {
-            val partner = couple?.let { db.deviceDao().activeFor(it.partnerUserId) }
-            if (couple == null || partner == null || couple.myUserId != identity.userId || couple.partnerUserId.isBlank()) {
-                fs.delete(root / "link.json", mustExist = false)
-                return@write
-            }
-            val native = vault?.platformVault as? com.sadturtleman.flowershoes.core.data.sync.IosKeyVault
-            val scope = if (couple.sealedKeys != null) {
-                checkNotNull(native)
-                val committed = checkNotNull(vault).forDatabase(db, identity)
-                val keyScope = "${couple.id}:${identity.deviceId}:${couple.keyEpoch}"
-                native.putSharedRelationship(keyScope, committed.sharedCoupleKeys(), partner.signPub, checkNotNull(committed.deviceKeys()))
-                keyScope
-            } else {
-                native?.putPartnerSignPub(partner.signPub)
-                null
-            }
-            val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch, widgetSendEndpoint, scope, WidgetOwner.from(account, couple))
-            val temporary = root / "link.json.tmp"
-            fs.write(temporary) { writeUtf8(Json.encodeToString(LinkConfig.serializer(), config)) }
-            fs.atomicMove(temporary, root / "link.json")
+suspend fun writeLinkConfig(db: AppDatabase, settings: DeviceSettings, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM, vault: com.sadturtleman.flowershoes.core.data.sync.KeyVault? = null) =
+    com.sadturtleman.flowershoes.core.widget.publishWidgetLink(db, settings, root, fs) { account, couple ->
+        val partner = db.deviceDao().activeFor(couple.partnerUserId) ?: return@publishWidgetLink null
+        val identity = object : Identity {
+            override val userId = account.userId
+            override val deviceId = account.deviceId
+            override val keyEpoch = couple.keyEpoch
         }
-    } catch (_: ScreenSessionChangedException) {
-        currentCoroutineContext().ensureActive()
-    } catch (_: CleanupInProgressException) {
-        currentCoroutineContext().ensureActive()
+        val native = vault?.platformVault as? com.sadturtleman.flowershoes.core.data.sync.IosKeyVault
+        val scope = if (couple.sealedKeys != null) {
+            checkNotNull(native)
+            val committed = checkNotNull(vault).forDatabase(db, identity)
+            val keyScope = "${couple.id}:${identity.deviceId}:${couple.keyEpoch}"
+            native.putSharedRelationship(keyScope, committed.sharedCoupleKeys(), partner.signPub, checkNotNull(committed.deviceKeys()))
+            keyScope
+        } else {
+            native?.putPartnerSignPub(partner.signPub)
+            null
+        }
+        val config = LinkConfig(couple.id, identity.userId, identity.deviceId, partner.id, couple.keyEpoch,
+            widgetSendEndpoint, scope, WidgetOwner.from(account, couple))
+        Json.encodeToString(LinkConfig.serializer(), config)
     }
-}
 
 /** App Intent의 완료된 사본과 중단된 journal을 실제 동기화 로그로 가져온다. */
 suspend fun mergeWidgetQueue(sync: SyncClient, root: Path = appGroupRoot(), fs: FileSystem = FileSystem.SYSTEM) =

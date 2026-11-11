@@ -113,6 +113,17 @@ class SnapshotStore(private val file: Path, private val fs: FileSystem = FileSys
 
     fun write(snapshot: WidgetSnapshot) = withSnapshotLock(file) { writeUnlocked(snapshot) }
 
+    /** 정리 완료 전에 호출한다. 확장의 지연된 결과가 이전 파일을 다시 만들 수 없게 한다. */
+    fun clear() = withSnapshotLock(file) { fs.delete(file, mustExist = false) }
+
+    /** 연결 정보를 발행할 수 없어도 현재 혼자 모드의 D-day 스냅샷은 유지한다. */
+    fun clearIfOwnerChanged(owner: WidgetOwner?) = withSnapshotLock(file) {
+        val snapshot = read()
+        if (snapshot == null || snapshot.owner != owner || (owner == null && snapshot.linked)) {
+            fs.delete(file, mustExist = false)
+        }
+    }
+
     fun update(change: (WidgetSnapshot) -> WidgetSnapshot) = withSnapshotLock(file) {
         read()?.let { writeUnlocked(change(it)) }
     }

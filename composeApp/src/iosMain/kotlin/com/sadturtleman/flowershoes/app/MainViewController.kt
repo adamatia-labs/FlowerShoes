@@ -103,6 +103,10 @@ fun MainViewController(
                     },
                     vault = com.sadturtleman.flowershoes.core.data.sync.IosKeyVault(),
                     invite = inviteConfig(),
+                    invalidateWidget = {
+                        com.sadturtleman.flowershoes.core.widget.invalidateWidgetFiles(group)
+                        widgetReloader?.invoke()
+                    },
                 ) + telemetryModules(firebase = firebase && !emulatorAuth) + org.koin.dsl.module {
                     if (kotlin.native.Platform.isDebugBinary) {
                         single { com.sadturtleman.flowershoes.core.data.DevFlags(freeBookPdf = true) }
