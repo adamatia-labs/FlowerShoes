@@ -81,7 +81,7 @@ fun MainViewController(
             CloudBackend(
                 mailbox = t, blobs = t, pairing = t,
                 deviceChange = com.sadturtleman.flowershoes.core.firebase.FirestoreDeviceChange(),
-                account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(),
+                account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(emulatorHost = if (emulatorAuth) "127.0.0.1" else null),
                 notifyPrefs = com.sadturtleman.flowershoes.core.firebase.FirestoreNotifyPrefs(),
                 inquiry = com.sadturtleman.flowershoes.core.firebase.FirestoreInquiry(),
             )

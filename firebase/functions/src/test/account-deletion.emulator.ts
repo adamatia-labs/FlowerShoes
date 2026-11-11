@@ -1,11 +1,11 @@
 import { after, before, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { deleteApp, getApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, QueryDocumentSnapshot, Timestamp } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { claimAccountDeletion, deletionRef } from '../account-lifecycle';
+import { claimAccountDeletion, completeAccountDeletion, deletionPhase, deletionRef, rememberAppleRevocation } from '../account-lifecycle';
 
 const PROJECT = 'demo-kkotsin-account';
 if (process.env.GCLOUD_PROJECT !== PROJECT || !process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST || !process.env.STORAGE_EMULATOR_HOST) throw new Error('Local demo Auth/Firestore/Storage emulators required');
@@ -46,6 +46,57 @@ async function remove(uid: string, appleSubject?: string) {
     sign_in_provider: 'custom', ...(appleSubject ? { identities: { 'apple.com': [appleSubject] } } : {}),
   } } }, rawRequest: {} } as never);
 }
+
+function receipt(ownerUid: string, receiptToken: string) {
+  return functions.accountDeletionResult.run({ data: { ownerUid, receiptToken }, rawRequest: {} } as never);
+}
+
+test('인증 삭제와 응답 유실 뒤에도 원래 작업 비밀로만 완료 결과를 조회한다', async () => {
+  const uid = 'receipt-lost-response';
+  const token = randomUUID();
+  await getAuth().createUser({ uid });
+  await getFirestore().doc(`users/${uid}`).set({ nickname: 'local-test' });
+  assert.deepEqual(await receipt(uid, token), { completed: false });
+  await functions.deleteAccount.run({ data: { expectedUid: uid, receiptToken: token },
+    auth: { uid, token: { firebase: { sign_in_provider: 'apple.com' } } }, rawRequest: {} } as never);
+  await assert.rejects(getAuth().getUser(uid), { code: 'auth/user-not-found' });
+  assert.deepEqual(await receipt(uid, token), { completed: true, appleRevocation: 'manual' });
+  assert.deepEqual(await receipt(uid, randomUUID()), { completed: false });
+  assert.deepEqual(await receipt('another-account', token), { completed: false });
+  const stored = (await deletionRef(uid).get()).data()!;
+  assert.equal(JSON.stringify(stored).includes(token), false);
+  assert.equal(typeof stored.receiptHash, 'string');
+});
+
+test('최종 완료 저장 전에 중단되면 Auth 부재를 확인하고 영수증만 확정한다', async () => {
+  const uid = 'receipt-final-write';
+  const token = randomUUID();
+  await getAuth().createUser({ uid });
+  const claim = await claimAccountDeletion(uid, token);
+  assert.ok(claim.attempt);
+  await rememberAppleRevocation(uid, claim.attempt, 'manual');
+  assert.deepEqual(await receipt(uid, token), { completed: false });
+  await deletionPhase(uid, claim.attempt, 'auth-delete');
+  assert.deepEqual(await receipt(uid, token), { completed: false });
+  await getAuth().deleteUser(uid);
+  assert.deepEqual(await receipt(uid, token), { completed: true, appleRevocation: 'manual' });
+  // The original executor can finish after the receipt reader without undoing its result.
+  await completeAccountDeletion(uid, claim.attempt, { ok: true, appleRevocation: 'manual' });
+  assert.deepEqual(await receipt(uid, token), { completed: true, appleRevocation: 'manual' });
+});
+
+test('결과 조회는 미완료 제공자 정리나 다른 계정의 삭제를 시작하지 않는다', async () => {
+  const uid = 'receipt-unauthorized';
+  const token = randomUUID();
+  await getAuth().createUser({ uid });
+  await assert.rejects(functions.deleteAccount.run({ data: { expectedUid: 'previous-owner', receiptToken: token },
+    auth: { uid, token: {} }, rawRequest: {} } as never), /계정이 바뀌/);
+  assert.equal((await deletionRef(uid).get()).exists, false);
+  await claimAccountDeletion(uid, token);
+  await getAuth().deleteUser(uid);
+  assert.deepEqual(await receipt(uid, token), { completed: false });
+  assert.equal((await deletionRef(uid).get()).get('state'), 'deleting');
+});
 async function signIn(customToken: string) {
   const response = await realFetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=local-test`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: customToken, returnSecureToken: true }),

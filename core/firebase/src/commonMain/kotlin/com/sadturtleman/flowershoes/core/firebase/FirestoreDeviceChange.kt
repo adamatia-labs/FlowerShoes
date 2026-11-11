@@ -177,9 +177,37 @@ class FirestoreDeviceChange(
 
 /** 연결 해제 · 탈퇴 callable. 서버 데이터 삭제 · 상대 알림은 함수가 한다. */
 @Serializable
-private data class DeleteAccountResponse(val ok: Boolean = true, val appleRevocation: String? = null)
+private data class DeleteAccountResponse(val ok: Boolean = false, val appleRevocation: String? = null)
 
-class FunctionsAccount(private val region: String = "asia-northeast3") : com.sadturtleman.flowershoes.core.data.sync.AccountTransport {
+@Serializable
+private data class DeletionReceiptResponse(val completed: Boolean = false, val appleRevocation: String? = null)
+
+class FunctionsAccount(
+    private val region: String = "asia-northeast3",
+    private val emulatorHost: String? = null,
+) : com.sadturtleman.flowershoes.core.data.sync.AccountTransport {
+    private val receipts by lazy { DeletionReceiptFirebase.functions(region, emulatorHost) }
+    private val deletion = com.sadturtleman.flowershoes.core.data.sync.AccountDeletionRecovery(
+        currentUid = { Firebase.auth.currentUser?.uid },
+        delete = { attempt ->
+            val result = Firebase.functions(region).httpsCallable("deleteAccount").invoke(mapOf(
+                "expectedUid" to attempt.ownerUid, "receiptToken" to attempt.token,
+            )).data(DeleteAccountResponse.serializer())
+            check(result.ok) { "탈퇴 결과를 확인하지 못했어요" }
+            appleResult(result.appleRevocation)
+        },
+        completed = { attempt ->
+            val result = receipts.httpsCallable("accountDeletionResult").invoke(mapOf(
+                "ownerUid" to attempt.ownerUid, "receiptToken" to attempt.token,
+            )).data(DeletionReceiptResponse.serializer())
+            if (result.completed) appleResult(result.appleRevocation).also {
+                check(it != com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.UNKNOWN) { "탈퇴 결과를 확인하지 못했어요" }
+            } else null
+        },
+    )
+
+    override suspend fun deleteAccountWithOutcome(attempt: com.sadturtleman.flowershoes.core.data.sync.AccountDeletionAttempt) = deletion.execute(attempt)
+
     override suspend fun unlinkCouple(coupleId: String) {
         Firebase.functions(region).httpsCallable("unlinkCouple").invoke(mapOf("coupleId" to coupleId))
     }
@@ -191,12 +219,14 @@ class FunctionsAccount(private val region: String = "asia-northeast3") : com.sad
     override suspend fun deleteAccountWithOutcome(): com.sadturtleman.flowershoes.core.data.sync.AppleRevocation {
         val response = Firebase.functions(region).httpsCallable("deleteAccount").invoke()
         val value = runCatching { response.data(DeleteAccountResponse.serializer()).appleRevocation }.getOrNull()
-        return when (value) {
+        return appleResult(value)
+    }
+
+    private fun appleResult(value: String?) = when (value) {
             "not_required" -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.NOT_REQUIRED
             "revoked" -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.REVOKED
             "manual" -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.MANUAL
             else -> com.sadturtleman.flowershoes.core.data.sync.AppleRevocation.UNKNOWN
-        }
     }
 
     override suspend fun signInWithCustomToken(token: String) {

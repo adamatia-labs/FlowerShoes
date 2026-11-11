@@ -44,7 +44,7 @@ fun kkotsinAndroidModules(
         settingsStore = settingsDataStore(app),
         attachmentsRoot = attachments,
         auth = auth,
-        cloud = firebaseBackendOrNull(app),
+        cloud = firebaseBackendOrNull(app, emulatorHost),
         vault = com.sadturtleman.flowershoes.core.data.sync.AndroidKeyVault(app),
         invite = invite,
     ) + module {
@@ -54,10 +54,10 @@ fun kkotsinAndroidModules(
 }
 
 /** google-services.json 이 들어간 빌드면 FirebaseApp 이 자동으로 초기화돼 있다. 없으면 혼자 모드만. */
-private fun firebaseBackendOrNull(context: Context): CloudBackend? {
+private fun firebaseBackendOrNull(context: Context, emulatorHost: String): CloudBackend? {
     if (com.google.firebase.FirebaseApp.getApps(context).isEmpty()) return null
     val transport = com.sadturtleman.flowershoes.core.firebase.FirestoreTransport()
-    return CloudBackend(mailbox = transport, blobs = transport, pairing = transport, deviceChange = com.sadturtleman.flowershoes.core.firebase.FirestoreDeviceChange(), account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(), notifyPrefs = com.sadturtleman.flowershoes.core.firebase.FirestoreNotifyPrefs(), inquiry = com.sadturtleman.flowershoes.core.firebase.FirestoreInquiry())
+    return CloudBackend(mailbox = transport, blobs = transport, pairing = transport, deviceChange = com.sadturtleman.flowershoes.core.firebase.FirestoreDeviceChange(), account = com.sadturtleman.flowershoes.core.firebase.FunctionsAccount(emulatorHost = emulatorHost), notifyPrefs = com.sadturtleman.flowershoes.core.firebase.FirestoreNotifyPrefs(), inquiry = com.sadturtleman.flowershoes.core.firebase.FirestoreInquiry())
 }
 
 private fun settingsDataStore(context: Context): DataStore<Preferences> =
