@@ -4,7 +4,10 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.sadturtleman.flowershoes",
-      "sha256_cert_fingerprints": ["F3:4E:3F:F0:C7:C0:84:35:9F:49:DD:38:3F:2E:02:35:F7:F1:43:1A:7D:B8:AC:BA:90:00:D2:3B:E4:57:65:85"]
+      "sha256_cert_fingerprints": [
+        "F3:4E:3F:F0:C7:C0:84:35:9F:49:DD:38:3F:2E:02:35:F7:F1:43:1A:7D:B8:AC:BA:90:00:D2:3B:E4:57:65:85",
+        "C8:35:B2:E9:BA:F6:FC:3F:A2:F9:F7:9B:87:FC:20:DA:EF:D2:7C:B9:B9:1A:3E:8B:ED:7A:B6:34:04:15:3F:94"
+      ]
     }
   },
   {
